@@ -438,6 +438,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -702,6 +703,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
             <div class="ff"><label>Emergency Contact Phone</label><input id="cg-ec-phone" placeholder="(555) 555-5555" maxlength="20"></div>
           </div>
           <div class="ff"><label>Notes</label><textarea id="cg-notes" placeholder="Any additional notes…" rows="2" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;resize:vertical;"></textarea></div>
+          <div id="cgDocsSection" style="display:none;padding:10px;background:#f8fafc;border:1px solid #e1e5ea;border-radius:6px;margin-top:8px;"></div>
           <div class="form-actions">
             <button class="btn btn-primary" onclick="saveCaregiver()">Save Caregiver</button>
             <button class="btn btn-secondary" onclick="hideCgForm()">Cancel</button>
@@ -804,7 +806,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
     <div class="page-subtitle">Billing summaries, invoice status overview, and caregiver utilization.</div>
     <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">
       <button class="btn btn-secondary" onclick="renderReports()">Refresh</button>
-      <button class="btn btn-secondary" onclick="exportReportCSV()">Export CSV</button>
+      <button class="btn btn-secondary" onclick="exportReportExcel()">&#128202; Export Excel</button>
     </div>
     <div id="reportsContent"></div>
   </div>
@@ -1726,81 +1728,113 @@ function renderNotesPane(){
 }
 
 // ============================================================
-//  DOCUMENTS (SharePoint)
+//  DOCUMENTS (Azure Blob Storage)
 // ============================================================
+function getHcClientId(){
+  var prof=getProfiles()[activeProfileName];
+  return prof&&prof._dbId?prof._dbId:null;
+}
 function renderDocsPane(){
   var c=document.getElementById('docsContent');c.innerHTML='';
-  if(!spToken){
-    c.innerHTML='<div class="sp-notice"> Documents are stored in SharePoint. Please <strong>Sign In</strong> using the sidebar to upload and view documents.</div>';
-    return;
-  }
   if(!activeProfileName)return;
-  c.innerHTML='<div class="doc-drop" id="docDrop" onclick="document.getElementById(\'docFileInput\').click()" ondragover="event.preventDefault();this.classList.add(\'dragover\')" ondragleave="this.classList.remove(\'dragover\')" ondrop="handleDocDrop(event)">'+
-    '<div style="font-size:22px;color:#8ca0b4;">Folder</div><p>Click to upload or drag &amp; drop a file<br><span style="font-size:11px;">PDF, Word, images — stored in SharePoint under this client</span></p>'+
+  var clientId=getHcClientId();
+  c.innerHTML=
+    '<div style="margin-bottom:12px;">'+
+    '<h4 style="margin:0 0 8px;color:#1a3a5c;font-size:13px;">&#128196; Client Documents</h4>'+
+    '<p style="font-size:12px;color:#8ca0b4;margin:0 0 12px;">Upload SSN cards, driver\'s licenses, insurance cards, authorizations, etc.</p>'+
+    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'+
+    '<input type="file" id="hcDocFileInput" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple style="font-size:12px;flex:1;min-width:0;">'+
+    '<button class="btn btn-primary" onclick="uploadHcDoc()">&#8593; Upload</button>'+
     '</div>'+
-    '<input type="file" id="docFileInput" style="display:none;" onchange="handleDocUpload(event)">'+
-    '<div class="doc-list" id="docList"><div style="color:#8ca0b4;font-size:13px;padding:8px 0;">Loading documents…</div></div>';
-  loadDocsSP();
+    '<span id="hcDocStatus" style="font-size:11px;color:#666;display:block;margin-top:4px;"></span>'+
+    '</div>'+
+    '<div id="hcDocList"><div style="color:#8ca0b4;font-size:13px;">Loading...</div></div>';
+  if(clientId){loadHcDocs(clientId);}
+  else{document.getElementById('hcDocList').innerHTML='<div style="color:#8ca0b4;font-size:12px;">Save this client to the database first before uploading documents.</div>';}
 }
-function handleDocDrop(e){
-  e.preventDefault();document.getElementById('docDrop').classList.remove('dragover');
-  var files=e.dataTransfer.files;if(files.length)uploadDocToSP(files[0]);
-}
-function handleDocUpload(e){var f=e.target.files[0];if(f)uploadDocToSP(f);e.target.value='';}
-function uploadDocToSP(file){
-  if(!spToken){alert('Please sign in to upload documents.');return;}
-  var folder=encodeURIComponent(activeProfileName);
-  var url=SP_SITE+"/_api/web/GetFolderByServerRelativeUrl('"+SP_DOC_LIB+"/"+folder+"')/Files/Add(url='"+encodeURIComponent(file.name)+"',overwrite=true)";
-  var ensureFolder=SP_SITE+"/_api/web/Folders/Add('"+SP_DOC_LIB+"/"+folder+"')";
-  var headers={'Authorization':'Bearer '+spToken,'Accept':'application/json;odata=nometadata'};
-  // Ensure folder exists, then upload
-  fetch(ensureFolder,{method:'POST',headers:headers}).catch(function(){}).then(function(){
-    var reader=new FileReader();
-    reader.onload=function(ev){
-      fetch(url,{method:'POST',headers:Object.assign({},headers,{'Content-Length':file.size}),body:ev.target.result})
-      .then(function(){loadDocsSP();})
-      .catch(function(err){alert('Upload failed: '+err.message);});
-    };
-    reader.readAsArrayBuffer(file);
-  });
-}
-function loadDocsSP(){
-  if(!spToken||!activeProfileName)return;
-  var folder=encodeURIComponent(activeProfileName);
-  var url=SP_SITE+"/_api/web/GetFolderByServerRelativeUrl('"+SP_DOC_LIB+"/"+folder+"')/Files?$select=Name,TimeLastModified,Length";
-  fetch(url,{headers:{'Authorization':'Bearer '+spToken,'Accept':'application/json;odata=nometadata'}})
+function loadHcDocs(clientId){
+  fetch(API_BASE+'/documents?clientType=homecare&clientId='+clientId,{headers:apiHeaders()})
   .then(function(r){return r.json();})
-  .then(function(data){
-    var list=document.getElementById('docList');if(!list)return;
-    if(!data.value||!data.value.length){list.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:4px 0;">No documents yet. Upload one above.</div>';return;}
-    list.innerHTML='';
-    data.value.forEach(function(f){
-      var icon=f.Name.match(/\.pdf$/i)?'':f.Name.match(/\.(doc|docx)$/i)?'DOC':f.Name.match(/\.(jpg|jpeg|png|gif)$/i)?'IMG':'';
-      var kb=Math.round((parseInt(f.Length)||0)/1024);
-      var item=document.createElement('div');item.className='doc-item';
-      item.innerHTML='<span class="doc-icon">'+icon+'</span>'+
-        '<div class="doc-info"><div class="doc-name">'+esc(f.Name)+'</div><div class="doc-meta">'+kb+'KB · Modified '+new Date(f.TimeLastModified).toLocaleDateString()+'</div></div>'+
-        '<button class="btn btn-secondary btn-sm" onclick="downloadDoc(\''+esc(f.Name)+'\')">Download</button>'+
-        '<button class="btn btn-danger btn-sm" onclick="deleteDoc(\''+esc(f.Name)+'\')">Delete</button>';
-      list.appendChild(item);
-    });
-  }).catch(function(){
-    var list=document.getElementById('docList');if(list)list.innerHTML='<div style="color:#8ca0b4;font-size:13px;">Could not load documents. Folder may not exist yet — upload a file to create it.</div>';
+  .then(function(docs){renderHcDocList(clientId,docs||[]);})
+  .catch(function(){renderHcDocList(clientId,[]);});
+}
+function renderHcDocList(clientId,docs){
+  var list=document.getElementById('hcDocList');if(!list)return;
+  if(!docs.length){list.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:4px 0;">No documents yet.</div>';return;}
+  list.innerHTML='';
+  docs.forEach(function(d){
+    var kb=d.size?Math.round(d.size/1024)+'KB':'';
+    var ext=(d.name||'').split('.').pop().toLowerCase();
+    var icon=['jpg','jpeg','png','gif'].indexOf(ext)>=0?'&#128247;':'&#128196;';
+    var item=document.createElement('div');
+    item.style.cssText='display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #e8ecf0;font-size:12px;';
+    item.innerHTML=icon+' <a href="'+d.url+'" target="_blank" style="flex:1;color:#1a3a5c;text-decoration:none;word-break:break-all;">'+esc(d.name)+'</a>'+
+      '<span style="color:#8ca0b4;font-size:11px;white-space:nowrap;">'+kb+'</span>'+
+      '<button class="btn btn-danger btn-sm" style="padding:3px 10px;font-size:11px;" onclick="deleteHcDoc('+clientId+',\''+encodeURIComponent(d.name)+'\')">✕</button>';
+    list.appendChild(item);
   });
 }
-function downloadDoc(name){
-  var folder=encodeURIComponent(activeProfileName);
-  var url=SP_SITE+"/_api/web/GetFolderByServerRelativeUrl('"+SP_DOC_LIB+"/"+folder+"')/Files('"+encodeURIComponent(name)+"')/$value";
-  fetch(url,{headers:{'Authorization':'Bearer '+spToken}}).then(function(r){return r.blob();}).then(function(blob){
-    var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();URL.revokeObjectURL(a.href);
-  }).catch(function(){alert('Could not download file.');});
+function uploadHcDoc(){
+  var clientId=getHcClientId();
+  if(!clientId){alert('Save this client first before uploading documents.');return;}
+  var input=document.getElementById('hcDocFileInput');
+  if(!input||!input.files||!input.files.length){alert('Please select a file first.');return;}
+  var status=document.getElementById('hcDocStatus');
+  status.textContent='Uploading...';
+  var fd=new FormData();
+  fd.append('clientType','homecare');fd.append('clientId',clientId);
+  Array.from(input.files).forEach(function(f){fd.append('file',f);});
+  fetch(API_BASE+'/documents',{method:'POST',headers:{'x-api-key':API_KEY},body:fd})
+  .then(function(){status.textContent='';input.value='';loadHcDocs(clientId);})
+  .catch(function(e){status.textContent='Upload failed: '+e;});
 }
-function deleteDoc(name){
-  if(!confirm('Delete "'+name+'"?'))return;
-  var folder=encodeURIComponent(activeProfileName);
-  var url=SP_SITE+"/_api/web/GetFolderByServerRelativeUrl('"+SP_DOC_LIB+"/"+folder+"')/Files('"+encodeURIComponent(name)+"')";
-  fetch(url,{method:'POST',headers:{'Authorization':'Bearer '+spToken,'X-HTTP-Method':'DELETE','IF-MATCH':'*','Accept':'application/json;odata=nometadata'}})
-  .then(function(){loadDocsSP();}).catch(function(){alert('Could not delete file.');});
+function deleteHcDoc(clientId,encodedName){
+  if(!confirm('Delete this document?'))return;
+  fetch(API_BASE+'/documents?clientType=homecare&clientId='+clientId+'&name='+encodedName,{method:'DELETE',headers:apiHeaders()})
+  .then(function(){loadHcDocs(clientId);}).catch(function(e){alert('Delete failed: '+e);});
+}
+
+// ── CAREGIVER DOCUMENTS ──────────────────────────────────────
+function loadCgDocs(cgId){
+  var sec=document.getElementById('cgDocsSection');if(!sec)return;
+  sec.innerHTML='<div style="font-weight:600;font-size:12px;margin-bottom:8px;color:#1a3a5c;">&#128196; Documents <span style="font-weight:normal;color:#8ca0b4;font-size:11px;">(SSN card, license, certs)</span></div>'+
+    '<div id="cgDocList" style="margin-bottom:8px;"><div style="color:#8ca0b4;font-size:12px;">Loading...</div></div>'+
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'+
+    '<input type="file" id="cgDocFileInput" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple style="font-size:11px;flex:1;min-width:0;">'+
+    '<button class="btn btn-primary btn-sm" onclick="uploadCgDoc(\''+cgId+'\')">&#8593; Upload</button>'+
+    '</div>'+
+    '<span id="cgDocStatus" style="font-size:11px;color:#666;"></span>';
+  fetch(API_BASE+'/documents?clientType=caregiver&clientId='+cgId,{headers:apiHeaders()})
+  .then(function(r){return r.json();})
+  .then(function(docs){
+    var list=document.getElementById('cgDocList');if(!list)return;
+    if(!docs||!docs.length){list.innerHTML='<div style="color:#8ca0b4;font-size:12px;">No documents yet.</div>';return;}
+    list.innerHTML='';
+    docs.forEach(function(d){
+      var kb=d.size?Math.round(d.size/1024)+'KB':'';
+      var div=document.createElement('div');
+      div.style.cssText='display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #f0f0f0;font-size:12px;';
+      div.innerHTML='&#128196; <a href="'+d.url+'" target="_blank" style="flex:1;color:#1a3a5c;text-decoration:none;word-break:break-all;">'+esc(d.name)+'</a>'+
+        '<span style="color:#8ca0b4;font-size:11px;">'+kb+'</span>'+
+        '<button class="btn btn-danger btn-sm" style="padding:2px 8px;font-size:10px;" onclick="deleteCgDoc(\''+cgId+'\',\''+encodeURIComponent(d.name)+'\')">✕</button>';
+      list.appendChild(div);
+    });
+  }).catch(function(){var l=document.getElementById('cgDocList');if(l)l.innerHTML='<div style="color:#e74c3c;font-size:12px;">Could not load documents.</div>';});
+}
+function uploadCgDoc(cgId){
+  var input=document.getElementById('cgDocFileInput');
+  if(!input||!input.files||!input.files.length){alert('Please select a file first.');return;}
+  var status=document.getElementById('cgDocStatus');status.textContent='Uploading...';
+  var fd=new FormData();fd.append('clientType','caregiver');fd.append('clientId',cgId);
+  Array.from(input.files).forEach(function(f){fd.append('file',f);});
+  fetch(API_BASE+'/documents',{method:'POST',headers:{'x-api-key':API_KEY},body:fd})
+  .then(function(){status.textContent='';input.value='';loadCgDocs(cgId);})
+  .catch(function(e){status.textContent='Upload failed: '+e;});
+}
+function deleteCgDoc(cgId,encodedName){
+  if(!confirm('Delete this document?'))return;
+  fetch(API_BASE+'/documents?clientType=caregiver&clientId='+cgId+'&name='+encodedName,{method:'DELETE',headers:apiHeaders()})
+  .then(function(){loadCgDocs(cgId);}).catch(function(e){alert('Delete failed: '+e);});
 }
 
 // ============================================================
@@ -1867,6 +1901,7 @@ function showNewCaregiverForm(){
   ['cg-name','cg-phone','cg-email','cg-address','cg-hire','cg-pay','cg-hours','cg-certs','cg-ec-name','cg-ec-phone','cg-notes'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('cg-status').value='active';document.getElementById('cg-emptype').value='full-time';
   document.getElementById('cgDeleteBtn').style.display='none';
+  var cgDocSec=document.getElementById('cgDocsSection');if(cgDocSec)cgDocSec.style.display='none';
   document.getElementById('cgFormWrap').scrollIntoView({behavior:'smooth'});
 }
 function editCaregiver(id){
@@ -1882,6 +1917,8 @@ function editCaregiver(id){
   document.getElementById('cg-notes').value=cg.notes||'';
   document.getElementById('cg-status').value=cg.status||'active';document.getElementById('cg-emptype').value=cg.emptype||'full-time';
   document.getElementById('cgDeleteBtn').style.display='inline-block';
+  var cgDocSec=document.getElementById('cgDocsSection');
+  if(cgDocSec){cgDocSec.style.display='block';loadCgDocs(id);}
 }
 function saveCaregiver(){
   var name=document.getElementById('cg-name').value.trim();if(!name){alert('Name is required.');return;}
@@ -2569,15 +2606,17 @@ function updateMissingReport(useCustom){
       '</div>';
     }).join('');
 }
-function exportReportCSV(){
+function exportReportExcel(){
   var profiles=getProfiles(),rows=[['Client','Medicaid ID','Billing Period','Status','Saved At','Note']];
   Object.keys(profiles).forEach(function(name){
     (profiles[name].invoices||[]).forEach(function(inv){
       rows.push([name,profiles[name].medicaidId||'',inv.billingPeriod||'',inv.status||'draft',inv.savedAt||'',inv.invoiceNote||'']);
     });
   });
-  var csv=rows.map(function(r){return r.map(function(v){return '"'+String(v).replace(/"/g,'""')+'"';}).join(',');}).join('\n');
-  var blob=new Blob([csv],{type:'text/csv'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='liberty_invoices_'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(a.href);
+  var ws=XLSX.utils.aoa_to_sheet(rows);
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Invoices');
+  XLSX.writeFile(wb,'liberty_invoices_'+new Date().toISOString().slice(0,10)+'.xlsx');
 }
 
 // ============================================================
