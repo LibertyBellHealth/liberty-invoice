@@ -766,13 +766,12 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
           <div class="dashboard-sub">Employment records and client assignments</div>
         </div>
         <div class="dashboard-actions">
-          <button class="btn btn-danger btn-sm" onclick="bulkDeleteCaregivers()" style="padding:6px 14px;">Delete Selected</button>
           <button class="btn btn-primary" onclick="showNewCaregiverForm()">+ New Caregiver</button>
         </div>
       </div>
-      <div class="client-table-wrap" style="margin-top:16px;">
-        <div class="ct-toolbar">
-          <input id="cgSearch" class="ct-search" placeholder="Filter caregivers…" oninput="renderCaregiverGrid()">
+      <div style="margin-top:16px;">
+        <div class="filter-bar" style="margin-bottom:14px;">
+          <input id="cgSearch" class="ct-search" placeholder="Search caregivers…" oninput="renderCaregiverGrid()">
           <select id="cgFilterStatus" onchange="renderCaregiverGrid()" class="ct-filter">
             <option value="active">Active</option>
             <option value="all">All Statuses</option>
@@ -780,22 +779,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
             <option value="terminated">Terminated</option>
           </select>
         </div>
-        <table class="client-table">
-          <thead>
-            <tr>
-              <th style="width:32px;"><input type="checkbox" onchange="toggleAllCaregivers(this)" style="width:13px;height:13px;cursor:pointer;"></th>
-              <th>Name</th>
-              <th>Status</th>
-              <th>Type</th>
-              <th>Pay Rate</th>
-              <th>Clients</th>
-              <th>Hire Date</th>
-              <th>Phone</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="cgTableBody"></tbody>
-        </table>
+        <div class="client-grid" id="cgCardGrid"></div>
         <div id="cgTableEmpty" style="display:none;" class="ct-empty">No caregivers match your filters.</div>
       </div>
       <div id="cgFormWrap" style="display:none;margin:16px 24px 0;">
@@ -850,19 +834,23 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
         <div class="detail-avatar" id="cgDetailAvatar"></div>
         <div><div class="detail-name" id="cgDetailName"></div><div class="detail-meta" id="cgDetailMeta"></div></div>
         <div class="detail-actions">
-          <button class="btn btn-secondary" onclick="editCaregiverFromDetail()">Edit Info</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteCaregiverFromDetail()" style="padding:6px 14px;">Delete</button>
-          <button class="btn btn-secondary" onclick="showCgGrid()">Back</button>
+          <button class="btn btn-secondary" onclick="showCgGrid()">← Back</button>
         </div>
       </div>
       <div class="detail-tabs">
-        <button class="dtab active" id="cgtab-info" onclick="switchCgTab('info')">Profile</button>
-        <button class="dtab" id="cgtab-clients" onclick="switchCgTab('clients')">Assigned Clients</button>
+        <button class="dtab active" id="cgtab-overview" onclick="switchCgTab('overview')">Overview</button>
+        <button class="dtab" id="cgtab-info" onclick="switchCgTab('info')">Profile</button>
+        <button class="dtab" id="cgtab-clients" onclick="switchCgTab('clients')">Clients</button>
+        <button class="dtab" id="cgtab-notes" onclick="switchCgTab('notes')">Notes</button>
         <button class="dtab" id="cgtab-docs" onclick="switchCgTab('docs')">Documents</button>
+        <button class="dtab" id="cgtab-audit" onclick="switchCgTab('audit')">Audit Log</button>
       </div>
-      <div class="detail-pane active" id="cgpane-info"><div id="cgInfoContent"></div></div>
+      <div class="detail-pane active" id="cgpane-overview"></div>
+      <div class="detail-pane" id="cgpane-info"><div id="cgInfoContent"></div></div>
       <div class="detail-pane" id="cgpane-clients"><div id="cgClientsContent"></div></div>
+      <div class="detail-pane" id="cgpane-notes"><div id="cgNotesContent"></div></div>
       <div class="detail-pane" id="cgpane-docs"><div id="cgDocsContent"></div></div>
+      <div class="detail-pane" id="cgpane-audit"></div>
     </div>
   </div>
 
@@ -945,35 +933,25 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 
   <!-- CASEWORKERS PAGE -->
   <div class="page" id="page-caseworkers">
-    <div class="dashboard-header">
-      <div class="dashboard-title-block">
-        <div class="dashboard-title">Caseworkers</div>
-        <div class="dashboard-sub">Manage caseworkers and their client assignments.</div>
+    <div id="cwGridView">
+      <div class="dashboard-header">
+        <div class="dashboard-title-block">
+          <div class="dashboard-title">Caseworkers</div>
+          <div class="dashboard-sub">Manage caseworkers and their client assignments.</div>
+        </div>
+        <div class="dashboard-actions">
+          <button class="btn btn-primary" onclick="showCaseworkerForm()">+ Add Caseworker</button>
+        </div>
       </div>
-      <div class="dashboard-actions">
-        <button class="btn btn-primary" onclick="showCaseworkerForm()">+ Add Caseworker</button>
+      <div style="margin-top:16px;">
+        <div class="filter-bar" style="margin-bottom:14px;">
+          <input id="cwSearch" class="ct-search" placeholder="Search by name or agency…" oninput="renderCaseworkerList()">
+        </div>
+        <div class="client-grid" id="cwCardGrid"></div>
+        <div id="cwTableEmpty" style="display:none;" class="ct-empty">No caseworkers match your filters.</div>
       </div>
     </div>
-    <div class="client-table-wrap" style="margin-top:16px;">
-      <div class="ct-toolbar">
-        <input id="cwSearch" class="ct-search" placeholder="Filter by name or agency…" oninput="renderCaseworkerList()">
-      </div>
-      <table class="client-table" id="cwTable">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Agency</th>
-            <th>Phone</th>
-            <th>Email</th>
-            <th>County</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="cwTableBody"></tbody>
-      </table>
-      <div id="cwTableEmpty" style="display:none;" class="ct-empty">No caseworkers match your filters.</div>
-    </div>
-    <div id="cwFormWrap" style="display:none;margin:16px 24px 0;">
+    <div id="cwFormWrap" style="display:none;margin-top:16px;">
       <div class="form-card" style="max-width:640px;">
         <h3 id="cwFormTitle">New Caseworker</h3>
         <input type="hidden" id="cw-editing-id">
@@ -1003,6 +981,30 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
           <button class="btn btn-danger btn-sm" id="cwDeleteBtn" onclick="deleteCaseworker()" style="display:none;padding:6px 14px;">Delete</button>
         </div>
       </div>
+    </div>
+    <!-- Caseworker Detail View -->
+    <div id="cwDetailView" style="display:none;">
+      <div class="detail-header">
+        <div class="detail-avatar" id="cwDetailAvatar"></div>
+        <div><div class="detail-name" id="cwDetailName"></div><div class="detail-meta" id="cwDetailMeta"></div></div>
+        <div class="detail-actions">
+          <button class="btn btn-secondary" onclick="showCwGrid()">← Back</button>
+        </div>
+      </div>
+      <div class="detail-tabs">
+        <button class="dtab active" id="cwtab-overview" onclick="switchCwTab('overview')">Overview</button>
+        <button class="dtab" id="cwtab-info" onclick="switchCwTab('info')">Profile</button>
+        <button class="dtab" id="cwtab-clients" onclick="switchCwTab('clients')">Clients</button>
+        <button class="dtab" id="cwtab-notes" onclick="switchCwTab('notes')">Notes</button>
+        <button class="dtab" id="cwtab-docs" onclick="switchCwTab('docs')">Documents</button>
+        <button class="dtab" id="cwtab-audit" onclick="switchCwTab('audit')">Audit Log</button>
+      </div>
+      <div class="detail-pane active" id="cwpane-overview"></div>
+      <div class="detail-pane" id="cwpane-info"><div id="cwInfoContent"></div></div>
+      <div class="detail-pane" id="cwpane-clients"><div id="cwClientsContent"></div></div>
+      <div class="detail-pane" id="cwpane-notes"><div id="cwNotesContent"></div></div>
+      <div class="detail-pane" id="cwpane-docs"><div id="cwDocsContent"></div></div>
+      <div class="detail-pane" id="cwpane-audit"></div>
     </div>
   </div>
 
@@ -2300,26 +2302,33 @@ function renderCaregiverGrid(){
     var st=cgs[id].status||'active';
     return (filterStatus==='all'||st===filterStatus)&&(!q||(cgs[id].name||'').toLowerCase().includes(q)||(cgs[id].phone||'').includes(q));
   }).sort(function(a,b){return(cgs[a].name||'').localeCompare(cgs[b].name||'');});
-  var tbody=document.getElementById('cgTableBody'),empty=document.getElementById('cgTableEmpty');
-  if(!tbody)return;tbody.innerHTML='';
-  if(!keys.length){if(empty)empty.style.display='block';return;}
+  var grid=document.getElementById('cgCardGrid'),empty=document.getElementById('cgTableEmpty');
+  if(!grid)return;grid.innerHTML='';
+  if(!keys.length){
+    if(empty)empty.style.display='block';
+    grid.innerHTML='<div class="empty-state" style="grid-column:1/-1;"><div class="ei">&#127968;</div><h3>No caregivers found</h3><p style="font-size:13px;">Click "+ New Caregiver" to add one.</p></div>';
+    return;
+  }
   if(empty)empty.style.display='none';
   keys.forEach(function(id){
     var cg=cgs[id],st=cg.status||'active',count=assignments[id]||0;
-    var tr=document.createElement('tr');
-    tr.innerHTML=
-      '<td style="width:32px;" onclick="event.stopPropagation()"><input type="checkbox" class="cg-select" data-id="'+id+'" style="width:13px;height:13px;cursor:pointer;"></td>'+
-      '<td><div class="ct-name">'+esc(cg.name||'')+(cg.nickname?'<span style="font-weight:normal;color:#8ca0b4;"> ('+esc(cg.nickname)+')</span>':'')+'</div>'+(cg.email?'<div class="ct-id">'+esc(cg.email)+'</div>':'')+'</td>'+
-      '<td><span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span></td>'+
-      '<td style="font-size:12px;color:#4a6a8a;">'+esc(cg.emptype||'—')+'</td>'+
-      '<td style="font-size:12px;color:#4a6a8a;">'+(cg.payRate?'$'+cg.payRate+'/hr':'—')+'</td>'+
-      '<td style="font-size:12px;'+(count?'color:#185FA5;font-weight:600;':'color:#ccc;')+'">'+count+'</td>'+
-      '<td style="font-size:12px;color:#4a6a8a;">'+(cg.hireDate||'—')+'</td>'+
-      '<td style="font-size:12px;color:#4a6a8a;">'+(cg.phone||'—')+'</td>'+
-      '<td><button class="ct-action-btn" onclick="event.stopPropagation();editCaregiver(\''+id+'\')">Edit</button></td>';
-    tr.style.cursor='pointer';
-    tr.addEventListener('click',function(){openCgDetail(id);});
-    tbody.appendChild(tr);
+    var ini=(cg.name||'?').split(' ').map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase();
+    var stClass=st==='active'?'cs-active':st==='terminated'?'cs-terminated':'cs-inactive';
+    var card=document.createElement('div');
+    card.className='client-card';
+    card.innerHTML=
+      '<div class="cc-top">'+
+        '<div class="cc-avatar" style="width:40px;height:40px;font-size:15px;font-weight:700;">'+ini+'</div>'+
+        '<div>'+
+          '<div class="cc-name">'+esc(cg.name||'')+'</div>'+
+          '<div class="cc-id">'+esc(cg.emptype||'Caregiver')+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div style="margin-bottom:8px;"><span class="cs-badge '+stClass+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span></div>'+
+      '<div style="font-size:12px;color:#4a6a8a;margin-bottom:4px;">'+(cg.phone||'No phone')+'</div>'+
+      '<div style="font-size:12px;color:'+(count?'#185FA5':'#8ca0b4')+';font-weight:'+(count?'600':'normal')+';">'+count+' client'+(count!==1?'s':'')+' assigned</div>';
+    card.addEventListener('click',function(){openCgDetail(id);});
+    grid.appendChild(card);
   });
 }
 function bulkDeleteCaregivers(){
@@ -2406,7 +2415,16 @@ function deleteCaregiver(){
   document.getElementById('cgGridView').style.display='';
   renderCaregiverGrid();updateStats();
 }
-function hideCgForm(){document.getElementById('cgFormWrap').style.display='none';}
+function hideCgForm(){
+  document.getElementById('cgFormWrap').style.display='none';
+  // If neither detail nor grid is visible, show grid
+  var dv=document.getElementById('cgDetailView');
+  var gv=document.getElementById('cgGridView');
+  if(gv&&gv.style.display==='none'&&(!dv||dv.style.display==='none')){
+    gv.style.display='';
+    renderCaregiverGrid();
+  }
+}
 function populateCaregiverSelect(selId,selectedId){
   var sel=document.getElementById(selId);if(!sel)return;
   sel.innerHTML='<option value="">— None assigned —</option>';
@@ -2446,8 +2464,8 @@ function openCgDetail(id){
   document.getElementById('cgDetailName').textContent=cg.name||'';
   var st=cg.status||'active';
   document.getElementById('cgDetailMeta').innerHTML=esc(cg.emptype||'')+(cg.payRate?' · $'+cg.payRate+'/hr':'')+
-    ' &nbsp;<span class="status-badge status-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span>';
-  switchCgTab('info');
+    ' &nbsp;<span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span>';
+  switchCgTab('overview');
 }
 function showCgGrid(){
   activeCgId=null;
@@ -2473,27 +2491,109 @@ function deleteCaregiverFromDetail(){
   showCgGrid();
 }
 function switchCgTab(tab){
-  ['info','clients','docs'].forEach(function(t){
-    document.getElementById('cgtab-'+t).classList.toggle('active',t===tab);
-    document.getElementById('cgpane-'+t).classList.toggle('active',t===tab);
+  ['overview','info','clients','notes','docs','audit'].forEach(function(t){
+    var tb=document.getElementById('cgtab-'+t);
+    var pn=document.getElementById('cgpane-'+t);
+    if(tb)tb.classList.toggle('active',t===tab);
+    if(pn)pn.classList.toggle('active',t===tab);
   });
+  if(tab==='overview')renderCgOverviewPane();
   if(tab==='info')renderCgInfoPane();
   if(tab==='clients')renderCgClientsPane();
+  if(tab==='notes')renderCgNotesPane();
   if(tab==='docs')renderCgDocsPane();
+  if(tab==='audit')renderCgAuditPane();
+}
+function renderCgOverviewPane(){
+  if(!activeCgId)return;
+  var cg=getCaregivers()[activeCgId];
+  var pane=document.getElementById('cgpane-overview');
+  if(!cg||!pane)return;
+  var profiles=getProfiles();
+  var assigned=Object.keys(profiles).filter(function(k){return profiles[k].caregiverId===activeCgId;});
+  var addrStr=(cg.address||'').trim();
+  pane.innerHTML='<div class="overview-grid">'+
+    '<div class="ov-card"><h4>Contact Info</h4>'+
+      (cg.phone?'<div class="ov-row"><span class="ov-label">Phone</span><span class="ov-value">'+esc(cg.phone)+'</span></div>':'')+
+      (cg.email?'<div class="ov-row"><span class="ov-label">Email</span><span class="ov-value">'+esc(cg.email)+'</span></div>':'')+
+      (addrStr?'<div class="ov-row"><span class="ov-label">Address</span><span class="ov-value">'+esc(addrStr)+'</span></div>':'')+
+      (cg.ecName?'<div class="ov-row"><span class="ov-label">Emergency Contact</span><span class="ov-value">'+esc(cg.ecName)+(cg.ecPhone?' · '+cg.ecPhone:'')+'</span></div>':'')+
+    '</div>'+
+    '<div class="ov-card"><h4>Employment</h4>'+
+      (cg.emptype?'<div class="ov-row"><span class="ov-label">Type</span><span class="ov-value">'+esc(cg.emptype)+'</span></div>':'')+
+      (cg.hireDate?'<div class="ov-row"><span class="ov-label">Hire Date</span><span class="ov-value">'+esc(cg.hireDate)+'</span></div>':'')+
+      (cg.payRate?'<div class="ov-row"><span class="ov-label">Pay Rate</span><span class="ov-value">$'+esc(cg.payRate)+'/hr</span></div>':'')+
+      (cg.maxHours?'<div class="ov-row"><span class="ov-label">Max Hours/Week</span><span class="ov-value">'+esc(cg.maxHours)+'</span></div>':'')+
+    '</div>'+
+    '<div class="ov-card"><h4>Certifications</h4>'+
+      (cg.certs?'<div style="font-size:13px;color:#1a2b45;line-height:1.5;white-space:pre-wrap;">'+esc(cg.certs)+'</div>':'<div style="color:#8ca0b4;font-size:12px;">No certifications on file.</div>')+
+    '</div>'+
+    '<div class="ov-card"><h4>Assigned Clients</h4>'+
+      '<div class="ov-row" style="cursor:pointer;" onclick="switchCgTab(\'clients\')">'+
+        '<span class="ov-label">Clients</span>'+
+        '<span class="ov-value" style="color:#185FA5;font-size:18px;font-weight:700;">'+assigned.length+'</span>'+
+      '</div>'+
+      (assigned.length?'<div style="font-size:12px;color:#4a6a8a;margin-top:6px;">'+assigned.slice(0,3).map(function(n){return esc(n);}).join(', ')+(assigned.length>3?' + '+(assigned.length-3)+' more':'')+'</div>':'<div style="font-size:12px;color:#8ca0b4;">No clients assigned.</div>')+
+    '</div>'+
+  '</div>';
+}
+function renderCgNotesPane(){
+  var cg=getCaregivers()[activeCgId];
+  var c=document.getElementById('cgNotesContent');
+  if(!c||!cg)return;
+  c.innerHTML='<textarea id="cgNotesArea" style="width:100%;min-height:200px;padding:12px;border:1px solid #d0d8e4;border-radius:6px;font-size:13px;font-family:Arial,sans-serif;outline:none;resize:vertical;max-width:620px;">'+esc(cg.notes||'')+'</textarea>'+
+    '<div style="margin-top:10px;"><button class="btn btn-primary" onclick="saveCgNotes()">Save Notes</button></div>';
+}
+function saveCgNotes(){
+  var cgs=getCaregivers();
+  if(!cgs[activeCgId])return;
+  var area=document.getElementById('cgNotesArea');
+  if(!area)return;
+  cgs[activeCgId].notes=area.value;
+  saveCaregiversLS(cgs);
+  saveCaregiverAPI(activeCgId,cgs[activeCgId]);
+  var btn=document.querySelector('#cgNotesContent .btn-primary');
+  if(btn){btn.textContent='Saved';setTimeout(function(){btn.textContent='Save Notes';},1800);}
+}
+function renderCgAuditPane(){
+  var pane=document.getElementById('cgpane-audit');
+  var cg=getCaregivers()[activeCgId];
+  if(!pane||!cg)return;
+  pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:8px 0;">Loading…</div>';
+  if(spToken){
+    fetch(API_BASE+'/audit?client='+encodeURIComponent(cg.name||activeCgId)+'&limit=100',{headers:apiHeaders()})
+      .then(function(r){return r.ok?r.json():Promise.reject();})
+      .then(function(rows){
+        pane.innerHTML='';
+        if(!rows.length){pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:16px 0;">No audit entries yet.</div>';return;}
+        var wrap=document.createElement('div');wrap.style.cssText='max-width:600px;';
+        rows.forEach(function(e){
+          var row=document.createElement('div');row.className='audit-row';
+          var ts=e.created_at?new Date(e.created_at).toLocaleString():e.ts||'';
+          row.innerHTML='<span class="audit-icon">—</span><div><div class="audit-text">'+esc(e.action)+'</div><div class="audit-who">'+esc(e.who)+' · '+esc(ts)+'</div></div>';
+          wrap.appendChild(row);
+        });
+        pane.appendChild(wrap);
+      })
+      .catch(function(){pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:16px 0;">No audit entries yet.</div>';});
+  } else {
+    pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:16px 0;">Sign in to view audit log.</div>';
+  }
 }
 function renderCgInfoPane(){
   if(!activeCgId)return;
   var cg=getCaregivers()[activeCgId],c=document.getElementById('cgInfoContent');
+  if(!c||!cg)return;
   var rows=[
     ['Phone',cg.phone],['Email',cg.email],['Address',cg.address],
     ['Hire Date',cg.hireDate],['Employment Type',cg.emptype],
     ['Pay Rate',cg.payRate?'$'+cg.payRate+'/hr':''],['Max Hours/Week',cg.maxHours],
     ['Certifications',cg.certs],
-    ['Emergency Contact',cg.ecName],['Emergency Phone',cg.ecPhone],
-    ['Notes',cg.notes]
+    ['Emergency Contact',cg.ecName],['Emergency Phone',cg.ecPhone]
   ].filter(function(r){return r[1];});
-  if(!rows.length){c.innerHTML='<div style="color:#8ca0b4;">No info saved yet. Click Edit Info to add details.</div>';return;}
-  c.innerHTML='<div style="display:grid;grid-template-columns:160px 1fr;gap:8px 16px;max-width:500px;font-size:13px;">'+
+  var editBtn='<div style="margin-bottom:14px;"><button class="btn btn-secondary" onclick="editCaregiverFromDetail()">Edit Profile</button>&nbsp;<button class="btn btn-danger btn-sm" onclick="deleteCaregiverFromDetail()" style="padding:6px 14px;">Delete Caregiver</button></div>';
+  if(!rows.length){c.innerHTML=editBtn+'<div style="color:#8ca0b4;">No info saved yet. Click Edit Profile to add details.</div>';return;}
+  c.innerHTML=editBtn+'<div style="display:grid;grid-template-columns:160px 1fr;gap:8px 16px;max-width:500px;font-size:13px;">'+
     rows.map(function(r){return '<span style="color:#6b8dae;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px;padding-top:2px;">'+esc(r[0])+'</span><span>'+esc(r[1])+'</span>';}).join('')+
     '</div>';
 }
@@ -4243,9 +4343,18 @@ function deleteCaseworkerAPI(id){
 function cwId(){return 'cw_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);}
 function navCaseworkers(){
   showPage('caseworkers');bc([{l:'Caseworkers'}]);document.getElementById('topbarActions').innerHTML='';
-  hideCaseworkerForm();renderCaseworkerList();
+  showCwGrid();
 }
 function showCaseworkerForm(id){
+  // Hide detail view always; for new caseworker keep grid visible (scroll to form), for edit from detail hide grid
+  var dv=document.getElementById('cwDetailView');if(dv)dv.style.display='none';
+  if(id&&activeCwId){
+    // Editing from detail view — hide grid too
+    var gv=document.getElementById('cwGridView');if(gv)gv.style.display='none';
+  } else if(!id){
+    // New caseworker — keep grid visible so they can see the list
+    var gv2=document.getElementById('cwGridView');if(gv2)gv2.style.display='';
+  }
   document.getElementById('cwFormWrap').style.display='block';
   document.getElementById('cwFormTitle').textContent=id?'Edit Caseworker':'New Caseworker';
   document.getElementById('cw-editing-id').value=id||'';
@@ -4276,7 +4385,15 @@ function showCaseworkerForm(id){
   }
   document.getElementById('cwFormWrap').scrollIntoView({behavior:'smooth'});
 }
-function hideCaseworkerForm(){document.getElementById('cwFormWrap').style.display='none';}
+function hideCaseworkerForm(){
+  document.getElementById('cwFormWrap').style.display='none';
+  // If no detail view active and grid is hidden, show grid
+  var dv=document.getElementById('cwDetailView');
+  var gv=document.getElementById('cwGridView');
+  if(gv&&gv.style.display==='none'&&(!dv||dv.style.display==='none')){
+    gv.style.display='';
+  }
+}
 function saveCaseworker(){
   var firstName=document.getElementById('cw-first-name').value.trim();
   var lastName=document.getElementById('cw-last-name').value.trim();
@@ -4305,7 +4422,14 @@ function saveCaseworker(){
   }
   saveCaseworkersLS(cws);
   saveCaseworkerAPI(rec);
-  hideCaseworkerForm();renderCaseworkerList();
+  hideCaseworkerForm();
+  if(editingId&&activeCwId===editingId){
+    // Return to detail view if we were editing from the detail view
+    document.getElementById('cwGridView').style.display='none';
+    openCwDetail(editingId);
+  } else {
+    showCwGrid();
+  }
 }
 function deleteCaseworker(){
   var id=document.getElementById('cw-editing-id').value;if(!id)return;
@@ -4313,37 +4437,268 @@ function deleteCaseworker(){
   if(!cws||!confirm('Delete caseworker "'+cws.name+'"?'))return;
   saveCaseworkersLS(getCaseworkers().filter(function(c){return c.id!==id;}));
   deleteCaseworkerAPI(id);
-  hideCaseworkerForm();renderCaseworkerList();
+  activeCwId=null;
+  hideCaseworkerForm();
+  showCwGrid();
 }
 function renderCaseworkerList(){
   var cws=getCaseworkers();
   var q=((document.getElementById('cwSearch')?document.getElementById('cwSearch').value:'')||'').toLowerCase();
-  var tbody=document.getElementById('cwTableBody');
+  var grid=document.getElementById('cwCardGrid');
   var empty=document.getElementById('cwTableEmpty');
-  if(!tbody)return;
-  tbody.innerHTML='';
+  if(!grid)return;
+  grid.innerHTML='';
   if(!cws.length){
-    if(empty)empty.style.display='block';
-    empty.innerHTML='<div class="empty-state" style="padding:32px;text-align:center;color:#8ca0b4;"><div style="font-size:38px;margin-bottom:10px;">&#128101;</div><h3 style="font-size:15px;font-weight:600;color:#4a6a8a;margin-bottom:5px;">No caseworkers yet</h3><p style="font-size:13px;">Click "+ Add Caseworker" to add caseworkers.</p></div>';
+    if(empty){empty.style.display='block';empty.innerHTML='';}
+    grid.innerHTML='<div class="empty-state" style="grid-column:1/-1;"><div class="ei">&#128101;</div><h3>No caseworkers yet</h3><p style="font-size:13px;">Click "+ Add Caseworker" to add caseworkers.</p></div>';
     return;
   }
   var filtered=cws.filter(function(cw){
     return !q||(cw.name||'').toLowerCase().includes(q)||(cw.agency||'').toLowerCase().includes(q);
   });
-  if(!filtered.length){if(empty)empty.style.display='block';return;}
+  if(!filtered.length){
+    if(empty)empty.style.display='block';
+    grid.innerHTML='<div class="empty-state" style="grid-column:1/-1;"><h3>No matches</h3></div>';
+    return;
+  }
   if(empty)empty.style.display='none';
+  var profiles=getProfiles();
   filtered.forEach(function(cw){
-    var tr=document.createElement('tr');
-    tr.innerHTML=
-      '<td><div class="ct-name">'+esc(cw.name||'')+'</div></td>'+
-      '<td style="font-size:12px;color:#4a6a8a;">'+esc(cw.agency||'—')+'</td>'+
-      '<td style="font-size:12px;color:#4a6a8a;">'+(cw.phone?'<a href="tel:'+esc(cw.phone)+'" style="color:#4a6a8a;text-decoration:none;">'+esc(cw.phone)+'</a>':'—')+'</td>'+
-      '<td style="font-size:12px;color:#4a6a8a;">'+(cw.email?'<a href="mailto:'+esc(cw.email)+'" style="color:#185FA5;text-decoration:none;">'+esc(cw.email)+'</a>':'—')+'</td>'+
-      '<td style="font-size:12px;color:#4a6a8a;">'+esc(cw.county||'—')+'</td>'+
-      '<td><button class="ct-action-btn" onclick="event.stopPropagation();showCaseworkerForm(\''+esc(cw.id)+'\')">Edit</button></td>';
-    tr.style.cursor='pointer';
-    tbody.appendChild(tr);
+    var clientCount=Object.keys(profiles).filter(function(k){return profiles[k].worker===cw.name||profiles[k].caseworkerId===cw.id;}).length;
+    var ini=(cw.name||'?').split(' ').map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase();
+    var card=document.createElement('div');
+    card.className='client-card';
+    card.innerHTML=
+      '<div class="cc-top">'+
+        '<div class="cc-avatar" style="width:40px;height:40px;font-size:15px;font-weight:700;">'+ini+'</div>'+
+        '<div>'+
+          '<div class="cc-name">'+esc(cw.name||'')+'</div>'+
+          '<div class="cc-id">'+esc(cw.agency||'Caseworker')+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div style="margin-bottom:8px;"><span class="cs-badge cs-active">Active</span></div>'+
+      '<div style="font-size:12px;color:#4a6a8a;margin-bottom:4px;">'+(cw.phone||'No phone')+'</div>'+
+      '<div style="font-size:12px;color:'+(clientCount?'#185FA5':'#8ca0b4')+';font-weight:'+(clientCount?'600':'normal')+';">'+clientCount+' client'+(clientCount!==1?'s':'')+' assigned</div>';
+    card.addEventListener('click',function(){openCwDetail(cw.id);});
+    grid.appendChild(card);
   });
+}
+
+// ============================================================
+//  CASEWORKER DETAIL VIEW
+// ============================================================
+var activeCwId=null;
+function openCwDetail(id){
+  var cw=getCaseworkers().find(function(c){return c.id===id;});
+  if(!cw)return;
+  activeCwId=id;
+  document.getElementById('cwGridView').style.display='none';
+  document.getElementById('cwFormWrap').style.display='none';
+  document.getElementById('cwDetailView').style.display='block';
+  var ini=(cw.name||'?').split(' ').map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase();
+  document.getElementById('cwDetailAvatar').textContent=ini;
+  document.getElementById('cwDetailName').textContent=cw.name||'';
+  document.getElementById('cwDetailMeta').innerHTML=esc(cw.agency||'')+(cw.phone?' · '+esc(cw.phone):'');
+  switchCwTab('overview');
+}
+function showCwGrid(){
+  activeCwId=null;
+  var dv=document.getElementById('cwDetailView');if(dv)dv.style.display='none';
+  var gv=document.getElementById('cwGridView');if(gv)gv.style.display='';
+  hideCaseworkerForm();
+  renderCaseworkerList();
+}
+function switchCwTab(tab){
+  ['overview','info','clients','notes','docs','audit'].forEach(function(t){
+    var tb=document.getElementById('cwtab-'+t);
+    var pn=document.getElementById('cwpane-'+t);
+    if(tb)tb.classList.toggle('active',t===tab);
+    if(pn)pn.classList.toggle('active',t===tab);
+  });
+  if(tab==='overview')renderCwOverviewPane();
+  if(tab==='info')renderCwInfoPane();
+  if(tab==='clients')renderCwClientsPane();
+  if(tab==='notes')renderCwNotesPane();
+  if(tab==='docs')renderCwDocsPane();
+  if(tab==='audit')renderCwAuditPane();
+}
+function renderCwOverviewPane(){
+  if(!activeCwId)return;
+  var cw=getCaseworkers().find(function(c){return c.id===activeCwId;});
+  var pane=document.getElementById('cwpane-overview');
+  if(!cw||!pane)return;
+  var profiles=getProfiles();
+  var clientCount=Object.keys(profiles).filter(function(k){return profiles[k].worker===cw.name||profiles[k].caseworkerId===cw.id;}).length;
+  var addrParts=[cw.street,cw.city?(cw.city+(cw.state?' '+cw.state:'')+(cw.zip?' '+cw.zip:'')):''].filter(Boolean);
+  var addrStr=addrParts.join(', ');
+  pane.innerHTML='<div class="overview-grid">'+
+    '<div class="ov-card"><h4>Contact Info</h4>'+
+      (cw.phone?'<div class="ov-row"><span class="ov-label">Phone</span><span class="ov-value">'+esc(cw.phone)+'</span></div>':'')+
+      (cw.fax?'<div class="ov-row"><span class="ov-label">Fax</span><span class="ov-value">'+esc(cw.fax)+'</span></div>':'')+
+      (cw.email?'<div class="ov-row"><span class="ov-label">Email</span><span class="ov-value">'+esc(cw.email)+'</span></div>':'')+
+      (cw.agency?'<div class="ov-row"><span class="ov-label">Agency</span><span class="ov-value">'+esc(cw.agency)+'</span></div>':'')+
+      (addrStr?'<div class="ov-row"><span class="ov-label">Address</span><span class="ov-value">'+esc(addrStr)+'</span></div>':'')+
+    '</div>'+
+    '<div class="ov-card"><h4>Assigned Clients</h4>'+
+      '<div class="ov-row" style="cursor:pointer;" onclick="switchCwTab(\'clients\')">'+
+        '<span class="ov-label">Clients</span>'+
+        '<span class="ov-value" style="color:#185FA5;font-size:18px;font-weight:700;">'+clientCount+'</span>'+
+      '</div>'+
+      (clientCount?'<button class="btn btn-secondary btn-sm" style="margin-top:8px;" onclick="switchCwTab(\'clients\')">View Clients →</button>':'<div style="font-size:12px;color:#8ca0b4;margin-top:6px;">No clients assigned.</div>')+
+    '</div>'+
+  '</div>';
+}
+function renderCwInfoPane(){
+  if(!activeCwId)return;
+  var cw=getCaseworkers().find(function(c){return c.id===activeCwId;});
+  var c=document.getElementById('cwInfoContent');
+  if(!c||!cw)return;
+  var rows=[
+    ['Agency',cw.agency],['Phone',cw.phone],['Fax',cw.fax],['Email',cw.email],
+    ['Street',cw.street],['City',cw.city],['State',cw.state],['ZIP',cw.zip],['County',cw.county]
+  ].filter(function(r){return r[1];});
+  var editBtn='<div style="margin-bottom:14px;"><button class="btn btn-secondary" onclick="showCwEditForm()">Edit Profile</button></div>';
+  if(!rows.length){c.innerHTML=editBtn+'<div style="color:#8ca0b4;">No info saved yet. Click Edit Profile to add details.</div>';return;}
+  c.innerHTML=editBtn+'<div style="display:grid;grid-template-columns:160px 1fr;gap:8px 16px;max-width:500px;font-size:13px;">'+
+    rows.map(function(r){return '<span style="color:#6b8dae;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px;padding-top:2px;">'+esc(r[0])+'</span><span>'+esc(r[1])+'</span>';}).join('')+
+    '</div>';
+}
+function showCwEditForm(){
+  if(!activeCwId)return;
+  document.getElementById('cwDetailView').style.display='none';
+  document.getElementById('cwGridView').style.display='none';
+  showCaseworkerForm(activeCwId);
+}
+function renderCwClientsPane(){
+  if(!activeCwId)return;
+  var cw=getCaseworkers().find(function(c){return c.id===activeCwId;});
+  var c=document.getElementById('cwClientsContent');
+  if(!c||!cw)return;
+  var profiles=getProfiles();
+  var assigned=Object.keys(profiles).filter(function(k){return profiles[k].worker===cw.name||profiles[k].caseworkerId===cw.id;});
+  if(!assigned.length){c.innerHTML='<div class="empty-state"><h3>No clients assigned</h3><p style="font-size:13px;">Assign this caseworker from a client\'s Profile tab.</p></div>';return;}
+  c.innerHTML='';
+  assigned.forEach(function(name){
+    var prof=profiles[name];
+    var st=prof.clientStatus||'active';
+    var ini=name.split(' ').map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase();
+    var row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:12px;padding:11px 14px;background:#fff;border:1px solid #e1e5ea;border-radius:8px;margin-bottom:8px;cursor:pointer;transition:border-color 0.15s;max-width:500px;';
+    row.innerHTML='<div class="cc-avatar" style="width:36px;height:36px;font-size:13px;">'+ini+'</div>'+
+      '<div style="flex:1;min-width:0;">'+
+        '<div style="font-size:13px;font-weight:600;color:#1a2b45;">'+esc(name)+'</div>'+
+        '<div style="font-size:11px;color:#6b8dae;">'+(prof.medicaidId||'No Medicaid ID')+(prof.phone?' · '+prof.phone:'')+'</div>'+
+      '</div>'+
+      '<span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span>'+
+      '<span style="font-size:11px;color:#185FA5;font-weight:500;">Open →</span>';
+    row.addEventListener('mouseenter',function(){this.style.borderColor='#b0c8e8';});
+    row.addEventListener('mouseleave',function(){this.style.borderColor='#e1e5ea';});
+    row.addEventListener('click',function(){navDetail(name);});
+    c.appendChild(row);
+  });
+}
+function renderCwNotesPane(){
+  if(!activeCwId)return;
+  var cw=getCaseworkers().find(function(c){return c.id===activeCwId;});
+  var c=document.getElementById('cwNotesContent');
+  if(!c||!cw)return;
+  c.innerHTML='<textarea id="cwNotesArea" style="width:100%;min-height:200px;padding:12px;border:1px solid #d0d8e4;border-radius:6px;font-size:13px;font-family:Arial,sans-serif;outline:none;resize:vertical;max-width:620px;">'+esc(cw.notes||'')+'</textarea>'+
+    '<div style="margin-top:10px;"><button class="btn btn-primary" onclick="saveCwNotes()">Save Notes</button></div>';
+}
+function saveCwNotes(){
+  var arr=getCaseworkers();
+  var cw=arr.find(function(c){return c.id===activeCwId;});
+  if(!cw)return;
+  var area=document.getElementById('cwNotesArea');
+  if(!area)return;
+  cw.notes=area.value;
+  saveCaseworkersLS(arr);
+  saveCaseworkerAPI(cw);
+  var btn=document.querySelector('#cwNotesContent .btn-primary');
+  if(btn){btn.textContent='Saved';setTimeout(function(){btn.textContent='Save Notes';},1800);}
+}
+function renderCwDocsPane(){
+  if(!activeCwId)return;
+  var cw=getCaseworkers().find(function(c){return c.id===activeCwId;});
+  var c=document.getElementById('cwDocsContent');
+  if(!c||!cw)return;
+  c.innerHTML=
+    '<h4 style="margin:0 0 4px;color:#1a3a5c;font-size:13px;">&#128196; Documents for '+esc(cw.name||'Caseworker')+'</h4>'+
+    '<p style="font-size:11px;color:#8ca0b4;margin:0 0 12px;">Upload letters, authorization docs, etc.</p>'+
+    '<div style="margin-bottom:10px;">'+
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'+
+    '<input type="file" id="cwDocFileInput" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple style="font-size:12px;flex:1;min-width:0;">'+
+    '<button class="btn btn-primary" style="padding:6px 14px;" onclick="uploadCwDoc()">&#8593; Upload</button>'+
+    '</div>'+
+    '<span id="cwDocUploadStatus" style="font-size:11px;color:#666;display:block;margin-top:4px;"></span>'+
+    '</div>'+
+    '<div id="cwDocListAzure"><div style="color:#8ca0b4;font-size:13px;">Loading...</div></div>';
+  fetch(API_BASE+'/documents?clientType=caseworker&clientId='+activeCwId,{headers:apiHeaders()})
+    .then(function(r){return r.json();})
+    .then(function(docs){renderCwDocListAzure(activeCwId,docs||[]);})
+    .catch(function(){renderCwDocListAzure(activeCwId,[]);});
+}
+function renderCwDocListAzure(cwId,docs){
+  var list=document.getElementById('cwDocListAzure');if(!list)return;
+  if(!docs.length){list.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:4px 0;">No documents yet.</div>';return;}
+  list.innerHTML='';
+  docs.forEach(function(d){
+    var kb=d.size?Math.round(d.size/1024)+'KB':'';
+    var ext=(d.name||'').split('.').pop().toLowerCase();
+    var isImg=['jpg','jpeg','png','gif'].indexOf(ext)>=0;
+    var icon=isImg?'&#128247;':'&#128196;';
+    var card=document.createElement('div');
+    card.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #e1e8f0;border-radius:6px;margin-bottom:6px;background:#fafbfc;';
+    card.innerHTML=
+      '<span style="font-size:20px;">'+icon+'</span>'+
+      '<div style="flex:1;min-width:0;">'+
+        '<div style="font-size:12px;font-weight:600;color:#1a3a5c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><a href="'+d.url+'" target="_blank" style="color:#1a3a5c;text-decoration:none;">'+esc(d.name)+'</a></div>'+
+        '<div style="font-size:11px;color:#8ca0b4;">'+kb+'</div>'+
+      '</div>'+
+      '<button class="btn btn-danger btn-sm" style="padding:3px 10px;font-size:11px;" onclick="deleteCwDoc(\''+cwId+'\',\''+encodeURIComponent(d.name)+'\')">✕</button>';
+    list.appendChild(card);
+  });
+}
+function uploadCwDoc(){
+  var input=document.getElementById('cwDocFileInput');
+  if(!input||!input.files||!input.files.length){alert('Please select a file first.');return;}
+  var status=document.getElementById('cwDocUploadStatus');status.textContent='Uploading...';
+  var fd=new FormData();fd.append('clientType','caseworker');fd.append('clientId',activeCwId);
+  Array.from(input.files).forEach(function(f){fd.append('file',f);});
+  fetch(API_BASE+'/documents',{method:'POST',headers:authUploadHeaders(),body:fd})
+    .then(function(){status.textContent='';input.value='';renderCwDocsPane();})
+    .catch(function(e){status.textContent='Upload failed: '+e;});
+}
+function deleteCwDoc(cwId,encodedName){
+  if(!confirm('Delete this document?'))return;
+  fetch(API_BASE+'/documents?clientType=caseworker&clientId='+cwId+'&name='+encodedName,{method:'DELETE',headers:apiHeaders()})
+    .then(function(){renderCwDocsPane();}).catch(function(e){alert('Delete failed: '+e);});
+}
+function renderCwAuditPane(){
+  if(!activeCwId)return;
+  var pane=document.getElementById('cwpane-audit');
+  var cw=getCaseworkers().find(function(c){return c.id===activeCwId;});
+  if(!pane||!cw)return;
+  pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:8px 0;">Loading…</div>';
+  if(spToken){
+    fetch(API_BASE+'/audit?client='+encodeURIComponent(cw.name||activeCwId)+'&limit=100',{headers:apiHeaders()})
+      .then(function(r){return r.ok?r.json():Promise.reject();})
+      .then(function(rows){
+        pane.innerHTML='';
+        if(!rows.length){pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:16px 0;">No audit entries yet.</div>';return;}
+        var wrap=document.createElement('div');wrap.style.cssText='max-width:600px;';
+        rows.forEach(function(e){
+          var row=document.createElement('div');row.className='audit-row';
+          var ts=e.created_at?new Date(e.created_at).toLocaleString():e.ts||'';
+          row.innerHTML='<span class="audit-icon">—</span><div><div class="audit-text">'+esc(e.action)+'</div><div class="audit-who">'+esc(e.who)+' · '+esc(ts)+'</div></div>';
+          wrap.appendChild(row);
+        });
+        pane.appendChild(wrap);
+      })
+      .catch(function(){pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:16px 0;">No audit entries yet.</div>';});
+  } else {
+    pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:16px 0;">Sign in to view audit log.</div>';
+  }
 }
 
 // ============================================================
