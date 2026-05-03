@@ -449,12 +449,11 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
     <button class="sb-collapse" onclick="toggleSidebar()">&#9776;</button>
   </div>
   <div class="sb-section">Navigation</div>
-  <button class="sb-btn" id="sb-new" onclick="navNewClient()">New Client</button>
-  <button class="sb-btn active" id="sb-home" onclick="navHome()">All Clients</button>
+  <button class="sb-btn active" id="sb-home" onclick="navHome()">Clients</button>
   <button class="sb-btn" id="sb-caregivers" onclick="navCaregivers()">Caregivers</button>
+  <button class="sb-btn" id="sb-caseworkers" onclick="navCaseworkers()">Caseworkers</button>
   <button class="sb-btn" id="sb-tasks" onclick="navTasks()">Tasks <span id="taskBadge" style="display:none;background:#c0392b;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:4px;font-weight:700;vertical-align:middle;"></span></button>
   <button class="sb-btn" id="sb-reports" onclick="navReports()">Reports</button>
-  <button class="sb-btn" id="sb-caseworkers" onclick="navCaseworkers()">Caseworkers</button>
   <hr class="sb-divider">
   <button class="sb-btn" id="sb-settings" onclick="navSettings()">Settings</button>
   <hr class="sb-divider">
@@ -1102,10 +1101,10 @@ function getIdMap() {
 function showPage(p){
   document.querySelectorAll('.page').forEach(function(el){el.classList.remove('active');});
   document.getElementById('page-'+p).classList.add('active');
-  ['sb-home','sb-new','sb-caregivers','sb-settings','sb-tasks','sb-reports','sb-caseworkers'].forEach(function(id){
+  ['sb-home','sb-caregivers','sb-settings','sb-tasks','sb-reports','sb-caseworkers'].forEach(function(id){
     var el=document.getElementById(id);if(el)el.classList.remove('active');
   });
-  var map={'home':'sb-home','new-client':'sb-new','caregivers':'sb-caregivers','settings':'sb-settings','tasks':'sb-tasks','reports':'sb-reports','caseworkers':'sb-caseworkers'};
+  var map={'home':'sb-home','caregivers':'sb-caregivers','settings':'sb-settings','tasks':'sb-tasks','reports':'sb-reports','caseworkers':'sb-caseworkers'};
   if(map[p]){var el=document.getElementById(map[p]);if(el)el.classList.add('active');}
   var db=document.getElementById('draftBadge');if(db)db.style.display='none';
 }
