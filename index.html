@@ -615,7 +615,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
         </div>
       </div>
       <div class="ff"><label>Bill To</label><input id="nc-billto" placeholder="Billing entity or address" maxlength="80"></div>
-      <div class="ff"><label>Adult Services Worker</label><input id="nc-worker" placeholder="Worker name" maxlength="60"></div>
+      <div class="ff"><label>Adult Services Worker</label><select id="nc-worker"></select></div>
       <div class="ff email-wrap">
         <label>Agent / Worker Email</label>
         <input id="nc-email" placeholder="agent@michigan.gov" maxlength="80" oninput="emailSuggest(this,'nc-email-suggest')" onblur="hideEmailSuggest('nc-email-suggest')">
@@ -1191,8 +1191,9 @@ function _openEmailAfterPrint(toAddr,clientName,bp){
 }
 function navNewClient(){
   showPage('new-client');bc([{l:'Clients',fn:navHome},{l:'New Client'}]);document.getElementById('topbarActions').innerHTML='';
-  ['nc-name','nc-medicaid','nc-rate','nc-billto','nc-worker','nc-email','nc-phone','nc-cemail'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  ['nc-name','nc-medicaid','nc-rate','nc-billto','nc-email','nc-phone','nc-cemail'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
   populateCaregiverSelect('nc-caregiver','');
+  populateCaseworkerSelect('nc-worker','');
 }
 function navDetail(name,tab){
   activeProfileName=name;var prof=getProfiles()[name];if(!prof)return;
@@ -1590,7 +1591,7 @@ function renderInfoPane(){
     {id:'ei-medicaid',l:'Medicaid ID',v:prof.medicaidId||'',full:false},
     {id:'ei-rate',l:'Hourly Rate',v:prof.hourlyRate||'',full:false},
     {id:'ei-billto',l:'Bill To',v:prof.billTo||'',full:false},
-    {id:'ei-worker',l:'Adult Services Worker',v:prof.worker||'',full:false},
+    {id:'ei-worker',l:'Adult Services Worker',v:prof.worker||'',full:false,isCwSelect:true},
     {id:'ei-email',l:'Agent / Worker Email',v:prof.agentEmail||'',full:false,emailSuggest:true},
     // divider
     {divider:'CRM Info'},
@@ -1604,7 +1605,11 @@ function renderInfoPane(){
       var div=document.createElement('div');div.className='form-section-divider full';div.innerHTML='<span>'+f.divider+'</span>';g.appendChild(div);return;
     }
     var d=document.createElement('div');d.className='info-field'+(f.full?' full':'');
-    if(f.isCgSelect){
+    if(f.isCwSelect){
+      d.innerHTML='<label>'+f.l+'</label><select id="'+f.id+'"></select>';
+      g.appendChild(d);
+      populateCaseworkerSelect(f.id,f.v);
+    } else if(f.isCgSelect){
       d.innerHTML='<label>'+f.l+'</label><select id="'+f.id+'"></select>';
       g.appendChild(d);
       populateCaregiverSelect(f.id,f.v);
@@ -2033,6 +2038,21 @@ function populateCaregiverSelect(selId,selectedId){
     if(id===selectedId)o.selected=true;
     sel.appendChild(o);
   });
+}
+
+function populateCaseworkerSelect(selId, selectedName){
+  var sel=document.getElementById(selId);if(!sel)return;
+  sel.innerHTML='<option value="">— None assigned —</option>';
+  getCaseworkers().forEach(function(cw){
+    var o=document.createElement('option');
+    o.value=cw.name;o.textContent=cw.name+(cw.agency?' ('+cw.agency+')':'');
+    if(cw.name===selectedName)o.selected=true;
+    sel.appendChild(o);
+  });
+  // allow typing a custom name if not in list
+  if(selectedName&&!getCaseworkers().find(function(c){return c.name===selectedName;})){
+    var o=document.createElement('option');o.value=selectedName;o.textContent=selectedName+' (custom)';o.selected=true;sel.appendChild(o);
+  }
 }
 
 // --- Caregiver detail view ---
