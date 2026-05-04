@@ -474,26 +474,24 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
   #main{display:block!important;min-height:0!important;height:auto!important;
     overflow:visible!important;flex:none!important;margin:0!important;padding:0!important;}
   .wrap{padding:0!important;max-width:100%!important;margin:0!important;}
-  /* Match email PDF layout exactly */
-  @page{size:letter;margin:0.44in;}
-  /* Column headers — match email PDF height */
-  .tt th.th{height:88px!important;word-break:break-word!important;}
-  .tt td.mc{height:14px!important;}
-  .tt td.dc{font-size:8pt!important;padding:0!important;}
+  @page{size:letter;margin:0.35in;}
+  /* Column header height — beforeprint swaps to rotated spans at this height */
+  .tt th.th{height:105px!important;word-break:break-word!important;}
+  .tt td.mc{height:16px!important;}
+  .tt td.dc{font-size:8.5pt!important;padding:0!important;}
   .tt tr.inactive{opacity:1!important;}
-  /* Billing info — match email PDF */
-  .bi td{padding:1px 3px!important;font-size:8.5pt!important;}
-  .bi .lbl{font-size:7.5pt!important;}
-  .pg-title{margin-bottom:2px!important;}
-  .pg-title .t1{font-size:13pt!important;}
-  .pg-title .t2{font-size:9.5pt!important;}
-  .sec-hdr{padding:2px 4px!important;font-size:9pt!important;}
-  .bottom-block{font-size:8.5pt!important;page-break-inside:avoid;}
-  .bottom-block .tot-row{padding:2px 4px!important;}
-  .bottom-block .cert-row{padding:2px 4px!important;}
-  .bottom-block .label-row{padding:2px 4px!important;}
-  .sig-stamp{display:block!important;max-height:28px!important;}
-  .pg-footer{display:flex!important;font-size:7.5pt!important;margin-top:2px!important;
+  .bi td{padding:2px 4px!important;font-size:9pt!important;}
+  .bi .lbl{font-size:8pt!important;}
+  .pg-title{margin-bottom:3px!important;}
+  .pg-title .t1{font-size:14pt!important;}
+  .pg-title .t2{font-size:10pt!important;}
+  .sec-hdr{padding:3px 4px!important;font-size:9.5pt!important;}
+  .bottom-block{font-size:9pt!important;page-break-inside:avoid;}
+  .bottom-block .tot-row{padding:3px 5px!important;}
+  .bottom-block .cert-row{padding:3px 5px!important;}
+  .bottom-block .label-row{padding:3px 5px!important;}
+  .sig-stamp{display:block!important;max-height:32px!important;}
+  .pg-footer{display:flex!important;font-size:8pt!important;margin-top:3px!important;
     page-break-inside:avoid;page-break-after:avoid;}
   .tt td.mc .box{border:1px solid #000!important;}
   .pagebreak{page-break-before:always;}
@@ -3453,11 +3451,11 @@ window.addEventListener('beforeprint',function(){
     th.dataset.printOrigHtml=th.innerHTML;
     th.dataset.printOrigStyle=th.getAttribute('style')||'';
     var text=th.textContent.trim();
-    th.setAttribute('style','height:88px;padding:0;overflow:hidden;vertical-align:middle;writing-mode:initial;transform:none;');
+    th.setAttribute('style','height:105px;padding:0;overflow:hidden;vertical-align:middle;writing-mode:initial;transform:none;');
     th.innerHTML=
-      '<div style="position:relative;width:100%;height:88px;overflow:hidden;">'+
+      '<div style="position:relative;width:100%;height:105px;overflow:hidden;">'+
         '<span style="position:absolute;left:50%;top:50%;display:inline-block;'+
-        'width:82px;text-align:center;white-space:normal;word-break:break-word;line-height:1.25;'+
+        'width:100px;text-align:center;white-space:normal;word-break:break-word;line-height:1.25;'+
         'font-size:8pt;font-weight:normal;font-family:\'Times New Roman\',Times,serif;'+
         'transform:translate(-50%,-50%) rotate(-90deg);">'+
         text+
