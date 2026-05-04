@@ -1028,7 +1028,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
         <th class="th">Transferring</th><th class="th">Housework</th><th class="th">Laundry</th>
         <th class="th">Travel Time for Laundry</th><th class="th">Medication</th>
         <th class="th">Meal Preparation</th><th class="th">Shopping</th>
-        <th class="th">Travel Time for Shopping</th><th class="th">Hospital/Nursing Facility Stay</th>
+        <th class="th">Travel Time for Shopping</th><th class="th">Hospital/&#8203;Nursing Facility Stay</th>
       </tr>
       <tr class="allrow" id="svcAllRow"><td></td></tr>
     </thead>
@@ -3133,17 +3133,20 @@ function buildInvoiceHTML(){
   // Pre-rotation height = text height (1-3 lines) → becomes visual column width after rotation.
   [p1,cs].forEach(function(root){
     root.querySelectorAll('th.th').forEach(function(th){
-      var text=th.textContent.trim();
+      // Strip zero-width spaces from DOM text, then re-add after slashes so
+      // the rotated span breaks at "/" rather than mid-word.
+      var text=th.textContent.replace(/​/g,'').trim();
+      var safeText=text.replace(/\//g,'/​');
       th.removeAttribute('style');
       th.className='th';
       // The inner span is centered then rotated. width:82px constrains wrapping.
       th.innerHTML=
         '<div style="position:relative;width:100%;height:88px;overflow:hidden;">'+
           '<span style="position:absolute;left:50%;top:50%;display:inline-block;'+
-          'width:82px;text-align:center;white-space:normal;word-break:normal;overflow-wrap:anywhere;line-height:1.25;'+
+          'width:82px;text-align:center;white-space:normal;word-break:normal;overflow-wrap:break-word;line-height:1.25;'+
           'font-size:8pt;font-weight:normal;font-family:\'Times New Roman\',Times,serif;'+
           'transform:translate(-50%,-50%) rotate(-90deg);">'+
-          text+
+          safeText+
           '</span>'+
         '</div>';
     });
