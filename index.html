@@ -1218,6 +1218,14 @@ var API_KEY  = '1a5e03ed7170ce0b3443cf3662715f3025c432ebca8e3ec9f9d10652aa065485
 // Microsoft identity — kept for Sign In and Outlook email
 var SP_CLIENT_ID = (window._SP_CLIENT_ID || '1be40fcb-4db4-45b0-8c12-99d945eb78e7');
 var SP_TENANT_ID = (window._SP_TENANT_ID || '12be0d3c-3e63-429f-bf46-1a2f746aa25f');
+
+// ── ALLOWED USERS — add/remove emails here to control access ──
+// All addresses must be @mybellcare.com accounts you have added in Azure AD
+var ALLOWED_USERS = [
+  'tommy@mybellcare.com',
+  'paul@mybellcare.com',
+  'rob@mybellcare.com'
+];
 var REDIRECT_URI = 'https://zealous-forest-01e406a10.7.azurestaticapps.net';
 var SP_DOC_LIB   = 'ClientDocuments'; // kept for SharePoint doc library (if used)
 var SP_SITE      = 'https://libertybellhealth.sharepoint.com/sites/Invoice'; // kept for doc upload
@@ -3505,9 +3513,19 @@ function initMSAL() {
   msalInstance = new msal.PublicClientApplication(cfg);
   msalInstance.initialize().then(function () {
     msalInstance.handleRedirectPromise().then(function (r) {
-      if (r && r.accessToken) { spToken = r.accessToken; updateAuthUI(true); loadProfilesAPI(); return; }
+      if (r && r.accessToken) {
+        var email = (r.account && r.account.username || '').toLowerCase();
+        if (!ALLOWED_USERS.map(function(u){return u.toLowerCase();}).includes(email)) {
+          msalInstance.logoutRedirect(); return;
+        }
+        spToken = r.accessToken; updateAuthUI(true); loadProfilesAPI(); return;
+      }
       var acc = msalInstance.getAllAccounts();
       if (acc.length) {
+        var email2 = (acc[0].username || '').toLowerCase();
+        if (!ALLOWED_USERS.map(function(u){return u.toLowerCase();}).includes(email2)) {
+          msalInstance.logoutRedirect(); return;
+        }
         msalInstance.acquireTokenSilent({
           scopes: ['openid', 'profile', 'https://graph.microsoft.com/Mail.Send'],
           account: acc[0], redirectUri: REDIRECT_URI,
