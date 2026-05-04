@@ -416,29 +416,94 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 .status-select.st-submitted{background-color:#e8f4fb;color:#1565a0;}
 .status-select.st-paid{background-color:#e6f4ea;color:#1e7e34;}
 
+/* TOAST */
+.lhca-toast{position:fixed;bottom:28px;right:28px;background:#1a2b45;color:#fff;padding:12px 20px;border-radius:8px;font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,0.25);z-index:9999;opacity:0;transition:opacity 0.3s;pointer-events:none;max-width:360px;line-height:1.4;}
+.lhca-toast.show{opacity:1;}
+/* PROGRESS OVERLAY */
+.progress-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1100;align-items:center;justify-content:center;}
+.progress-overlay.open{display:flex;}
+.progress-box{background:#fff;border-radius:10px;padding:28px 32px;width:380px;text-align:center;box-shadow:0 8px 40px rgba(0,0,0,0.2);}
+.progress-title{font-size:15px;font-weight:700;color:#1a2b45;margin-bottom:6px;}
+.progress-sub{font-size:12px;color:#6b8dae;margin-bottom:18px;}
+.progress-bar-wrap{background:#e8ecf0;border-radius:20px;height:8px;overflow:hidden;margin-bottom:10px;}
+.progress-bar-fill{background:#185FA5;height:100%;border-radius:20px;transition:width 0.3s;}
+.progress-label{font-size:11px;color:#8ca0b4;}
+/* FORMS TAB */
+.form-type-card{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid #e1e5ea;border-radius:8px;padding:16px 18px;margin-bottom:10px;cursor:pointer;transition:box-shadow 0.15s,border-color 0.15s;max-width:700px;}
+.form-type-card:hover{box-shadow:0 2px 8px rgba(24,95,165,0.1);border-color:#b0c8e8;}
+.form-type-icon{font-size:28px;flex-shrink:0;}
+.form-type-info{flex:1;}
+.form-type-name{font-size:14px;font-weight:700;color:#1a2b45;}
+.form-type-desc{font-size:12px;color:#6b8dae;margin-top:3px;line-height:1.4;}
+.form-topbar{background:#fff;border-bottom:1px solid #e1e5ea;padding:8px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;position:sticky;top:0;z-index:10;}
+/* STATE FORM STYLES */
+.sf{font-family:'Times New Roman',Times,serif;font-size:10pt;color:#000;max-width:760px;margin:0 auto;}
+.sf-title{text-align:center;margin-bottom:10px;}
+.sf-title h2{font-size:13pt;font-weight:bold;}
+.sf-title h3{font-size:10pt;font-weight:normal;}
+.sf-instruct{border:1px solid #000;padding:8px;font-size:9pt;}
+.sf-section{background:#000;color:#fff;font-weight:bold;font-size:10pt;padding:3px 8px;margin-top:0;}
+.sf-table{width:100%;border-collapse:collapse;}
+.sf-table td{border:1px solid #000;padding:5px 8px;vertical-align:top;}
+.sf-table td input,.sf-table td textarea{width:100%;border:none;background:transparent;font-family:'Times New Roman',Times,serif;font-size:10pt;outline:none;padding:1px 2px;}
+.sf-label{font-size:8pt;font-weight:bold;display:block;margin-bottom:2px;font-family:'Times New Roman',Times,serif;}
+/* MONTHLY INVOICE EMAIL MODAL */
+.monthly-inv-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:999;align-items:flex-start;justify-content:center;padding:36px 20px;overflow-y:auto;}
+.monthly-inv-modal.open{display:flex;}
+.monthly-inv-box{background:#fff;border-radius:10px;width:100%;max-width:780px;box-shadow:0 8px 40px rgba(0,0,0,0.2);}
+.monthly-inv-header{padding:18px 22px 14px;border-bottom:1px solid #e1e5ea;display:flex;align-items:flex-start;justify-content:space-between;}
+.monthly-inv-body{padding:18px 22px 24px;max-height:72vh;overflow-y:auto;}
+.cw-email-card{background:#f8fafc;border:1px solid #e1e5ea;border-radius:8px;padding:14px 16px;margin-bottom:10px;}
+.cw-email-hdr{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.cw-email-name{font-size:14px;font-weight:700;color:#1a2b45;flex:1;}
+.cw-client-list{display:flex;flex-direction:column;gap:0;}
+.cw-client-row{display:flex;align-items:center;gap:8px;font-size:12px;color:#4a6a8a;padding:5px 4px;border-bottom:1px solid #f0f3f7;}
+.cw-client-row:last-child{border-bottom:none;}
 /* PRINT */
 @media print{
-  #sidebar,#topbar,.inv-topbar,.modal-overlay,.sig-modal,.allrow,
-  #page-home,#page-detail,#page-new-client,#page-caregivers,#page-settings,#page-tasks,#page-reports{display:none!important;}
-  #main,body{display:block!important;background:#fff;}
-  #page-invoice{display:block!important;padding:0;}
-  .wrap{padding:0;max-width:100%;}
-  @page{size:letter;margin:0.5in 0.45in;}
-  .pagebreak{page-break-before:always;}
+  /* ── Reset body — eliminates blank first page caused by min-height:100vh ── */
+  html,body{display:block!important;min-height:0!important;height:auto!important;
+    background:#fff!important;margin:0!important;padding:0!important;}
+  /* Hide UI chrome always */
+  #sidebar,#topbar,.inv-topbar,.form-topbar,.modal-overlay,.sig-modal,.allrow,
+  .dup-warning,.lhca-toast,.progress-overlay{display:none!important;}
+  /* Print only the ACTIVE page — not always the invoice */
+  .page{display:none!important;}
+  .page.active{display:block!important;padding:0!important;}
+  /* Main area reset */
+  #main{display:block!important;min-height:0!important;height:auto!important;
+    overflow:visible!important;flex:none!important;margin:0!important;padding:0!important;}
+  .wrap{padding:0!important;max-width:100%!important;margin:0!important;}
+  /* Narrower page margins = more room for content = larger appearance */
+  @page{size:letter;margin:0.35in;}
+  /* Row sizes — slightly taller than before for readability, still fits 31 rows */
+  .tt th.th{height:105px!important;word-break:break-all!important;overflow-wrap:anywhere!important;}
+  .tt td.mc{height:16px!important;}
+  .tt td.dc{font-size:8.5pt!important;padding:0!important;}
+  .tt tr.inactive{opacity:1!important;}
+  /* Font sizes — back closer to original */
+  .bi td{padding:2px 4px!important;font-size:9pt!important;}
+  .bi .lbl{font-size:8pt!important;}
+  .pg-title{margin-bottom:3px!important;}
+  .pg-title .t1{font-size:14pt!important;}
+  .pg-title .t2{font-size:10pt!important;}
+  .sec-hdr{padding:3px 4px!important;font-size:9.5pt!important;}
+  .bottom-block{font-size:9pt!important;page-break-inside:avoid;}
+  .bottom-block .tot-row{padding:3px 5px!important;}
+  .bottom-block .cert-row{padding:3px 5px!important;}
+  .bottom-block .label-row{padding:3px 5px!important;}
+  .sig-stamp{display:block!important;max-height:32px!important;}
+  .pg-footer{display:flex!important;font-size:8pt!important;margin-top:3px!important;
+    page-break-inside:avoid;page-break-after:avoid;}
   .tt td.mc .box{border:1px solid #000!important;}
-  .sig-stamp{display:block!important;max-height:32px;}
-  /* Prevent footer from orphaning onto its own page */
-  .pg-footer{display:flex;page-break-inside:avoid;page-break-after:avoid;margin-top:2px;}
+  .pagebreak{page-break-before:always;}
   #page1{page-break-after:avoid;}
-  #complexSection{page-break-after:avoid;}
-  .bottom-block{page-break-inside:avoid;}
-  /* Prevent any trailing whitespace from generating a blank page */
-  .wrap{margin-bottom:0;padding-bottom:0;}
-  #page-invoice .wrap > div:last-child{page-break-after:avoid;}
 }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 
@@ -452,9 +517,11 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
   <button class="sb-btn active" id="sb-home" onclick="navHome()">Clients</button>
   <button class="sb-btn" id="sb-caregivers" onclick="navCaregivers()">Caregivers</button>
   <button class="sb-btn" id="sb-caseworkers" onclick="navCaseworkers()">Caseworkers</button>
+  <button class="sb-btn" id="sb-forms" onclick="navForms()">Forms</button>
   <button class="sb-btn" id="sb-tasks" onclick="navTasks()">Tasks <span id="taskBadge" style="display:none;background:#c0392b;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:4px;font-weight:700;vertical-align:middle;"></span></button>
   <button class="sb-btn" id="sb-reports" onclick="navReports()">Reports</button>
   <hr class="sb-divider">
+  <button class="sb-btn" id="sb-monthly" onclick="openMonthlyInvModal()">&#128140; Monthly Emails</button>
   <button class="sb-btn" id="sb-settings" onclick="navSettings()">Settings</button>
   <hr class="sb-divider">
   <div class="sb-section">Clients</div>
@@ -462,7 +529,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
   <div class="sb-footer">
     <div id="authStatus">Not signed in — local only</div>
     <div class="last-synced" id="lastSyncedLabel"></div>
-    <button class="sb-auth-btn" id="authBtn" onclick="signIn()">Sign In (SharePoint)</button>
+    <button class="sb-auth-btn" id="authBtn" onclick="signIn()">Sign In (Microsoft)</button>
   </div>
 </div>
 
@@ -760,21 +827,21 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
     </div>
 
     <div class="settings-section">
-      <h3>SharePoint Sync</h3>
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <h3>Azure Database &amp; Email Sync</h3>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
         <span id="settingsAuthStatus" style="font-size:13px;color:#6b8dae;">Not signed in</span>
-        <button class="btn btn-secondary" id="settingsAuthBtn" onclick="signIn()">Sign In to Sync</button>
+        <button class="btn btn-secondary" id="settingsAuthBtn" onclick="signIn()">Sign In</button>
       </div>
-      <p style="font-size:11px;color:#8ca0b4;margin-top:8px;">When signed in, client profiles and documents sync to your SharePoint site at libertybellhealth.sharepoint.com.</p>
+      <p style="font-size:11px;color:#8ca0b4;margin-top:0;">Sign in with your Microsoft account (<b>Tommy@mybellcare.com</b>) to sync client data with Azure SQL and enable in-app email sending via Microsoft Graph. All data is stored in your Azure SQL database — no SharePoint required.</p>
     </div>
 
     <div class="settings-section">
-      <h3>Clear Data</h3>
+      <h3>Clear Local Cache</h3>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-danger" onclick="clearAllDrafts()">Clear All Drafts</button>
-        <button class="btn btn-danger" onclick="clearAllData()">Clear All Local Data</button>
+        <button class="btn btn-danger" onclick="clearAllData()">Clear Local Cache</button>
       </div>
-      <p style="font-size:11px;color:#8ca0b4;margin-top:8px;">Clearing local data removes all clients, caregivers, and drafts stored in this browser. This does not affect SharePoint data.</p>
+      <p style="font-size:11px;color:#8ca0b4;margin-top:8px;">Clears locally cached data (clients, caregivers, drafts) from this browser. Your Azure SQL database is not affected — data reloads automatically on next sign-in.</p>
     </div>
   </div>
 
@@ -843,13 +910,75 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
     <div id="cwList"></div>
   </div>
 
+  <!-- FORMS PAGE -->
+  <div class="page" id="page-forms">
+    <div class="home-header" style="margin-bottom:16px;">
+      <div>
+        <div class="home-title">Forms</div>
+        <div class="home-subtitle">Pre-fill and print Michigan state forms for your clients.</div>
+      </div>
+    </div>
+    <!-- Client selector -->
+    <div style="background:#fff;border:1px solid #e1e5ea;border-radius:8px;padding:14px 18px;margin-bottom:20px;max-width:700px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <span style="font-size:13px;font-weight:600;color:#1a2b45;white-space:nowrap;">Pre-fill for client:</span>
+      <select id="formClientSelect" style="flex:1;min-width:180px;padding:6px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;background:#fff;" onchange="activeFormClientName=this.value">
+        <option value="">— Select a client to pre-fill —</option>
+      </select>
+      <span style="font-size:11px;color:#8ca0b4;">All fields can be edited after opening</span>
+    </div>
+    <!-- Form cards -->
+    <div class="form-type-card" onclick="openStateForm('dhs390')">
+      <div class="form-type-icon">&#128203;</div>
+      <div class="form-type-info">
+        <div class="form-type-name">DHS-390 — Adult Services Application</div>
+        <div class="form-type-desc">Application for Home Help, Adult Community Placement, or other adult services. Sections for client info, program selection, current situation, and signature.</div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openStateForm('dhs390')">Fill Out</button>
+    </div>
+    <div class="form-type-card" onclick="openStateForm('dhs4771')">
+      <div class="form-type-icon">&#128196;</div>
+      <div class="form-type-info">
+        <div class="form-type-name">DHS-4771 — FICA Tax Authorization (Home Help)</div>
+        <div class="form-type-desc">Authorization for withholding of FICA tax in Home Help payments. Client authorizes MDHHS to act as tax-filing agent for Social Security purposes.</div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openStateForm('dhs4771')">Fill Out</button>
+    </div>
+    <div class="form-type-card" onclick="openStateForm('mdhhs6200')">
+      <div class="form-type-icon">&#127973;</div>
+      <div class="form-type-info">
+        <div class="form-type-name">MDHHS-6200 — Adult Services Medical Needs Certification</div>
+        <div class="form-type-desc">Medical certification completed by a physician, PA, NP, OT, PT, or CNS. Certifies patient's need for home help services with ADL/IADL and complex care selection.</div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openStateForm('mdhhs6200')">Fill Out</button>
+    </div>
+    <div class="form-type-card" onclick="openStateForm('msa4676')">
+      <div class="form-type-icon">&#129309;</div>
+      <div class="form-type-info">
+        <div class="form-type-name">MSA-4676 — Home Help Services Agreement</div>
+        <div class="form-type-desc">Agreement between the beneficiary and caregiver/agency provider. Documents terms of Home Help service delivery, caregiver information, and start date.</div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openStateForm('msa4676')">Fill Out</button>
+    </div>
+  </div>
+
+  <!-- FORM FILL PAGE -->
+  <div class="page" id="page-form-fill" style="padding:0;">
+    <div class="form-topbar" id="formTopbar">
+      <button class="btn btn-secondary btn-sm" onclick="navForms()">&#8592; Back to Forms</button>
+      <span id="formFillTitle" style="font-weight:600;font-size:13px;color:#1a2b45;"></span>
+      <div style="flex:1;"></div>
+      <button class="btn btn-primary" onclick="window.print()">&#128424; Print / PDF</button>
+    </div>
+    <div id="formFillContent" style="padding:28px 24px;background:#f4f5f7;min-height:calc(100vh - 52px);"></div>
+  </div>
+
   <!-- INVOICE PAGE -->
   <div class="page" id="page-invoice" style="padding:0;">
     <div class="inv-topbar">
       <span class="inv-client-tag" id="invClientTag">—</span>
       <button class="btn btn-secondary" onclick="navDetail(activeProfileName,'history')">Back to Invoices</button>
       <button class="btn btn-primary" onclick="window.print()">Print / PDF</button>
-      <button class="btn btn-secondary" onclick="sendEmail()">Email Worker</button>
+      <button class="btn btn-secondary" id="sendEmailInvBtn" onclick="sendEmail()">&#9993; Email Worker</button>
       <button class="btn btn-secondary" onclick="copyMonth()">Copy to Next Month</button>
       <button class="btn btn-secondary" onclick="clearInvoiceForm()">Clear Form</button>
       <button class="btn btn-secondary" id="saveInvoiceBtn" onclick="saveInvoiceToClient()" style="display:none;">Save Invoice</button>
@@ -862,7 +991,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
     <div class="wrap">
 <!-- PAGE 1 -->
 <div id="page1">
-  <div class="pg-title"><div class="t1">HOME HELP AGENCY INVOICE</div><div class="t2">Michigan Department of Health and Human Services</div></div>
+  <div class="pg-title"><div class="t2">Michigan Department of Health and Human Services</div><div class="t1">HOME HELP AGENCY INVOICE</div></div>
   <table class="bi">
     <tr>
       <td colspan="3" style="width:50%"><span class="lbl">Agency Name</span><input id="agencyName" value="Liberty Home Care Assistance"></td>
@@ -925,7 +1054,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
       <td style="width:33%"><span class="lbl">Billing Period</span><input id="billingPeriod2"></td>
     </tr>
   </table>
-  <div class="pg-title" style="margin-top:6px;"><div class="t1">HOME HELP AGENCY INVOICE</div><div class="t2">Michigan Department of Health and Human Services</div></div>
+  <div class="pg-title" style="margin-top:6px;"><div class="t2">Michigan Department of Health and Human Services</div><div class="t1">HOME HELP AGENCY INVOICE</div></div>
   <div class="sec-hdr" style="border-top:1px solid #000;">VERIFICATION OF COMPLEX CARE TASKS</div>
   <table class="tt" id="cplxTable">
     <thead>
@@ -1101,10 +1230,10 @@ function getIdMap() {
 function showPage(p){
   document.querySelectorAll('.page').forEach(function(el){el.classList.remove('active');});
   document.getElementById('page-'+p).classList.add('active');
-  ['sb-home','sb-caregivers','sb-settings','sb-tasks','sb-reports','sb-caseworkers'].forEach(function(id){
+  ['sb-home','sb-caregivers','sb-settings','sb-tasks','sb-reports','sb-caseworkers','sb-forms'].forEach(function(id){
     var el=document.getElementById(id);if(el)el.classList.remove('active');
   });
-  var map={'home':'sb-home','caregivers':'sb-caregivers','settings':'sb-settings','tasks':'sb-tasks','reports':'sb-reports','caseworkers':'sb-caseworkers'};
+  var map={'home':'sb-home','caregivers':'sb-caregivers','settings':'sb-settings','tasks':'sb-tasks','reports':'sb-reports','caseworkers':'sb-caseworkers','forms':'sb-forms','form-fill':'sb-forms'};
   if(map[p]){var el=document.getElementById(map[p]);if(el)el.classList.add('active');}
   var db=document.getElementById('draftBadge');if(db)db.style.display='none';
 }
@@ -2246,8 +2375,8 @@ function deleteSig(i){
 function openAddSigModal(){document.getElementById('sigLabel').value='';document.getElementById('sigModal').classList.add('open');if(!sigCanvas)initSigCanvas();clearSigPad();}
 function updateSettingsAuth(){
   var s=document.getElementById('settingsAuthStatus'),b=document.getElementById('settingsAuthBtn');
-  if(spToken){if(s)s.textContent='✓ Signed in — SharePoint sync active';if(b){b.textContent='Sign Out';b.onclick=signOut;}}
-  else{if(s)s.textContent='Not signed in';if(b){b.textContent='Sign In to Sync';b.onclick=signIn;}}
+  if(spToken){if(s){s.textContent='✓ Signed in — Azure SQL sync & email active';s.style.color='#1e7e34';}if(b){b.textContent='Sign Out';b.onclick=signOut;}}
+  else{if(s){s.textContent='Not signed in — local mode only';s.style.color='#8ca0b4';}if(b){b.textContent='Sign In';b.onclick=signIn;}}
 }
 function clearAllDrafts(){
   if(!confirm('Clear all draft invoices?'))return;
@@ -2976,11 +3105,256 @@ function applyStates(states){
 }
 
 // FIX #6: copyMonth preserves clientName and medicaidId
-function sendEmail(){
-  var cn=document.getElementById('clientName').value.trim(),bp=document.getElementById('billingPeriod').value.trim(),ae=document.getElementById('activeAgentEmail').value.trim(),w=document.getElementById('worker').value.trim();
-  var subj='Home Help Agency Invoice'+(cn?' - '+cn:'')+(bp?' - '+bp:'');
-  var nl='%0D%0A',body='Dear '+(w||'Adult Services Worker')+','+nl+nl+'Please find attached the Home Help Agency Invoice'+(cn?' for '+cn:'')+(bp?' for the billing period '+bp:'.')+'.'+nl+nl+'Please do not hesitate to contact us with any questions.'+nl+nl+'Thank you,'+nl+'Thomas Jaboro'+nl+'Liberty Home Care Assistance'+nl+'(248) 291-4106';
-  window.open('mailto:'+encodeURIComponent(ae)+'?subject='+encodeURIComponent(subj)+'&body='+body,'_self');
+// ── Toast ─────────────────────────────────────────────────────
+function showToast(msg,ms){
+  var t=document.getElementById('lhcaToast');if(!t){t=document.createElement('div');t.id='lhcaToast';t.className='lhca-toast';document.body.appendChild(t);}
+  t.textContent=msg;t.classList.add('show');
+  clearTimeout(t._tid);t._tid=setTimeout(function(){t.classList.remove('show');},ms||3500);
+}
+
+// ── PDF / Print helpers ────────────────────────────────────────
+function buildInvoiceHTML(){
+  var p1=document.getElementById('page1').cloneNode(true);
+  var cs=document.getElementById('complexSection').cloneNode(true);
+  var showCplx=document.getElementById('showComplex').checked;
+  var hasCplxChecked=document.querySelectorAll('#cplxTable td.mc.on').length>0;
+  var includeCplx=showCplx&&hasCplxChecked;
+
+  [p1,cs].forEach(function(root){
+    // Remove UI quick-fill rows
+    root.querySelectorAll('.allrow').forEach(function(r){if(r.parentNode)r.parentNode.removeChild(r);});
+    // Inactive rows (beyond days in month): keep them but un-gray — they appear blank on the form
+    root.querySelectorAll('tr.inactive').forEach(function(r){r.classList.remove('inactive');});
+  });
+
+  // Column headers: replace writing-mode (not supported by html2canvas) with
+  // transform:rotate on a width-constrained box so long text wraps correctly.
+  // Pre-rotation width = 82px ≈ header height → becomes the visual column height after rotation.
+  // Pre-rotation height = text height (1-3 lines) → becomes visual column width after rotation.
+  [p1,cs].forEach(function(root){
+    root.querySelectorAll('th.th').forEach(function(th){
+      var text=th.textContent.trim();
+      th.removeAttribute('style');
+      th.className='th';
+      // The inner span is centered then rotated. width:82px constrains wrapping.
+      th.innerHTML=
+        '<div style="position:relative;width:100%;height:88px;overflow:hidden;">'+
+          '<span style="position:absolute;left:50%;top:50%;display:inline-block;'+
+          'width:82px;text-align:center;white-space:normal;word-break:break-all;overflow-wrap:anywhere;line-height:1.25;'+
+          'font-size:8pt;font-weight:normal;font-family:\'Times New Roman\',Times,serif;'+
+          'transform:translate(-50%,-50%) rotate(-90deg);">'+
+          text+
+          '</span>'+
+        '</div>';
+    });
+  });
+
+  function syncInputs(root){
+    root.querySelectorAll('input:not([type="checkbox"]):not([type="hidden"])').forEach(function(inp){
+      inp.setAttribute('value',inp.value||'');
+    });
+    root.querySelectorAll('input[type="checkbox"]').forEach(function(cb){
+      if(cb.checked)cb.setAttribute('checked',''); else cb.removeAttribute('checked');
+    });
+  }
+  syncInputs(p1); syncInputs(cs);
+
+  [p1,cs].forEach(function(root){
+    root.querySelectorAll('[onclick],[onchange],[oninput],[onblur]').forEach(function(el){
+      ['onclick','onchange','oninput','onblur'].forEach(function(a){el.removeAttribute(a);});
+    });
+  });
+
+  var css=[
+    // @page margin:0 so the browser doesn't add its own margins on top of body margins
+    '@page{margin:0;size:letter;}',
+    'body{margin:0.44in 0.44in;font-family:"Times New Roman",Times,serif;background:#fff;color:#000;}',
+    '.pg-title{text-align:center;margin-bottom:2px;}',
+    '.pg-title .t1{font-size:13pt;font-weight:bold;font-family:"Times New Roman",Times,serif;}',
+    '.pg-title .t2{font-size:9.5pt;font-family:"Times New Roman",Times,serif;}',
+    '.bi{width:100%;border-collapse:collapse;}',
+    '.bi td{border:1px solid #000;padding:1px 3px;vertical-align:top;font-size:8.5pt;}',
+    '.bi .lbl{font-size:7.5pt;display:block;font-family:"Times New Roman",Times,serif;}',
+    '.bi input{border:none;width:100%;font-size:8.5pt;font-family:"Times New Roman",Times,serif;background:transparent;outline:none;color:#000;}',
+    '.sec-hdr{border:1px solid #000;border-top:none;background:#fff;text-align:center;font-weight:bold;font-size:9pt;padding:2px 4px;font-family:"Times New Roman",Times,serif;}',
+    '.tt{width:100%;border-collapse:collapse;border-left:1px solid #000;border-right:1px solid #000;border-bottom:1px solid #000;table-layout:fixed;}',
+    '.tt th,.tt td{border:1px solid #000;text-align:center;vertical-align:middle;padding:0;}',
+    '.tt th.dh{width:52px;font-size:8pt;font-weight:normal;padding:2px;font-family:"Times New Roman",Times,serif;line-height:1.2;}',
+    '.tt th.th{height:88px;padding:0;overflow:hidden;vertical-align:middle;position:relative;}',
+    '.tt td.dc{font-size:8pt;text-align:center;width:52px;padding:0;font-family:"Times New Roman",Times,serif;line-height:1;}',
+    '.tt td.mc{padding:0;height:14px;vertical-align:middle;text-align:center;}',
+    '.tt td.mc .box{display:inline-block;width:11px;height:11px;border:1px solid #000;position:relative;vertical-align:middle;}',
+    '.tt td.mc.on .box::after{content:"X";position:absolute;top:-3px;left:0;font-size:10pt;font-weight:bold;color:#000;font-family:"Times New Roman",Times,serif;line-height:1;}',
+    '.bottom-block{border:1px solid #000;border-top:none;font-size:8.5pt;font-family:"Times New Roman",Times,serif;}',
+    '.bottom-block .tot-row{padding:2px 4px;font-weight:bold;}',
+    '.bottom-block .tot-row input{border:none;border-bottom:1px solid #000;font-size:8.5pt;font-family:"Times New Roman",Times,serif;background:transparent;outline:none;text-align:center;width:28px;}',
+    '.bottom-block .cert-row{padding:2px 4px;}',
+    '.bottom-block .label-row{display:flex;justify-content:space-between;padding:2px 4px;align-items:flex-end;}',
+    '.sig-label{display:flex;flex-direction:column;gap:0;width:60%;}',
+    '.sig-label span{font-size:7.5pt;font-family:"Times New Roman",Times,serif;}',
+    '.sig-placeholder{border-bottom:1px solid #000;height:28px;display:flex;align-items:center;}',
+    '.sig-stamp{max-height:28px;display:block;}',
+    '.pg-footer{display:flex;justify-content:space-between;font-size:7.5pt;margin-top:2px;font-family:"Times New Roman",Times,serif;}',
+    '.p2info{width:100%;border-collapse:collapse;}',
+    '.p2info td{border:1px solid #000;padding:1px 3px;font-size:8.5pt;vertical-align:top;}',
+    '.p2info .lbl{font-size:7.5pt;display:block;font-family:"Times New Roman",Times,serif;}',
+    '.p2info input{border:none;width:100%;font-size:8.5pt;font-family:"Times New Roman",Times,serif;background:transparent;outline:none;color:#000;}',
+    '.pagebreak{margin-top:24px;}'
+  ].join('\n');
+
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body>'+
+    p1.outerHTML+(includeCplx?'\n'+cs.outerHTML:'')+'</body></html>';
+}
+
+function printInvoiceAsPDF(){
+  // Fully synchronous — no await, so window.open() is never blocked by popup blocker
+  var html=buildInvoiceHTML();
+  // Inject auto-print + auto-close script into the standalone document
+  html=html.replace('</body>',
+    '<scr'+'ipt>window.onload=function(){setTimeout(function(){window.print();},350);};</scr'+'ipt></body>');
+  var win=window.open('','_blank','width=900,height=700');
+  if(!win){alert('Please allow popups for this site, then try again.');return;}
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+}
+
+async function captureInvoicePDF(){
+  var jsPDF=window.jspdf.jsPDF;
+  var pdf=new jsPDF('p','mm','letter');
+  var pageW=195,pageH=257,marginL=10,marginT=11;
+
+  var html=buildInvoiceHTML();
+  var blob=new Blob([html],{type:'text/html;charset=utf-8'});
+  var blobUrl=URL.createObjectURL(blob);
+
+  var iframe=document.createElement('iframe');
+  iframe.style.cssText='position:fixed;left:-9999px;top:0;width:816px;height:4000px;border:none;overflow:hidden;';
+  document.body.appendChild(iframe);
+  await new Promise(function(resolve,reject){iframe.onload=resolve;iframe.onerror=reject;iframe.src=blobUrl;});
+  await new Promise(function(r){setTimeout(r,500);});
+
+  var iDoc=iframe.contentDocument||iframe.contentWindow.document;
+
+  function addPageImage(canvas,pdf,mL,mT,pW,pH){
+    var ratio=canvas.height/canvas.width;
+    var iW=pW,iH=iW*ratio;
+    if(iH>pH){iH=pH;iW=pH/ratio;}
+    pdf.addImage(canvas.toDataURL('image/jpeg',0.94),'JPEG',mL,mT,iW,iH);
+  }
+
+  var el1=iDoc.getElementById('page1');
+  var c1=await html2canvas(el1,{scale:2,useCORS:true,allowTaint:true,backgroundColor:'#fff',logging:false});
+  addPageImage(c1,pdf,marginL,marginT,pageW,pageH);
+
+  var showCplx=document.getElementById('showComplex').checked;
+  var hasCplxChecked=document.querySelectorAll('#cplxTable td.mc.on').length>0;
+  if(showCplx&&hasCplxChecked){
+    var el2=iDoc.getElementById('complexSection');
+    if(el2&&el2.style.display!=='none'){
+      pdf.addPage('letter','p');
+      var c2=await html2canvas(el2,{scale:2,useCORS:true,allowTaint:true,backgroundColor:'#fff',logging:false});
+      addPageImage(c2,pdf,marginL,marginT,pageW,pageH);
+    }
+  }
+
+  document.body.removeChild(iframe);
+  URL.revokeObjectURL(blobUrl);
+  return pdf.output('datauristring').split(',')[1];
+}
+
+// ── Graph API Email with PDF Attachments ──────────────────────
+async function sendMailWithPDF(toEmail,subject,bodyHtml,attachments){
+  if(!spToken)return {ok:false,err:'Not signed in'};
+  var msg={subject:subject,body:{contentType:'HTML',content:bodyHtml},toRecipients:[{emailAddress:{address:toEmail}}],attachments:attachments.map(function(a){return{'@odata.type':'#microsoft.graph.fileAttachment',name:a.name,contentType:'application/pdf',contentBytes:a.base64};})};
+  try{
+    var resp=await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{'Authorization':'Bearer '+spToken,'Content-Type':'application/json'},body:JSON.stringify({message:msg,saveToSentItems:true})});
+    if(resp.ok||resp.status===202||resp.status===204)return {ok:true};
+    var errText=await resp.text();
+    console.error('Graph sendMail failed',resp.status,errText);
+    return {ok:false,status:resp.status,err:errText};
+  }catch(e){console.error('Graph email error:',e);return {ok:false,err:e.message};}
+}
+
+// ── Load invoice into page for capture ────────────────────────
+async function loadInvoiceForCapture(clientName,inv,period){
+  var prof=getProfiles()[clientName]||{};
+  var parts=(period||'').split('/');
+  rebuild(parts.length===2?daysIn(parts[0],parts[1]):31);
+  document.getElementById('clientName').value=clientName;
+  document.getElementById('clientName2').value=clientName;
+  document.getElementById('billingPeriod').value=period;
+  document.getElementById('billingPeriod2').value=period;
+  document.getElementById('medicaidId').value=prof.medicaidId||'';
+  document.getElementById('hourlyRate').value=prof.hourlyRate||'';
+  document.getElementById('billTo').value=prof.billTo||'';
+  document.getElementById('worker').value=prof.worker||'';
+  document.getElementById('worker2').value=prof.worker||'';
+  document.getElementById('dateSubmitted').value=today();
+  document.getElementById('sigDate1').value=today();
+  document.getElementById('sigDate2').value=today();
+  if(inv.data&&inv.data.tasks)applyStates(inv.data.tasks);
+  var fields=['svcHH','svcMM','cplxHH','cplxMM','p1HH','p1MM','grandHH','grandMM'];
+  fields.forEach(function(id){var el=document.getElementById(id);if(el)el.value=(inv.data&&inv.data[id])||'';});
+  var hc=inv.data&&inv.data.hasComplex;
+  document.getElementById('showComplex').checked=!!hc;
+  document.getElementById('complexSection').style.display=hc?'block':'none';
+  // Auto-place signature
+  var sigs=getSigs();
+  if(sigs.length){stampSignatureData(1,sigs[0].data);if(hc)stampSignatureData(2,sigs[0].data);}
+  await new Promise(function(r){setTimeout(r,150);});
+}
+
+// ── Mark invoice submitted (local + DB) ───────────────────────
+function markInvoiceSubmitted(clientName,period){
+  var p=getProfiles();
+  if(!p[clientName])return;
+  var inv=(p[clientName].invoices||[]).find(function(i){return i.billingPeriod===period;});
+  if(!inv||inv.status==='paid')return;
+  inv.status='submitted';
+  saveProfilesLS(p);
+  saveProfileSP(clientName,p[clientName]);
+  if(inv.dbId){
+    fetch(API_BASE+'/invoices/'+inv.dbId+'/status',{method:'PATCH',headers:apiHeaders(),body:JSON.stringify({status:'submitted'})}).catch(function(e){console.error(e);});
+  }
+}
+
+// ── Send single invoice email ─────────────────────────────────
+async function sendEmail(){
+  var cn=document.getElementById('clientName').value.trim();
+  var bp=document.getElementById('billingPeriod').value.trim();
+  var ae=document.getElementById('activeAgentEmail').value.trim();
+  var w=document.getElementById('worker').value.trim();
+  if(!ae){alert('No worker email on file for this client. Add one in the client\'s Profile tab.');return;}
+  if(!spToken){
+    if(confirm('Sign in with your Microsoft account to send email via Outlook?\n\nClicking OK will redirect you to sign in.')){signIn();}
+    return;
+  }
+  var btn=document.getElementById('sendEmailInvBtn');
+  if(btn){btn.disabled=true;btn.textContent='Generating PDF…';}
+  try{
+    var base64=await captureInvoicePDF();
+    var fname=(cn||'Invoice').replace(/[^a-z0-9]/gi,'_')+'_'+(bp||'').replace('/','_')+'.pdf';
+    var subj='Home Help Agency Invoice'+(cn?' – '+cn:'')+(bp?' – '+bp:'');
+    var body='<p>Dear '+(w||'Adult Services Worker')+',</p>'+
+      '<p>Please find attached the Home Help Agency Invoice'+(cn?' for <b>'+cn+'</b>':'')+(bp?' for billing period <b>'+bp+'</b>':'')+'. Please review and process at your earliest convenience.</p>'+
+      '<p>Please do not hesitate to contact us with any questions.</p>'+
+      '<p>Thank you,<br><b>Thomas Jaboro</b><br>Liberty Home Care Assistance<br>(248) 291-4106</p>';
+    if(btn)btn.textContent='Sending…';
+    var result=await sendMailWithPDF(ae,subj,body,[{name:fname,base64:base64}]);
+    if(result.ok){
+      markInvoiceSubmitted(cn,bp);
+      renderOverviewPane();updateStats();
+      showToast('✓ Email sent to '+ae+' — invoice marked Submitted');
+    }else{
+      var msg='Email failed to send.';
+      if(result.status===401)msg='Authentication error (401) — please sign out and sign back in.';
+      else if(result.status===403)msg='Permission denied (403) — sign out, sign back in, and accept the Mail.Send permission when prompted.';
+      else if(result.err)msg='Error ('+( result.status||'?')+'):\n'+result.err.slice(0,300);
+      alert(msg);
+    }
+  }catch(e){alert('Error generating PDF: '+e.message);}
+  if(btn){btn.disabled=false;btn.textContent='✉ Email Worker';}
 }
 function copyMonth(){
   var bp=document.getElementById('billingPeriod').value.trim();if(!bp||bp.length<7){alert('Enter a billing period first (MM/YYYY).');return;}
@@ -3438,6 +3812,532 @@ try{initMSAL();}catch(e){console.log('MSAL init:',e);}
 renderActivityFeed();
 updateTaskBadge();
 navHome();
+
+// ============================================================
+//  SESSION 2 — FORMS TAB
+// ============================================================
+var activeFormType='';
+var activeFormClientName='';
+
+function navForms(){
+  showPage('forms');
+  bc([{l:'Forms'}]);
+  document.getElementById('topbarActions').innerHTML='';
+  renderFormsClientDropdown();
+}
+function renderFormsClientDropdown(){
+  var profiles=getProfiles();
+  var sel=document.getElementById('formClientSelect');if(!sel)return;
+  var prev=activeFormClientName||sel.value;
+  sel.innerHTML='<option value="">— Select a client to pre-fill —</option>';
+  Object.keys(profiles).sort().forEach(function(name){
+    var o=document.createElement('option');o.value=name;o.textContent=name;sel.appendChild(o);
+  });
+  if(prev)sel.value=prev;
+  activeFormClientName=sel.value;
+}
+function openStateForm(type){
+  activeFormType=type;
+  var selEl=document.getElementById('formClientSelect');
+  activeFormClientName=selEl?selEl.value:'';
+  var titles={dhs390:'DHS-390 — Adult Services Application',dhs4771:'DHS-4771 — FICA Tax Authorization',mdhhs6200:'MDHHS-6200 — Medical Needs Certification',msa4676:'MSA-4676 — Home Help Services Agreement'};
+  showPage('form-fill');
+  bc([{l:'Forms',fn:navForms},{l:titles[type]||type}]);
+  // Keep Forms sidebar active
+  ['sb-home','sb-caregivers','sb-settings','sb-tasks','sb-reports','sb-caseworkers','sb-forms'].forEach(function(id){var el=document.getElementById(id);if(el)el.classList.remove('active');});
+  var fb=document.getElementById('sb-forms');if(fb)fb.classList.add('active');
+  document.getElementById('formFillTitle').textContent=titles[type]||'';
+  var prof=activeFormClientName?(getProfiles()[activeFormClientName]||{}):{};
+  var cw=getCaseworkers().find(function(c){return (c.name||'').toLowerCase()===(prof.worker||'').toLowerCase();})||{};
+  var html='';
+  if(type==='dhs390')html=buildDHS390(prof,cw);
+  else if(type==='dhs4771')html=buildDHS4771(prof,cw);
+  else if(type==='mdhhs6200')html=buildMDHHS6200(prof,cw);
+  else if(type==='msa4676')html=buildMSA4676(prof,cw);
+  document.getElementById('formFillContent').innerHTML=html;
+}
+
+/* Helpers */
+function sfi(id,val,ph,w){
+  return '<input id="'+id+'" value="'+(val||'')+'" placeholder="'+(ph||'')+'" style="'+(w?'width:'+w+';':'width:100%;')+'border:none;border-bottom:1px solid #aaa;background:transparent;font-family:Times New Roman,Times,serif;font-size:9.5pt;outline:none;padding:1px 2px;">';
+}
+function sfcb(id){
+  return '<input type="checkbox" id="'+id+'" style="width:13px;height:13px;margin-right:4px;cursor:pointer;vertical-align:middle;">';
+}
+
+/* DHS-390 */
+function buildDHS390(prof,cw){
+  var name=activeFormClientName||'';
+  var td=today();
+  var statuses=['Medicaid (MA) recipient','Medicaid application pending','Supplemental Security Income (SSI) recipient','MI Choice Waiver recipient','PACE recipient','MI Health Link recipient','Community Mental Health (CMH) recipient','Food Assistance recipient','Family Independence Program (FIP) recipient','State Disability Assistance (SDA) recipient','Veteran Affairs recipient','Other'];
+  return '<div class="sf" style="background:#fff;padding:24px;max-width:760px;margin:0 auto;box-shadow:0 2px 8px rgba(0,0,0,0.1);">'+
+'<div class="sf-title"><h2>STATE OF MICHIGAN</h2><h3>Department of Health and Human Services<br>Aging and Adult Services</h3><br><h2>DHS-390, ADULT SERVICES APPLICATION</h2><div style="font-size:9pt;">(Revised 9-25)</div></div>'+
+'<div class="sf-instruct">Complete the CLIENT INFORMATION, SECTION 3, and SECTION 4, and sign and date the second page. Return the first and second pages of this Adult Services Application using the enclosed business reply envelope.<br><br>'+
+'<b>Note:</b> If you need help, please indicate: &nbsp;'+sfcb('dhs390_bi')+' Bilingual Interpreter &nbsp;&nbsp; '+sfcb('dhs390_sign')+' Sign-language interpreter &nbsp;&nbsp; '+sfcb('dhs390_oth')+' Other <input style="border:none;border-bottom:1px solid #888;width:130px;font-family:inherit;font-size:9pt;outline:none;" placeholder="specify"></div>'+
+'<div class="sf-section">SECTION 1 – FOR DEPARTMENTAL USE ONLY</div>'+
+'<table class="sf-table"><tr>'+
+  '<td style="width:38%"><span class="sf-label">1. Case Name</span>'+sfi('dhs390_cname',name)+'</td>'+
+  '<td style="width:24%"><span class="sf-label">2. Log Number</span>'+sfi('dhs390_log')+'</td>'+
+  '<td><span class="sf-label">3. Recipient ID Number</span>'+sfi('dhs390_rid',prof.medicaidId)+'</td>'+
+'</tr><tr>'+
+  '<td><span class="sf-label">4. County</span>'+sfi('dhs390_county')+'</td>'+
+  '<td colspan="2"><span class="sf-label">5. Date</span>'+sfi('dhs390_date',td)+'</td>'+
+'</tr><tr>'+
+  '<td colspan="2"><span class="sf-label">6. Worker Name</span>'+sfi('dhs390_wname',cw.name||prof.worker)+'</td>'+
+  '<td><span class="sf-label">7. Worker Phone Number</span>'+sfi('dhs390_wphone',cw.phone)+'</td>'+
+'</tr></table>'+
+'<div class="sf-section">SECTION 2 – CLIENT INFORMATION</div>'+
+'<table class="sf-table"><tr>'+
+  '<td colspan="4"><span class="sf-label">8. Full Name of Person Needing or Requesting Services</span>'+sfi('dhs390_fname',name)+'</td>'+
+'</tr><tr>'+
+  '<td style="width:30%"><span class="sf-label">9. Date of Birth (MM-DD-YYYY)</span>'+sfi('dhs390_dob')+'</td>'+
+  '<td colspan="3"><span class="sf-label">10. Medicaid/Recipient ID</span>'+sfi('dhs390_mid',prof.medicaidId)+'</td>'+
+'</tr><tr>'+
+  '<td colspan="2"><span class="sf-label">11. Street Address</span>'+sfi('dhs390_addr')+'</td>'+
+  '<td><span class="sf-label">City</span>'+sfi('dhs390_city')+'</td>'+
+  '<td><span class="sf-label">State &nbsp; Zip Code</span><div style="display:flex;gap:4px;">'+sfi('dhs390_st','MI','ST','38px')+sfi('dhs390_zip','','Zip','80px')+'</div></td>'+
+'</tr><tr>'+
+  '<td><span class="sf-label">12. Phone Number</span>'+sfi('dhs390_phone',prof.phone)+'</td>'+
+  '<td><span class="sf-label">13. TTY Number</span>'+sfi('dhs390_tty')+'</td>'+
+  '<td colspan="2"><span class="sf-label">14. Email Address</span>'+sfi('dhs390_email',prof.cemail)+'</td>'+
+'</tr></table>'+
+'<div class="sf-section">SECTION 3 – DEPARTMENT PROGRAMS</div>'+
+'<div style="border:1px solid #000;border-top:none;padding:10px;font-size:9.5pt;line-height:1.8;">'+
+  '<div>'+sfcb('dhs390_hh')+' <b>1. Home Help</b> — Services to help pay for someone to assist with personal care and housekeeping.</div>'+
+  '<div>'+sfcb('dhs390_acp')+' <b>2. Adult Community Placement</b> — Services for adults who can no longer remain in their own homes.</div>'+
+  '<div>'+sfcb('dhs390_os')+' <b>3. Other Services</b> — Non-payment services to help adults stay safe in their own homes.</div>'+
+'</div>'+
+'<div class="sf-section">SECTION 4 – CURRENT SITUATION</div>'+
+'<div style="border:1px solid #000;border-top:none;padding:10px;font-size:9.5pt;">'+
+  '<b>1. Your status as a recipient</b>'+
+  '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 20px;margin:6px 0 12px 8px;">'+
+    statuses.map(function(lbl,i){return '<div>'+sfcb('dhs390_s'+i)+' '+lbl+'</div>';}).join('')+
+  '</div>'+
+  '<b>2. Living Arrangement</b>'+
+  '<div style="margin:6px 0 6px 8px;display:grid;grid-template-columns:1fr 1fr;gap:5px 20px;">'+
+    '<div>'+sfcb('dhs390_alone')+' Alone</div>'+
+    '<div>'+sfcb('dhs390_spouse')+' With spouse &nbsp; Disabled? '+sfcb('dhs390_spdy')+' Yes '+sfcb('dhs390_spdn')+' No &nbsp; Working? '+sfcb('dhs390_spwy')+' Yes '+sfcb('dhs390_spwn')+' No<br><span style="margin-left:20px;">Spouse name: '+sfi('dhs390_spname','','Full name','160px')+'</span></div>'+
+    '<div>'+sfcb('dhs390_ch')+' With children under 18 &nbsp; How many? '+sfi('dhs390_chn','','#','40px')+'</div>'+
+    '<div>'+sfcb('dhs390_others')+' With others &nbsp; How many? '+sfi('dhs390_othersn','','#','40px')+'</div>'+
+    '<div>'+sfcb('dhs390_foster')+' Live in adult foster care / home for aged</div>'+
+    '<div>In hospital/nursing home? '+sfcb('dhs390_hospy')+' Yes '+sfcb('dhs390_hospn')+' No</div>'+
+    '<div>Do you have a guardian? '+sfcb('dhs390_guay')+' Yes '+sfcb('dhs390_guan')+' No &nbsp; Name: '+sfi('dhs390_guaname','','Guardian name','150px')+'</div>'+
+    '<div>Caregiver already identified? '+sfcb('dhs390_cgidy')+' Yes '+sfcb('dhs390_cgidn')+' No</div>'+
+  '</div>'+
+'</div>'+
+'<div style="border:1px solid #000;border-top:none;padding:10px;font-size:9pt;">'+
+  'I wish to apply for one of the adult services programs. I certify that the information I have given is correct.'+
+  '<table style="width:100%;margin-top:14px;"><tr>'+
+    '<td style="width:65%;padding-right:20px;"><span class="sf-label">Client Signature</span><div style="border-bottom:1px solid #000;height:28px;margin-top:4px;"></div></td>'+
+    '<td><span class="sf-label">Date</span>'+sfi('dhs390_sigdate',td)+'</td>'+
+  '</tr></table>'+
+'</div>'+
+'<div style="display:flex;justify-content:space-between;font-size:8pt;color:#555;margin-top:8px;"><span>DHS-390 (Rev. 9-25) Previous edition obsolete.</span><span>1</span></div>'+
+'</div>';
+}
+
+/* DHS-4771 */
+function buildDHS4771(prof,cw){
+  var name=activeFormClientName||'';
+  var td=today();
+  return '<div class="sf" style="background:#fff;padding:24px;max-width:720px;margin:0 auto;box-shadow:0 2px 8px rgba(0,0,0,0.1);">'+
+'<div class="sf-title" style="border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:14px;">'+
+  '<h2>DHS-4771, AUTHORIZATION FOR WITHHOLDING OF FICA TAX IN HOME HELP PAYMENTS</h2>'+
+  '<h3>Michigan Department of Health and Human Services (MDHHS)<br>Home Help Section (Revised 9-25)</h3>'+
+'</div>'+
+'<div style="font-size:9.5pt;margin-bottom:16px;padding:0 4px;line-height:1.8;">'+
+  '<b>MDHHS COUNTY OFFICE</b><br>'+
+  sfi('dhs4771_off1','','Address line 1')+'<br>'+
+  sfi('dhs4771_off2','','Address line 2')+'<br>'+
+  sfi('dhs4771_offcity','','City, State ZIP')+
+'</div>'+
+'<table class="sf-table"><tr>'+
+  '<td><span class="sf-label">Client Name</span>'+sfi('dhs4771_cn',name)+'</td>'+
+  '<td><span class="sf-label">Case Number</span>'+sfi('dhs4771_case')+'</td>'+
+  '<td><span class="sf-label">Client ID</span>'+sfi('dhs4771_cid',prof.medicaidId)+'</td>'+
+  '<td><span class="sf-label">County</span>'+sfi('dhs4771_county')+'</td>'+
+'</tr><tr>'+
+  '<td colspan="2"><span class="sf-label">Adult Services Worker (ASW)</span>'+sfi('dhs4771_asw',cw.name||prof.worker)+'</td>'+
+  '<td colspan="2"><span class="sf-label">ASW Telephone Number</span>'+sfi('dhs4771_aswph',cw.phone)+'</td>'+
+'</tr></table>'+
+'<div style="border:1px solid #000;border-top:none;padding:10px;font-size:9pt;line-height:1.65;">'+
+  'Under the provisions of the Federal Social Security Act, it is the responsibility of an employed person and their employer to each pay a certain amount of tax (FICA tax) to the IRS to permit Social Security coverage. Since MDHHS will be making payments on your behalf for the person providing care for you in your home, you are the employer of this individual.<br><br>'+
+  'The Department will pay (without cost to you) the amount of FICA tax for which you are responsible. The amount required by law as the employee\'s part will be withheld from the payment and the combined amounts will be sent to the IRS.<br><br>'+
+  'Sign and date the authorization statement printed below and immediately return it to your local MDHHS office.'+
+'</div>'+
+'<div style="border:1px solid #000;border-top:none;padding:10px;font-size:9pt;">'+
+  '<b>Authorization:</b> I authorize the Michigan Department of Health and Human Services to act as my agent in withholding FICA taxes from the wages being paid on my behalf to the individual who provides Home Help to me in my home. I understand this withholding is without cost to me.'+
+  '<table style="width:100%;margin-top:14px;"><tr>'+
+    '<td style="width:38%;padding-right:10px;"><span class="sf-label">Signature</span><div style="border-bottom:1px solid #000;height:28px;margin-top:4px;"></div></td>'+
+    '<td style="width:30%;padding-right:10px;"><span class="sf-label">Printed Name</span>'+sfi('dhs4771_pname',name)+'</td>'+
+    '<td><span class="sf-label">Date</span>'+sfi('dhs4771_date',td)+'</td>'+
+  '</tr><tr>'+
+    '<td colspan="2" style="padding-top:10px;padding-right:10px;"><span class="sf-label">Address</span>'+sfi('dhs4771_addr')+'</td>'+
+    '<td style="padding-top:10px;"><div style="display:flex;gap:5px;">'+sfi('dhs4771_city','','City')+sfi('dhs4771_st','MI','ST','38px')+sfi('dhs4771_zip','','Zip','80px')+'</div></td>'+
+  '</tr></table>'+
+'</div>'+
+'<div style="border:1px solid #000;border-top:none;padding:8px;font-size:8.5pt;background:#f9f9f9;">'+
+  'The Michigan Department of Health and Human Services (MDHHS) does not discriminate against any individual or group on the basis of race, national origin, color, sex, disability, religion, age, height, weight, familial status, partisan considerations, or genetic information.<br>'+
+  '<b>AUTHORITY:</b> P.A. 280 of 1939 &nbsp; <b>COMPLETION:</b> Required &nbsp; <b>PENALTY:</b> Services may not be approved.'+
+'</div>'+
+'<div style="display:flex;justify-content:space-between;font-size:8pt;color:#555;margin-top:8px;"><span>DHS-4771 (Rev. 9-25) Previous edition obsolete.</span><span>1</span></div>'+
+'</div>';
+}
+
+/* MDHHS-6200 */
+function buildMDHHS6200(prof,cw){
+  var name=activeFormClientName||'';
+  var td=today();
+  var adls=['Bathing','Dressing','Eating','Grooming','Mobility','Toileting','Transferring','Housework','Laundry','Medication','Meal Preparation','Shopping for Foods/Meds'];
+  var complex=['Bowel Program','Catheters or Leg Bags','Colostomy Care','Eating/Feeding Assistance','Peritoneal Dialysis','Range of Motion Exercises','Specialized Skin Care','Suctioning','Wound Care','Other'];
+  return '<div class="sf" style="background:#fff;padding:24px;max-width:760px;margin:0 auto;box-shadow:0 2px 8px rgba(0,0,0,0.1);">'+
+'<div class="sf-title"><h2>STATE OF MICHIGAN</h2><h3>Department of Health and Human Services</h3><br><h2>ADULT SERVICES MEDICAL NEEDS CERTIFICATION</h2><div style="font-size:9pt;">(New 9-25)</div></div>'+
+'<div class="sf-instruct"><b>INSTRUCTIONS:</b> To be completed by a physician (M.D. or D.O.), physician assistant, nurse practitioner, occupational therapist, physical therapist, or clinical nurse specialist.<br><br>'+
+'<b>Note to medical provider:</b> This form must be completed, signed, and dated by an enrolled Medicaid provider who holds one of the professional licenses listed above.</div>'+
+'<div class="sf-section">SECTION 1 – To be filled out with Patient Information</div>'+
+'<table class="sf-table"><tr>'+
+  '<td style="width:60%"><span class="sf-label">Patient\'s Name</span>'+sfi('m62_pname',name)+'</td>'+
+  '<td><span class="sf-label">Patient\'s Birth Date</span>'+sfi('m62_dob')+'</td>'+
+'</tr><tr>'+
+  '<td colspan="2" style="font-size:9pt;padding:6px 8px;">You are hereby authorized to release the information requested below to the Michigan Department of Health and Human Services.</td>'+
+'</tr><tr>'+
+  '<td colspan="2">'+
+    '<div style="display:grid;grid-template-columns:2fr 2fr 1fr;">'+
+      '<div style="padding:4px 8px;border-right:1px solid #ccc;"><span class="sf-label">Patient\'s or Representative\'s Signature</span><div style="border-bottom:1px solid #000;height:26px;margin-top:4px;"></div></div>'+
+      '<div style="padding:4px 8px;border-right:1px solid #ccc;"><span class="sf-label">Printed Name</span>'+sfi('m62_sigpname',name)+'</div>'+
+      '<div style="padding:4px 8px;"><span class="sf-label">Signature Date</span>'+sfi('m62_sigdate',td)+'</div>'+
+    '</div>'+
+  '</td>'+
+'</tr></table>'+
+'<div class="sf-section">SECTION 2 – FOR DEPARTMENTAL USE ONLY</div>'+
+'<table class="sf-table"><tr>'+
+  '<td><span class="sf-label">1. Case Name</span>'+sfi('m62_cname',name)+'</td>'+
+  '<td><span class="sf-label">2. Log Number</span>'+sfi('m62_log')+'</td>'+
+  '<td><span class="sf-label">3. Recipient ID Number</span>'+sfi('m62_rid',prof.medicaidId)+'</td>'+
+'</tr><tr>'+
+  '<td><span class="sf-label">4. Adult Services Worker Name</span>'+sfi('m62_wname',cw.name||prof.worker)+'</td>'+
+  '<td><span class="sf-label">5. Worker Email Address</span>'+sfi('m62_wemail',cw.email||prof.agentEmail)+'</td>'+
+  '<td><span class="sf-label">6. Worker Phone Number</span>'+sfi('m62_wphone',cw.phone)+'</td>'+
+'</tr><tr>'+
+  '<td><span class="sf-label">7. County</span>'+sfi('m62_county')+'</td>'+
+  '<td colspan="2"><span class="sf-label">8. Return Fax Number</span>'+sfi('m62_fax')+'</td>'+
+'</tr></table>'+
+'<div class="sf-section">SECTION 3 – Medical Provider to fill out</div>'+
+'<table class="sf-table">'+
+  '<tr><td colspan="2"><span class="sf-label">A &nbsp; Date Patient Last Seen</span>'+sfi('m62_lastseen')+'</td></tr>'+
+  '<tr><td colspan="2"><span class="sf-label">B &nbsp; Diagnosis(es) or ICD Code(s)</span><textarea id="m62_diag" rows="2" style="width:100%;border:none;background:transparent;font-family:Times New Roman,Times,serif;font-size:9.5pt;outline:none;resize:vertical;"></textarea></td></tr>'+
+  '<tr><td colspan="2"><b>C &nbsp; Is the condition chronic and ongoing?</b> &nbsp; '+sfcb('m62_chry')+' Yes &nbsp; '+sfcb('m62_chrn')+' No<br><b>D &nbsp; If No, when will it be resolved?</b> &nbsp; '+sfi('m62_resolved')+'</td></tr>'+
+  '<tr><td colspan="2"><b>E &nbsp; Is the patient nonambulatory?</b> &nbsp; '+sfcb('m62_noamby')+' Yes &nbsp; '+sfcb('m62_noambn')+' No<br>If yes, explain: '+sfi('m62_noambexp')+'</td></tr>'+
+  '<tr><td colspan="2"><b>F &nbsp; Does the patient use or need adaptive equipment?</b> &nbsp; '+sfcb('m62_equy')+' Yes &nbsp; '+sfcb('m62_equn')+' No<br>Details: '+sfi('m62_equdet')+'</td></tr>'+
+  '<tr><td colspan="2"><b>G &nbsp; Do you certify the patient has a medical need for assistance with personal care?</b> &nbsp; '+sfcb('m62_certy')+' Yes &nbsp; '+sfcb('m62_certn')+' No</td></tr>'+
+  '<tr><td colspan="2">'+
+    '<b>H &nbsp; Activities of Daily Living (ADL / IADL):</b>'+
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px 12px;margin:6px 0 8px 6px;">'+
+      adls.map(function(a,i){return '<div>'+sfcb('m62_adl'+i)+' '+a+'</div>';}).join('')+
+    '</div>'+
+    '<b>Complex Care:</b>'+
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px 12px;margin:6px 0 4px 6px;">'+
+      complex.map(function(a,i){return '<div>'+sfcb('m62_cx'+i)+' '+a+'</div>';}).join('')+
+    '</div>'+
+  '</td></tr>'+
+  '<tr><td colspan="2"><b>I &nbsp; Is patient\'s spouse/parent physically unable to provide care?</b> &nbsp; '+sfcb('m62_spy')+' Yes &nbsp; '+sfcb('m62_spn')+' No<br>If yes, explain: '+sfi('m62_spexp')+'</td></tr>'+
+  '<tr><td colspan="2"><span class="sf-label">J &nbsp; Any additional information</span><textarea id="m62_addl" rows="2" style="width:100%;border:none;background:transparent;font-family:Times New Roman,Times,serif;font-size:9.5pt;outline:none;resize:vertical;"></textarea></td></tr>'+
+'</table>'+
+'<div class="sf-section">SECTION 4</div>'+
+'<table class="sf-table">'+
+  '<tr><td colspan="3"><span class="sf-label">National Provider Identifier (NPI) Number (individual\'s NPI, not group)</span>'+sfi('m62_npi')+'</td></tr>'+
+  '<tr><td colspan="3"><b>Are you a Medicaid enrolled provider?</b> &nbsp; '+sfcb('m62_medy')+' Yes &nbsp; '+sfcb('m62_medn')+' No &nbsp;&nbsp; <span class="sf-label" style="display:inline;">Medicaid Provider ID:</span> '+sfi('m62_provid','','Provider ID','180px')+'</td></tr>'+
+  '<tr><td colspan="2"><span class="sf-label">Name and Title (Print or type)</span>'+sfi('m62_provname')+'</td><td><span class="sf-label">Telephone Number</span>'+sfi('m62_provphone')+'</td></tr>'+
+  '<tr><td colspan="2"><span class="sf-label">Medicaid Enrolled Provider Signature</span><div style="border-bottom:1px solid #000;height:28px;margin-top:4px;"></div></td><td><span class="sf-label">Signature Date</span>'+sfi('m62_provdate',td)+'</td></tr>'+
+'</table>'+
+'<div style="border:1px solid #000;border-top:none;padding:8px;font-size:8.5pt;background:#f9f9f9;">'+
+  'The Michigan Department of Health and Human Services (MDHHS) does not discriminate against any individual or group on the basis of race, national origin, color, sex, disability, religion, age, height, weight, familial status, partisan considerations, or genetic information.<br>'+
+  '<b>AUTHORITY:</b> Federal 45 CFR 233.20, 440.10, 440.20 &nbsp; <b>COMPLETION:</b> Voluntary &nbsp; <b>PENALTY:</b> Benefits may be affected.'+
+'</div>'+
+'<div style="display:flex;justify-content:space-between;font-size:8pt;color:#555;margin-top:8px;"><span>MDHHS-6200 (New 9-25)</span></div>'+
+'</div>';
+}
+
+/* MSA-4676 */
+function buildMSA4676(prof,cw){
+  var name=activeFormClientName||'';
+  var td=today();
+  return '<div class="sf" style="background:#fff;padding:24px;max-width:760px;margin:0 auto;box-shadow:0 2px 8px rgba(0,0,0,0.1);">'+
+'<div style="display:grid;grid-template-columns:1fr auto;border:2px solid #000;">'+
+  '<div style="padding:10px 12px;border-right:1px solid #000;">'+
+    '<div style="font-size:13pt;font-weight:bold;">HOME HELP SERVICES AGREEMENT</div>'+
+    '<div style="font-size:9pt;margin-top:3px;">Michigan Department of Health and Human Services</div>'+
+  '</div>'+
+  '<div style="padding:8px 12px;font-size:9pt;min-width:220px;line-height:1.9;">'+
+    '<span class="sf-label" style="display:inline;">Case Log Number:</span> '+sfi('msa_log','','','140px')+'<br>'+
+    '<span class="sf-label" style="display:inline;">Local MDHHS Office:</span> '+sfi('msa_office','','','140px')+'<br>'+
+    '<span class="sf-label" style="display:inline;">Adult Services Worker:</span> '+sfi('msa_asw',cw.name||prof.worker,'','140px')+'<br>'+
+    '<span class="sf-label" style="display:inline;">ASW Phone Number:</span> '+sfi('msa_aswph',cw.phone,'','140px')+
+  '</div>'+
+'</div>'+
+'<div style="border:1px solid #000;border-top:none;padding:6px 8px;font-size:8.5pt;font-style:italic;"><b>See Page 1 for Instructions and the Purpose of this form.</b></div>'+
+'<div class="sf-section">SECTION 1 - Beneficiary Information</div>'+
+'<table class="sf-table"><tr>'+
+  '<td style="width:55%"><span class="sf-label">Beneficiary Name</span>'+sfi('msa_bname',name)+'</td>'+
+  '<td><span class="sf-label">Medicaid ID Number</span>'+sfi('msa_mid',prof.medicaidId)+'</td>'+
+'</tr><tr>'+
+  '<td><span class="sf-label">Beneficiary Address (number and street, apartment/lot number)</span>'+sfi('msa_baddr')+'</td>'+
+  '<td><span class="sf-label">Date of Birth</span>'+sfi('msa_dob')+'</td>'+
+'</tr><tr>'+
+  '<td><div style="display:grid;grid-template-columns:2fr 0.7fr 1fr;gap:4px;"><div><span class="sf-label">City</span>'+sfi('msa_bcity')+'</div><div><span class="sf-label">State</span>'+sfi('msa_bstate','MI')+'</div><div><span class="sf-label">ZIP Code</span>'+sfi('msa_bzip')+'</div></div></td>'+
+  '<td><span class="sf-label">Telephone (Area Code and Number)</span>'+sfi('msa_bphone',prof.phone)+'</td>'+
+'</tr></table>'+
+'<div class="sf-section">SECTION 2 - Home Help Individual Caregiver or Agency Provider Information</div>'+
+'<table class="sf-table"><tr>'+
+  '<td style="width:55%"><span class="sf-label">Individual Caregiver or Agency Provider Name</span>'+sfi('msa_cgname','Liberty Home Care Assistance')+'</td>'+
+  '<td><span class="sf-label">Provider ID Number</span>'+sfi('msa_provid','6221933')+'</td>'+
+'</tr><tr>'+
+  '<td><span class="sf-label">Address (number and street, apartment/lot number)</span>'+sfi('msa_cgaddr')+'</td>'+
+  '<td><span class="sf-label">Telephone (Area Code and Number)</span>'+sfi('msa_cgphone','(248) 291-4106')+'</td>'+
+'</tr><tr>'+
+  '<td><div style="display:grid;grid-template-columns:2fr 0.7fr 1fr;gap:4px;"><div><span class="sf-label">City</span>'+sfi('msa_cgcity')+'</div><div><span class="sf-label">State</span>'+sfi('msa_cgstate','MI')+'</div><div><span class="sf-label">ZIP Code</span>'+sfi('msa_cgzip')+'</div></div></td>'+
+  '<td><span class="sf-label">Verification of Photo ID made by</span>'+sfi('msa_photoid')+'</td>'+
+'</tr><tr>'+
+  '<td colspan="2"><span class="sf-label">If related to the beneficiary, state relationship</span>'+sfi('msa_relation')+'</td>'+
+'</tr></table>'+
+'<div class="sf-section">SECTION 3 – Home Help Services Schedule</div>'+
+'<div style="border:1px solid #000;border-top:none;padding:10px;font-size:9pt;"><ul style="margin:0 0 8px 16px;line-height:1.7;">'+
+  '<li>Approved services are displayed in the provider\'s approved Time and Task schedule.</li>'+
+  '<li>Total hours per month include travel time for shopping and laundry.</li>'+
+  '<li>Total time billed must not exceed the provider\'s approved Time and Task schedule for the billing period.</li>'+
+  '<li>Authorized payments will not include billed time in excess of the approved amount.</li>'+
+'</ul><b>Start Date of Service:</b> '+sfi('msa_start','','MM/DD/YYYY','160px')+'</div>'+
+'<div class="sf-section">SECTION 4 – Terms of Beneficiary and Individual Caregiver/Agency Provider Agreement</div>'+
+'<div style="border:1px solid #000;border-top:none;padding:10px;font-size:8.5pt;line-height:1.55;">'+
+  'By my signature below, I agree to the following agreement terms and understand:'+
+  '<ul style="margin:6px 0 0 14px;">'+
+    '<li>The <b>individual caregiver</b> is an employee of, and provides Home Help services to, the above-named beneficiary who has the right to hire and fire the individual caregiver. Serving as a Home Help individual caregiver does NOT make the individual caregiver an employee or subcontractor of MDHHS or the State of Michigan.</li>'+
+    '<li>The <b>agency provider</b> renders Home Help services to the above-named beneficiary, who has the right to terminate services with the agency provider at any time.</li>'+
+    '<li>The individual caregiver/agency provider must comply with privacy, security, and confidentiality provisions of all applicable laws governing the use and disclosure of protected health information (PHI).</li>'+
+    '<li>If the individual caregiver/agency provider is paid for services not provided, they must repay the State of Michigan.</li>'+
+    '<li>The agency provider must submit a monthly invoice with a record of services provided before payment is released. Records must be retained for seven years from the date of service.</li>'+
+    '<li>The Home Help program is funded by Medicaid. Payments will not be approved if the beneficiary\'s Medicaid eligibility is inactive.</li>'+
+    '<li>Any changes, including beneficiary hospitalizations, nursing facility admission, address change, or discontinuation of services, must be reported to the MDHHS Adult Services Worker within 10 business days.</li>'+
+  '</ul>'+
+'</div>'+
+'<div style="border:1px solid #000;border-top:none;padding:12px 10px;">'+
+  '<table style="width:100%;"><tr>'+
+    '<td style="width:65%;padding-right:20px;"><span class="sf-label">Individual Caregiver Employee or Agency Provider</span><div style="border-bottom:1px solid #000;height:28px;margin-top:4px;"></div></td>'+
+    '<td><span class="sf-label">Date Signed</span>'+sfi('msa_cgdate',td)+'</td>'+
+  '</tr><tr style="height:12px;"><td></td><td></td></tr><tr>'+
+    '<td style="padding-right:20px;"><span class="sf-label">Beneficiary / Employer (Guardian when applicable)</span><div style="border-bottom:1px solid #000;height:28px;margin-top:4px;"></div></td>'+
+    '<td><span class="sf-label">Date Signed</span>'+sfi('msa_bdate',td)+'</td>'+
+  '</tr></table>'+
+'</div>'+
+'<div style="display:flex;justify-content:space-between;font-size:8pt;color:#555;margin-top:8px;"><span>MSA-4676 (11/19) Previous edition may be used.</span></div>'+
+'</div>';
+}
+
+// ============================================================
+//  SESSION 3 — MONTHLY INVOICE EMAILS
+// ============================================================
+function openMonthlyInvModal(){
+  var modal=document.getElementById('monthlyInvModal');if(!modal)return;
+  modal.classList.add('open');
+  // Default to previous month
+  var d=new Date();d.setMonth(d.getMonth()-1);
+  var m=String(d.getMonth()+1).padStart(2,'0'),y=d.getFullYear();
+  var inp=document.getElementById('monthlyInvPeriod');
+  if(inp&&!inp.value)inp.value=m+'/'+y;
+  document.getElementById('monthlyInvResults').innerHTML='<div style="color:#8ca0b4;font-size:13px;text-align:center;padding:24px 0;">Enter a billing period and click <b>Preview</b> to see caseworker email groups.</div>';
+}
+function closeMonthlyInvModal(){
+  var modal=document.getElementById('monthlyInvModal');if(modal)modal.classList.remove('open');
+}
+function previewMonthlyInvoices(){
+  var period=(document.getElementById('monthlyInvPeriod').value||'').trim();
+  if(!period||period.length<7){alert('Enter a billing period in MM/YYYY format.');return;}
+  var profiles=getProfiles();
+  var cws=getCaseworkers();
+  // Group ALL active clients by worker name
+  var groups={};
+  Object.keys(profiles).forEach(function(name){
+    var prof=profiles[name];
+    if(prof.status==='inactive'||prof.status==='terminated'||prof.status==='lost')return;
+    var wname=(prof.worker||'').trim()||'(No Worker Assigned)';
+    if(!groups[wname])groups[wname]={clients:[]};
+    var cwRec=cws.find(function(c){return (c.name||'').toLowerCase()===wname.toLowerCase();})||{};
+    var email=cwRec.email||prof.agentEmail||'';
+    groups[wname].email=groups[wname].email||email;
+    groups[wname].cwName=wname;
+    var inv=(prof.invoices||[]).find(function(i){return i.billingPeriod===period;})||null;
+    groups[wname].clients.push({name:name,prof:prof,inv:inv});
+  });
+  var workerNames=Object.keys(groups).sort();
+  if(!workerNames.length){
+    document.getElementById('monthlyInvResults').innerHTML='<div style="color:#8ca0b4;font-size:13px;text-align:center;padding:20px;">No active clients found.</div>';
+    return;
+  }
+  var html='<div style="font-size:12px;color:#6b8dae;margin-bottom:14px;">'+
+    '<b>'+workerNames.length+'</b> caseworker group'+(workerNames.length!==1?'s':'')+' found for billing period <b>'+esc(period)+'</b>. '+
+    'Click <b>Send Email</b> to open your mail app with all clients pre-listed.'+
+  '</div>';
+  workerNames.forEach(function(wname){
+    var g=groups[wname];
+    var email=g.email||'';
+    var hasInv=g.clients.filter(function(c){return c.inv;}).length;
+    var missingInv=g.clients.length-hasInv;
+    html+='<div class="cw-email-card">';
+    // Header row
+    html+='<div class="cw-email-hdr">';
+    html+='<div style="width:34px;height:34px;border-radius:50%;background:#e8f0f9;color:#185FA5;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">'+
+      esc((wname.split(' ').map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase()||'?'))+
+    '</div>';
+    html+='<div><div class="cw-email-name">'+esc(wname)+'</div>';
+    if(email)html+='<div style="font-size:11px;color:#6b8dae;">'+esc(email)+'</div>';
+    html+='</div>';
+    html+='<div style="flex:1;"></div>';
+    if(missingInv>0)html+='<span style="font-size:11px;color:#c07000;font-weight:600;margin-right:8px;">&#9888; '+missingInv+' missing invoice'+(missingInv>1?'s':'')+'</span>';
+    if(email){
+      var clientsJson=JSON.stringify(g.clients.map(function(c){return {name:c.name,medicaidId:c.prof.medicaidId||'',invStatus:c.inv?(c.inv.status||'draft'):'none'};}));
+      html+='<button class="btn btn-primary btn-sm" style="white-space:nowrap;" onclick=\'sendMonthlyEmail('+JSON.stringify(email)+','+JSON.stringify(wname)+','+clientsJson+','+JSON.stringify(period)+')\'>&#9993; Send Email</button>';
+    } else {
+      html+='<span style="font-size:11px;color:#b03030;font-style:italic;margin-right:8px;">No email on file</span>';
+      html+='<button class="btn btn-secondary btn-sm" onclick="closeMonthlyInvModal();navCaseworkers()">Add Email</button>';
+    }
+    html+='</div>';
+    // Client list
+    html+='<div class="cw-client-list">';
+    g.clients.forEach(function(c){
+      var st=c.inv?(c.inv.status||'draft'):'none';
+      var stColor=st==='paid'?'#1e7e34':st==='submitted'?'#1565a0':st==='none'?'#b03030':'#888';
+      var stLabel=st==='none'?'&#9888; No invoice':st.charAt(0).toUpperCase()+st.slice(1);
+      html+='<div class="cw-client-row">'+
+        '<span style="flex:1;font-weight:500;color:#1a2b45;">'+esc(c.name)+'</span>'+
+        (c.prof.medicaidId?'<span style="color:#8ca0b4;font-size:11px;margin-right:8px;">ID: '+esc(c.prof.medicaidId)+'</span>':'')+
+        '<span style="font-size:11px;font-weight:600;color:'+stColor+';min-width:90px;text-align:right;">'+stLabel+'</span>'+
+      '</div>';
+    });
+    html+='</div>';
+    html+='</div>';
+  });
+  document.getElementById('monthlyInvResults').innerHTML=html;
+}
+async function sendMonthlyEmail(email,workerName,clients,period){
+  if(!spToken){
+    if(confirm('Sign in with your Microsoft account to send emails?\n\nClicking OK will redirect you to sign in.')){signIn();}
+    return;
+  }
+  // Filter to clients that have an invoice for this period
+  var profiles=getProfiles();
+  var withInv=clients.filter(function(c){return c.invStatus&&c.invStatus!=='none';});
+  if(!withInv.length){alert('No completed invoices found for '+workerName+' in '+period+'.\nFill out the invoices first, then send.');return;}
+
+  // Show progress
+  var po=document.getElementById('monthlyProgressOverlay');
+  var pb=document.getElementById('monthlyProgressBar');
+  var pl=document.getElementById('monthlyProgressLabel');
+  var ps=document.getElementById('monthlyProgressSub');
+  if(po)po.classList.add('open');
+  if(ps)ps.textContent='Generating PDFs for '+withInv.length+' client'+(withInv.length>1?'s':'')+'…';
+
+  // Save current invoice page state to restore later
+  var savedPage=document.querySelector('.page.active');
+  var savedActive=savedPage?savedPage.id:'page-home';
+  var invPage=document.getElementById('page-invoice');
+  // Make invoice page off-screen but renderable
+  invPage.classList.add('active');
+  invPage.style.position='fixed';invPage.style.left='-9999px';invPage.style.top='0';invPage.style.zIndex='-1';
+
+  var attachments=[];
+  for(var i=0;i<withInv.length;i++){
+    var c=withInv[i];
+    if(pb)pb.style.width=Math.round(((i)/withInv.length)*100)+'%';
+    if(pl)pl.textContent='Processing: '+c.name+' ('+(i+1)+' of '+withInv.length+')';
+    var prof=profiles[c.name]||{};
+    var inv=(prof.invoices||[]).find(function(inv2){return inv2.billingPeriod===period;})||{};
+    await loadInvoiceForCapture(c.name,inv,period);
+    try{
+      var base64=await captureInvoicePDF();
+      var fname=c.name.replace(/[^a-z0-9]/gi,'_')+'_'+period.replace('/','_')+'.pdf';
+      attachments.push({name:fname,base64:base64,clientName:c.name});
+    }catch(e){console.error('PDF capture failed for '+c.name,e);}
+  }
+
+  // Restore page state
+  invPage.classList.remove('active');
+  invPage.style.position='';invPage.style.left='';invPage.style.top='';invPage.style.zIndex='';
+  document.querySelectorAll('.page').forEach(function(el){el.classList.remove('active');});
+  var restorePage=document.getElementById(savedActive);
+  if(restorePage)restorePage.classList.add('active');
+
+  if(pb)pb.style.width='100%';
+  if(pl)pl.textContent='Sending email to '+workerName+'…';
+
+  if(!attachments.length){
+    if(po)po.classList.remove('open');
+    alert('No PDFs could be generated. Please check the console for errors.');return;
+  }
+
+  var workerDisplay=workerName&&workerName!=='(No Worker Assigned)'?workerName:'Adult Services Worker';
+  var subj='Home Help Agency Invoices — '+period;
+  var body='<p>Dear '+workerDisplay+',</p>'+
+    '<p>Please find attached the Home Help Agency Invoice'+(attachments.length>1?'s':'')+' for the billing period <b>'+period+'</b>.</p>'+
+    '<p><b>Client'+(attachments.length>1?'s':'')+' included:</b></p><ul>'+
+    attachments.map(function(a){var c2=clients.find(function(x){return x.name===a.clientName;})||{};return '<li>'+a.clientName+(c2.medicaidId?' (Medicaid ID: '+c2.medicaidId+')':'')+'</li>';}).join('')+
+    '</ul><p>Please review and process at your earliest convenience.</p>'+
+    '<p>Thank you,<br><b>Thomas Jaboro</b><br>Liberty Home Care Assistance<br>(248) 291-4106</p>';
+
+  var result=await sendMailWithPDF(email,subj,body,attachments);
+  if(po)po.classList.remove('open');
+
+  if(result.ok){
+    // Mark all sent invoices as submitted
+    attachments.forEach(function(a){markInvoiceSubmitted(a.clientName,period);});
+    closeMonthlyInvModal();
+    updateStats();
+    showToast('✓ '+attachments.length+' invoice'+(attachments.length>1?'s':'')+' emailed to '+workerDisplay+' — status set to Submitted',5000);
+    // Refresh the modal results if re-opened
+  }else{
+    var msg2='Email failed to send.';
+    if(result.status===401)msg2='Authentication error (401) — please sign out and sign back in.';
+    else if(result.status===403)msg2='Permission denied (403) — sign out, sign back in, and accept the Mail.Send permission when prompted.';
+    else if(result.err)msg2='Error ('+(result.status||'?')+'):\n'+result.err.slice(0,300);
+    alert(msg2);
+  }
+}
 </script>
+
+<!-- TOAST -->
+<div class="lhca-toast" id="lhcaToast"></div>
+
+<!-- PDF PROGRESS OVERLAY -->
+<div class="progress-overlay" id="monthlyProgressOverlay">
+  <div class="progress-box">
+    <div class="progress-title">&#128229; Sending Monthly Invoices</div>
+    <div class="progress-sub" id="monthlyProgressSub">Generating PDFs…</div>
+    <div class="progress-bar-wrap"><div class="progress-bar-fill" id="monthlyProgressBar" style="width:0%"></div></div>
+    <div class="progress-label" id="monthlyProgressLabel">Starting…</div>
+  </div>
+</div>
+
+<!-- MONTHLY INVOICE EMAIL MODAL -->
+<div class="monthly-inv-modal" id="monthlyInvModal">
+  <div class="monthly-inv-box">
+    <div class="monthly-inv-header">
+      <div>
+        <div style="font-size:16px;font-weight:700;color:#1a2b45;">&#128140; Send Monthly Invoices</div>
+        <div style="font-size:12px;color:#6b8dae;margin-top:3px;">Group and email invoices to each caseworker — one email per worker with all their clients</div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="closeMonthlyInvModal()" style="margin-left:16px;flex-shrink:0;">&#10005; Close</button>
+    </div>
+    <div class="monthly-inv-body">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid #f0f3f7;flex-wrap:wrap;">
+        <label style="font-size:13px;font-weight:600;color:#1a2b45;white-space:nowrap;">Billing Period:</label>
+        <input id="monthlyInvPeriod" type="text" placeholder="MM/YYYY" maxlength="7"
+          style="padding:6px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;width:110px;"
+          onkeydown="if(event.key==='Enter')previewMonthlyInvoices()">
+        <button class="btn btn-primary btn-sm" onclick="previewMonthlyInvoices()">Preview</button>
+        <span style="font-size:11px;color:#8ca0b4;">e.g. <b>04/2026</b> for April 2026 — sends on May 1st or 2nd</span>
+      </div>
+      <div id="monthlyInvResults"></div>
+    </div>
+  </div>
+</div>
 </body>
 </html>
