@@ -3541,10 +3541,12 @@ function updateAuthUI(on) {
   var wallMsg = document.getElementById('loginWallMsg');
   var wallBtn = document.getElementById('loginWallBtn');
   if (on) {
-    // Authenticated — hide wall, show app
+    // Authenticated — hide wall, show app, start inactivity timer
     if (wall) wall.style.display = 'none';
+    resetSessionTimer();
   } else {
-    // Not authenticated — clear PHI, show wall
+    // Not authenticated — stop timer, clear PHI, show wall
+    clearTimeout(_sessionTimer); clearTimeout(_sessionWarnTimer);
     clearPHIFromStorage();
     if (wall) wall.style.display = 'flex';
     if (wallMsg) wallMsg.textContent = 'Sign in with your Microsoft account to access client data.';
@@ -3851,6 +3853,32 @@ document.addEventListener('keydown',function(e){
 });
 window.addEventListener('beforeunload',function(e){
   if(unsavedChanges){e.preventDefault();e.returnValue='';}
+});
+
+// ============================================================
+//  AUTO SESSION TIMEOUT (HIPAA — 15 min inactivity)
+// ============================================================
+var SESSION_TIMEOUT_MS  = 15 * 60 * 1000; // sign out after 15 min idle
+var SESSION_WARN_MS     = 13 * 60 * 1000; // warn at 13 min
+var _sessionTimer, _sessionWarnTimer;
+
+function resetSessionTimer(){
+  clearTimeout(_sessionTimer);
+  clearTimeout(_sessionWarnTimer);
+  if(!spToken) return; // only enforce when signed in
+  _sessionWarnTimer = setTimeout(function(){
+    showToast('⚠️ Session expiring in 2 minutes due to inactivity. Click anywhere to stay signed in.', 9000);
+  }, SESSION_WARN_MS);
+  _sessionTimer = setTimeout(function(){
+    clearPHIFromStorage();
+    spToken = null;
+    updateAuthUI(false);
+    showToast('Signed out automatically due to inactivity.', 5000);
+  }, SESSION_TIMEOUT_MS);
+}
+// Restart timer on any user interaction
+['mousemove','mousedown','keydown','touchstart','scroll','click'].forEach(function(ev){
+  document.addEventListener(ev, resetSessionTimer, {passive:true});
 });
 
 // ============================================================
