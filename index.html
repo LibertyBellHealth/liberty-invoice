@@ -3,6 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <title>Liberty Home Care — Client Manager</title>
+<!-- ── Azure Application Insights — server-side audit logging ── -->
+<script type="text/javascript">
+!function(T,l,y){var S=T.location,k="script",D="instrumentationKey",C="ingestionendpoint",I="disableExceptionTracking",E="ai.device.",b="toLowerCase",w="crossOriginFailed",N="hi.device.",O="name",L="path",P="user",q="id",H="url",B="ingestionendpoint",F=function(e){var a=e.getAttribute;return a?a.call(e,"type"):""},j=function(){var e=document.getElementsByTagName(k);return e.length>0?e[e.length-1]:null},R=function(e){var a,t=e&&e.getAttribute;if(t&&(a=t.call(e,"data-website-id"))){return a}return null},A=function(e){return"function"==typeof e},s=function(e,a){return e[a]||{}},f=function(){return T[y.dle||"appInsights"]||{trackException:function(){},trackEvent:function(){},trackPageView:function(){},setAuthenticatedUserContext:function(){},clearAuthenticatedUserContext:function(){}}},G=function(){return T[y.dle||"appInsights"]},V=function(){},U=T,r=[];function g(e,a){r.push(arguments)}U[y.dle||"appInsights"]={queue:r,version:2};var h=document,m=h.createElement(k);m.src="https://js.monitor.azure.com/scripts/b/ai.2.min.js";m.crossOrigin="anonymous";var p=j();p?p.parentNode.insertBefore(m,p):h.getElementsByTagName("head")[0].appendChild(m);T[y.dle||"appInsights"]=function(e,a){for(var t=0;t<r.length;t++)r[t].apply(null,arguments);r=[]};}(window,document,{
+  instrumentationKey:"5521b7a7-3097-4437-9d50-9b48d102ba6f"
+});
+// Helper: track HIPAA-relevant events with signed-in user context
+function aiTrack(name, props){
+  try{
+    var ai=window.appInsights;
+    if(ai&&ai.trackEvent){ai.trackEvent({name:name},{user:window._aiUser||'unknown',...(props||{})});}
+  }catch(e){}
+}
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f7;display:flex;min-height:100vh;}
@@ -3518,6 +3531,9 @@ function initMSAL() {
         if (!ALLOWED_USERS.map(function(u){return u.toLowerCase();}).includes(email)) {
           msalInstance.logoutRedirect(); return;
         }
+        window._aiUser = email;
+        if(window.appInsights&&window.appInsights.setAuthenticatedUserContext)window.appInsights.setAuthenticatedUserContext(email);
+        aiTrack('UserSignIn',{method:'redirect'});
         spToken = r.accessToken; updateAuthUI(true); loadProfilesAPI(); return;
       }
       var acc = msalInstance.getAllAccounts();
@@ -3526,10 +3542,12 @@ function initMSAL() {
         if (!ALLOWED_USERS.map(function(u){return u.toLowerCase();}).includes(email2)) {
           msalInstance.logoutRedirect(); return;
         }
+        window._aiUser = email2;
+        if(window.appInsights&&window.appInsights.setAuthenticatedUserContext)window.appInsights.setAuthenticatedUserContext(email2);
         msalInstance.acquireTokenSilent({
           scopes: ['openid', 'profile', 'https://graph.microsoft.com/Mail.Send'],
           account: acc[0], redirectUri: REDIRECT_URI,
-        }).then(function (r2) { spToken = r2.accessToken; updateAuthUI(true); loadProfilesAPI(); })
+        }).then(function (r2) { spToken = r2.accessToken; aiTrack('UserSignIn',{method:'silent'}); updateAuthUI(true); loadProfilesAPI(); })
           .catch(function () { updateAuthUI(false); });
       } else { updateAuthUI(false); }
     }).catch(function () { updateAuthUI(false); });
@@ -3550,6 +3568,7 @@ function clearPHIFromStorage() {
     .forEach(function(k){try{localStorage.removeItem(k);}catch(e){}});
 }
 function signOut() {
+  aiTrack('UserSignOut');
   clearPHIFromStorage();
   spToken = null;
   msalInstance.logoutPopup({ redirectUri: REDIRECT_URI });
@@ -3888,6 +3907,7 @@ function resetSessionTimer(){
     showToast('⚠️ Session expiring in 2 minutes due to inactivity. Click anywhere to stay signed in.', 9000);
   }, SESSION_WARN_MS);
   _sessionTimer = setTimeout(function(){
+    aiTrack('SessionTimeout',{reason:'inactivity'});
     clearPHIFromStorage();
     spToken = null;
     updateAuthUI(false);
