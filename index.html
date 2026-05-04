@@ -505,6 +505,14 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 </head>
 <body>
 
+<!-- ===== LOGIN WALL (shown until MSAL confirms authenticated) ===== -->
+<div id="loginWall" style="position:fixed;inset:0;z-index:99999;background:#1a2b45;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;">
+  <div style="color:#fff;font-size:22px;font-weight:700;letter-spacing:0.5px;">Liberty Home Care</div>
+  <div style="color:#8ca0b4;font-size:14px;">Client Manager</div>
+  <div id="loginWallMsg" style="color:#8ca0b4;font-size:13px;margin-top:8px;">Verifying authentication…</div>
+  <button id="loginWallBtn" onclick="signIn()" style="display:none;margin-top:8px;padding:10px 28px;background:#185FA5;color:#fff;border:none;border-radius:6px;font-size:15px;font-weight:600;cursor:pointer;">Sign In with Microsoft</button>
+</div>
+
 <!-- ===== SIDEBAR ===== -->
 <div id="sidebar">
   <div class="sb-logo">
@@ -525,7 +533,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
   <div class="sb-section">Clients</div>
   <div class="sb-clients" id="sbClientList"></div>
   <div class="sb-footer">
-    <div id="authStatus">Not signed in — local only</div>
+    <div id="authStatus">Not signed in</div>
     <div class="last-synced" id="lastSyncedLabel"></div>
     <button class="sb-auth-btn" id="authBtn" onclick="signIn()">Sign In (Microsoft)</button>
   </div>
@@ -2374,7 +2382,7 @@ function openAddSigModal(){document.getElementById('sigLabel').value='';document
 function updateSettingsAuth(){
   var s=document.getElementById('settingsAuthStatus'),b=document.getElementById('settingsAuthBtn');
   if(spToken){if(s){s.textContent='✓ Signed in — Azure SQL sync & email active';s.style.color='#1e7e34';}if(b){b.textContent='Sign Out';b.onclick=signOut;}}
-  else{if(s){s.textContent='Not signed in — local mode only';s.style.color='#8ca0b4';}if(b){b.textContent='Sign In';b.onclick=signIn;}}
+  else{if(s){s.textContent='Authentication required';s.style.color='#c0392b';}if(b){b.textContent='Sign In';b.onclick=signIn;}}
 }
 function clearAllDrafts(){
   if(!confirm('Clear all draft invoices?'))return;
@@ -3504,9 +3512,9 @@ function initMSAL() {
           scopes: ['openid', 'profile', 'https://graph.microsoft.com/Mail.Send'],
           account: acc[0], redirectUri: REDIRECT_URI,
         }).then(function (r2) { spToken = r2.accessToken; updateAuthUI(true); loadProfilesAPI(); })
-          .catch(function () { updateAuthUI(false); loadProfilesAPI(); });
-      } else { updateAuthUI(false); loadProfilesAPI(); }
-    }).catch(function () { updateAuthUI(false); loadProfilesAPI(); });
+          .catch(function () { updateAuthUI(false); });
+      } else { updateAuthUI(false); }
+    }).catch(function () { updateAuthUI(false); });
   });
 }
 function signIn() {
@@ -3515,14 +3523,36 @@ function signIn() {
     redirectUri: REDIRECT_URI,
   });
 }
+function clearPHIFromStorage() {
+  // Remove all PHI/PII from localStorage — required for HIPAA compliance
+  var phiKeys = ['lhca_profiles','lhca_caregivers','lhca_signatures','lhca_sig',
+    'lhca_caseworkers','lhca_todos','lhca_activity','lhca_audit','lhca_id_map'];
+  phiKeys.forEach(function(k){try{localStorage.removeItem(k);}catch(e){}});
+  Object.keys(localStorage).filter(function(k){return k.startsWith('lhca_draft_');})
+    .forEach(function(k){try{localStorage.removeItem(k);}catch(e){}});
+}
 function signOut() {
+  clearPHIFromStorage();
+  spToken = null;
   msalInstance.logoutPopup({ redirectUri: REDIRECT_URI });
-  spToken = null; updateAuthUI(false);
 }
 function updateAuthUI(on) {
+  var wall = document.getElementById('loginWall');
+  var wallMsg = document.getElementById('loginWallMsg');
+  var wallBtn = document.getElementById('loginWallBtn');
+  if (on) {
+    // Authenticated — hide wall, show app
+    if (wall) wall.style.display = 'none';
+  } else {
+    // Not authenticated — clear PHI, show wall
+    clearPHIFromStorage();
+    if (wall) wall.style.display = 'flex';
+    if (wallMsg) wallMsg.textContent = 'Sign in with your Microsoft account to access client data.';
+    if (wallBtn) wallBtn.style.display = 'block';
+  }
   var b = document.getElementById('authBtn'), s = document.getElementById('authStatus');
   if (b) { b.textContent = on ? 'Sign Out' : 'Sign In'; b.onclick = on ? signOut : signIn; }
-  if (s) { s.textContent = on ? '✓ Signed in — Azure SQL sync active' : 'Not signed in — local only'; s.style.color = on ? '#6dcf95' : '#435f7a'; }
+  if (s) { s.textContent = on ? '✓ Signed in — Azure SQL sync active' : 'Not signed in'; s.style.color = on ? '#6dcf95' : '#435f7a'; }
   var lsl = document.getElementById('lastSyncedLabel');
   if (lsl) { var ls = localStorage.getItem('lhca_last_synced'); lsl.textContent = on && ls ? 'Last synced: ' + ls : (on ? 'Syncing…' : ''); }
   updateSettingsAuth();
@@ -3554,11 +3584,10 @@ function loadProfilesAPI() {
           });
       });
       Promise.all(pending).then(function (results) {
-        var loc = {}; try { loc = JSON.parse(localStorage.getItem('lhca_profiles') || '{}'); } catch (e) {}
         var profiles = {};
         results.forEach(function (r3) {
           var name = r3.name, c = r3.client;
-          profiles[name] = Object.assign(loc[name] || {}, {
+          profiles[name] = Object.assign({}, {
             clientName: name, medicaidId: c.medicaid_id || '', hourlyRate: c.hourly_rate || '',
             billTo: c.bill_to || '', worker: c.worker || '', agentEmail: c.agent_email || '',
             phone: c.phone || '', clientEmail: c.client_email || '', caregiverId: c.caregiver_id || '',
@@ -3566,8 +3595,7 @@ function loadProfilesAPI() {
             clientNotes: c.client_notes || '', auditLog: [], _dbId: c.id, invoices: r3.invoices,
           });
         });
-        var merged = Object.assign({}, loc, profiles);
-        saveProfilesLS(merged);
+        saveProfilesLS(profiles);
         localStorage.setItem('lhca_id_map', JSON.stringify(idMap));
         var now = new Date().toLocaleString(); localStorage.setItem('lhca_last_synced', now);
         renderSidebarClients(); renderClientTable(); updateStats();
