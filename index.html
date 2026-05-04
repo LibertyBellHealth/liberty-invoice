@@ -1351,6 +1351,7 @@ function navNewClient(){
   populateCaseworkerSelect('nc-worker','');
 }
 function navDetail(name,tab){
+  aiTrack('ClientRecordOpened',{client:name,tab:tab||'info'});
   activeProfileName=name;var prof=getProfiles()[name];if(!prof)return;
   showPage('detail');
   var ini=name.split(' ').map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase();
@@ -1806,6 +1807,7 @@ function saveClientInfo(){
 }
 function deleteClient(){
   if(!activeProfileName||!confirm('Delete "'+activeProfileName+'" and all their data? Cannot be undone.'))return;
+  aiTrack('ClientDeleted',{client:activeProfileName});
   var p=getProfiles();deleteProfileSP(activeProfileName);delete p[activeProfileName];
   try{localStorage.removeItem('lhca_draft_'+activeProfileName);}catch(e){}
   saveProfilesLS(p);activeProfileName=null;logActivity('delete','Client deleted: '+activeProfileName);navHome();
@@ -1881,7 +1883,7 @@ function saveInvNote(input){
 function deleteInv(idx){
   var p=getProfiles(),inv=p[activeProfileName].invoices[idx];
   if(!confirm('Delete invoice for '+inv.billingPeriod+'?'))return;
-  deleteInvoiceAPI(inv.dbId);
+  deleteInvoiceAPI(inv.dbId,activeProfileName,inv.billingPeriod);
   p[activeProfileName].invoices.splice(idx,1);saveProfilesLS(p);saveProfileSP(activeProfileName,p[activeProfileName]);renderInvHistory();
 }
 function downloadInvoice(idx){
@@ -2004,8 +2006,12 @@ function uploadHcDoc(){
     var prefixedFile=new File([f],cat+'__'+f.name,{type:f.type});
     fd.append('file',prefixedFile);
   });
+  var fileNames=Array.from(input.files).map(function(f){return f.name;}).join(', ');
   fetch(API_BASE+'/documents',{method:'POST',headers:{'x-api-key':API_KEY},body:fd})
-  .then(function(){status.textContent='';input.value='';loadHcDocs(clientId);})
+  .then(function(){
+    aiTrack('DocumentUploaded',{clientType:'homecare',clientId:clientId,category:cat,files:fileNames});
+    status.textContent='';input.value='';loadHcDocs(clientId);
+  })
   .catch(function(e){status.textContent='Upload failed: '+e;});
 }
 function deleteHcDoc(clientId,encodedName){
@@ -2046,9 +2052,13 @@ function uploadCgDoc(cgId){
   if(!input||!input.files||!input.files.length){alert('Please select a file first.');return;}
   var status=document.getElementById('cgDocStatus');status.textContent='Uploading...';
   var fd=new FormData();fd.append('clientType','caregiver');fd.append('clientId',cgId);
+  var cgFileNames=Array.from(input.files).map(function(f){return f.name;}).join(', ');
   Array.from(input.files).forEach(function(f){fd.append('file',f);});
   fetch(API_BASE+'/documents',{method:'POST',headers:{'x-api-key':API_KEY},body:fd})
-  .then(function(){status.textContent='';input.value='';loadCgDocs(cgId);})
+  .then(function(){
+    aiTrack('DocumentUploaded',{clientType:'caregiver',clientId:cgId,files:cgFileNames});
+    status.textContent='';input.value='';loadCgDocs(cgId);
+  })
   .catch(function(e){status.textContent='Upload failed: '+e;});
 }
 function deleteCgDoc(cgId,encodedName){
@@ -2065,6 +2075,7 @@ function createClient(){
   if(!name){alert('Client name is required.');return;}
   var p=getProfiles();
   if(p[name]&&!confirm('"'+name+'" already exists. Overwrite?'))return;
+  aiTrack('ClientCreated',{client:name});
   if(!p[name])p[name]={invoices:[],clientNotes:''};
   p[name].clientName=name;p[name].medicaidId=document.getElementById('nc-medicaid').value.trim();
   p[name].agentEmail=document.getElementById('nc-email').value.trim();p[name].billTo=document.getElementById('nc-billto').value.trim();
@@ -2158,6 +2169,7 @@ function editCaregiver(id){
 }
 function saveCaregiver(){
   var name=document.getElementById('cg-name').value.trim();if(!name){alert('Name is required.');return;}
+  aiTrack('CaregiverSaved',{caregiver:name});
   var cgs=getCaregivers();
   var id=document.getElementById('cg-editing-id').value||cgId();
   cgs[id]={name:name,status:document.getElementById('cg-status').value,phone:document.getElementById('cg-phone').value,
@@ -2177,7 +2189,9 @@ function saveCaregiver(){
 function deleteCaregiver(){
   var id=document.getElementById('cg-editing-id').value;if(!id)return;
   if(!confirm('Delete this caregiver?'))return;
-  var cgs=getCaregivers();delete cgs[id];saveCaregiversLS(cgs);deleteCaregiverAPI(id);
+  var cgs=getCaregivers();var cgName=(cgs[id]&&cgs[id].name)||id;
+  delete cgs[id];saveCaregiversLS(cgs);deleteCaregiverAPI(id);
+  aiTrack('CaregiverDeleted',{caregiverId:id,caregiverName:cgName});
   hideCgForm();activeCgId=null;
   document.getElementById('cgDetailView').style.display='none';
   document.getElementById('cgGridView').style.display='';
@@ -2246,6 +2260,7 @@ function deleteCaregiverFromDetail(){
   var cg=getCaregivers()[activeCgId];
   if(!cg||!confirm('Delete caregiver "'+cg.name+'"? This cannot be undone.'))return;
   var cgs=getCaregivers();delete cgs[activeCgId];saveCaregiversLS(cgs);deleteCaregiverAPI(activeCgId);
+  aiTrack('CaregiverDeleted',{caregiverId:activeCgId,caregiverName:cg.name||activeCgId});
   showCgGrid();
 }
 function switchCgTab(tab){
@@ -2945,6 +2960,7 @@ function applyFullInvoice(data){
 function saveInvoiceToClient(){
   if(!activeProfileName){alert('No client selected.');return;}
   var bp=document.getElementById('billingPeriod').value.trim();if(!bp){alert('Enter a billing period first.');return;}
+  aiTrack('InvoiceSaved',{client:activeProfileName,period:bp});
   var p=getProfiles();if(!p[activeProfileName])return;if(!p[activeProfileName].invoices)p[activeProfileName].invoices=[];
   var ex=p[activeProfileName].invoices.findIndex(function(i){return i.billingPeriod===bp;});
   if(ex>=0){
@@ -3236,6 +3252,9 @@ function buildInvoiceHTML(){
 
 function printInvoiceAsPDF(){
   // Fully synchronous — no await, so window.open() is never blocked by popup blocker
+  var cn=document.getElementById('clientName')?document.getElementById('clientName').value.trim():'';
+  var bp=document.getElementById('billingPeriod')?document.getElementById('billingPeriod').value.trim():'';
+  aiTrack('InvoicePrinted',{clientName:cn,billingPeriod:bp});
   var html=buildInvoiceHTML();
   // Inject auto-print + auto-close script into the standalone document
   html=html.replace('</body>',
@@ -3371,6 +3390,7 @@ async function sendEmail(){
     if(btn)btn.textContent='Sending…';
     var result=await sendMailWithPDF(ae,subj,body,[{name:fname,base64:base64}]);
     if(result.ok){
+      aiTrack('InvoiceEmailed',{clientName:cn,billingPeriod:bp,recipient:ae});
       markInvoiceSubmitted(cn,bp);
       renderOverviewPane();updateStats();
       showToast('✓ Email sent to '+ae+' — invoice marked Submitted');
@@ -3667,6 +3687,7 @@ function saveProfileSP(name, data) {
         idMap[name] = result.id; localStorage.setItem('lhca_id_map', JSON.stringify(idMap));
         var p = getProfiles(); if (p[name]) { p[name]._dbId = result.id; saveProfilesLS(p); }
       }
+      aiTrack('ClientInfoUpdated',{clientName:name,clientStatus:body.client_status});
       var now = new Date().toLocaleString(); localStorage.setItem('lhca_last_synced', now);
       var lsl = document.getElementById('lastSyncedLabel'); if (lsl) lsl.textContent = 'Last synced: ' + now;
       // Sync any invoices not yet in DB
@@ -3712,8 +3733,9 @@ function updateInvoiceStatusAPI(dbId, status) {
     method: 'PATCH', headers: apiHeaders(), body: JSON.stringify({ status: status }),
   }).catch(function (e) { console.error('Status update error:', e); });
 }
-function deleteInvoiceAPI(dbId) {
+function deleteInvoiceAPI(dbId, clientName, billingPeriod) {
   if (!dbId) return;
+  aiTrack('InvoiceDeleted',{invoiceDbId:dbId,clientName:clientName||'',billingPeriod:billingPeriod||''});
   fetch(API_BASE + '/invoices/' + dbId, { method: 'DELETE', headers: apiHeaders() })
     .catch(function (e) { console.error('Delete invoice error:', e); });
 }
