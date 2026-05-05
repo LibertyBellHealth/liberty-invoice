@@ -264,6 +264,9 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 .sig-canvas{border:1px dashed #aaa;display:block;cursor:crosshair;touch-action:none;background:#fff;}
 .sig-stamp{max-height:32px;display:block;cursor:pointer;}
 .sig-placeholder{border-bottom:1px solid #000;height:32px;display:flex;align-items:center;cursor:pointer;color:#aaa;font-size:9pt;font-style:italic;font-family:Arial,sans-serif;}
+/* Tight HH.MM totals so "62.21" doesn't render as "62 . 21" */
+.tt-hh{width:22px!important;text-align:right!important;padding:0!important;margin:0!important;}
+.tt-mm{width:22px!important;text-align:left!important;padding:0!important;margin:0!important;}
 /* email autocomplete */
 .email-wrap{position:relative;}
 .email-suggest{position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #b0c8e8;border-top:none;border-radius:0 0 5px 5px;z-index:200;font-size:13px;padding:4px 0;display:none;}
@@ -554,6 +557,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
   .bottom-block .cert-row{padding:3px 5px!important;}
   .bottom-block .label-row{padding:3px 5px!important;}
   .sig-stamp{display:block!important;max-height:36px!important;}
+  .sig-placeholder{color:transparent!important;}
   .pg-footer{display:flex!important;font-size:8pt!important;margin-top:4px!important;
     page-break-inside:avoid;page-break-after:avoid;}
   .tt td.mc .box{border:1px solid #000!important;}
@@ -1201,7 +1205,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
     <tbody id="svcBody"></tbody>
   </table>
   <div class="bottom-block">
-    <div class="tot-row"><b>Total Time for Services Above:</b>&nbsp;<input id="svcHH" placeholder="hh">.<input id="svcMM" placeholder="mm"></div>
+    <div class="tot-row"><b>Total Time for Services Above:</b>&nbsp;<input id="svcHH" placeholder="hh" class="tt-hh">.<input id="svcMM" placeholder="mm" class="tt-mm"></div>
     <div class="cert-row">I certify that Liberty Home Care Assistance has provided all the services as checked above.</div>
     <div class="label-row">
       <div class="sig-label" style="width:62%;"><div id="sigArea1" class="sig-placeholder" onclick="placeSignature(1)">Click to place signature</div><span>Signature of Authorized Representative</span></div>
@@ -1237,9 +1241,9 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
   </table>
   <div class="bottom-block">
     <div class="tot-row">
-      <b>Total Time for Services Above:</b>&nbsp;<input id="cplxHH" placeholder="hh">.<input id="cplxMM" placeholder="mm">
-      &nbsp;&nbsp;<b>Total Time from Previous Page:</b>&nbsp;<input id="p1HH" placeholder="hh">.<input id="p1MM" placeholder="mm">
-      &nbsp;&nbsp;<b>Total Time for Billing Period:</b>&nbsp;<input id="grandHH" placeholder="hh">.<input id="grandMM" placeholder="mm">
+      <b>Total Time for Services Above:</b>&nbsp;<input id="cplxHH" placeholder="hh" class="tt-hh">.<input id="cplxMM" placeholder="mm" class="tt-mm">
+      &nbsp;&nbsp;<b>Total Time from Previous Page:</b>&nbsp;<input id="p1HH" placeholder="hh" class="tt-hh">.<input id="p1MM" placeholder="mm" class="tt-mm">
+      &nbsp;&nbsp;<b>Total Time for Billing Period:</b>&nbsp;<input id="grandHH" placeholder="hh" class="tt-hh">.<input id="grandMM" placeholder="mm" class="tt-mm">
     </div>
     <div class="cert-row">I certify that Liberty Home Care Assistance has provided all the services as checked above.</div>
     <div class="label-row">
@@ -3625,10 +3629,14 @@ function captureFullInvoice(){
   d.hasComplex=document.getElementById('showComplex').checked;d.tasks=captureStates();return d;
 }
 function applyFullInvoice(data){
-  var f=['clientName','medicaidId','billTo','worker','billingPeriod','svcHH','svcMM','cplxHH','cplxMM','p1HH','p1MM','grandHH','grandMM','dateSubmitted','sigDate1','sigDate2'];
+  var f=['clientName','medicaidId','worker','billingPeriod','svcHH','svcMM','cplxHH','cplxMM','p1HH','p1MM','grandHH','grandMM','dateSubmitted','sigDate1','sigDate2'];
   f.forEach(function(id){var el=document.getElementById(id);if(el&&data[id]!==undefined)el.value=data[id];});
   // Hourly rate is always the government billing rate
   document.getElementById('hourlyRate').value='27.00';
+  // Bill To: always from caseworker billing code, not whatever was saved on the invoice
+  var profCur=(activeProfileName&&getProfiles()[activeProfileName])||{};
+  var cwApply=getCaseworkers().find(function(c){return c.id===profCur.caseworkerId||c.name===(data.worker||profCur.worker);})||{};
+  document.getElementById('billTo').value=(cwApply.billingCode||cwApply.county||data.billTo||'');
   document.getElementById('clientName2').value=data.clientName||'';document.getElementById('worker2').value=data.worker||'';document.getElementById('billingPeriod2').value=data.billingPeriod||'';
   var bp=data.billingPeriod||'',p=bp.split('/');rebuild(p.length===2&&p[1].length===4?daysIn(p[0],p[1]):31);
   if(data.tasks){applyStates(data.tasks);lastLoadedStates=data.tasks;}
@@ -3845,6 +3853,8 @@ function buildInvoiceHTML(){
     root.querySelectorAll('.allrow').forEach(function(r){if(r.parentNode)r.parentNode.removeChild(r);});
     // Inactive rows (beyond days in month): keep them but un-gray — they appear blank on the form
     root.querySelectorAll('tr.inactive').forEach(function(r){r.classList.remove('inactive');});
+    // Strip "Click to place signature" placeholder text — keep just the underline
+    root.querySelectorAll('.sig-placeholder').forEach(function(el){el.textContent='';});
   });
 
   // Column headers: replace writing-mode (not supported by html2canvas) with
@@ -3966,11 +3976,11 @@ async function captureInvoicePDF(){
     var ratio=canvas.height/canvas.width;
     var iW=pW,iH=iW*ratio;
     if(iH>pH){iH=pH;iW=pH/ratio;}
-    pdf.addImage(canvas.toDataURL('image/jpeg',0.94),'JPEG',mL,mT,iW,iH);
+    pdf.addImage(canvas.toDataURL('image/jpeg',0.78),'JPEG',mL,mT,iW,iH);
   }
 
   var el1=iDoc.getElementById('page1');
-  var c1=await html2canvas(el1,{scale:2,useCORS:true,allowTaint:true,backgroundColor:'#fff',logging:false});
+  var c1=await html2canvas(el1,{scale:1.5,useCORS:true,allowTaint:true,backgroundColor:'#fff',logging:false});
   addPageImage(c1,pdf,marginL,marginT,pageW,pageH);
 
   var showCplx=document.getElementById('showComplex').checked;
@@ -3979,7 +3989,7 @@ async function captureInvoicePDF(){
     var el2=iDoc.getElementById('complexSection');
     if(el2&&el2.style.display!=='none'){
       pdf.addPage('letter','p');
-      var c2=await html2canvas(el2,{scale:2,useCORS:true,allowTaint:true,backgroundColor:'#fff',logging:false});
+      var c2=await html2canvas(el2,{scale:1.5,useCORS:true,allowTaint:true,backgroundColor:'#fff',logging:false});
       addPageImage(c2,pdf,marginL,marginT,pageW,pageH);
     }
   }
