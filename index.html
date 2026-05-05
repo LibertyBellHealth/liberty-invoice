@@ -1244,7 +1244,7 @@ var REDIRECT_URI = 'https://zealous-forest-01e406a10.7.azurestaticapps.net';
 var SP_DOC_LIB   = 'ClientDocuments'; // kept for SharePoint doc library (if used)
 var SP_SITE      = 'https://libertybellhealth.sharepoint.com/sites/Invoice'; // kept for doc upload
 var API_SCOPE    = 'api://' + API_APP_ID + '/user_impersonation';
-var GRAPH_SCOPES = ['openid', 'profile', 'https://graph.microsoft.com/Mail.Send'];
+var GRAPH_SCOPES = ['openid', 'profile', 'https://graph.microsoft.com/Mail.Send']; // Graph only — never mix with API_SCOPE
 var msalInstance = null, spToken = null;
 
 function apiHeaders() {
@@ -1270,9 +1270,14 @@ async function refreshApiToken() {
     var ttl = res.expiresOn ? (res.expiresOn.getTime() - Date.now() - 600000) : 3000000;
     setTimeout(refreshApiToken, Math.max(ttl, 60000));
   } catch(e) {
-    console.warn('API token silent refresh failed, redirecting for consent:', e);
-    // Trigger interactive login to get consent for the API scope
-    try { msalInstance.loginRedirect({ scopes: GRAPH_SCOPES.concat([API_SCOPE]), redirectUri: REDIRECT_URI }); } catch(e2) {}
+    console.warn('API token silent refresh failed, opening consent popup:', e);
+    // Use popup so we don't navigate away from the app
+    try {
+      var r2 = await msalInstance.acquireTokenPopup({ scopes: [API_SCOPE] });
+      _apiToken = r2.accessToken;
+      var ttl2 = r2.expiresOn ? (r2.expiresOn.getTime() - Date.now() - 600000) : 3000000;
+      setTimeout(refreshApiToken, Math.max(ttl2, 60000));
+    } catch(e2) { console.warn('API token popup also failed:', e2); }
   }
 }
 function getIdMap() {
@@ -3593,12 +3598,11 @@ function initMSAL() {
         window._aiUser = email2;
         if(window.appInsights&&window.appInsights.setAuthenticatedUserContext)window.appInsights.setAuthenticatedUserContext(email2);
         msalInstance.acquireTokenSilent({
-          scopes: GRAPH_SCOPES.concat([API_SCOPE]),
+          scopes: GRAPH_SCOPES, // Graph only — API token fetched separately in refreshApiToken()
           account: acc[0], redirectUri: REDIRECT_URI,
         }).then(function (r2) { spToken = r2.accessToken; aiTrack('UserSignIn',{method:'silent'}); refreshApiToken().then(function(){ updateAuthUI(true); loadProfilesAPI(); }); })
           .catch(function () {
-            // Silent failed — need fresh consent, redirect to login
-            msalInstance.loginRedirect({ scopes: GRAPH_SCOPES.concat([API_SCOPE]), redirectUri: REDIRECT_URI });
+            msalInstance.loginRedirect({ scopes: GRAPH_SCOPES, redirectUri: REDIRECT_URI });
           });
       } else { updateAuthUI(false); }
     }).catch(function () { updateAuthUI(false); });
@@ -3606,7 +3610,7 @@ function initMSAL() {
 }
 function signIn() {
   msalInstance.loginRedirect({
-    scopes: GRAPH_SCOPES.concat([API_SCOPE]),
+    scopes: GRAPH_SCOPES, // Graph only
     redirectUri: REDIRECT_URI,
   });
 }
