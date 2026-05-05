@@ -1051,7 +1051,6 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
           <div class="ff"><label>ZIP</label><input id="cw-zip" placeholder="ZIP" maxlength="10" oninput="lookupZip('cw-zip','cw-city','cw-state','cw-county')"></div>
           <div class="ff"><label>County</label><input id="cw-county" placeholder="County" maxlength="60"></div>
         </div>
-        <div class="ff"><label>Billing Code <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(used on invoice Bill To, e.g. 50-MACOMB)</span></label><input id="cw-billing-code" placeholder="e.g. 50-MACOMB" maxlength="40"></div>
         <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Notes</div>
         <div class="ff"><label>Notes</label><textarea id="cw-notes" rows="3" placeholder="Any additional notes…"></textarea></div>
         <div class="form-actions">
@@ -3667,7 +3666,7 @@ function loadProfileIntoForm(prof){
   document.getElementById('medicaidId').value=prof.medicaidId||'';
   // Bill To: use caseworker's county code (e.g. "50-MACOMB"); fall back to county name
   var cwRec=getCaseworkers().find(function(c){return c.id===prof.caseworkerId||c.name===prof.worker;})||{};
-  document.getElementById('billTo').value=(cwRec.billingCode||cwRec.county||'');
+  document.getElementById('billTo').value=(cwRec.agency||cwRec.county||'');
   document.getElementById('worker').value=prof.worker||'';document.getElementById('worker2').value=prof.worker||'';
   // Hourly rate on invoice is always the government billing rate ($27), not caregiver pay rate
   document.getElementById('hourlyRate').value='27.00';
@@ -3689,7 +3688,7 @@ function applyFullInvoice(data){
   // Bill To: always from caseworker billing code, not whatever was saved on the invoice
   var profCur=(activeProfileName&&getProfiles()[activeProfileName])||{};
   var cwApply=getCaseworkers().find(function(c){return c.id===profCur.caseworkerId||c.name===(data.worker||profCur.worker);})||{};
-  document.getElementById('billTo').value=(cwApply.billingCode||cwApply.county||data.billTo||'');
+  document.getElementById('billTo').value=(cwApply.agency||cwApply.county||data.billTo||'');
   document.getElementById('clientName2').value=data.clientName||'';document.getElementById('worker2').value=data.worker||'';document.getElementById('billingPeriod2').value=data.billingPeriod||'';
   var bp=data.billingPeriod||'',p=bp.split('/');rebuild(p.length===2&&p[1].length===4?daysIn(p[0],p[1]):31);
   if(data.tasks){applyStates(data.tasks);lastLoadedStates=data.tasks;}
@@ -4132,39 +4131,49 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
   pdf.text('Michigan Department of Health and Human Services',ML+W/2,y+24,{align:'center'});
   y+=32;
 
-  // ── Info table (3 rows) ──
-  var rowH=22,labelSize=7,valSize=10;
+  // ── Info table — lighter borders, bigger labels, inline label+value for client/billto rows ──
+  var GRID_INFO=0.4;
+  var rowH=22,labelSize=8.5,valSize=11;
   function cell(x,y,w,h,label,value,boldVal){
-    pdf.setLineWidth(0.6);pdf.rect(x,y,w,h);
+    pdf.setLineWidth(GRID_INFO);pdf.rect(x,y,w,h);
     pdf.setFont('helvetica','normal');pdf.setFontSize(labelSize);
-    pdf.text(label,x+3,y+8);
+    pdf.text(label,x+3,y+9);
     pdf.setFont('helvetica',boldVal?'bold':'normal');pdf.setFontSize(valSize);
-    pdf.text(String(value||''),x+3,y+18);
+    pdf.text(String(value||''),x+3,y+19);
   }
+  // Inline cell: label and value on the same line — matches March for Client/BillTo/Attention rows
+  function inlineCell(x,y,w,h,label,value){
+    pdf.setLineWidth(GRID_INFO);pdf.rect(x,y,w,h);
+    pdf.setFont('helvetica','normal');pdf.setFontSize(10);
+    pdf.text(label,x+3,y+14);
+    var lblW=pdf.getTextWidth(label);
+    pdf.text(String(value||''),x+3+lblW+4,y+14);
+  }
+  var inlineH=18;
 
   if(!isPage2){
-    // Row 1: Agency Name | Provider Number | Phone
+    // Row 1: Agency Name | Provider Number | Phone (stacked label/value)
     var c1w=288,c2w=144,c3w=144;
     cell(x0,y,c1w,rowH,'Agency Name','Liberty Home Care Assistance');
     cell(x0+c1w,y,c2w,rowH,'Agency Provider Number','6221933');
     cell(x0+c1w+c2w,y,c3w,rowH,'Agency Phone Number','248-291-4106');
     y+=rowH;
-    // Row 2: Contact | Billing Period | Date Submitted | Hourly Rate
-    var b1=185,b2=130,b3=130,b4=W-b1-b2-b3;
+    // Row 2: Contact | Period | Date | Rate — Hourly Rate narrower (fits "27.00")
+    var b1=210,b2=130,b3=145,b4=W-b1-b2-b3;
     cell(x0,y,b1,rowH,'Contact Person','Thomas Jaboro');
     cell(x0+b1,y,b2,rowH,'Billing Period',data.billingPeriod);
     cell(x0+b1+b2,y,b3,rowH,'Date Submitted',data.dateSubmitted);
     cell(x0+b1+b2+b3,y,b4,rowH,'Hourly Rate',data.hourlyRate||'27.00');
     y+=rowH;
-    // Row 3: Client Name | Medicaid ID
+    // Row 3: Client Name | Medicaid ID — INLINE (label+value same line)
     var d1=W*0.5,d2=W-d1;
-    cell(x0,y,d1,rowH,'Client Name:',data.clientName);
-    cell(x0+d1,y,d2,rowH,'Client Medicaid ID Number:',data.medicaidId);
-    y+=rowH;
-    // Row 4: Bill To | Attention
-    cell(x0,y,d1,rowH,'Bill To:',data.billTo);
-    cell(x0+d1,y,d2,rowH,'Attention:',data.worker);
-    y+=rowH;
+    inlineCell(x0,y,d1,inlineH,'Client Name:',data.clientName);
+    inlineCell(x0+d1,y,d2,inlineH,'Client Medicaid ID Number:',data.medicaidId);
+    y+=inlineH;
+    // Row 4: Bill To | Attention — INLINE
+    inlineCell(x0,y,d1,inlineH,'Bill To:',data.billTo);
+    inlineCell(x0+d1,y,d2,inlineH,'Attention:',data.worker);
+    y+=inlineH;
   } else {
     // Page 2 has a 3-col info row + the title repeated below it
     var p1=W*0.34,p2=W*0.33,p3=W-p1-p2;
@@ -4191,8 +4200,11 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
   var dayColW=44,headerH=80,dayRowH=14,nCols=cols.length;
   var colW=(W-dayColW)/nCols;
 
+  // ── Light grid weight matches MSA-1904 reference better than heavier 0.6 ──
+  var GRID_W=0.4;
+
   // Header row
-  pdf.setLineWidth(0.6);pdf.rect(x0,y,W,headerH);
+  pdf.setLineWidth(GRID_W);pdf.rect(x0,y,W,headerH);
   // Day-of-month label
   pdf.setFont('helvetica','normal');pdf.setFontSize(8);
   var dayLabel=['Days','of','Billing','Month'];
@@ -4201,17 +4213,18 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
   });
   // Vertical separator after day col
   pdf.line(x0+dayColW,y,x0+dayColW,y+headerH);
-  // Column headers (rotated 90°)
-  pdf.setFontSize(7.5);
+  // Column headers (rotated 90°) — bigger font to match March reference
+  pdf.setFontSize(8.5);
   for(var c=0;c<nCols;c++){
     var cx=x0+dayColW+c*colW;
     if(c>0)pdf.line(cx,y,cx,y+headerH);
-    // Wrap long header text into 2 lines if > ~13 chars
+    // Wrap long header text into 2 lines (max ~15 chars per line)
     var label=cols[c],lines=wrapHeaderText(label,15);
-    var totalW=lines.length*9;
-    var startOffset=(totalW)/2-9/2;
+    var lineSpace=10;
+    var totalW=lines.length*lineSpace;
+    var startOffset=(totalW)/2-lineSpace/2;
     lines.forEach(function(line,li){
-      var lineX=cx+colW/2-startOffset+li*9;
+      var lineX=cx+colW/2-startOffset+li*lineSpace;
       pdf.text(line,lineX,y+headerH-4,{angle:90});
     });
   }
@@ -4221,89 +4234,94 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
   pdf.setFontSize(8.5);
   var dataRows=isPage2?(data.tasks.cplx||[]):(data.tasks.svc||[]);
   for(var d=1;d<=31;d++){
-    pdf.setLineWidth(0.6);
+    pdf.setLineWidth(GRID_W);
     pdf.rect(x0,y,W,dayRowH);
     pdf.line(x0+dayColW,y,x0+dayColW,y+dayRowH);
     pdf.setFont('helvetica','normal');pdf.text(String(d),x0+dayColW/2,y+9,{align:'center'});
     var rowState=dataRows[d-1]||[];
     for(var c=0;c<nCols;c++){
       var cx=x0+dayColW+c*colW;
-      // Always reset to grid weight before drawing any column separator or box outline
-      pdf.setLineWidth(0.6);
+      pdf.setLineWidth(GRID_W);
       if(c>0)pdf.line(cx,y,cx,y+dayRowH);
-      // Draw checkbox centered in cell — slightly taller than wide to match MSA-1904 reference
+      // Checkbox slightly taller than wide
       var bxW=10,bxH=11,bxX=cx+colW/2-bxW/2,bxY=y+dayRowH/2-bxH/2;
       pdf.rect(bxX,bxY,bxW,bxH);
       if(rowState[c]){
-        // Heavier diagonal X — matches government form weight
         pdf.setLineWidth(1.1);
         pdf.line(bxX,bxY,bxX+bxW,bxY+bxH);
         pdf.line(bxX+bxW,bxY,bxX,bxY+bxH);
-        // Reset back to grid weight for the NEXT iteration's column separator
-        pdf.setLineWidth(0.6);
+        pdf.setLineWidth(GRID_W);
       }
     }
     y+=dayRowH;
   }
-  // Final reset
-  pdf.setLineWidth(0.6);
+  pdf.setLineWidth(GRID_W);
 
-  // ── Bottom block (totals + cert + signature) ──
-  var bottomY=y;
-  var totH=18;
-  pdf.setLineWidth(0.6);pdf.rect(x0,y,W,totH);
-  pdf.setFont('helvetica','bold');pdf.setFontSize(9.5);
+  // ── Bottom block — ONE outer rect + internal dividers (no doubled lines) ──
+  var totH=18,certH=14,sigH=44;
+  var blockH=totH+certH+sigH;
+  pdf.setLineWidth(GRID_W);
+  pdf.rect(x0,y,W,blockH);
+  // Internal horizontal dividers
+  pdf.line(x0,y+totH,x0+W,y+totH);
+  pdf.line(x0,y+totH+certH,x0+W,y+totH+certH);
+
+  // Total time row
   if(!isPage2){
+    pdf.setFont('helvetica','bold');pdf.setFontSize(9.5);
     var totLabel='Total Time for Services Above: ';
-    var hh=data.svcHH||'',mm=data.svcMM||'';
-    pdf.text(totLabel+hh+'.'+mm,x0+5,y+12);
+    pdf.text(totLabel,x0+5,y+12);
+    var lblWidth=pdf.getTextWidth(totLabel);
+    // Number is NOT bold (only the label is)
+    pdf.setFont('helvetica','normal');
+    pdf.text((data.svcHH||'')+'.'+(data.svcMM||''),x0+5+lblWidth,y+12);
   } else {
     pdf.setFontSize(8.5);
     var lblY=y+12;
-    var s1='Total Time for Services Above: '+(data.cplxHH||'')+'.'+(data.cplxMM||'');
-    var s2='Total Time from Previous Page: '+(data.p1HH||'')+'.'+(data.p1MM||'');
-    var s3='Total Time for Billing Period: '+(data.grandHH||'')+'.'+(data.grandMM||'');
-    pdf.text(s1,x0+5,lblY);
-    pdf.text(s2,x0+200,lblY);
-    pdf.text(s3,x0+395,lblY);
+    function dualText(label,val,xPos){
+      pdf.setFont('helvetica','bold');pdf.text(label,xPos,lblY);
+      var w=pdf.getTextWidth(label);
+      pdf.setFont('helvetica','normal');pdf.text(val,xPos+w,lblY);
+    }
+    dualText('Total Time for Services Above: ',(data.cplxHH||'')+'.'+(data.cplxMM||''),x0+5);
+    dualText('Total Time from Previous Page: ',(data.p1HH||'')+'.'+(data.p1MM||''),x0+200);
+    dualText('Total Time for Billing Period: ',(data.grandHH||'')+'.'+(data.grandMM||''),x0+395);
   }
-  y+=totH;
 
-  var certH=16;
-  pdf.rect(x0,y,W,certH);
+  // Cert row
   pdf.setFont('helvetica','normal');pdf.setFontSize(9);
-  pdf.text('I certify that Liberty Home Care Assistance has provided all the services as checked above.',x0+5,y+11);
-  y+=certH;
+  pdf.text('I certify that Liberty Home Care Assistance has provided all the services as checked above.',x0+5,y+totH+10);
 
-  var sigH=42;
-  pdf.rect(x0,y,W,sigH);
-  // Signature line + label
-  var sigBoxW=W*0.62,dateBoxW=W-sigBoxW;
-  pdf.line(x0+sigBoxW,y,x0+sigBoxW,y+sigH);
-  // Embed signature image with proper aspect ratio, above the signature line
+  // Signature row
+  var sigY=y+totH+certH;
+  var sigBoxW=W*0.62;
+  // Vertical divider between sig and date areas — only spans the sig sub-row
+  pdf.line(x0+sigBoxW,sigY,x0+sigBoxW,sigY+sigH);
+  // Sig underline (the row's bottom IS the only line — no extra underline)
+  // Place signature image just above the bottom of the sig sub-row
   var sigEl=document.getElementById('sigArea'+(isPage2?2:1));
   if(sigEl&&sigEl.tagName==='IMG'&&sigEl.src){
     try{
-      // Sig canvas is 390x80 — preserve aspect ratio at 14pt height (matches March compact size)
-      var sigImgH=14,aspectRatio=390/80,sigImgW=sigImgH*aspectRatio;
-      // Cap width at 50% of signature box; left-align with 8pt margin
+      // 18pt height, preserve aspect ratio, cap at 50% of sig box width
+      var sigImgH=18,aspectRatio=390/80,sigImgW=sigImgH*aspectRatio;
       var maxW=sigBoxW*0.5;
       if(sigImgW>maxW){sigImgW=maxW;sigImgH=sigImgW/aspectRatio;}
-      // Position so signature baseline sits ~2pt above the line at y+30
-      pdf.addImage(sigEl.src,'PNG',x0+8,y+30-sigImgH-1,sigImgW,sigImgH);
+      // Position signature so descenders rest near the underline (sigY+30)
+      pdf.addImage(sigEl.src,'PNG',x0+8,sigY+30-sigImgH-1,sigImgW,sigImgH);
     }catch(e){console.warn('Signature embed failed:',e);}
   }
-  pdf.setLineWidth(0.6);pdf.line(x0+5,y+30,x0+sigBoxW-5,y+30);
-  pdf.setFontSize(8);
-  pdf.text('Signature of Authorized Representative',x0+5,y+39);
-  // Date
+  // Single underline at sigY+30 for both sig + date
+  pdf.line(x0+5,sigY+30,x0+sigBoxW-5,sigY+30);
+  pdf.line(x0+sigBoxW+5,sigY+30,x0+W-5,sigY+30);
+  // Date value above the date underline
   var sigDate=isPage2?(data.sigDate2||''):(data.sigDate1||'');
-  pdf.setFontSize(10);
-  pdf.text(sigDate,x0+sigBoxW+5,y+24);
-  pdf.setLineWidth(0.6);pdf.line(x0+sigBoxW+5,y+30,x0+W-5,y+30);
+  pdf.setFontSize(10);pdf.text(sigDate,x0+sigBoxW+5,sigY+25);
+  // Labels under the underline
   pdf.setFontSize(8);
-  pdf.text('Date',x0+sigBoxW+5,y+39);
-  y+=sigH;
+  pdf.text('Signature of Authorized Representative',x0+5,sigY+40);
+  pdf.text('Date',x0+sigBoxW+5,sigY+40);
+
+  y+=blockH;
 
   // ── Footer ──
   pdf.setFont('helvetica','normal');pdf.setFontSize(8);
@@ -4408,7 +4426,7 @@ async function loadInvoiceForCapture(clientName,inv,period){
   document.getElementById('medicaidId').value=prof.medicaidId||'';
   document.getElementById('hourlyRate').value='27.00';
   var cwRecCapture=getCaseworkers().find(function(c){return c.id===prof.caseworkerId||c.name===prof.worker;})||{};
-  document.getElementById('billTo').value=(cwRecCapture.billingCode||cwRecCapture.county||'');
+  document.getElementById('billTo').value=(cwRecCapture.agency||cwRecCapture.county||'');
   document.getElementById('worker').value=prof.worker||'';
   document.getElementById('worker2').value=prof.worker||'';
   document.getElementById('dateSubmitted').value=today();
@@ -5046,12 +5064,11 @@ function showCaseworkerForm(id){
       document.getElementById('cw-state').value=cw.state||'';
       document.getElementById('cw-zip').value=cw.zip||'';
       document.getElementById('cw-county').value=cw.county||'';
-      document.getElementById('cw-billing-code').value=cw.billingCode||'';
       document.getElementById('cw-notes').value=cw.notes||'';
     }
     document.getElementById('cwDeleteBtn').style.display='inline-block';
   } else {
-    ['cw-first-name','cw-middle-name','cw-last-name','cw-nickname','cw-agency','cw-phone','cw-fax','cw-email','cw-street','cw-city','cw-state','cw-zip','cw-county','cw-billing-code','cw-notes'].forEach(function(fid){var e=document.getElementById(fid);if(e)e.value='';});
+    ['cw-first-name','cw-middle-name','cw-last-name','cw-nickname','cw-agency','cw-phone','cw-fax','cw-email','cw-street','cw-city','cw-state','cw-zip','cw-county','cw-notes'].forEach(function(fid){var e=document.getElementById(fid);if(e)e.value='';});
     document.getElementById('cwDeleteBtn').style.display='none';
   }
   document.getElementById('cwFormWrap').scrollIntoView({behavior:'smooth'});
@@ -5085,7 +5102,6 @@ function saveCaseworker(){
     state:document.getElementById('cw-state').value,
     zip:document.getElementById('cw-zip').value,
     county:document.getElementById('cw-county').value,
-    billingCode:document.getElementById('cw-billing-code').value,
     notes:document.getElementById('cw-notes').value
   };
   if(editingId){
@@ -5250,7 +5266,6 @@ function renderCwInfoPane(){
     '<div class="info-field"><label>State</label><input id="cwi-state" value="'+esc(cw.state||'')+'"></div>');
   mkRow('<div class="info-field"><label>ZIP</label><input id="cwi-zip" value="'+esc(cw.zip||'')+'" oninput="lookupZip(\'cwi-zip\',\'cwi-city\',\'cwi-state\',\'cwi-county\')"></div>'+
     '<div class="info-field"><label>County</label><input id="cwi-county" value="'+esc(cw.county||'')+'"></div>');
-  mkF('cwi-billing-code','Billing Code (Invoice Bill To, e.g. 50-MACOMB)',cw.billingCode,true);
 
   var actions=document.createElement('div');actions.style.cssText='margin-top:16px;display:flex;gap:8px;';
   actions.innerHTML='<button class="btn btn-primary" id="cwSaveInfoBtn" onclick="saveCwInfoPane()">Save Changes</button>'+
@@ -5270,7 +5285,6 @@ function saveCwInfoPane(){
   cw.email=document.getElementById('cwi-email').value;
   cw.street=document.getElementById('cwi-street').value;cw.city=document.getElementById('cwi-city').value;
   cw.state=document.getElementById('cwi-state').value;cw.zip=document.getElementById('cwi-zip').value;cw.county=document.getElementById('cwi-county').value;
-  var bcEl=document.getElementById('cwi-billing-code');if(bcEl)cw.billingCode=bcEl.value;
   saveCaseworkersLS(arr);saveCaseworkerAPI(cw);
   document.getElementById('cwDetailName').textContent=cw.name;
   document.getElementById('cwDetailMeta').innerHTML=esc(cw.agency||'')+(cw.phone?' · '+cw.phone:'');
