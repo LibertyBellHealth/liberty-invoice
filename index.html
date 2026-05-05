@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Liberty Home Care — Client Manager</title>
 <link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&display=swap" rel="stylesheet">
 <!-- ── Azure Application Insights — server-side audit logging ── -->
 <script type="text/javascript">
 !function(T,l,y){var S=T.location,k="script",D="instrumentationKey",C="ingestionendpoint",I="disableExceptionTracking",E="ai.device.",b="toLowerCase",w="crossOriginFailed",N="hi.device.",O="name",L="path",P="user",q="id",H="url",B="ingestionendpoint",F=function(e){var a=e.getAttribute;return a?a.call(e,"type"):""},j=function(){var e=document.getElementsByTagName(k);return e.length>0?e[e.length-1]:null},R=function(e){var a,t=e&&e.getAttribute;if(t&&(a=t.call(e,"data-website-id"))){return a}return null},A=function(e){return"function"==typeof e},s=function(e,a){return e[a]||{}},f=function(){return T[y.dle||"appInsights"]||{trackException:function(){},trackEvent:function(){},trackPageView:function(){},setAuthenticatedUserContext:function(){},clearAuthenticatedUserContext:function(){}}},G=function(){return T[y.dle||"appInsights"]},V=function(){},U=T,r=[];function g(e,a){r.push(arguments)}U[y.dle||"appInsights"]={queue:r,version:2,config:y.cfg};var h=document,m=h.createElement(k);m.src=y.src;m.crossOrigin="anonymous";var p=j();p?p.parentNode.insertBefore(m,p):h.getElementsByTagName("head")[0].appendChild(m);T[y.dle||"appInsights"]=function(e,a){for(var t=0;t<r.length;t++)r[t].apply(null,arguments);r=[]};}(window,document,{
@@ -240,7 +243,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 .tt td.dc{font-size:8.5pt;text-align:center;width:60px;padding:1px 0;font-family:"Times New Roman",Times,serif;}
 .tt td.mc{cursor:pointer;padding:0;height:18px;vertical-align:middle;text-align:center;}
 .tt td.mc .box{display:inline-block;width:13px;height:13px;border:1px solid #000;position:relative;vertical-align:middle;}
-.tt td.mc.on .box::after{content:'X';position:absolute;top:-2px;left:1px;font-size:11pt;font-weight:bold;color:#000;font-family:"Times New Roman",Times,serif;line-height:1;}
+.tt td.mc.on .box::after{content:'';position:absolute;inset:1px;background:linear-gradient(to bottom right,transparent 38%,#000 38%,#000 62%,transparent 62%),linear-gradient(to bottom left,transparent 38%,#000 38%,#000 62%,transparent 62%);}
 .tt tr.inactive td.mc{cursor:default;}
 .allrow{background:#ddeeff;}
 .allrow td{font-size:7.5pt;cursor:pointer;padding:1px 0;border:1px solid #000;color:#333;font-family:Arial,sans-serif;}
@@ -550,6 +553,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
   .pg-footer{display:flex!important;font-size:8pt!important;margin-top:4px!important;
     page-break-inside:avoid;page-break-after:avoid;}
   .tt td.mc .box{border:1px solid #000!important;}
+  .tt td.mc.on .box::after{content:""!important;position:absolute!important;inset:1px!important;background:linear-gradient(to bottom right,transparent 38%,#000 38%,#000 62%,transparent 62%),linear-gradient(to bottom left,transparent 38%,#000 38%,#000 62%,transparent 62%)!important;}
   .pagebreak{page-break-before:always;}
   #page1{page-break-after:avoid;}
 }
@@ -1034,6 +1038,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
           <div class="ff"><label>ZIP</label><input id="cw-zip" placeholder="ZIP" maxlength="10" oninput="lookupZip('cw-zip','cw-city','cw-state','cw-county')"></div>
           <div class="ff"><label>County</label><input id="cw-county" placeholder="County" maxlength="60"></div>
         </div>
+        <div class="ff"><label>Billing Code <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(used on invoice Bill To, e.g. 50-MACOMB)</span></label><input id="cw-billing-code" placeholder="e.g. 50-MACOMB" maxlength="40"></div>
         <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Notes</div>
         <div class="ff"><label>Notes</label><textarea id="cw-notes" rows="3" placeholder="Any additional notes…"></textarea></div>
         <div class="form-actions">
@@ -1146,7 +1151,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
     <div class="wrap">
 <!-- PAGE 1 -->
 <div id="page1">
-  <div class="pg-title"><div class="t2">Michigan Department of Health and Human Services</div><div class="t1">HOME HELP AGENCY INVOICE</div></div>
+  <div class="pg-title"><div class="t1">HOME HELP AGENCY INVOICE</div><div class="t2">Michigan Department of Health and Human Services</div></div>
   <table class="bi">
     <tr>
       <td colspan="3" style="width:50%"><span class="lbl">Agency Name</span><input id="agencyName" value="Liberty Home Care Assistance"></td>
@@ -1190,7 +1195,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
     <tbody id="svcBody"></tbody>
   </table>
   <div class="bottom-block">
-    <div class="tot-row"><b>Total Time for Services Above:</b>&nbsp;<input id="svcHH" placeholder="hh">:<input id="svcMM" placeholder="mm"></div>
+    <div class="tot-row"><b>Total Time for Services Above:</b>&nbsp;<input id="svcHH" placeholder="hh">.<input id="svcMM" placeholder="mm"></div>
     <div class="cert-row">I certify that Liberty Home Care Assistance has provided all the services as checked above.</div>
     <div class="label-row">
       <div class="sig-label" style="width:62%;"><div id="sigArea1" class="sig-placeholder" onclick="placeSignature(1)">Click to place signature</div><span>Signature of Authorized Representative</span></div>
@@ -1226,9 +1231,9 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
   </table>
   <div class="bottom-block">
     <div class="tot-row">
-      <b>Total Time for Services Above:</b>&nbsp;<input id="cplxHH" placeholder="hh">:<input id="cplxMM" placeholder="mm">
-      &nbsp;&nbsp;<b>Total Time from Previous Page:</b>&nbsp;<input id="p1HH" placeholder="hh">:<input id="p1MM" placeholder="mm">
-      &nbsp;&nbsp;<b>Total Time for Billing Period:</b>&nbsp;<input id="grandHH" placeholder="hh">:<input id="grandMM" placeholder="mm">
+      <b>Total Time for Services Above:</b>&nbsp;<input id="cplxHH" placeholder="hh">.<input id="cplxMM" placeholder="mm">
+      &nbsp;&nbsp;<b>Total Time from Previous Page:</b>&nbsp;<input id="p1HH" placeholder="hh">.<input id="p1MM" placeholder="mm">
+      &nbsp;&nbsp;<b>Total Time for Billing Period:</b>&nbsp;<input id="grandHH" placeholder="hh">.<input id="grandMM" placeholder="mm">
     </div>
     <div class="cert-row">I certify that Liberty Home Care Assistance has provided all the services as checked above.</div>
     <div class="label-row">
@@ -1323,14 +1328,31 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 <!-- SIG MODAL -->
 <div class="sig-modal" id="sigModal">
   <div class="sig-box">
-    <h3>Draw Signature</h3>
-    <p>Draw your signature below. Give it a label so you can find it in Settings.</p>
-    <div style="margin-bottom:8px;"><input id="sigLabel" placeholder="Label (e.g. Thomas Jaboro)" style="width:100%;padding:6px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;"></div>
-    <canvas id="sigCanvas" class="sig-canvas" width="390" height="80"></canvas>
-    <div class="sig-row">
-      <button class="btn btn-primary" onclick="confirmSig()">Save Signature</button>
-      <button class="btn btn-secondary" onclick="clearSigPad()">Clear</button>
-      <button class="btn btn-secondary" onclick="closeSigModal()">Cancel</button>
+    <div style="margin-bottom:10px;"><input id="sigLabel" placeholder="Label (e.g. Thomas Jaboro)" style="width:100%;padding:6px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;"></div>
+    <!-- Tab switcher -->
+    <div style="display:flex;gap:0;margin-bottom:10px;border:1px solid #d0d8e4;border-radius:6px;overflow:hidden;">
+      <button id="sigTabDraw" onclick="switchSigTab('draw')" style="flex:1;padding:7px;border:none;background:#1a2b45;color:#fff;font-size:13px;cursor:pointer;font-family:Arial,sans-serif;">Draw</button>
+      <button id="sigTabType" onclick="switchSigTab('type')" style="flex:1;padding:7px;border:none;background:#f0f3f7;color:#1a2b45;font-size:13px;cursor:pointer;font-family:Arial,sans-serif;">Type Name</button>
+    </div>
+    <!-- Draw tab -->
+    <div id="sigPaneDraw">
+      <p style="font-size:12px;color:#5a7296;margin:0 0 6px;">Draw your signature below.</p>
+      <canvas id="sigCanvas" class="sig-canvas" width="390" height="80"></canvas>
+      <div class="sig-row">
+        <button class="btn btn-primary" onclick="confirmSig()">Save Signature</button>
+        <button class="btn btn-secondary" onclick="clearSigPad()">Clear</button>
+        <button class="btn btn-secondary" onclick="closeSigModal()">Cancel</button>
+      </div>
+    </div>
+    <!-- Type Name tab -->
+    <div id="sigPaneType" style="display:none;">
+      <p style="font-size:12px;color:#5a7296;margin:0 0 6px;">Type your name — it will appear in cursive.</p>
+      <input id="sigTypeName" placeholder="Your full name" oninput="previewCursiveSig()" style="width:100%;padding:6px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:15px;font-family:'Dancing Script',cursive;outline:none;margin-bottom:8px;box-sizing:border-box;">
+      <canvas id="sigTypeCanvas" width="390" height="80" style="border:1px solid #d0d8e4;border-radius:4px;background:#fff;display:block;width:100%;"></canvas>
+      <div class="sig-row">
+        <button class="btn btn-primary" onclick="confirmTypedSig()">Save Signature</button>
+        <button class="btn btn-secondary" onclick="closeSigModal()">Cancel</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1597,8 +1619,6 @@ function confirmNewInvoice(mode){
     ['svcHH','svcMM','cplxHH','cplxMM','p1HH','p1MM','grandHH','grandMM'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
     rebuild(31);
     resetSigArea(1);resetSigArea(2);
-    var sigs=getSigs();
-    if(sigs.length){stampSignatureData(1,sigs[0].data);if(prof.hasComplex)stampSignatureData(2,sigs[0].data);}
   }
   startDraftAutosave();
 }
@@ -2916,7 +2936,14 @@ function deleteSig(idOrIdx){
   }
   renderSigSettings();
 }
-function openAddSigModal(){document.getElementById('sigLabel').value='';document.getElementById('sigModal').classList.add('open');if(!sigCanvas)initSigCanvas();clearSigPad();}
+function openAddSigModal(){
+  document.getElementById('sigLabel').value='';
+  var tn=document.getElementById('sigTypeName');if(tn)tn.value='';
+  document.getElementById('sigModal').classList.add('open');
+  if(!sigCanvas)initSigCanvas();
+  clearSigPad();
+  switchSigTab('draw');
+}
 function updateSettingsAuth(){
   var s=document.getElementById('settingsAuthStatus'),b=document.getElementById('settingsAuthBtn');
   if(spToken){if(s){s.textContent='✓ Signed in — Azure SQL sync & email active';s.style.color='#1e7e34';}if(b){b.textContent='Sign Out';b.onclick=signOut;}}
@@ -3575,14 +3602,15 @@ function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;'
 function loadProfileIntoForm(prof){
   document.getElementById('clientName').value=prof.clientName||'';document.getElementById('clientName2').value=prof.clientName||'';
   document.getElementById('medicaidId').value=prof.medicaidId||'';
-  var addrForBill=(prof.street||'')+( prof.city?', '+prof.city:'')+(prof.state?' '+prof.state:'')+(prof.zip?' '+prof.zip:'');
-  document.getElementById('billTo').value=addrForBill.trim();
+  // Bill To: use caseworker's county code (e.g. "50-MACOMB"); fall back to county name
+  var cwRec=getCaseworkers().find(function(c){return c.id===prof.caseworkerId||c.name===prof.worker;})||{};
+  document.getElementById('billTo').value=(cwRec.billingCode||cwRec.county||'');
   document.getElementById('worker').value=prof.worker||'';document.getElementById('worker2').value=prof.worker||'';
-  document.getElementById('hourlyRate').value=prof.hourlyRate||'';
+  // Hourly rate on invoice is always the government billing rate ($27), not caregiver pay rate
+  document.getElementById('hourlyRate').value='27.00';
   document.getElementById('showComplex').checked=prof.hasComplex||false;toggleComplex();
   if(prof.tasks){applyStates(prof.tasks);lastLoadedStates=prof.tasks;}
-  // Agent email now comes from caseworker record
-  var cwRec=getCaseworkers().find(function(c){return c.id===prof.caseworkerId||c.name===prof.worker;})||{};
+  // Agent email from caseworker record
   var ef=document.getElementById('activeAgentEmail');if(ef)ef.value=cwRec.email||'';
 }
 function captureFullInvoice(){
@@ -3591,8 +3619,10 @@ function captureFullInvoice(){
   d.hasComplex=document.getElementById('showComplex').checked;d.tasks=captureStates();return d;
 }
 function applyFullInvoice(data){
-  var f=['clientName','medicaidId','billTo','worker','billingPeriod','hourlyRate','svcHH','svcMM','cplxHH','cplxMM','p1HH','p1MM','grandHH','grandMM','dateSubmitted','sigDate1','sigDate2'];
+  var f=['clientName','medicaidId','billTo','worker','billingPeriod','svcHH','svcMM','cplxHH','cplxMM','p1HH','p1MM','grandHH','grandMM','dateSubmitted','sigDate1','sigDate2'];
   f.forEach(function(id){var el=document.getElementById(id);if(el&&data[id]!==undefined)el.value=data[id];});
+  // Hourly rate is always the government billing rate
+  document.getElementById('hourlyRate').value='27.00';
   document.getElementById('clientName2').value=data.clientName||'';document.getElementById('worker2').value=data.worker||'';document.getElementById('billingPeriod2').value=data.billingPeriod||'';
   var bp=data.billingPeriod||'',p=bp.split('/');rebuild(p.length===2&&p[1].length===4?daysIn(p[0],p[1]):31);
   if(data.tasks){applyStates(data.tasks);lastLoadedStates=data.tasks;}
@@ -3869,7 +3899,7 @@ function buildInvoiceHTML(){
     '.tt td.dc{font-size:8pt;text-align:center;width:52px;padding:0;font-family:"Times New Roman",Times,serif;line-height:1;}',
     '.tt td.mc{padding:0;height:14px;vertical-align:middle;text-align:center;}',
     '.tt td.mc .box{display:inline-block;width:11px;height:11px;border:1px solid #000;position:relative;vertical-align:middle;}',
-    '.tt td.mc.on .box::after{content:"X";position:absolute;top:-3px;left:0;font-size:10pt;font-weight:bold;color:#000;font-family:"Times New Roman",Times,serif;line-height:1;}',
+    '.tt td.mc.on .box::after{content:"";position:absolute;inset:1px;background:linear-gradient(to bottom right,transparent 38%,#000 38%,#000 62%,transparent 62%),linear-gradient(to bottom left,transparent 38%,#000 38%,#000 62%,transparent 62%);}',
     '.bottom-block{border:1px solid #000;border-top:none;font-size:8.5pt;font-family:"Times New Roman",Times,serif;}',
     '.bottom-block .tot-row{padding:2px 4px;font-weight:bold;}',
     '.bottom-block .tot-row input{border:none;border-bottom:1px solid #000;font-size:8.5pt;font-family:"Times New Roman",Times,serif;background:transparent;outline:none;text-align:center;width:28px;}',
@@ -3974,9 +4004,9 @@ async function loadInvoiceForCapture(clientName,inv,period){
   document.getElementById('billingPeriod').value=period;
   document.getElementById('billingPeriod2').value=period;
   document.getElementById('medicaidId').value=prof.medicaidId||'';
-  document.getElementById('hourlyRate').value=prof.hourlyRate||'';
-  var addrForBillCapture=(prof.street||'')+( prof.city?', '+prof.city:'')+(prof.state?' '+prof.state:'')+(prof.zip?' '+prof.zip:'');
-  document.getElementById('billTo').value=addrForBillCapture.trim();
+  document.getElementById('hourlyRate').value='27.00';
+  var cwRecCapture=getCaseworkers().find(function(c){return c.id===prof.caseworkerId||c.name===prof.worker;})||{};
+  document.getElementById('billTo').value=(cwRecCapture.billingCode||cwRecCapture.county||'');
   document.getElementById('worker').value=prof.worker||'';
   document.getElementById('worker2').value=prof.worker||'';
   document.getElementById('dateSubmitted').value=today();
@@ -3988,9 +4018,6 @@ async function loadInvoiceForCapture(clientName,inv,period){
   var hc=inv.data&&inv.data.hasComplex;
   document.getElementById('showComplex').checked=!!hc;
   document.getElementById('complexSection').style.display=hc?'block':'none';
-  // Auto-place signature
-  var sigs=getSigs();
-  if(sigs.length){stampSignatureData(1,sigs[0].data);if(hc)stampSignatureData(2,sigs[0].data);}
   await new Promise(function(r){setTimeout(r,150);});
 }
 
@@ -4078,13 +4105,11 @@ function copyMonth(){
   document.getElementById('billingPeriod').value=newBP;document.getElementById('billingPeriod2').value=newBP;
   document.getElementById('clientName').value=cn;document.getElementById('clientName2').value=cn;
   document.getElementById('medicaidId').value=mid;
-  document.getElementById('hourlyRate').value=hr;document.getElementById('billTo').value=bt;
+  document.getElementById('hourlyRate').value='27.00';document.getElementById('billTo').value=bt;
   document.getElementById('worker').value=wk;document.getElementById('worker2').value=wk;
   document.getElementById('dateSubmitted').value=T2;document.getElementById('sigDate1').value=T2;document.getElementById('sigDate2').value=T2;
   document.getElementById('showComplex').checked=hc;toggleComplex();
   rebuild(daysIn(String(m).padStart(2,'0'),String(y)));applyStates(states);resetSigArea(1);resetSigArea(2);
-  // Auto-place signature if one exists
-  var sigs=getSigs();if(sigs.length){stampSignatureData(1,sigs[0].data);if(hc)stampSignatureData(2,sigs[0].data);}
 }
 
 // ============================================================
@@ -4139,6 +4164,53 @@ function confirmSig(){
 function clearSigPad(){if(sigCtx)sigCtx.clearRect(0,0,sigCanvas.width,sigCanvas.height);}
 function closeSigModal(){document.getElementById('sigModal').classList.remove('open');}
 function changeSignature(){placeSignature(1);}// Alias for topbar button
+
+// ── Signature modal tab switching ────────────────────────────────
+function switchSigTab(tab){
+  var isDraw=(tab==='draw');
+  document.getElementById('sigPaneDraw').style.display=isDraw?'':'none';
+  document.getElementById('sigPaneType').style.display=isDraw?'none':'';
+  document.getElementById('sigTabDraw').style.cssText='flex:1;padding:7px;border:none;cursor:pointer;font-size:13px;font-family:Arial,sans-serif;background:'+(isDraw?'#1a2b45':'#f0f3f7')+';color:'+(isDraw?'#fff':'#1a2b45')+';';
+  document.getElementById('sigTabType').style.cssText='flex:1;padding:7px;border:none;cursor:pointer;font-size:13px;font-family:Arial,sans-serif;background:'+(isDraw?'#f0f3f7':'#1a2b45')+';color:'+(isDraw?'#1a2b45':'#fff')+';';
+  if(!isDraw){previewCursiveSig();}
+}
+
+// ── Cursive typed signature preview ──────────────────────────────
+function previewCursiveSig(){
+  var name=(document.getElementById('sigTypeName')||{}).value||'';
+  var tc=document.getElementById('sigTypeCanvas');if(!tc)return;
+  var ctx=tc.getContext('2d');
+  ctx.clearRect(0,0,tc.width,tc.height);
+  if(!name)return;
+  var fontSize=Math.min(48,Math.max(28,Math.floor(tc.width*0.11)));
+  ctx.font=fontSize+'px "Dancing Script", cursive';
+  ctx.fillStyle='#000';
+  ctx.textBaseline='middle';
+  var metrics=ctx.measureText(name);
+  var x=Math.max(8,(tc.width-metrics.width)/2);
+  ctx.fillText(name,x,tc.height/2);
+}
+
+// ── Save cursive typed signature ──────────────────────────────────
+function confirmTypedSig(){
+  var name=(document.getElementById('sigTypeName')||{}).value.trim();
+  if(!name){alert('Please type your name first.');return;}
+  var tc=document.getElementById('sigTypeCanvas');
+  var blank=document.createElement('canvas');blank.width=tc.width;blank.height=tc.height;
+  if(blank.toDataURL()===tc.toDataURL()){alert('Please type your name first.');return;}
+  var data=tc.toDataURL('image/png');
+  var label=document.getElementById('sigLabel').value.trim()||name;
+  var id=sigId();
+  var sigs=getSigs();sigs.push({id:id,label:label,data:data});saveSigsLS(sigs);
+  // Persist to DB
+  if(spToken){
+    fetch(API_BASE+'/signatures',{method:'POST',headers:apiHeaders(),body:JSON.stringify({id:id,label:label,data_url:data})})
+      .catch(function(e){console.error('Sig save error:',e);});
+  }
+  closeSigModal();
+  if(pendingSigTarget!==null){stampSignatureData(pendingSigTarget,data);}
+  if(document.getElementById('page-settings').classList.contains('active'))renderSigSettings();
+}
 
 // ============================================================
 //  PRINT GUARDS — fix page 3, page 2 only if filled
@@ -4560,11 +4632,12 @@ function showCaseworkerForm(id){
       document.getElementById('cw-state').value=cw.state||'';
       document.getElementById('cw-zip').value=cw.zip||'';
       document.getElementById('cw-county').value=cw.county||'';
+      document.getElementById('cw-billing-code').value=cw.billingCode||'';
       document.getElementById('cw-notes').value=cw.notes||'';
     }
     document.getElementById('cwDeleteBtn').style.display='inline-block';
   } else {
-    ['cw-first-name','cw-middle-name','cw-last-name','cw-nickname','cw-agency','cw-phone','cw-fax','cw-email','cw-street','cw-city','cw-state','cw-zip','cw-county','cw-notes'].forEach(function(fid){var e=document.getElementById(fid);if(e)e.value='';});
+    ['cw-first-name','cw-middle-name','cw-last-name','cw-nickname','cw-agency','cw-phone','cw-fax','cw-email','cw-street','cw-city','cw-state','cw-zip','cw-county','cw-billing-code','cw-notes'].forEach(function(fid){var e=document.getElementById(fid);if(e)e.value='';});
     document.getElementById('cwDeleteBtn').style.display='none';
   }
   document.getElementById('cwFormWrap').scrollIntoView({behavior:'smooth'});
@@ -4598,6 +4671,7 @@ function saveCaseworker(){
     state:document.getElementById('cw-state').value,
     zip:document.getElementById('cw-zip').value,
     county:document.getElementById('cw-county').value,
+    billingCode:document.getElementById('cw-billing-code').value,
     notes:document.getElementById('cw-notes').value
   };
   if(editingId){
@@ -4762,6 +4836,7 @@ function renderCwInfoPane(){
     '<div class="info-field"><label>State</label><input id="cwi-state" value="'+esc(cw.state||'')+'"></div>');
   mkRow('<div class="info-field"><label>ZIP</label><input id="cwi-zip" value="'+esc(cw.zip||'')+'" oninput="lookupZip(\'cwi-zip\',\'cwi-city\',\'cwi-state\',\'cwi-county\')"></div>'+
     '<div class="info-field"><label>County</label><input id="cwi-county" value="'+esc(cw.county||'')+'"></div>');
+  mkF('cwi-billing-code','Billing Code (Invoice Bill To, e.g. 50-MACOMB)',cw.billingCode,true);
 
   var actions=document.createElement('div');actions.style.cssText='margin-top:16px;display:flex;gap:8px;';
   actions.innerHTML='<button class="btn btn-primary" id="cwSaveInfoBtn" onclick="saveCwInfoPane()">Save Changes</button>'+
@@ -4781,6 +4856,7 @@ function saveCwInfoPane(){
   cw.email=document.getElementById('cwi-email').value;
   cw.street=document.getElementById('cwi-street').value;cw.city=document.getElementById('cwi-city').value;
   cw.state=document.getElementById('cwi-state').value;cw.zip=document.getElementById('cwi-zip').value;cw.county=document.getElementById('cwi-county').value;
+  var bcEl=document.getElementById('cwi-billing-code');if(bcEl)cw.billingCode=bcEl.value;
   saveCaseworkersLS(arr);saveCaseworkerAPI(cw);
   document.getElementById('cwDetailName').textContent=cw.name;
   document.getElementById('cwDetailMeta').innerHTML=esc(cw.agency||'')+(cw.phone?' · '+cw.phone:'');
