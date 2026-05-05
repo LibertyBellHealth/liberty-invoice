@@ -131,6 +131,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 .info-field input,.info-field select,.info-field textarea{width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;color:#1a2b45;outline:none;background:#fff;}
 .info-field input:focus,.info-field select:focus,.info-field textarea:focus{border-color:#185FA5;}
 .info-field.full{grid-column:1/-1;}
+.info-field-row{display:grid;grid-template-columns:1fr 1fr;gap:11px;grid-column:1/-1;}
 .form-section-divider{grid-column:1/-1;border-top:1px solid #e8ecf0;margin:4px 0;padding-top:12px;}
 .form-section-divider span{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;}
 
@@ -140,6 +141,9 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 .inv-table td{padding:9px 11px;border-bottom:1px solid #f0f3f7;font-size:13px;vertical-align:middle;}
 .inv-table tr:hover td{background:#f8fafc;}
 .inv-badge{display:inline-block;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600;background:#eef4fb;color:#185FA5;}
+.inv-badge.st-draft{background:#f5f5f5;color:#555;}
+.inv-badge.st-submitted{background:#e8f4fb;color:#1565a0;}
+.inv-badge.st-paid{background:#e6f4ea;color:#1e7e34;}
 .inv-note-input{width:100%;border:1px solid transparent;background:transparent;padding:3px 6px;border-radius:4px;font-size:12px;font-family:Arial,sans-serif;color:#4a6a8a;outline:none;}
 .inv-note-input:focus{border-color:#c0d4e8;background:#f5f9ff;}
 
@@ -655,7 +659,6 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
       <div><div class="detail-name" id="detailName"></div><div class="detail-meta" id="detailMeta"></div></div>
       <div class="detail-actions">
         <button class="btn btn-primary" onclick="navInvoice()">+ New Invoice</button>
-        <button class="btn btn-secondary" onclick="navHome()">All Clients</button>
       </div>
     </div>
     <div class="detail-tabs">
@@ -701,19 +704,27 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
           <select id="nc-status"><option value="active">Active</option><option value="inactive">Inactive</option><option value="lost">Lost</option><option value="terminated">Terminated</option></select>
         </div>
       </div>
-      <div class="ff"><label>Bill To</label><input id="nc-billto" placeholder="Billing entity or address" maxlength="80"></div>
-      <div class="ff"><label>Adult Services Worker</label><select id="nc-worker"></select></div>
-      <div class="ff email-wrap">
-        <label>Agent / Worker Email</label>
-        <input id="nc-email" placeholder="agent@michigan.gov" maxlength="80" oninput="emailSuggest(this,'nc-email-suggest')" onblur="hideEmailSuggest('nc-email-suggest')">
-        <div class="email-suggest" id="nc-email-suggest"></div>
-      </div>
-      <div style="border-top:1px solid #e8ecf0;margin:14px 0 14px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">CRM Info</div>
       <div class="ff-row">
         <div class="ff"><label>Phone #</label><input id="nc-phone" placeholder="(555) 555-5555" maxlength="20"></div>
         <div class="ff"><label>Client Email</label><input id="nc-cemail" placeholder="client@email.com" maxlength="80"></div>
       </div>
+      <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Address</div>
+      <div class="ff"><label>Street</label><input id="nc-street" placeholder="Street address" maxlength="120"></div>
+      <div class="ff-row">
+        <div class="ff"><label>City</label><input id="nc-city" placeholder="City" maxlength="60"></div>
+        <div class="ff"><label>State</label><input id="nc-state" placeholder="MI" maxlength="30"></div>
+      </div>
+      <div class="ff-row">
+        <div class="ff"><label>ZIP</label><input id="nc-zip" placeholder="ZIP" maxlength="10" oninput="lookupZip('nc-zip','nc-city','nc-state','nc-county')"></div>
+        <div class="ff"><label>County</label><input id="nc-county" placeholder="County" maxlength="60"></div>
+      </div>
       <div class="ff"><label>Assigned Caregiver</label><select id="nc-caregiver"><option value="">— None assigned —</option></select></div>
+      <div class="ff" style="position:relative;">
+        <label>Caseworker</label>
+        <input id="nc-worker-search" placeholder="Search by name…" maxlength="80" autocomplete="off" oninput="cwSearch(this,'nc-worker-val','nc-worker-drop')" onblur="setTimeout(function(){var d=document.getElementById('nc-worker-drop');if(d)d.style.display='none';},200)">
+        <input type="hidden" id="nc-worker-val">
+        <div id="nc-worker-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>
+      </div>
       <div class="form-actions">
         <button class="btn btn-primary" onclick="createClient()">Save Client</button>
         <button class="btn btn-secondary" onclick="navHome()">Cancel</button>
@@ -905,20 +916,31 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
   <!-- CASEWORKERS PAGE -->
   <div class="page" id="page-caseworkers">
     <div class="home-header" style="margin-bottom:16px;">
-      <div><div class="home-title">Caseworkers</div><div class="home-subtitle">Manage adult services workers and their client assignments.</div></div>
+      <div><div class="home-title">Caseworkers</div><div class="home-subtitle">Manage caseworkers and their client assignments.</div></div>
       <button class="btn btn-primary" onclick="showCaseworkerForm()">+ Add Caseworker</button>
     </div>
     <div id="cwFormWrap" style="display:none;margin-bottom:20px;">
-      <div class="form-card" style="max-width:560px;">
+      <div class="form-card" style="max-width:640px;">
         <h3 id="cwFormTitle">New Caseworker</h3>
         <input type="hidden" id="cw-editing-id">
         <div class="ff-row">
-          <div class="ff"><label>Full Name *</label><input id="cw-name" placeholder="Worker name" maxlength="80"></div>
-          <div class="ff"><label>Agency</label><input id="cw-agency" placeholder="e.g. MDHHS" maxlength="80"></div>
+          <div class="ff"><label>First Name *</label><input id="cw-first-name" placeholder="First name" maxlength="60"></div>
+          <div class="ff"><label>Last Name *</label><input id="cw-last-name" placeholder="Last name" maxlength="60"></div>
         </div>
+        <div class="ff"><label>Agency</label><input id="cw-agency" placeholder="e.g. MDHHS" maxlength="80"></div>
         <div class="ff-row">
           <div class="ff"><label>Phone</label><input id="cw-phone" placeholder="(555) 555-5555" maxlength="20"></div>
-          <div class="ff"><label>Email</label><input id="cw-email" placeholder="worker@michigan.gov" maxlength="80"></div>
+          <div class="ff"><label>Fax</label><input id="cw-fax" placeholder="(555) 555-5555" maxlength="20"></div>
+        </div>
+        <div class="ff"><label>Email</label><input id="cw-email" placeholder="worker@michigan.gov" maxlength="80"></div>
+        <div class="ff"><label>Street</label><input id="cw-street" placeholder="Street address" maxlength="120"></div>
+        <div class="ff-row">
+          <div class="ff"><label>City</label><input id="cw-city" placeholder="City" maxlength="60"></div>
+          <div class="ff"><label>State</label><input id="cw-state" placeholder="MI" maxlength="30"></div>
+        </div>
+        <div class="ff-row">
+          <div class="ff"><label>ZIP</label><input id="cw-zip" placeholder="ZIP" maxlength="10" oninput="lookupZip('cw-zip','cw-city','cw-state','cw-county')"></div>
+          <div class="ff"><label>County</label><input id="cw-county" placeholder="County" maxlength="60"></div>
         </div>
         <div class="ff"><label>Notes</label><textarea id="cw-notes" rows="2" placeholder="Any additional notes…" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;resize:vertical;"></textarea></div>
         <div class="form-actions">
@@ -1071,7 +1093,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
   <table class="p2info">
     <tr>
       <td style="width:34%"><span class="lbl">Client Name</span><input id="clientName2"></td>
-      <td style="width:33%"><span class="lbl">Adult Services Worker Name</span><input id="worker2"></td>
+      <td style="width:33%"><span class="lbl">Caseworker Name</span><input id="worker2"></td>
       <td style="width:33%"><span class="lbl">Billing Period</span><input id="billingPeriod2"></td>
     </tr>
   </table>
@@ -1359,7 +1381,8 @@ document.addEventListener('click',function(e){if(!e.target.closest('.global-sear
 // ============================================================
 function printThenEmail(){
   var prof=getProfiles()[activeProfileName]||{};
-  var agentEmail=prof.agentEmail||document.getElementById('activeAgentEmail').value||'';
+  var cwRec3=getCaseworkers().find(function(c){return c.id===prof.caseworkerId||c.name===prof.worker;})||{};
+  var agentEmail=cwRec3.email||document.getElementById('activeAgentEmail').value||'';
   var clientName=document.getElementById('clientName').value||activeProfileName||'Client';
   var bp=document.getElementById('billingPeriod').value||'';
   // Step 1: print dialog (user saves as PDF)
@@ -1376,14 +1399,14 @@ function printThenEmail(){
 }
 function _openEmailAfterPrint(toAddr,clientName,bp){
   var subj='Home Help Invoice'+(clientName?' — '+clientName:'')+(bp?' — '+bp:'');
-  var body='Dear Adult Services Worker,\n\nPlease find the attached Home Help Agency Invoice'+(clientName?' for '+clientName:'')+(bp?' for the billing period '+bp:'')+'.\n\nPlease review and process at your earliest convenience. Do not hesitate to contact us with any questions.\n\nThank you,\nThomas Jaboro\nLiberty Home Care Assistance\n(248) 291-4106';
+  var body='Dear Caseworker,\n\nPlease find the attached Home Help Agency Invoice'+(clientName?' for '+clientName:'')+(bp?' for the billing period '+bp:'')+'.\n\nPlease review and process at your earliest convenience. Do not hesitate to contact us with any questions.\n\nThank you,\nThomas Jaboro\nLiberty Home Care Assistance\n(248) 291-4106';
   openEmailComposer(toAddr,subj,body);
 }
 function navNewClient(){
   showPage('new-client');bc([{l:'Clients',fn:navHome},{l:'New Client'}]);document.getElementById('topbarActions').innerHTML='';
-  ['nc-name','nc-medicaid','nc-rate','nc-billto','nc-email','nc-phone','nc-cemail'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  ['nc-name','nc-medicaid','nc-rate','nc-phone','nc-cemail','nc-street','nc-city','nc-state','nc-zip','nc-county','nc-worker-search','nc-worker-val'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  var drop=document.getElementById('nc-worker-drop');if(drop)drop.style.display='none';
   populateCaregiverSelect('nc-caregiver','');
-  populateCaseworkerSelect('nc-worker','');
 }
 function navDetail(name,tab){
   aiTrack('ClientRecordOpened',{client:name,tab:tab||'info'});
@@ -1641,21 +1664,12 @@ function renderOverviewPane(){
   var paid=invoices.filter(function(i){return i.status==='paid';}).length;
   var submitted=invoices.filter(function(i){return i.status==='submitted';}).length;
   var draft=invoices.filter(function(i){return !i.status||i.status==='draft';}).length;
-  var recentInvHtml='';
-  if(!invoices.length){recentInvHtml='<div style="color:#8ca0b4;font-size:12px;padding:6px 0;">No invoices yet.</div>';}
-  else{invoices.slice(0,4).forEach(function(inv,idx){
-    var st=inv.status||'draft';
-    recentInvHtml+='<div class="ov-inv-row" style="cursor:pointer;" onclick="switchTab(\'history\')" title="Open Invoices tab">'+
-      '<span class="inv-badge" style="min-width:60px;text-align:center;">'+esc(inv.billingPeriod)+'</span>'+
-      '<select class="status-select st-'+st+'" data-period="'+esc(inv.billingPeriod)+'" onchange="cycleStatusOverview(this)" onclick="event.stopPropagation()">'+
-        '<option value="draft"'+(st==='draft'?' selected':'')+'>Draft</option>'+
-        '<option value="submitted"'+(st==='submitted'?' selected':'')+'>Submitted</option>'+
-        '<option value="paid"'+(st==='paid'?' selected':'')+'>Paid</option>'+
-      '</select>'+
-      '<span style="flex:1;color:#8ca0b4;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(inv.invoiceNote||'')+'</span>'+
-      '<span style="font-size:11px;color:#6b8dae;white-space:nowrap;">'+esc(inv.savedAt.split(',')[0])+'</span></div>';
-  });}
   var notesPreview=prof.clientNotes?prof.clientNotes.slice(0,200):'No notes yet.';
+  // Caseworker lookup
+  var cwRec=getCaseworkers().find(function(c){return c.id===prof.caseworkerId||c.name===prof.worker;})||null;
+  var cwName=cwRec?cwRec.name:(prof.worker||'');
+  // Address
+  var addrStr=(prof.street||'')+( prof.city?', '+prof.city:'')+(prof.state?' '+prof.state:'')+(prof.zip?' '+prof.zip:'');
   // Client tasks
   var clientTasks=getTodos().filter(function(t){return t.client===activeProfileName&&!t.done;});
   var tasksHtml='';
@@ -1670,29 +1684,32 @@ function renderOverviewPane(){
   } else {
     tasksHtml='<div style="color:#8ca0b4;font-size:12px;padding:4px 0;">No open tasks.</div>';
   }
-  // Email button — only if agent email is set and signed in
-  var agentEmail=prof.agentEmail||'';
-  var emailBtnHtml=agentEmail?
-    '<button class="btn btn-secondary btn-sm" onclick="sendEmailMailto(\''+esc(agentEmail)+'\')">Email Worker</button>':'';
+  // Recent invoices — read-only badges
+  var recentInvHtmlRO='';
+  if(!invoices.length){recentInvHtmlRO='<div style="color:#8ca0b4;font-size:12px;padding:6px 0;">No invoices yet.</div>';}
+  else{invoices.slice(0,4).forEach(function(inv){
+    var st=inv.status||'draft';
+    recentInvHtmlRO+='<div class="ov-inv-row" style="cursor:pointer;" onclick="switchTab(\'history\')" title="Open Invoices tab">'+
+      '<span class="inv-badge" style="min-width:60px;text-align:center;">'+esc(inv.billingPeriod)+'</span>'+
+      '<span class="inv-badge st-'+st+'" style="min-width:70px;text-align:center;">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span>'+
+      '<span style="flex:1;color:#8ca0b4;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(inv.invoiceNote||'')+'</span>'+
+      '<span style="font-size:11px;color:#6b8dae;white-space:nowrap;">'+esc(inv.savedAt.split(',')[0])+'</span></div>';
+  });}
   pane.innerHTML='<div class="overview-grid">'+
     '<div class="ov-card"><h4>Client Info</h4>'+
       '<div class="ov-row"><span class="ov-label">Medicaid ID</span><span class="ov-value">'+(prof.medicaidId||'—')+'</span></div>'+
       '<div class="ov-row"><span class="ov-label">Hourly Rate</span><span class="ov-value">'+(prof.hourlyRate?'$'+prof.hourlyRate+'/hr':'—')+'</span></div>'+
       '<div class="ov-row"><span class="ov-label">Phone</span><span class="ov-value">'+(prof.phone||'—')+'</span></div>'+
-      '<div class="ov-row"><span class="ov-label">Caregiver</span><span class="ov-value">'+(cgName||'Unassigned')+'</span></div>'+
-      '<div class="ov-row"><span class="ov-label">Bill To</span><span class="ov-value">'+(prof.billTo||'—')+'</span></div>'+
-      '<div class="ov-quick">'+
-        '<button class="btn btn-primary btn-sm" onclick="navInvoice()">+ New Invoice</button>'+
-        '<button class="btn btn-secondary btn-sm" onclick="switchTab(\'info\')">Edit Profile</button>'+
-        '<button class="btn btn-secondary btn-sm" onclick="switchTab(\'docs\')">Documents</button>'+
-        emailBtnHtml+
-      '</div></div>'+
+      (addrStr.trim()?'<div class="ov-row"><span class="ov-label">Address</span><span class="ov-value">'+esc(addrStr.trim())+'</span></div>':'')+
+      '<div class="ov-row"><span class="ov-label">Caregiver</span><span class="ov-value" style="color:#185FA5;cursor:pointer;" onclick="navCaregivers()">'+esc(cgName||'Unassigned')+'</span></div>'+
+      '<div class="ov-row"><span class="ov-label">Caseworker</span><span class="ov-value" style="color:#185FA5;cursor:pointer;" onclick="navCaseworkers()">'+esc(cwName||'—')+'</span></div>'+
+    '</div>'+
     '<div class="ov-card"><h4>Invoice Summary</h4>'+
       '<div class="ov-row"><span class="ov-label">Total Saved</span><span class="ov-value">'+invoices.length+'</span></div>'+
       '<div class="ov-row"><span class="ov-label">Paid</span><span class="ov-value" style="color:#1e7e34;">'+paid+'</span></div>'+
       '<div class="ov-row"><span class="ov-label">Submitted</span><span class="ov-value" style="color:#1565a0;">'+submitted+'</span></div>'+
       '<div class="ov-row"><span class="ov-label">Draft / Unsent</span><span class="ov-value" style="color:#666;">'+draft+'</span></div>'+
-      '<div style="margin-top:10px;border-top:1px solid #f0f3f7;padding-top:10px;">'+recentInvHtml+'</div>'+
+      '<div style="margin-top:10px;border-top:1px solid #f0f3f7;padding-top:10px;">'+recentInvHtmlRO+'</div>'+
     '</div>'+
     '<div class="ov-card"><h4>Tasks <span style="font-size:10px;color:#8ca0b4;font-weight:normal;text-transform:none;letter-spacing:0;">('+clientTasks.length+' open)</span>'+
       '<div style="margin-left:auto;display:flex;gap:6px;">'+
@@ -1704,7 +1721,6 @@ function renderOverviewPane(){
     '</div>'+
     '<div class="ov-card"><h4>Notes</h4>'+
       '<div class="ov-notes-preview">'+esc(notesPreview)+'</div>'+
-      '<div style="margin-top:8px;"><button class="btn btn-secondary btn-sm" onclick="switchTab(\'notes\')">Open Notes</button></div>'+
     '</div>'+
   '</div>';
 }
@@ -1777,46 +1793,57 @@ function openInvFromModal(clientName,idx){
 function renderInfoPane(){
   if(!activeProfileName)return;
   var prof=getProfiles()[activeProfileName],g=document.getElementById('infoGrid');g.innerHTML='';
-  var fields=[
-    {id:'ei-name',l:'Full Name',v:prof.clientName||'',full:false},
-    {id:'ei-medicaid',l:'Medicaid ID',v:prof.medicaidId||'',full:false},
-    {id:'ei-rate',l:'Hourly Rate',v:prof.hourlyRate||'',full:false},
-    {id:'ei-billto',l:'Bill To',v:prof.billTo||'',full:false},
-    {id:'ei-worker',l:'Adult Services Worker',v:prof.worker||'',full:false,isCwSelect:true},
-    {id:'ei-email',l:'Agent / Worker Email',v:prof.agentEmail||'',full:false,emailSuggest:true},
-    // divider
-    {divider:'CRM Info'},
-    {id:'ei-phone',l:'Client Phone',v:prof.phone||'',full:false},
-    {id:'ei-cemail',l:'Client Email',v:prof.clientEmail||'',full:false},
-    {id:'ei-caregiver',l:'Assigned Caregiver',v:prof.caregiverId||'',full:false,isCgSelect:true},
-    {id:'ei-status',l:'Client Status',v:prof.clientStatus||'active',full:false,isStatusSelect:true},
-  ];
-  fields.forEach(function(f){
-    if(f.divider){
-      var div=document.createElement('div');div.className='form-section-divider full';div.innerHTML='<span>'+f.divider+'</span>';g.appendChild(div);return;
-    }
-    var d=document.createElement('div');d.className='info-field'+(f.full?' full':'');
-    if(f.isCwSelect){
-      d.innerHTML='<label>'+f.l+'</label><select id="'+f.id+'"></select>';
-      g.appendChild(d);
-      populateCaseworkerSelect(f.id,f.v);
-    } else if(f.isCgSelect){
-      d.innerHTML='<label>'+f.l+'</label><select id="'+f.id+'"></select>';
-      g.appendChild(d);
-      populateCaregiverSelect(f.id,f.v);
-    } else if(f.isStatusSelect){
-      d.innerHTML='<label>'+f.l+'</label><select id="'+f.id+'">'+
-        ['active','inactive','lost','terminated'].map(function(s){return '<option value="'+s+'"'+(f.v===s?' selected':'')+'>'+s.charAt(0).toUpperCase()+s.slice(1)+'</option>';}).join('')+
-        '</select>';
-      g.appendChild(d);
-    } else if(f.emailSuggest){
-      d.innerHTML='<label>'+f.l+'</label><div class="email-wrap"><input id="'+f.id+'" value="'+esc(f.v)+'" oninput="emailSuggest(this,\''+f.id+'-suggest\')" onblur="hideEmailSuggest(\''+f.id+'-suggest\')"><div class="email-suggest" id="'+f.id+'-suggest"></div></div>';
-      g.appendChild(d);
-    } else {
-      d.innerHTML='<label>'+f.l+'</label><input id="'+f.id+'" value="'+esc(f.v)+'" oninput="unsavedChanges=true;">';
-      g.appendChild(d);
-    }
-  });
+
+  // Helper to create simple text field
+  function mkField(id,label,val,full){
+    var d=document.createElement('div');d.className='info-field'+(full?' full':'');
+    d.innerHTML='<label>'+label+'</label><input id="'+id+'" value="'+esc(val)+'" oninput="unsavedChanges=true;">';
+    g.appendChild(d);
+  }
+  // Helper for divider
+  function mkDivider(label){
+    var div=document.createElement('div');div.className='form-section-divider full';div.innerHTML='<span>'+label+'</span>';g.appendChild(div);
+  }
+
+  mkField('ei-name','Full Name',prof.clientName||'',false);
+  mkField('ei-medicaid','Medicaid ID',prof.medicaidId||'',false);
+  mkField('ei-rate','Hourly Rate',prof.hourlyRate||'',false);
+  mkField('ei-phone','Client Phone',prof.phone||'',false);
+  mkField('ei-cemail','Client Email',prof.clientEmail||'',false);
+  mkField('ei-street','Street',prof.street||'',true);
+
+  // City + State row
+  var dCityState=document.createElement('div');dCityState.className='info-field-row full';
+  dCityState.innerHTML='<div class="info-field"><label>City</label><input id="ei-city" value="'+esc(prof.city||'')+'" oninput="unsavedChanges=true;"></div>'+
+    '<div class="info-field"><label>State</label><input id="ei-state" value="'+esc(prof.state||'')+'" oninput="unsavedChanges=true;"></div>';
+  g.appendChild(dCityState);
+
+  // ZIP + County row
+  var dZipCounty=document.createElement('div');dZipCounty.className='info-field-row full';
+  dZipCounty.innerHTML='<div class="info-field"><label>ZIP</label><input id="ei-zip" value="'+esc(prof.zip||'')+'" oninput="unsavedChanges=true;lookupZip(\'ei-zip\',\'ei-city\',\'ei-state\',\'ei-county\')"></div>'+
+    '<div class="info-field"><label>County</label><input id="ei-county" value="'+esc(prof.county||'')+'" oninput="unsavedChanges=true;"></div>';
+  g.appendChild(dZipCounty);
+
+  mkDivider('Assignments');
+
+  // Caregiver select + navigate button
+  var dCg=document.createElement('div');dCg.className='info-field';
+  dCg.innerHTML='<label>Assigned Caregiver</label><div style="display:flex;align-items:center;gap:6px;"><select id="ei-caregiver" style="flex:1;"></select><button class="btn btn-secondary btn-sm" style="margin-left:6px;white-space:nowrap;" onclick="navCaregivers()">→ View</button></div>';
+  g.appendChild(dCg);
+  populateCaregiverSelect('ei-caregiver',prof.caregiverId||'');
+
+  // Caseworker select + navigate button
+  var dCw=document.createElement('div');dCw.className='info-field';
+  dCw.innerHTML='<label>Caseworker</label><div style="display:flex;align-items:center;gap:6px;"><select id="ei-worker" style="flex:1;"></select><button class="btn btn-secondary btn-sm" style="margin-left:6px;white-space:nowrap;" onclick="navCaseworkers()">→ View</button></div>';
+  g.appendChild(dCw);
+  populateCaseworkerSelect('ei-worker',prof.worker||'');
+
+  // Status select
+  var dSt=document.createElement('div');dSt.className='info-field';
+  dSt.innerHTML='<label>Client Status</label><select id="ei-status">'+
+    ['active','inactive','lost','terminated'].map(function(s){return '<option value="'+s+'"'+((prof.clientStatus||'active')===s?' selected':'')+'>'+s.charAt(0).toUpperCase()+s.slice(1)+'</option>';}).join('')+
+    '</select>';
+  g.appendChild(dSt);
 }
 function saveClientInfo(){
   if(!activeProfileName)return;
@@ -1824,9 +1851,14 @@ function saveClientInfo(){
   var newName=document.getElementById('ei-name').value.trim()||activeProfileName;
   var rec=p[activeProfileName];
   rec.clientName=newName;rec.medicaidId=document.getElementById('ei-medicaid').value;
-  rec.hourlyRate=document.getElementById('ei-rate').value;rec.billTo=document.getElementById('ei-billto').value;
-  rec.worker=document.getElementById('ei-worker').value;rec.agentEmail=document.getElementById('ei-email').value;
+  rec.hourlyRate=document.getElementById('ei-rate').value;
   rec.phone=document.getElementById('ei-phone').value;rec.clientEmail=document.getElementById('ei-cemail').value;
+  rec.street=document.getElementById('ei-street').value;
+  rec.city=document.getElementById('ei-city').value;
+  rec.state=document.getElementById('ei-state').value;
+  rec.zip=document.getElementById('ei-zip').value;
+  rec.county=document.getElementById('ei-county').value;
+  rec.worker=document.getElementById('ei-worker').value;
   rec.caregiverId=document.getElementById('ei-caregiver').value;
   var statusEl=document.getElementById('ei-status');if(statusEl)rec.clientStatus=statusEl.value;
   if(newName!==activeProfileName){p[newName]=rec;delete p[activeProfileName];activeProfileName=newName;}
@@ -2113,9 +2145,15 @@ function createClient(){
   aiTrack('ClientCreated',{client:name});
   if(!p[name])p[name]={invoices:[],clientNotes:''};
   p[name].clientName=name;p[name].medicaidId=document.getElementById('nc-medicaid').value.trim();
-  p[name].agentEmail=document.getElementById('nc-email').value.trim();p[name].billTo=document.getElementById('nc-billto').value.trim();
-  p[name].worker=document.getElementById('nc-worker').value.trim();p[name].hourlyRate=document.getElementById('nc-rate').value.trim();
+  p[name].hourlyRate=document.getElementById('nc-rate').value.trim();
   p[name].phone=document.getElementById('nc-phone').value.trim();p[name].clientEmail=document.getElementById('nc-cemail').value.trim();
+  p[name].street=document.getElementById('nc-street').value.trim();
+  p[name].city=document.getElementById('nc-city').value.trim();
+  p[name].state=document.getElementById('nc-state').value.trim();
+  p[name].zip=document.getElementById('nc-zip').value.trim();
+  p[name].county=document.getElementById('nc-county').value.trim();
+  p[name].worker=document.getElementById('nc-worker-search').value.trim();
+  p[name].caseworkerId=document.getElementById('nc-worker-val').value.trim();
   p[name].caregiverId=document.getElementById('nc-caregiver').value;
   p[name].clientStatus=document.getElementById('nc-status').value||'active';
   p[name].hasComplex=false;if(!p[name].tasks)p[name].tasks=captureStates();
@@ -2529,6 +2567,64 @@ function emailSuggest(input,suggestId){
 function hideEmailSuggest(id){setTimeout(function(){var el=document.getElementById(id);if(el)el.style.display='none';},150);}
 
 // ============================================================
+//  ZIP LOOKUP
+// ============================================================
+function lookupZip(zipId, cityId, stateId, countyId) {
+  var zip = document.getElementById(zipId).value.trim();
+  if (zip.length !== 5 || !/^\d{5}$/.test(zip)) return;
+  fetch('https://api.zippopotam.us/us/' + zip)
+    .then(function(r){ return r.ok ? r.json() : Promise.reject(); })
+    .then(function(data){
+      if (data.places && data.places.length) {
+        var p = data.places[0];
+        var cEl = document.getElementById(cityId); if(cEl && !cEl.value) cEl.value = p['place name'] || '';
+        var sEl = document.getElementById(stateId); if(sEl && !sEl.value) sEl.value = p['state abbreviation'] || '';
+      }
+    })
+    .catch(function(){});
+}
+
+// ============================================================
+//  CASEWORKER SEARCH AUTOCOMPLETE
+// ============================================================
+function cwSearch(input, hiddenId, dropId) {
+  var val = input.value.trim().toLowerCase();
+  var drop = document.getElementById(dropId);
+  var hidden = document.getElementById(hiddenId);
+  if (!val) { drop.style.display = 'none'; hidden.value = ''; return; }
+  var cws = getCaseworkers();
+  var matches = cws.filter(function(c){ return (c.name||'').toLowerCase().includes(val); });
+  drop.innerHTML = '';
+  matches.slice(0, 8).forEach(function(c) {
+    var item = document.createElement('div');
+    item.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f3f7;';
+    item.textContent = c.name + (c.agency ? ' — ' + c.agency : '');
+    item.addEventListener('mousedown', function(e){ e.preventDefault(); input.value = c.name; hidden.value = c.id; drop.style.display = 'none'; });
+    item.addEventListener('mouseover', function(){ this.style.background='#f0f5fb'; });
+    item.addEventListener('mouseout', function(){ this.style.background=''; });
+    drop.appendChild(item);
+  });
+  // "Add new" option if no exact match
+  if (!matches.some(function(c){ return (c.name||'').toLowerCase() === val; })) {
+    var addItem = document.createElement('div');
+    addItem.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;color:#185FA5;font-weight:600;';
+    addItem.textContent = '+ Add "' + input.value.trim() + '" as new caseworker';
+    addItem.addEventListener('mousedown', function(e){
+      e.preventDefault();
+      drop.style.display = 'none';
+      var newName = input.value.trim();
+      var newId = cwId();
+      var newCw = { id: newId, name: newName, first_name: '', last_name: '', agency: '', phone: '', email: '', fax: '', street: '', city: '', state: '', zip: '', county: '', notes: '' };
+      var arr = getCaseworkers(); arr.push(newCw); saveCaseworkersLS(arr);
+      saveCaseworkerAPI(newCw);
+      hidden.value = newId;
+    });
+    drop.appendChild(addItem);
+  }
+  drop.style.display = 'block';
+}
+
+// ============================================================
 //  ACTIVITY LOG
 // ============================================================
 function getActivity(){try{return JSON.parse(localStorage.getItem('lhca_activity')||'[]');}catch(e){return[];}}
@@ -2683,7 +2779,8 @@ function addTaskForClient(clientName){
 }
 function sendEmailMailto(toAddr){
   var prof=getProfiles()[activeProfileName]||{};
-  var addr=toAddr||prof.agentEmail||'';
+  var cwRec4=getCaseworkers().find(function(c){return c.id===prof.caseworkerId||c.name===prof.worker;})||{};
+  var addr=toAddr||cwRec4.email||'';
   var clientName=activeProfileName||'';
   var subj='Re: '+clientName;
   window.location.href='mailto:'+encodeURIComponent(addr)+'?subject='+encodeURIComponent(subj);
@@ -3036,12 +3133,16 @@ function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;'
 // ============================================================
 function loadProfileIntoForm(prof){
   document.getElementById('clientName').value=prof.clientName||'';document.getElementById('clientName2').value=prof.clientName||'';
-  document.getElementById('medicaidId').value=prof.medicaidId||'';document.getElementById('billTo').value=prof.billTo||'';
+  document.getElementById('medicaidId').value=prof.medicaidId||'';
+  var addrForBill=(prof.street||'')+( prof.city?', '+prof.city:'')+(prof.state?' '+prof.state:'')+(prof.zip?' '+prof.zip:'');
+  document.getElementById('billTo').value=addrForBill.trim();
   document.getElementById('worker').value=prof.worker||'';document.getElementById('worker2').value=prof.worker||'';
   document.getElementById('hourlyRate').value=prof.hourlyRate||'';
   document.getElementById('showComplex').checked=prof.hasComplex||false;toggleComplex();
   if(prof.tasks){applyStates(prof.tasks);lastLoadedStates=prof.tasks;}
-  var ef=document.getElementById('activeAgentEmail');if(ef)ef.value=prof.agentEmail||'';
+  // Agent email now comes from caseworker record
+  var cwRec=getCaseworkers().find(function(c){return c.id===prof.caseworkerId||c.name===prof.worker;})||{};
+  var ef=document.getElementById('activeAgentEmail');if(ef)ef.value=cwRec.email||'';
 }
 function captureFullInvoice(){
   var f=['clientName','medicaidId','billTo','worker','billingPeriod','hourlyRate','svcHH','svcMM','cplxHH','cplxMM','p1HH','p1MM','grandHH','grandMM','dateSubmitted','sigDate1','sigDate2'],d={};
@@ -3433,7 +3534,8 @@ async function loadInvoiceForCapture(clientName,inv,period){
   document.getElementById('billingPeriod2').value=period;
   document.getElementById('medicaidId').value=prof.medicaidId||'';
   document.getElementById('hourlyRate').value=prof.hourlyRate||'';
-  document.getElementById('billTo').value=prof.billTo||'';
+  var addrForBillCapture=(prof.street||'')+( prof.city?', '+prof.city:'')+(prof.state?' '+prof.state:'')+(prof.zip?' '+prof.zip:'');
+  document.getElementById('billTo').value=addrForBillCapture.trim();
   document.getElementById('worker').value=prof.worker||'';
   document.getElementById('worker2').value=prof.worker||'';
   document.getElementById('dateSubmitted').value=today();
@@ -3471,7 +3573,14 @@ async function sendEmail(){
   var bp=document.getElementById('billingPeriod').value.trim();
   var ae=document.getElementById('activeAgentEmail').value.trim();
   var w=document.getElementById('worker').value.trim();
-  if(!ae){alert('No worker email on file for this client. Add one in the client\'s Profile tab.');return;}
+  // If no email cached, try to look up from caseworker record
+  if(!ae&&activeProfileName){
+    var prof2=getProfiles()[activeProfileName]||{};
+    var cwRec2=getCaseworkers().find(function(c){return c.id===prof2.caseworkerId||c.name===prof2.worker;})||{};
+    ae=cwRec2.email||'';
+    if(ae){var ef=document.getElementById('activeAgentEmail');if(ef)ef.value=ae;}
+  }
+  if(!ae){alert('No caseworker email on file. Add an email to the caseworker record from the Caseworkers page.');return;}
   if(!spToken){
     if(confirm('Sign in with your Microsoft account to send email via Outlook?\n\nClicking OK will redirect you to sign in.')){signIn();}
     return;
@@ -3482,7 +3591,7 @@ async function sendEmail(){
     var base64=await captureInvoicePDF();
     var fname=(cn||'Invoice').replace(/[^a-z0-9]/gi,'_')+'_'+(bp||'').replace('/','_')+'.pdf';
     var subj='Home Help Agency Invoice'+(cn?' – '+cn:'')+(bp?' – '+bp:'');
-    var body='<p>Dear '+(w||'Adult Services Worker')+',</p>'+
+    var body='<p>Dear '+(w||'Caseworker')+',</p>'+
       '<p>Please find attached the Home Help Agency Invoice'+(cn?' for <b>'+cn+'</b>':'')+(bp?' for billing period <b>'+bp+'</b>':'')+'. Please review and process at your earliest convenience.</p>'+
       '<p>Please do not hesitate to contact us with any questions.</p>'+
       '<p>Thank you,<br><b>Thomas Jaboro</b><br>Liberty Home Care Assistance<br>(248) 291-4106</p>';
@@ -3512,7 +3621,7 @@ function copyMonth(){
   var cn=document.getElementById('clientName').value;
   var mid=document.getElementById('medicaidId').value;
   var hr=document.getElementById('hourlyRate').value;
-  var bt=document.getElementById('billTo').value;
+  var bt=document.getElementById('billTo').value; // carries forward the address string
   var wk=document.getElementById('worker').value;
   var hc=document.getElementById('showComplex').checked;
   // If current form has no billing period set yet, try pulling from most recent saved invoice
@@ -3758,7 +3867,9 @@ function loadProfilesAPI() {
           var name = r3.name, c = r3.client;
           profiles[name] = Object.assign({}, {
             clientName: name, medicaidId: c.medicaid_id || '', hourlyRate: c.hourly_rate || '',
-            billTo: c.bill_to || '', worker: c.worker || '', agentEmail: c.agent_email || '',
+            worker: c.worker || '', caseworkerId: c.caseworker_id || '',
+            street: c.street || '', city: c.city || '', state: c.state || '',
+            zip: c.zip || '', county: c.county || '',
             phone: c.phone || '', clientEmail: c.client_email || '', caregiverId: c.caregiver_id || '',
             clientStatus: c.client_status || 'active', hasComplex: !!c.has_complex,
             clientNotes: c.client_notes || '', auditLog: [], _dbId: c.id, invoices: r3.invoices,
@@ -3787,7 +3898,9 @@ function saveProfileSP(name, data) {
   var body = {
     id: dbId || undefined, client_name: name,
     medicaid_id: data.medicaidId || '', hourly_rate: data.hourlyRate || '',
-    bill_to: data.billTo || '', worker: data.worker || '', agent_email: data.agentEmail || '',
+    worker: data.worker || '', caseworker_id: data.caseworkerId || '',
+    street: data.street || '', city: data.city || '', state: data.state || '',
+    zip: data.zip || '', county: data.county || '',
     phone: data.phone || '', client_email: data.clientEmail || '', caregiver_id: data.caregiverId || '',
     client_status: data.clientStatus || 'active', has_complex: data.hasComplex ? 1 : 0,
     client_notes: data.clientNotes || '', audit_json: JSON.stringify(data.auditLog || []),
@@ -3926,7 +4039,10 @@ function loadCaseworkersAPI(){
     .then(function(r){ return r.json(); })
     .then(function(rows){
       var arr = (rows||[]).map(function(c){
-        return { id:c.id, name:c.name||'', agency:c.agency||'', phone:c.phone||'', email:c.email||'', notes:c.notes||'' };
+        return { id:c.id, name:c.name||'', first_name:c.first_name||'', last_name:c.last_name||'',
+                 agency:c.agency||'', phone:c.phone||'', email:c.email||'', fax:c.fax||'',
+                 street:c.street||'', city:c.city||'', state:c.state||'', zip:c.zip||'', county:c.county||'',
+                 notes:c.notes||'' };
       });
       saveCaseworkersLS(arr);
       if (typeof renderCaseworkerList === 'function' && document.getElementById('cwList')) renderCaseworkerList();
@@ -3955,25 +4071,51 @@ function showCaseworkerForm(id){
   if(id){
     var cw=getCaseworkers().find(function(c){return c.id===id;});
     if(cw){
-      document.getElementById('cw-name').value=cw.name||'';
+      // Split name into first/last
+      var nameParts=(cw.name||'').trim().split(' ');
+      var firstName=nameParts[0]||'';
+      var lastName=nameParts.slice(1).join(' ')||'';
+      document.getElementById('cw-first-name').value=cw.first_name||firstName;
+      document.getElementById('cw-last-name').value=cw.last_name||lastName;
       document.getElementById('cw-agency').value=cw.agency||'';
       document.getElementById('cw-phone').value=cw.phone||'';
+      document.getElementById('cw-fax').value=cw.fax||'';
       document.getElementById('cw-email').value=cw.email||'';
+      document.getElementById('cw-street').value=cw.street||'';
+      document.getElementById('cw-city').value=cw.city||'';
+      document.getElementById('cw-state').value=cw.state||'';
+      document.getElementById('cw-zip').value=cw.zip||'';
+      document.getElementById('cw-county').value=cw.county||'';
       document.getElementById('cw-notes').value=cw.notes||'';
     }
     document.getElementById('cwDeleteBtn').style.display='inline-block';
   } else {
-    ['cw-name','cw-agency','cw-phone','cw-email','cw-notes'].forEach(function(fid){var e=document.getElementById(fid);if(e)e.value='';});
+    ['cw-first-name','cw-last-name','cw-agency','cw-phone','cw-fax','cw-email','cw-street','cw-city','cw-state','cw-zip','cw-county','cw-notes'].forEach(function(fid){var e=document.getElementById(fid);if(e)e.value='';});
     document.getElementById('cwDeleteBtn').style.display='none';
   }
   document.getElementById('cwFormWrap').scrollIntoView({behavior:'smooth'});
 }
 function hideCaseworkerForm(){document.getElementById('cwFormWrap').style.display='none';}
 function saveCaseworker(){
-  var name=document.getElementById('cw-name').value.trim();if(!name){alert('Name is required.');return;}
+  var firstName=document.getElementById('cw-first-name').value.trim();
+  var lastName=document.getElementById('cw-last-name').value.trim();
+  var name=(firstName+' '+lastName).trim();
+  if(!name){alert('Name is required.');return;}
   var cws=getCaseworkers();
   var editingId=document.getElementById('cw-editing-id').value;
-  var rec={id:editingId||cwId(),name:name,agency:document.getElementById('cw-agency').value,phone:document.getElementById('cw-phone').value,email:document.getElementById('cw-email').value,notes:document.getElementById('cw-notes').value};
+  var rec={
+    id:editingId||cwId(),name:name,first_name:firstName,last_name:lastName,
+    agency:document.getElementById('cw-agency').value,
+    phone:document.getElementById('cw-phone').value,
+    fax:document.getElementById('cw-fax').value,
+    email:document.getElementById('cw-email').value,
+    street:document.getElementById('cw-street').value,
+    city:document.getElementById('cw-city').value,
+    state:document.getElementById('cw-state').value,
+    zip:document.getElementById('cw-zip').value,
+    county:document.getElementById('cw-county').value,
+    notes:document.getElementById('cw-notes').value
+  };
   if(editingId){
     var idx=cws.findIndex(function(c){return c.id===editingId;});
     if(idx>=0){cws[idx]=rec;}
@@ -3996,14 +4138,17 @@ function renderCaseworkerList(){
   var cws=getCaseworkers();
   var list=document.getElementById('cwList');if(!list)return;
   if(!cws.length){
-    list.innerHTML='<div class="empty-state"><div class="ei">&#128101;</div><h3>No caseworkers yet</h3><p style="font-size:13px;">Click "+ Add Caseworker" to add adult services workers.</p></div>';
+    list.innerHTML='<div class="empty-state"><div class="ei">&#128101;</div><h3>No caseworkers yet</h3><p style="font-size:13px;">Click "+ Add Caseworker" to add caseworkers.</p></div>';
     return;
   }
   var profiles=getProfiles();
   list.innerHTML='';
   cws.forEach(function(cw){
-    // Find clients assigned to this caseworker by matching prof.worker field
-    var assignedClients=Object.keys(profiles).filter(function(k){return (profiles[k].worker||'').toLowerCase()===cw.name.toLowerCase();});
+    // Find clients assigned to this caseworker by matching prof.worker field or caseworkerId
+    var assignedClients=Object.keys(profiles).filter(function(k){
+      return (profiles[k].caseworkerId&&profiles[k].caseworkerId===cw.id)||(profiles[k].worker||'').toLowerCase()===cw.name.toLowerCase();
+    });
+    var addrStr=[(cw.street||''),(cw.city||''),(cw.state||''),(cw.zip||'')].filter(Boolean).join(', ');
     var card=document.createElement('div');
     card.style.cssText='background:#fff;border:1px solid #e1e5ea;border-radius:8px;padding:16px 18px;margin-bottom:12px;max-width:700px;';
     card.innerHTML=
@@ -4016,9 +4161,11 @@ function renderCaseworkerList(){
           '<div style="font-size:12px;color:#6b8dae;margin-top:2px;">'+
             (cw.agency?'<span style="margin-right:10px;">&#127970; '+esc(cw.agency)+'</span>':'')+
             (cw.phone?'<span style="margin-right:10px;">&#128222; '+esc(cw.phone)+'</span>':'')+
+            (cw.fax?'<span style="margin-right:10px;">&#128224; Fax: '+esc(cw.fax)+'</span>':'')+
             (cw.email?'<span>&#9993; '+esc(cw.email)+'</span>':'')+
           '</div>'+
-          (cw.notes?'<div style="font-size:12px;color:#4a6a8a;margin-top:6px;font-style:italic;">'+esc(cw.notes)+'</div>':'')+
+          (addrStr?'<div style="font-size:12px;color:#4a6a8a;margin-top:4px;">&#128205; '+esc(addrStr)+'</div>':'')+
+          (cw.notes?'<div style="font-size:12px;color:#4a6a8a;margin-top:4px;font-style:italic;">'+esc(cw.notes)+'</div>':'')+
           (assignedClients.length?
             '<div style="margin-top:8px;"><span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#6b8dae;">Assigned Clients ('+assignedClients.length+')</span><div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px;">'+
               assignedClients.map(function(n){return '<span style="background:#eef4fb;color:#185FA5;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer;" onclick="navDetail(\''+esc(n)+'\')">'+esc(n)+'</span>';}).join('')+
@@ -4300,7 +4447,7 @@ function buildMDHHS6200(prof,cw){
   '<td><span class="sf-label">3. Recipient ID Number</span>'+sfi('m62_rid',prof.medicaidId)+'</td>'+
 '</tr><tr>'+
   '<td><span class="sf-label">4. Adult Services Worker Name</span>'+sfi('m62_wname',cw.name||prof.worker)+'</td>'+
-  '<td><span class="sf-label">5. Worker Email Address</span>'+sfi('m62_wemail',cw.email||prof.agentEmail)+'</td>'+
+  '<td><span class="sf-label">5. Worker Email Address</span>'+sfi('m62_wemail',cw.email||'')+'</td>'+
   '<td><span class="sf-label">6. Worker Phone Number</span>'+sfi('m62_wphone',cw.phone)+'</td>'+
 '</tr><tr>'+
   '<td><span class="sf-label">7. County</span>'+sfi('m62_county')+'</td>'+
@@ -4445,8 +4592,8 @@ function previewMonthlyInvoices(){
     if(prof.status==='inactive'||prof.status==='terminated'||prof.status==='lost')return;
     var wname=(prof.worker||'').trim()||'(No Worker Assigned)';
     if(!groups[wname])groups[wname]={clients:[]};
-    var cwRec=cws.find(function(c){return (c.name||'').toLowerCase()===wname.toLowerCase();})||{};
-    var email=cwRec.email||prof.agentEmail||'';
+    var cwRec=cws.find(function(c){return (c.id&&prof.caseworkerId&&c.id===prof.caseworkerId)||(c.name||'').toLowerCase()===wname.toLowerCase();})||{};
+    var email=cwRec.email||'';
     groups[wname].email=groups[wname].email||email;
     groups[wname].cwName=wname;
     var inv=(prof.invoices||[]).find(function(i){return i.billingPeriod===period;})||null;
@@ -4558,7 +4705,7 @@ async function sendMonthlyEmail(email,workerName,clients,period){
     alert('No PDFs could be generated. Please check the console for errors.');return;
   }
 
-  var workerDisplay=workerName&&workerName!=='(No Worker Assigned)'?workerName:'Adult Services Worker';
+  var workerDisplay=workerName&&workerName!=='(No Worker Assigned)'?workerName:'Caseworker';
   var subj='Home Help Agency Invoices — '+period;
   var body='<p>Dear '+workerDisplay+',</p>'+
     '<p>Please find attached the Home Help Agency Invoice'+(attachments.length>1?'s':'')+' for the billing period <b>'+period+'</b>.</p>'+
