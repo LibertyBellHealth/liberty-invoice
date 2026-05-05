@@ -7,7 +7,7 @@
 <link rel="icon" type="image/x-icon" href="/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Allura&family=Caveat:wght@500&family=Dancing+Script:wght@600&family=Great+Vibes&family=Italianno&family=Sacramento&display=swap" rel="stylesheet">
 <!-- ── Azure Application Insights — server-side audit logging ── -->
 <script type="text/javascript">
 !function(T,l,y){var S=T.location,k="script",D="instrumentationKey",C="ingestionendpoint",I="disableExceptionTracking",E="ai.device.",b="toLowerCase",w="crossOriginFailed",N="hi.device.",O="name",L="path",P="user",q="id",H="url",B="ingestionendpoint",F=function(e){var a=e.getAttribute;return a?a.call(e,"type"):""},j=function(){var e=document.getElementsByTagName(k);return e.length>0?e[e.length-1]:null},R=function(e){var a,t=e&&e.getAttribute;if(t&&(a=t.call(e,"data-website-id"))){return a}return null},A=function(e){return"function"==typeof e},s=function(e,a){return e[a]||{}},f=function(){return T[y.dle||"appInsights"]||{trackException:function(){},trackEvent:function(){},trackPageView:function(){},setAuthenticatedUserContext:function(){},clearAuthenticatedUserContext:function(){}}},G=function(){return T[y.dle||"appInsights"]},V=function(){},U=T,r=[];function g(e,a){r.push(arguments)}U[y.dle||"appInsights"]={queue:r,version:2,config:y.cfg};var h=document,m=h.createElement(k);m.src=y.src;m.crossOrigin="anonymous";var p=j();p?p.parentNode.insertBefore(m,p):h.getElementsByTagName("head")[0].appendChild(m);T[y.dle||"appInsights"]=function(e,a){for(var t=0;t<r.length;t++)r[t].apply(null,arguments);r=[]};}(window,document,{
@@ -1356,8 +1356,16 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
     </div>
     <!-- Type Name tab -->
     <div id="sigPaneType" style="display:none;">
-      <p style="font-size:12px;color:#5a7296;margin:0 0 6px;">Type your name — it will appear in cursive.</p>
-      <input id="sigTypeName" placeholder="Your full name" oninput="previewCursiveSig()" style="width:100%;padding:6px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:15px;font-family:'Dancing Script',cursive;outline:none;margin-bottom:8px;box-sizing:border-box;">
+      <p style="font-size:12px;color:#5a7296;margin:0 0 6px;">Type your name — choose a signature style below.</p>
+      <input id="sigTypeName" placeholder="Your full name" oninput="previewCursiveSig()" style="width:100%;padding:6px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:15px;font-family:Arial,sans-serif;outline:none;margin-bottom:6px;box-sizing:border-box;">
+      <select id="sigTypeFont" onchange="previewCursiveSig()" style="width:100%;padding:6px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;outline:none;margin-bottom:8px;box-sizing:border-box;background:#fff;">
+        <option value="Allura" selected>Allura — elegant signature</option>
+        <option value="Sacramento">Sacramento — relaxed handwriting</option>
+        <option value="Italianno">Italianno — flowing script</option>
+        <option value="Great Vibes">Great Vibes — formal calligraphy</option>
+        <option value="Caveat">Caveat — casual handwriting</option>
+        <option value="Dancing Script">Dancing Script — fancy display</option>
+      </select>
       <canvas id="sigTypeCanvas" width="390" height="80" style="border:1px solid #d0d8e4;border-radius:4px;background:#fff;display:block;width:100%;"></canvas>
       <div class="sig-row">
         <button class="btn btn-primary" onclick="confirmTypedSig()">Save Signature</button>
@@ -4157,9 +4165,10 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
 
   // Day rows (1..31)
   pdf.setFontSize(8.5);
-  pdf.setLineWidth(0.5);
+  pdf.setLineWidth(0.6);
   var dataRows=isPage2?(data.tasks.cplx||[]):(data.tasks.svc||[]);
   for(var d=1;d<=31;d++){
+    pdf.setLineWidth(0.6);
     pdf.rect(x0,y,W,dayRowH);
     pdf.line(x0+dayColW,y,x0+dayColW,y+dayRowH);
     pdf.setFont('helvetica','normal');pdf.text(String(d),x0+dayColW/2,y+9,{align:'center'});
@@ -4167,15 +4176,14 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
     for(var c=0;c<nCols;c++){
       var cx=x0+dayColW+c*colW;
       if(c>0)pdf.line(cx,y,cx,y+dayRowH);
-      // Draw checkbox centered in cell
-      var bxSize=8,bxX=cx+colW/2-bxSize/2,bxY=y+dayRowH/2-bxSize/2;
-      pdf.setLineWidth(0.5);pdf.rect(bxX,bxY,bxSize,bxSize);
+      // Draw checkbox centered in cell — slightly taller than wide to match MSA-1904 reference
+      var bxW=10,bxH=11,bxX=cx+colW/2-bxW/2,bxY=y+dayRowH/2-bxH/2;
+      pdf.setLineWidth(0.6);pdf.rect(bxX,bxY,bxW,bxH);
       if(rowState[c]){
-        // Diagonal X via two lines
-        pdf.setLineWidth(0.7);
-        pdf.line(bxX,bxY,bxX+bxSize,bxY+bxSize);
-        pdf.line(bxX+bxSize,bxY,bxX,bxY+bxSize);
-        pdf.setLineWidth(0.5);
+        // Heavier diagonal X — matches government form weight
+        pdf.setLineWidth(1.1);
+        pdf.line(bxX,bxY,bxX+bxW,bxY+bxH);
+        pdf.line(bxX+bxW,bxY,bxX,bxY+bxH);
       }
     }
     y+=dayRowH;
@@ -4213,22 +4221,27 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
   // Signature line + label
   var sigBoxW=W*0.62,dateBoxW=W-sigBoxW;
   pdf.line(x0+sigBoxW,y,x0+sigBoxW,y+sigH);
-  // Embed signature image if one was placed
+  // Embed signature image with proper aspect ratio, above the signature line
   var sigEl=document.getElementById('sigArea'+(isPage2?2:1));
   if(sigEl&&sigEl.tagName==='IMG'&&sigEl.src){
     try{
-      // place image above the bottom-line
-      pdf.addImage(sigEl.src,'PNG',x0+8,y+3,sigBoxW-16,24);
+      // Sig canvas is 390x80 — preserve aspect ratio at 18pt height (compact, signature-like)
+      var sigImgH=18,aspectRatio=390/80,sigImgW=sigImgH*aspectRatio;
+      // Cap width at 60% of signature box; left-align with 8pt margin
+      var maxW=sigBoxW*0.6;
+      if(sigImgW>maxW){sigImgW=maxW;sigImgH=sigImgW/aspectRatio;}
+      // Position so signature baseline sits ~3pt above the line at y+30
+      pdf.addImage(sigEl.src,'PNG',x0+8,y+30-sigImgH-1,sigImgW,sigImgH);
     }catch(e){console.warn('Signature embed failed:',e);}
   }
-  pdf.setLineWidth(0.4);pdf.line(x0+5,y+30,x0+sigBoxW-5,y+30);
+  pdf.setLineWidth(0.6);pdf.line(x0+5,y+30,x0+sigBoxW-5,y+30);
   pdf.setFontSize(8);
   pdf.text('Signature of Authorized Representative',x0+5,y+39);
   // Date
   var sigDate=isPage2?(data.sigDate2||''):(data.sigDate1||'');
   pdf.setFontSize(10);
   pdf.text(sigDate,x0+sigBoxW+5,y+24);
-  pdf.line(x0+sigBoxW+5,y+30,x0+W-5,y+30);
+  pdf.setLineWidth(0.6);pdf.line(x0+sigBoxW+5,y+30,x0+W-5,y+30);
   pdf.setFontSize(8);
   pdf.text('Date',x0+sigBoxW+5,y+39);
   y+=sigH;
@@ -4508,15 +4521,25 @@ function switchSigTab(tab){
 // ── Cursive typed signature preview ──────────────────────────────
 function previewCursiveSig(){
   var name=(document.getElementById('sigTypeName')||{}).value||'';
+  var fontSel=document.getElementById('sigTypeFont');
+  var fontFamily=fontSel?fontSel.value:'Allura';
   var tc=document.getElementById('sigTypeCanvas');if(!tc)return;
   var ctx=tc.getContext('2d');
   ctx.clearRect(0,0,tc.width,tc.height);
   if(!name)return;
-  var fontSize=Math.min(48,Math.max(28,Math.floor(tc.width*0.11)));
-  ctx.font=fontSize+'px "Dancing Script", cursive';
+  // Real-signature fonts (Allura, Sacramento, Italianno) need larger sizes to read well
+  var sizeBoost=(fontFamily==='Allura'||fontFamily==='Italianno'||fontFamily==='Great Vibes')?1.25:1.0;
+  var fontSize=Math.min(56,Math.max(32,Math.floor(tc.width*0.11*sizeBoost)));
+  ctx.font=fontSize+'px "'+fontFamily+'", cursive';
   ctx.fillStyle='#000';
   ctx.textBaseline='middle';
   var metrics=ctx.measureText(name);
+  // Shrink to fit if too wide
+  if(metrics.width>tc.width-16){
+    fontSize=Math.floor(fontSize*(tc.width-16)/metrics.width);
+    ctx.font=fontSize+'px "'+fontFamily+'", cursive';
+    metrics=ctx.measureText(name);
+  }
   var x=Math.max(8,(tc.width-metrics.width)/2);
   ctx.fillText(name,x,tc.height/2);
 }
