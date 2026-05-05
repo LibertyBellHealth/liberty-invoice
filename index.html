@@ -4302,11 +4302,17 @@ async function captureInvoicePDFRaster(){
 // Set localStorage 'lhca_pdf_mode' to 'raster' to force the old path.
 async function captureInvoicePDF(){
   var mode=(localStorage.getItem('lhca_pdf_mode')||'vector').toLowerCase();
+  console.log('[PDF] Mode:',mode);
   if(mode==='raster')return captureInvoicePDFRaster();
   try{
-    return await captureInvoicePDFVector();
+    console.log('[PDF] Starting vector render...');
+    var t0=Date.now();
+    var result=await captureInvoicePDFVector();
+    console.log('[PDF] Vector render OK in',(Date.now()-t0)+'ms, base64 length:',result?result.length:0);
+    return result;
   }catch(e){
-    console.warn('Vector PDF failed, falling back to raster:',e);
+    console.error('[PDF] Vector render FAILED:',e,e.stack);
+    alert('Vector PDF generation failed (check console for details). Falling back to raster.\n\n'+e.message);
     return captureInvoicePDFRaster();
   }
 }
