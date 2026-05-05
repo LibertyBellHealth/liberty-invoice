@@ -137,6 +137,24 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 .form-section-divider{grid-column:1/-1;border-top:1px solid #e8ecf0;margin:4px 0;padding-top:12px;}
 .form-section-divider span{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;}
 
+/* DOCUMENT UPLOAD CARD */
+.doc-upload-card{background:#fff;border:1px solid #e1e8f0;border-radius:8px;padding:16px;margin-bottom:14px;max-width:640px;}
+.doc-upload-head h4{margin:0 0 4px;color:#1a3a5c;font-size:14px;font-weight:600;}
+.doc-upload-head p{font-size:12px;color:#8ca0b4;margin:0 0 14px;}
+.doc-upload-row{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:end;}
+.doc-upload-fields{display:flex;flex-direction:column;}
+.doc-upload-fields label{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;font-weight:600;margin-bottom:4px;}
+.doc-upload-fields select,.doc-upload-fields input[type=file]{width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;color:#1a2b45;background:#fff;outline:none;}
+.doc-upload-fields select:focus,.doc-upload-fields input[type=file]:focus{border-color:#185FA5;}
+.doc-upload-actions{display:flex;flex-direction:column;gap:8px;min-width:130px;}
+.doc-upload-actions .btn{width:100%;padding:8px 14px;font-size:13px;}
+.doc-upload-status{font-size:11px;color:#666;display:block;margin-top:8px;}
+@media (max-width: 640px){
+  .doc-upload-row{grid-template-columns:1fr;}
+  .doc-upload-actions{flex-direction:row;}
+  .doc-upload-actions .btn{flex:1;}
+}
+
 /* INVOICE TABLE */
 .inv-table{width:100%;border-collapse:collapse;max-width:740px;}
 .inv-table th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;font-weight:600;padding:7px 11px;border-bottom:2px solid #e1e5ea;text-align:left;white-space:nowrap;}
@@ -565,7 +583,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
   <button class="sb-btn" id="sb-tasks" onclick="navTasks()">Tasks <span id="taskBadge" style="display:none;background:#c0392b;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:4px;font-weight:700;vertical-align:middle;"></span></button>
   <button class="sb-btn" id="sb-reports" onclick="navReports()">Reports</button>
   <hr class="sb-divider">
-  <button class="sb-btn" id="sb-monthly" onclick="openMonthlyInvModal()">&#128140; Monthly Emails</button>
+  <button class="sb-btn" id="sb-monthly" onclick="openMonthlyInvModal()">Monthly Emails</button>
   <button class="sb-btn" id="sb-settings" onclick="navSettings()">Settings</button>
   <hr class="sb-divider">
   <div class="sb-section">Clients</div>
@@ -951,7 +969,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
     <div class="page-subtitle">Billing summaries, invoice status overview, and caregiver utilization.</div>
     <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">
       <button class="btn btn-secondary" onclick="renderReports()">Refresh</button>
-      <button class="btn btn-secondary" onclick="exportReportExcel()">&#128202; Export Excel</button>
+      <button class="btn btn-secondary" onclick="exportReportExcel()">Export Excel</button>
     </div>
     <div id="reportsContent"></div>
   </div>
@@ -1069,7 +1087,6 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
     </div>
     <!-- Form cards -->
     <div class="form-type-card" onclick="openStateForm('dhs390')">
-      <div class="form-type-icon">&#128203;</div>
       <div class="form-type-info">
         <div class="form-type-name">DHS-390 — Adult Services Application</div>
         <div class="form-type-desc">Application for Home Help, Adult Community Placement, or other adult services. Sections for client info, program selection, current situation, and signature.</div>
@@ -1077,7 +1094,6 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
       <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openStateForm('dhs390')">Fill Out</button>
     </div>
     <div class="form-type-card" onclick="openStateForm('dhs4771')">
-      <div class="form-type-icon">&#128196;</div>
       <div class="form-type-info">
         <div class="form-type-name">DHS-4771 — FICA Tax Authorization (Home Help)</div>
         <div class="form-type-desc">Authorization for withholding of FICA tax in Home Help payments. Client authorizes MDHHS to act as tax-filing agent for Social Security purposes.</div>
@@ -1085,7 +1101,6 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
       <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openStateForm('dhs4771')">Fill Out</button>
     </div>
     <div class="form-type-card" onclick="openStateForm('mdhhs6200')">
-      <div class="form-type-icon">&#127973;</div>
       <div class="form-type-info">
         <div class="form-type-name">MDHHS-6200 — Adult Services Medical Needs Certification</div>
         <div class="form-type-desc">Medical certification completed by a physician, PA, NP, OT, PT, or CNS. Certifies patient's need for home help services with ADL/IADL and complex care selection.</div>
@@ -1093,7 +1108,6 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
       <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openStateForm('mdhhs6200')">Fill Out</button>
     </div>
     <div class="form-type-card" onclick="openStateForm('msa4676')">
-      <div class="form-type-icon">&#129309;</div>
       <div class="form-type-info">
         <div class="form-type-name">MSA-4676 — Home Help Services Agreement</div>
         <div class="form-type-desc">Agreement between the beneficiary and caregiver/agency provider. Documents terms of Home Help service delivery, caregiver information, and start date.</div>
@@ -1108,7 +1122,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
       <button class="btn btn-secondary btn-sm" onclick="navForms()">&#8592; Back to Forms</button>
       <span id="formFillTitle" style="font-weight:600;font-size:13px;color:#1a2b45;"></span>
       <div style="flex:1;"></div>
-      <button class="btn btn-primary" onclick="window.print()">&#128424; Print / PDF</button>
+      <button class="btn btn-primary" onclick="window.print()">Print / PDF</button>
     </div>
     <div id="formFillContent" style="padding:28px 24px;background:#f4f5f7;min-height:calc(100vh - 52px);"></div>
   </div>
@@ -1119,7 +1133,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
       <span class="inv-client-tag" id="invClientTag">—</span>
       <button class="btn btn-secondary" onclick="navDetail(activeProfileName,'history')">Back to Invoices</button>
       <button class="btn btn-primary" onclick="printInvoiceAsPDF()">Print / PDF</button>
-      <button class="btn btn-secondary" id="sendEmailInvBtn" onclick="sendEmail()">&#9993; Email Worker</button>
+      <button class="btn btn-secondary" id="sendEmailInvBtn" onclick="sendEmail()">Email Worker</button>
       <button class="btn btn-secondary" onclick="copyMonth()">Copy to Next Month</button>
       <button class="btn btn-secondary" onclick="clearInvoiceForm()">Clear Form</button>
       <button class="btn btn-secondary" id="saveInvoiceBtn" onclick="saveInvoiceToClient()" style="display:none;">Save Invoice</button>
@@ -1362,7 +1376,9 @@ var ALLOWED_USERS = [
   'paul@mybellcare.com',
   'rob@mybellcare.com'
 ];
-var REDIRECT_URI = 'https://zealous-forest-01e406a10.7.azurestaticapps.net';
+// Use current origin so it works across desktop and mobile (any URL the app is loaded from).
+// The redirect URI must also be registered in the AAD app registration's "Single-page application" platform.
+var REDIRECT_URI = window.location.origin;
 var SP_DOC_LIB   = 'ClientDocuments'; // kept for SharePoint doc library (if used)
 var SP_SITE      = 'https://libertybellhealth.sharepoint.com/sites/Invoice'; // kept for doc upload
 var API_SCOPE    = 'api://' + API_APP_ID + '/user_impersonation';
@@ -1392,14 +1408,11 @@ async function refreshApiToken() {
     var ttl = res.expiresOn ? (res.expiresOn.getTime() - Date.now() - 600000) : 3000000;
     setTimeout(refreshApiToken, Math.max(ttl, 60000));
   } catch(e) {
-    console.warn('API token silent refresh failed, opening consent popup:', e);
-    // Use popup so we don't navigate away from the app
+    console.warn('API token silent refresh failed, falling back to redirect:', e);
+    // Redirect works on mobile (popup is blocked on iOS Safari)
     try {
-      var r2 = await msalInstance.acquireTokenPopup({ scopes: [API_SCOPE] });
-      _apiToken = r2.accessToken;
-      var ttl2 = r2.expiresOn ? (r2.expiresOn.getTime() - Date.now() - 600000) : 3000000;
-      setTimeout(refreshApiToken, Math.max(ttl2, 60000));
-    } catch(e2) { console.warn('API token popup also failed:', e2); }
+      await msalInstance.acquireTokenRedirect({ scopes: [API_SCOPE] });
+    } catch(e2) { console.warn('API token redirect failed:', e2); }
   }
 }
 function getIdMap() {
@@ -2049,7 +2062,7 @@ function renderInvHistory(){
           '<option value="submitted"'+(st==='submitted'?' selected':'')+'>Submitted</option>'+
           '<option value="paid"'+(st==='paid'?' selected':'')+'>Paid</option>'+
         '</select>'+
-        '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();promptInvNote('+idx+')" title="Edit note">✏️</button>'+
+        '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();promptInvNote('+idx+')" title="Edit note"></button>'+
         '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();downloadInvoice('+idx+')" title="Print / Download">⬇</button>'+
         '<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteInv('+idx+')" title="Delete">Delete</button>'+
       '</div>';
@@ -2143,25 +2156,33 @@ function renderDocsPane(){
   if(!activeProfileName)return;
   var clientId=getHcClientId();
   c.innerHTML=
-    '<div style="margin-bottom:12px;">'+
-    '<h4 style="margin:0 0 8px;color:#1a3a5c;font-size:13px;">&#128196; Client Documents</h4>'+
-    '<p style="font-size:12px;color:#8ca0b4;margin:0 0 12px;">Upload SSN cards, driver\'s licenses, insurance cards, authorizations, etc.</p>'+
-    '<select id="hcDocCategory" style="font-size:12px;padding:5px 8px;border:1px solid #d0d8e4;border-radius:5px;margin-bottom:6px;width:100%;max-width:260px;">'+
-    '<option value="Other">Category: Other</option>'+
-    '<option value="SSN_Card">SSN Card</option>'+
-    '<option value="Drivers_License">Driver\'s License</option>'+
-    '<option value="Insurance_Card">Insurance Card</option>'+
-    '<option value="Medicare_Card">Medicare Card</option>'+
-    '<option value="Medicaid_Card">Medicaid Card</option>'+
-    '<option value="Authorization">Authorization</option>'+
-    '</select>'+
-    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'+
-    '<input type="file" id="hcDocFileInput" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple style="font-size:12px;flex:1;min-width:0;">'+
-    '<button class="btn btn-primary" onclick="uploadHcDoc()">&#8593; Upload</button>'+
-    '<input type="file" id="docScanInput" accept="image/*" capture="environment" style="display:none;" onchange="handleDocScan(this)">'+
-    '<button class="btn btn-secondary" onclick="document.getElementById(\'docScanInput\').click()">&#128247; Scan / Photo</button>'+
-    '</div>'+
-    '<span id="hcDocStatus" style="font-size:11px;color:#666;display:block;margin-top:4px;"></span>'+
+    '<div class="doc-upload-card">'+
+      '<div class="doc-upload-head">'+
+        '<h4>Client Documents</h4>'+
+        '<p>Upload SSN cards, driver\'s licenses, insurance cards, authorizations, etc.</p>'+
+      '</div>'+
+      '<div class="doc-upload-row">'+
+        '<div class="doc-upload-fields">'+
+          '<label>Category</label>'+
+          '<select id="hcDocCategory">'+
+            '<option value="Other">Other</option>'+
+            '<option value="SSN_Card">SSN Card</option>'+
+            '<option value="Drivers_License">Driver\'s License</option>'+
+            '<option value="Insurance_Card">Insurance Card</option>'+
+            '<option value="Medicare_Card">Medicare Card</option>'+
+            '<option value="Medicaid_Card">Medicaid Card</option>'+
+            '<option value="Authorization">Authorization</option>'+
+          '</select>'+
+          '<label style="margin-top:8px;">File</label>'+
+          '<input type="file" id="hcDocFileInput" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple>'+
+        '</div>'+
+        '<div class="doc-upload-actions">'+
+          '<button class="btn btn-primary" onclick="uploadHcDoc()">Upload</button>'+
+          '<input type="file" id="docScanInput" accept="image/*" capture="environment" style="display:none;" onchange="handleDocScan(this)">'+
+          '<button class="btn btn-secondary" onclick="document.getElementById(\'docScanInput\').click()">Scan / Photo</button>'+
+        '</div>'+
+      '</div>'+
+      '<span id="hcDocStatus" class="doc-upload-status"></span>'+
     '</div>'+
     '<div id="hcDocList"><div style="color:#8ca0b4;font-size:13px;">Loading...</div></div>';
   if(clientId){loadHcDocs(clientId);}
@@ -2182,7 +2203,7 @@ function renderHcDocList(clientId,docs){
     var kb=d.size?Math.round(d.size/1024)+'KB':'';
     var ext=(d.name||'').split('.').pop().toLowerCase();
     var isImg=['jpg','jpeg','png','gif'].indexOf(ext)>=0;
-    var icon=isImg?'&#128247;':'&#128196;';
+    var icon=(ext||"").toUpperCase().slice(0,4);
     // parse category prefix from filename: "SSN_Card__filename.pdf"
     var parts=d.name.split('__');
     var cat=parts.length>1?parts[0]:'Other';
@@ -2191,7 +2212,7 @@ function renderHcDocList(clientId,docs){
     var card=document.createElement('div');
     card.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #e1e8f0;border-radius:6px;margin-bottom:6px;background:#fafbfc;';
     card.innerHTML=
-      '<span style="font-size:20px;">'+icon+'</span>'+
+      '<span style="display:inline-block;min-width:34px;padding:3px 6px;background:#e8eef5;color:#1a3a5c;border-radius:4px;font-size:10px;font-weight:600;text-align:center;letter-spacing:.3px;">'+(icon||'FILE')+'</span>'+
       '<div style="flex:1;min-width:0;">'+
         '<div style="font-size:12px;font-weight:600;color:#1a3a5c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><a href="'+d.url+'" target="_blank" style="color:#1a3a5c;text-decoration:none;">'+esc(displayName)+'</a></div>'+
         '<div style="font-size:11px;color:#8ca0b4;">'+
@@ -2253,11 +2274,11 @@ function deleteHcDoc(clientId,encodedName){
 // ── CAREGIVER DOCUMENTS ──────────────────────────────────────
 function loadCgDocs(cgId){
   var sec=document.getElementById('cgDocsSection');if(!sec)return;
-  sec.innerHTML='<div style="font-weight:600;font-size:12px;margin-bottom:8px;color:#1a3a5c;">&#128196; Documents <span style="font-weight:normal;color:#8ca0b4;font-size:11px;">(SSN card, license, certs)</span></div>'+
+  sec.innerHTML='<div style="font-weight:600;font-size:12px;margin-bottom:8px;color:#1a3a5c;">Documents <span style="font-weight:normal;color:#8ca0b4;font-size:11px;">(SSN card, license, certs)</span></div>'+
     '<div id="cgDocList" style="margin-bottom:8px;"><div style="color:#8ca0b4;font-size:12px;">Loading...</div></div>'+
     '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'+
     '<input type="file" id="cgDocFileInput" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple style="font-size:11px;flex:1;min-width:0;">'+
-    '<button class="btn btn-primary btn-sm" onclick="uploadCgDoc(\''+cgId+'\')">&#8593; Upload</button>'+
+    '<button class="btn btn-primary btn-sm" onclick="uploadCgDoc(\''+cgId+'\')">Upload</button>'+
     '</div>'+
     '<span id="cgDocStatus" style="font-size:11px;color:#666;"></span>';
   fetch(API_BASE+'/documents?clientType=caregiver&clientId='+cgId,{headers:apiHeaders()})
@@ -2270,7 +2291,7 @@ function loadCgDocs(cgId){
       var kb=d.size?Math.round(d.size/1024)+'KB':'';
       var div=document.createElement('div');
       div.style.cssText='display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #f0f0f0;font-size:12px;';
-      div.innerHTML='&#128196; <a href="'+d.url+'" target="_blank" style="flex:1;color:#1a3a5c;text-decoration:none;word-break:break-all;">'+esc(d.name)+'</a>'+
+      div.innerHTML='<a href="'+d.url+'" target="_blank" style="flex:1;color:#1a3a5c;text-decoration:none;word-break:break-all;">'+esc(d.name)+'</a>'+
         '<span style="color:#8ca0b4;font-size:11px;">'+kb+'</span>'+
         '<button class="btn btn-danger btn-sm" style="padding:2px 8px;font-size:10px;" onclick="deleteCgDoc(\''+cgId+'\',\''+encodeURIComponent(d.name)+'\')">✕</button>';
       list.appendChild(div);
@@ -2749,23 +2770,33 @@ function renderCgDocsPane(){
   var cgName=getCaregivers()[activeCgId]?getCaregivers()[activeCgId].name:'Caregiver';
   var c=document.getElementById('cgDocsContent');
   c.innerHTML=
-    '<h4 style="margin:0 0 4px;color:#1a3a5c;font-size:13px;">&#128196; Documents for '+esc(cgName)+'</h4>'+
-    '<p style="font-size:11px;color:#8ca0b4;margin:0 0 12px;">Upload SSN card, driver\'s license, certifications, etc.</p>'+
-    '<div style="margin-bottom:10px;">'+
-    '<select id="cgDocCategory" style="font-size:12px;padding:5px 8px;border:1px solid #d0d8e4;border-radius:5px;margin-bottom:6px;width:100%;max-width:260px;">'+
-    '<option value="Other">Category: Other</option>'+
-    '<option value="SSN_Card">SSN Card</option>'+
-    '<option value="Drivers_License">Driver\'s License</option>'+
-    '<option value="Insurance_Card">Insurance Card</option>'+
-    '<option value="Certification">Certification</option>'+
-    '<option value="Background_Check">Background Check</option>'+
-    '<option value="I9_W4">I-9 / W-4</option>'+
-    '</select><br>'+
-    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'+
-    '<input type="file" id="cgDocFileInput2" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple style="font-size:12px;flex:1;min-width:0;">'+
-    '<button class="btn btn-primary" style="padding:6px 14px;" onclick="uploadCgDocAzure()">&#8593; Upload</button>'+
-    '</div>'+
-    '<span id="cgDocUploadStatus" style="font-size:11px;color:#666;display:block;margin-top:4px;"></span>'+
+    '<div class="doc-upload-card">'+
+      '<div class="doc-upload-head">'+
+        '<h4>Documents for '+esc(cgName)+'</h4>'+
+        '<p>Upload SSN card, driver\'s license, certifications, etc.</p>'+
+      '</div>'+
+      '<div class="doc-upload-row">'+
+        '<div class="doc-upload-fields">'+
+          '<label>Category</label>'+
+          '<select id="cgDocCategory">'+
+            '<option value="Other">Other</option>'+
+            '<option value="SSN_Card">SSN Card</option>'+
+            '<option value="Drivers_License">Driver\'s License</option>'+
+            '<option value="Insurance_Card">Insurance Card</option>'+
+            '<option value="Certification">Certification</option>'+
+            '<option value="Background_Check">Background Check</option>'+
+            '<option value="I9_W4">I-9 / W-4</option>'+
+          '</select>'+
+          '<label style="margin-top:8px;">File</label>'+
+          '<input type="file" id="cgDocFileInput2" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple>'+
+        '</div>'+
+        '<div class="doc-upload-actions">'+
+          '<button class="btn btn-primary" onclick="uploadCgDocAzure()">Upload</button>'+
+          '<input type="file" id="cgDocScanInput" accept="image/*" capture="environment" style="display:none;" onchange="handleCgDocScan(this)">'+
+          '<button class="btn btn-secondary" onclick="document.getElementById(\'cgDocScanInput\').click()">Scan / Photo</button>'+
+        '</div>'+
+      '</div>'+
+      '<span id="cgDocUploadStatus" class="doc-upload-status"></span>'+
     '</div>'+
     '<div id="cgDocListAzure"><div style="color:#8ca0b4;font-size:13px;">Loading...</div></div>';
   loadCgDocsAzure(activeCgId);
@@ -2785,7 +2816,7 @@ function renderCgDocListAzure(cgId,docs){
     var kb=d.size?Math.round(d.size/1024)+'KB':'';
     var ext=(d.name||'').split('.').pop().toLowerCase();
     var isImg=['jpg','jpeg','png','gif'].indexOf(ext)>=0;
-    var icon=isImg?'&#128247;':(ext==='pdf'?'&#128196;':'&#128196;');
+    var icon=(ext||"").toUpperCase().slice(0,4);
     // parse category prefix from filename: "SSN_Card__filename.pdf"
     var parts=d.name.split('__');
     var cat=parts.length>1?parts[0]:'Other';
@@ -2794,7 +2825,7 @@ function renderCgDocListAzure(cgId,docs){
     var card=document.createElement('div');
     card.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #e1e8f0;border-radius:6px;margin-bottom:6px;background:#fafbfc;';
     card.innerHTML=
-      '<span style="font-size:20px;">'+icon+'</span>'+
+      '<span style="display:inline-block;min-width:34px;padding:3px 6px;background:#e8eef5;color:#1a3a5c;border-radius:4px;font-size:10px;font-weight:600;text-align:center;letter-spacing:.3px;">'+(icon||'FILE')+'</span>'+
       '<div style="flex:1;min-width:0;">'+
         '<div style="font-size:12px;font-weight:600;color:#1a3a5c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><a href="'+d.url+'" target="_blank" style="color:#1a3a5c;text-decoration:none;">'+esc(displayName)+'</a></div>'+
         '<div style="font-size:11px;color:#8ca0b4;">'+
@@ -2825,6 +2856,20 @@ function deleteCgDocAzure(cgId,encodedName){
   if(!confirm('Delete this document?'))return;
   fetch(API_BASE+'/documents?clientType=caregiver&clientId='+cgId+'&name='+encodedName,{method:'DELETE',headers:apiHeaders()})
   .then(function(){loadCgDocsAzure(cgId);}).catch(function(e){alert('Delete failed: '+e);});
+}
+function handleCgDocScan(input){
+  if(!activeCgId){alert('Open a caregiver first.');return;}
+  if(!input||!input.files||!input.files.length)return;
+  var cat=(document.getElementById('cgDocCategory')&&document.getElementById('cgDocCategory').value)||'Other';
+  var status=document.getElementById('cgDocUploadStatus');
+  if(status)status.textContent='Uploading scanned image…';
+  var fd=new FormData();fd.append('clientType','caregiver');fd.append('clientId',activeCgId);
+  var f=input.files[0];
+  var prefixedFile=new File([f],cat+'__'+f.name,{type:f.type});
+  fd.append('file',prefixedFile);
+  fetch(API_BASE+'/documents',{method:'POST',headers:authUploadHeaders(),body:fd})
+  .then(function(){if(status)status.textContent='';input.value='';loadCgDocsAzure(activeCgId);})
+  .catch(function(e){if(status)status.textContent='Upload failed: '+e;});
 }
 
 // ============================================================
@@ -3563,7 +3608,7 @@ function saveInvoiceToClient(){
     var existingStatus=p[activeProfileName].invoices[ex].status||'draft';
     // Paid invoices are locked
     if(existingStatus==='paid'){
-      alert('⚠️ Invoice '+bp+' is marked Paid and cannot be overwritten. Change the status to Draft first if you need to edit it.');
+      alert('Warning: Invoice '+bp+' is marked Paid and cannot be overwritten. Change the status to Draft first if you need to edit it.');
       return;
     }
     // Duplicate warning for submitted
@@ -3724,7 +3769,7 @@ function checkDuplicatePeriod(bp){
     var st=ex.status||'draft';
     var msg=st==='paid'?
       '[Locked] A <strong>Paid</strong> invoice already exists for '+bp+'. It is locked and cannot be overwritten.':
-      '⚠️ An invoice for '+bp+' already exists (status: '+st+'). Saving will overwrite it.';
+      'Warning: An invoice for '+bp+' already exists (status: '+st+'). Saving will overwrite it.';
     warn.innerHTML=msg;warn.style.display='block';
   } else {warn.style.display='none';}
 }
@@ -4151,7 +4196,7 @@ function initMSAL() {
       authority: 'https://login.microsoftonline.com/' + SP_TENANT_ID,
       redirectUri: REDIRECT_URI,
     },
-    cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: true },
+    cache: { cacheLocation: 'localStorage' },
   };
   msalInstance = new msal.PublicClientApplication(cfg);
   msalInstance.initialize().then(function () {
@@ -4164,7 +4209,21 @@ function initMSAL() {
         window._aiUser = email;
         if(window.appInsights&&window.appInsights.setAuthenticatedUserContext)window.appInsights.setAuthenticatedUserContext(email);
         aiTrack('UserSignIn',{method:'redirect'});
-        spToken = r.accessToken; refreshApiToken().then(function(){ updateAuthUI(true); loadProfilesAPI(); }); return;
+        // Detect whether this redirect returned a Graph token or an API token
+        var isApiToken = (r.scopes||[]).some(function(s){return String(s).indexOf('user_impersonation')>=0;});
+        if (isApiToken) {
+          _apiToken = r.accessToken;
+          var ttl = r.expiresOn ? (r.expiresOn.getTime() - Date.now() - 600000) : 3000000;
+          setTimeout(refreshApiToken, Math.max(ttl, 60000));
+          // Now also need Graph token for email — try silent
+          msalInstance.acquireTokenSilent({ scopes: GRAPH_SCOPES, account: r.account })
+            .then(function(g){ spToken = g.accessToken; }).catch(function(){});
+          updateAuthUI(true); loadProfilesAPI();
+        } else {
+          spToken = r.accessToken;
+          refreshApiToken().then(function(){ updateAuthUI(true); loadProfilesAPI(); });
+        }
+        return;
       }
       var acc = msalInstance.getAllAccounts();
       if (acc.length) {
@@ -4789,14 +4848,23 @@ function renderCwDocsPane(){
   var c=document.getElementById('cwDocsContent');
   if(!c||!cw)return;
   c.innerHTML=
-    '<h4 style="margin:0 0 4px;color:#1a3a5c;font-size:13px;">&#128196; Documents for '+esc(cw.name||'Caseworker')+'</h4>'+
-    '<p style="font-size:11px;color:#8ca0b4;margin:0 0 12px;">Upload letters, authorization docs, etc.</p>'+
-    '<div style="margin-bottom:10px;">'+
-    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'+
-    '<input type="file" id="cwDocFileInput" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple style="font-size:12px;flex:1;min-width:0;">'+
-    '<button class="btn btn-primary" style="padding:6px 14px;" onclick="uploadCwDoc()">&#8593; Upload</button>'+
-    '</div>'+
-    '<span id="cwDocUploadStatus" style="font-size:11px;color:#666;display:block;margin-top:4px;"></span>'+
+    '<div class="doc-upload-card">'+
+      '<div class="doc-upload-head">'+
+        '<h4>Documents for '+esc(cw.name||'Caseworker')+'</h4>'+
+        '<p>Upload letters, authorization docs, etc.</p>'+
+      '</div>'+
+      '<div class="doc-upload-row">'+
+        '<div class="doc-upload-fields">'+
+          '<label>File</label>'+
+          '<input type="file" id="cwDocFileInput" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple>'+
+        '</div>'+
+        '<div class="doc-upload-actions">'+
+          '<button class="btn btn-primary" onclick="uploadCwDoc()">Upload</button>'+
+          '<input type="file" id="cwDocScanInput" accept="image/*" capture="environment" style="display:none;" onchange="handleCwDocScan(this)">'+
+          '<button class="btn btn-secondary" onclick="document.getElementById(\'cwDocScanInput\').click()">Scan / Photo</button>'+
+        '</div>'+
+      '</div>'+
+      '<span id="cwDocUploadStatus" class="doc-upload-status"></span>'+
     '</div>'+
     '<div id="cwDocListAzure"><div style="color:#8ca0b4;font-size:13px;">Loading...</div></div>';
   fetch(API_BASE+'/documents?clientType=caseworker&clientId='+activeCwId,{headers:apiHeaders()})
@@ -4812,11 +4880,11 @@ function renderCwDocListAzure(cwId,docs){
     var kb=d.size?Math.round(d.size/1024)+'KB':'';
     var ext=(d.name||'').split('.').pop().toLowerCase();
     var isImg=['jpg','jpeg','png','gif'].indexOf(ext)>=0;
-    var icon=isImg?'&#128247;':'&#128196;';
+    var icon=(ext||"").toUpperCase().slice(0,4);
     var card=document.createElement('div');
     card.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #e1e8f0;border-radius:6px;margin-bottom:6px;background:#fafbfc;';
     card.innerHTML=
-      '<span style="font-size:20px;">'+icon+'</span>'+
+      '<span style="display:inline-block;min-width:34px;padding:3px 6px;background:#e8eef5;color:#1a3a5c;border-radius:4px;font-size:10px;font-weight:600;text-align:center;letter-spacing:.3px;">'+(icon||'FILE')+'</span>'+
       '<div style="flex:1;min-width:0;">'+
         '<div style="font-size:12px;font-weight:600;color:#1a3a5c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><a href="'+d.url+'" target="_blank" style="color:#1a3a5c;text-decoration:none;">'+esc(d.name)+'</a></div>'+
         '<div style="font-size:11px;color:#8ca0b4;">'+kb+'</div>'+
@@ -4839,6 +4907,17 @@ function deleteCwDoc(cwId,encodedName){
   if(!confirm('Delete this document?'))return;
   fetch(API_BASE+'/documents?clientType=caseworker&clientId='+cwId+'&name='+encodedName,{method:'DELETE',headers:apiHeaders()})
     .then(function(){renderCwDocsPane();}).catch(function(e){alert('Delete failed: '+e);});
+}
+function handleCwDocScan(input){
+  if(!activeCwId){alert('Open a caseworker first.');return;}
+  if(!input||!input.files||!input.files.length)return;
+  var status=document.getElementById('cwDocUploadStatus');
+  if(status)status.textContent='Uploading scanned image…';
+  var fd=new FormData();fd.append('clientType','caseworker');fd.append('clientId',activeCwId);
+  fd.append('file',input.files[0]);
+  fetch(API_BASE+'/documents',{method:'POST',headers:authUploadHeaders(),body:fd})
+    .then(function(){if(status)status.textContent='';input.value='';renderCwDocsPane();})
+    .catch(function(e){if(status)status.textContent='Upload failed: '+e;});
 }
 function renderCwAuditPane(){
   if(!activeCwId)return;
@@ -4900,7 +4979,7 @@ function resetSessionTimer(){
   clearTimeout(_sessionWarnTimer);
   if(!spToken) return; // only enforce when signed in
   _sessionWarnTimer = setTimeout(function(){
-    showToast('⚠️ Session expiring in 2 minutes due to inactivity. Click anywhere to stay signed in.', 9000);
+    showToast('Warning: Session expiring in 2 minutes due to inactivity. Click anywhere to stay signed in.', 9000);
   }, SESSION_WARN_MS);
   _sessionTimer = setTimeout(function(){
     aiTrack('SessionTimeout',{reason:'inactivity'});
@@ -5310,10 +5389,10 @@ function previewMonthlyInvoices(){
     if(email)html+='<div style="font-size:11px;color:#6b8dae;">'+esc(email)+'</div>';
     html+='</div>';
     html+='<div style="flex:1;"></div>';
-    if(missingInv>0)html+='<span style="font-size:11px;color:#c07000;font-weight:600;margin-right:8px;">&#9888; '+missingInv+' missing invoice'+(missingInv>1?'s':'')+'</span>';
+    if(missingInv>0)html+='<span style="font-size:11px;color:#c07000;font-weight:600;margin-right:8px;">'+missingInv+' missing invoice'+(missingInv>1?'s':'')+'</span>';
     if(email){
       var clientsJson=JSON.stringify(g.clients.map(function(c){return {name:c.name,medicaidId:c.prof.medicaidId||'',invStatus:c.inv?(c.inv.status||'draft'):'none'};}));
-      html+='<button class="btn btn-primary btn-sm" style="white-space:nowrap;" onclick=\'sendMonthlyEmail('+JSON.stringify(email)+','+JSON.stringify(wname)+','+clientsJson+','+JSON.stringify(period)+')\'>&#9993; Send Email</button>';
+      html+='<button class="btn btn-primary btn-sm" style="white-space:nowrap;" onclick=\'sendMonthlyEmail('+JSON.stringify(email)+','+JSON.stringify(wname)+','+clientsJson+','+JSON.stringify(period)+')\'>Send Email</button>';
     } else {
       html+='<span style="font-size:11px;color:#b03030;font-style:italic;margin-right:8px;">No email on file</span>';
       html+='<button class="btn btn-secondary btn-sm" onclick="closeMonthlyInvModal();navCaseworkers()">Add Email</button>';
@@ -5324,7 +5403,7 @@ function previewMonthlyInvoices(){
     g.clients.forEach(function(c){
       var st=c.inv?(c.inv.status||'draft'):'none';
       var stColor=st==='paid'?'#1e7e34':st==='submitted'?'#1565a0':st==='none'?'#b03030':'#888';
-      var stLabel=st==='none'?'&#9888; No invoice':st.charAt(0).toUpperCase()+st.slice(1);
+      var stLabel=st==='none'?'No invoice':st.charAt(0).toUpperCase()+st.slice(1);
       html+='<div class="cw-client-row">'+
         '<span style="flex:1;font-weight:500;color:#1a2b45;">'+esc(c.name)+'</span>'+
         (c.prof.medicaidId?'<span style="color:#8ca0b4;font-size:11px;margin-right:8px;">ID: '+esc(c.prof.medicaidId)+'</span>':'')+
@@ -5427,7 +5506,7 @@ async function sendMonthlyEmail(email,workerName,clients,period){
 <!-- PDF PROGRESS OVERLAY -->
 <div class="progress-overlay" id="monthlyProgressOverlay">
   <div class="progress-box">
-    <div class="progress-title">&#128229; Sending Monthly Invoices</div>
+    <div class="progress-title">Sending Monthly Invoices</div>
     <div class="progress-sub" id="monthlyProgressSub">Generating PDFs…</div>
     <div class="progress-bar-wrap"><div class="progress-bar-fill" id="monthlyProgressBar" style="width:0%"></div></div>
     <div class="progress-label" id="monthlyProgressLabel">Starting…</div>
@@ -5439,7 +5518,7 @@ async function sendMonthlyEmail(email,workerName,clients,period){
   <div class="monthly-inv-box">
     <div class="monthly-inv-header">
       <div>
-        <div style="font-size:16px;font-weight:700;color:#1a2b45;">&#128140; Send Monthly Invoices</div>
+        <div style="font-size:16px;font-weight:700;color:#1a2b45;">Send Monthly Invoices</div>
         <div style="font-size:12px;color:#6b8dae;margin-top:3px;">Group and email invoices to each caseworker — one email per worker with all their clients</div>
       </div>
       <button class="btn btn-secondary btn-sm" onclick="closeMonthlyInvModal()" style="margin-left:16px;flex-shrink:0;">&#10005; Close</button>
