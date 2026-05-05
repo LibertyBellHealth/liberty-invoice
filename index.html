@@ -1225,8 +1225,9 @@ var unsavedChanges=false;
 // ============================================================
 //  AZURE FUNCTIONS API CONFIG
 // ============================================================
-var API_BASE = 'https://liberty-crm-api-cyb3dkhnd2e7a3cy.centralus-01.azurewebsites.net/api';
-var API_KEY  = '1a5e03ed7170ce0b3443cf3662715f3025c432ebca8e3ec9f9d10652aa065485';
+var API_BASE    = 'https://liberty-crm-api-cyb3dkhnd2e7a3cy.centralus-01.azurewebsites.net/api';
+var API_APP_ID  = '0c1627c1-c186-4e46-b919-e4a12f2f3952'; // Easy Auth app registration
+var _apiToken   = null; // cached Bearer token, refreshed automatically
 
 // Microsoft identity — kept for Sign In and Outlook email
 var SP_CLIENT_ID = (window._SP_CLIENT_ID || '1be40fcb-4db4-45b0-8c12-99d945eb78e7');
@@ -1245,7 +1246,28 @@ var SP_SITE      = 'https://libertybellhealth.sharepoint.com/sites/Invoice'; // 
 var msalInstance = null, spToken = null;
 
 function apiHeaders() {
-  return { 'Content-Type': 'application/json', 'x-api-key': API_KEY };
+  var h = { 'Content-Type': 'application/json' };
+  if (_apiToken) h['Authorization'] = 'Bearer ' + _apiToken;
+  return h;
+}
+// For multipart/form-data uploads — no Content-Type (browser sets boundary automatically)
+function authUploadHeaders() {
+  return _apiToken ? { 'Authorization': 'Bearer ' + _apiToken } : {};
+}
+async function refreshApiToken() {
+  if (!msalInstance) return;
+  var accounts = msalInstance.getAllAccounts();
+  if (!accounts.length) return;
+  try {
+    var res = await msalInstance.acquireTokenSilent({
+      scopes: ['api://' + API_APP_ID + '/user_impersonation'],
+      account: accounts[0]
+    });
+    _apiToken = res.accessToken;
+    // Auto-refresh 10 min before expiry (tokens last ~1 hour)
+    var ttl = res.expiresOn ? (res.expiresOn.getTime() - Date.now() - 600000) : 3000000;
+    setTimeout(refreshApiToken, Math.max(ttl, 60000));
+  } catch(e) { console.warn('API token refresh failed:', e); }
 }
 function getIdMap() {
   try { return JSON.parse(localStorage.getItem('lhca_id_map') || '{}'); } catch(e) { return {}; }
@@ -2007,7 +2029,7 @@ function uploadHcDoc(){
     fd.append('file',prefixedFile);
   });
   var fileNames=Array.from(input.files).map(function(f){return f.name;}).join(', ');
-  fetch(API_BASE+'/documents',{method:'POST',headers:{'x-api-key':API_KEY},body:fd})
+  fetch(API_BASE+'/documents',{method:'POST',headers:authUploadHeaders(),body:fd})
   .then(function(){
     aiTrack('DocumentUploaded',{clientType:'homecare',clientId:clientId,category:cat,files:fileNames});
     status.textContent='';input.value='';loadHcDocs(clientId);
@@ -2054,7 +2076,7 @@ function uploadCgDoc(cgId){
   var fd=new FormData();fd.append('clientType','caregiver');fd.append('clientId',cgId);
   var cgFileNames=Array.from(input.files).map(function(f){return f.name;}).join(', ');
   Array.from(input.files).forEach(function(f){fd.append('file',f);});
-  fetch(API_BASE+'/documents',{method:'POST',headers:{'x-api-key':API_KEY},body:fd})
+  fetch(API_BASE+'/documents',{method:'POST',headers:authUploadHeaders(),body:fd})
   .then(function(){
     aiTrack('DocumentUploaded',{clientType:'caregiver',clientId:cgId,files:cgFileNames});
     status.textContent='';input.value='';loadCgDocs(cgId);
@@ -2385,7 +2407,7 @@ function uploadCgDocAzure(){
     var prefixedFile=new File([f],cat+'__'+f.name,{type:f.type});
     fd.append('file',prefixedFile);
   });
-  fetch(API_BASE+'/documents',{method:'POST',headers:{'x-api-key':API_KEY},body:fd})
+  fetch(API_BASE+'/documents',{method:'POST',headers:authUploadHeaders(),body:fd})
   .then(function(){status.textContent='';input.value='';loadCgDocsAzure(activeCgId);})
   .catch(function(e){status.textContent='Upload failed: '+e;});
 }
@@ -3554,7 +3576,7 @@ function initMSAL() {
         window._aiUser = email;
         if(window.appInsights&&window.appInsights.setAuthenticatedUserContext)window.appInsights.setAuthenticatedUserContext(email);
         aiTrack('UserSignIn',{method:'redirect'});
-        spToken = r.accessToken; updateAuthUI(true); loadProfilesAPI(); return;
+        spToken = r.accessToken; refreshApiToken().then(function(){ updateAuthUI(true); loadProfilesAPI(); }); return;
       }
       var acc = msalInstance.getAllAccounts();
       if (acc.length) {
@@ -3567,7 +3589,7 @@ function initMSAL() {
         msalInstance.acquireTokenSilent({
           scopes: ['openid', 'profile', 'https://graph.microsoft.com/Mail.Send'],
           account: acc[0], redirectUri: REDIRECT_URI,
-        }).then(function (r2) { spToken = r2.accessToken; aiTrack('UserSignIn',{method:'silent'}); updateAuthUI(true); loadProfilesAPI(); })
+        }).then(function (r2) { spToken = r2.accessToken; aiTrack('UserSignIn',{method:'silent'}); refreshApiToken().then(function(){ updateAuthUI(true); loadProfilesAPI(); }); })
           .catch(function () { updateAuthUI(false); });
       } else { updateAuthUI(false); }
     }).catch(function () { updateAuthUI(false); });
@@ -3591,6 +3613,7 @@ function signOut() {
   aiTrack('UserSignOut');
   clearPHIFromStorage();
   spToken = null;
+  _apiToken = null;
   msalInstance.logoutPopup({ redirectUri: REDIRECT_URI });
 }
 function updateAuthUI(on) {
