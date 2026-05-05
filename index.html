@@ -2433,21 +2433,46 @@ function deleteCgDocAzure(cgId,encodedName){
 // ============================================================
 //  SETTINGS
 // ============================================================
+// ── Signatures: DB-backed, LS used as a local display cache ──
 function getSigs(){try{return JSON.parse(localStorage.getItem('lhca_signatures')||'[]');}catch(e){return[];}}
-function saveSigs(arr){localStorage.setItem('lhca_signatures',JSON.stringify(arr));}
+function saveSigsLS(arr){try{localStorage.setItem('lhca_signatures',JSON.stringify(arr));}catch(e){}}
+function sigId(){return 'sig_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);}
+function loadSignaturesAPI(){
+  if(!spToken)return;
+  fetch(API_BASE+'/signatures',{headers:apiHeaders()})
+    .then(function(r){return r.ok?r.json():Promise.reject(r.status);})
+    .then(function(rows){
+      // rows: [{id,label,data_url,created_at}]
+      var sigs=rows.map(function(r){return {id:r.id,label:r.label,data:r.data_url};});
+      saveSigsLS(sigs);
+      renderSigSettings();
+    })
+    .catch(function(e){console.error('Signatures load error:',e);});
+}
 function renderSigSettings(){
   var sigs=getSigs(),list=document.getElementById('sigStoredList');list.innerHTML='';
   if(!sigs.length){list.innerHTML='<div style="color:#8ca0b4;font-size:13px;">No signatures saved yet.</div>';return;}
   sigs.forEach(function(s,i){
     var item=document.createElement('div');item.className='sig-stored-item';
     item.innerHTML='<img class="sig-stored-img" src="'+s.data+'" alt="sig"><span class="sig-stored-label">'+esc(s.label||'Signature '+(i+1))+'</span>'+
-      '<button class="btn btn-danger btn-sm" onclick="deleteSig('+i+')">Remove</button>';
+      '<button class="btn btn-danger btn-sm" onclick="deleteSig('+JSON.stringify(s.id||i)+')">Remove</button>';
     list.appendChild(item);
   });
 }
-function deleteSig(i){
+function deleteSig(idOrIdx){
   if(!confirm('Remove this signature?'))return;
-  var sigs=getSigs();sigs.splice(i,1);saveSigs(sigs);renderSigSettings();
+  var sigs=getSigs();
+  // idOrIdx may be a string ID or a legacy numeric index
+  var sigId_=typeof idOrIdx==='number'?null:(idOrIdx||null);
+  if(sigId_){
+    // Remove from DB
+    fetch(API_BASE+'/signatures/'+encodeURIComponent(sigId_),{method:'DELETE',headers:apiHeaders()})
+      .catch(function(e){console.error('Sig delete error:',e);});
+    saveSigsLS(sigs.filter(function(s){return s.id!==sigId_;}));
+  } else {
+    sigs.splice(idOrIdx,1);saveSigsLS(sigs);
+  }
+  renderSigSettings();
 }
 function openAddSigModal(){document.getElementById('sigLabel').value='';document.getElementById('sigModal').classList.add('open');if(!sigCanvas)initSigCanvas();clearSigPad();}
 function updateSettingsAuth(){
@@ -2512,6 +2537,11 @@ function logActivity(type,text){
   log.unshift({type:type,text:text,ts:new Date().toLocaleString()});
   if(log.length>40)log=log.slice(0,40);
   try{localStorage.setItem('lhca_activity',JSON.stringify(log));}catch(e){}
+  // Persist to DB (fire-and-forget)
+  if(spToken){
+    fetch(API_BASE+'/audit',{method:'POST',headers:apiHeaders(),body:JSON.stringify({event_type:type,client_name:'',action:text,who:currentUserEmail()})})
+      .catch(function(e){console.error('Audit log error:',e);});
+  }
   renderActivityFeed();
 }
 function renderActivityFeed(){
@@ -2546,17 +2576,51 @@ function renderActivityFeed(){
 // ============================================================
 //  AUDIT TRAIL
 // ============================================================
+function currentUserEmail(){
+  return (msalInstance&&msalInstance.getAllAccounts().length?msalInstance.getAllAccounts()[0].username:null)||'Local User';
+}
 function getAuditLog(){try{return JSON.parse(localStorage.getItem('lhca_audit')||'[]');}catch(e){return[];}}
 function addAuditEntry(clientName,action){
+  var who=currentUserEmail();
   var log=getAuditLog();
-  var who=spToken?(msalInstance&&msalInstance.getAllAccounts().length?msalInstance.getAllAccounts()[0].username:'Signed In User'):'Local User';
   log.unshift({client:clientName,action:action,who:who,ts:new Date().toLocaleString()});
   if(log.length>200)log=log.slice(0,200);
   try{localStorage.setItem('lhca_audit',JSON.stringify(log));}catch(e){}
+  // Persist to DB (fire-and-forget)
+  if(spToken){
+    fetch(API_BASE+'/audit',{method:'POST',headers:apiHeaders(),body:JSON.stringify({event_type:'audit',client_name:clientName,action:action,who:who})})
+      .catch(function(e){console.error('Audit save error:',e);});
+  }
 }
 function renderAuditPane(){
   if(!activeProfileName)return;
   var pane=document.getElementById('dpane-audit');pane.innerHTML='';
+  if(spToken){
+    // Load from DB for the active client
+    pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:8px 0;">Loading audit history…</div>';
+    fetch(API_BASE+'/audit?client='+encodeURIComponent(activeProfileName)+'&limit=100',{headers:apiHeaders()})
+      .then(function(r){return r.ok?r.json():Promise.reject(r.status);})
+      .then(function(rows){
+        pane.innerHTML='';
+        if(!rows.length){pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:16px 0;">No audit entries for this client yet.</div>';return;}
+        var wrap=document.createElement('div');wrap.style.cssText='max-width:600px;';
+        rows.forEach(function(e){
+          var row=document.createElement('div');row.className='audit-row';
+          var ts=e.created_at?new Date(e.created_at).toLocaleString():e.ts||'';
+          row.innerHTML='<span class="audit-icon">—</span><div><div class="audit-text">'+esc(e.action)+'</div><div class="audit-who">'+esc(e.who)+' · '+esc(ts)+'</div></div>';
+          wrap.appendChild(row);
+        });
+        pane.appendChild(wrap);
+      })
+      .catch(function(){
+        // Fallback to local cache
+        _renderAuditPaneLocal(pane);
+      });
+  } else {
+    _renderAuditPaneLocal(pane);
+  }
+}
+function _renderAuditPaneLocal(pane){
   var log=getAuditLog().filter(function(e){return e.client===activeProfileName;});
   if(!log.length){pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:16px 0;">No audit entries for this client yet.</div>';return;}
   var wrap=document.createElement('div');wrap.style.cssText='max-width:600px;';
@@ -3511,7 +3575,13 @@ function confirmSig(){
   var data=sigCanvas.toDataURL('image/png'),blank=document.createElement('canvas');blank.width=sigCanvas.width;blank.height=sigCanvas.height;
   if(blank.toDataURL()===data){alert('Please draw your signature first.');return;}
   var label=document.getElementById('sigLabel').value.trim()||'Signature';
-  var sigs=getSigs();sigs.push({label:label,data:data});saveSigs(sigs);
+  var id=sigId();
+  var sigs=getSigs();sigs.push({id:id,label:label,data:data});saveSigsLS(sigs);
+  // Persist to DB
+  if(spToken){
+    fetch(API_BASE+'/signatures',{method:'POST',headers:apiHeaders(),body:JSON.stringify({id:id,label:label,data_url:data})})
+      .catch(function(e){console.error('Sig save error:',e);});
+  }
   closeSigModal();
   if(pendingSigTarget!==null){stampSignatureData(pendingSigTarget,data);}
   if(document.getElementById('page-settings').classList.contains('active'))renderSigSettings();
@@ -3703,10 +3773,11 @@ function loadProfilesAPI() {
     })
     .catch(function (e) { console.error('Load error:', e); renderSidebarClients(); renderClientTable(); updateStats(); });
 
-  // Also load caregivers, caseworkers, and tasks from API
+  // Also load caregivers, caseworkers, tasks, and signatures from API
   loadCaregiversAPI();
   loadCaseworkersAPI();
   loadTasksAPI();
+  loadSignaturesAPI();
 }
 
 // ── SAVE client profile to Azure SQL ────────────────────────
@@ -4019,7 +4090,7 @@ rebuild(31);
 // Legacy sig migration: if old single sig exists, port to new array
 try{
   var oldSig=localStorage.getItem('lhca_sig');
-  if(oldSig){var sigs=getSigs();if(!sigs.length){sigs.push({label:'Thomas Jaboro',data:oldSig});saveSigs(sigs);localStorage.removeItem('lhca_sig');}}
+  if(oldSig){var sigs=getSigs();if(!sigs.length){sigs.push({id:sigId(),label:'Thomas Jaboro',data:oldSig});saveSigsLS(sigs);localStorage.removeItem('lhca_sig');}}
 }catch(e){}
 try{initMSAL();}catch(e){console.log('MSAL init:',e);}
 renderActivityFeed();
