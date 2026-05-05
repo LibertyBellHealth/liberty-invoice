@@ -243,7 +243,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 .tt td.dc{font-size:8.5pt;text-align:center;width:60px;padding:1px 0;font-family:"Times New Roman",Times,serif;}
 .tt td.mc{cursor:pointer;padding:0;height:18px;vertical-align:middle;text-align:center;}
 .tt td.mc .box{display:inline-block;width:13px;height:13px;border:1px solid #000;position:relative;vertical-align:middle;}
-.tt td.mc.on .box::after{content:'';position:absolute;inset:1px;background:linear-gradient(to bottom right,transparent 38%,#000 38%,#000 62%,transparent 62%),linear-gradient(to bottom left,transparent 38%,#000 38%,#000 62%,transparent 62%);}
+.tt td.mc.on .box::after{content:'';position:absolute;inset:1px;background:linear-gradient(to bottom right,transparent 38%,#000 38%,#000 62%,transparent 62%),linear-gradient(to bottom left,transparent 38%,#000 38%,#000 62%,transparent 62%);-webkit-print-color-adjust:exact;print-color-adjust:exact;}
 .tt tr.inactive td.mc{cursor:default;}
 .allrow{background:#ddeeff;}
 .allrow td{font-size:7.5pt;cursor:pointer;padding:1px 0;border:1px solid #000;color:#333;font-family:Arial,sans-serif;}
@@ -520,6 +520,8 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 
 /* PRINT */
 @media print{
+  /* Force browsers to print background gradients/colors (otherwise checkboxes are blank) */
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}
   /* ── Reset body — eliminates blank first page caused by min-height:100vh ── */
   html,body{display:block!important;min-height:0!important;height:auto!important;
     background:#fff!important;margin:0!important;padding:0!important;}
@@ -553,7 +555,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
   .pg-footer{display:flex!important;font-size:8pt!important;margin-top:4px!important;
     page-break-inside:avoid;page-break-after:avoid;}
   .tt td.mc .box{border:1px solid #000!important;}
-  .tt td.mc.on .box::after{content:""!important;position:absolute!important;inset:1px!important;background:linear-gradient(to bottom right,transparent 38%,#000 38%,#000 62%,transparent 62%),linear-gradient(to bottom left,transparent 38%,#000 38%,#000 62%,transparent 62%)!important;}
+  .tt td.mc.on .box::after{content:""!important;position:absolute!important;inset:1px!important;background:linear-gradient(to bottom right,transparent 38%,#000 38%,#000 62%,transparent 62%),linear-gradient(to bottom left,transparent 38%,#000 38%,#000 62%,transparent 62%)!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
   .pagebreak{page-break-before:always;}
   #page1{page-break-after:avoid;}
 }
@@ -3899,7 +3901,7 @@ function buildInvoiceHTML(){
     '.tt td.dc{font-size:8pt;text-align:center;width:52px;padding:0;font-family:"Times New Roman",Times,serif;line-height:1;}',
     '.tt td.mc{padding:0;height:14px;vertical-align:middle;text-align:center;}',
     '.tt td.mc .box{display:inline-block;width:11px;height:11px;border:1px solid #000;position:relative;vertical-align:middle;}',
-    '.tt td.mc.on .box::after{content:"";position:absolute;inset:1px;background:linear-gradient(to bottom right,transparent 38%,#000 38%,#000 62%,transparent 62%),linear-gradient(to bottom left,transparent 38%,#000 38%,#000 62%,transparent 62%);}',
+    '.tt td.mc.on .box::after{content:"";position:absolute;inset:1px;background:linear-gradient(to bottom right,transparent 38%,#000 38%,#000 62%,transparent 62%),linear-gradient(to bottom left,transparent 38%,#000 38%,#000 62%,transparent 62%);-webkit-print-color-adjust:exact;print-color-adjust:exact;}',
     '.bottom-block{border:1px solid #000;border-top:none;font-size:8.5pt;font-family:"Times New Roman",Times,serif;}',
     '.bottom-block .tot-row{padding:2px 4px;font-weight:bold;}',
     '.bottom-block .tot-row input{border:none;border-bottom:1px solid #000;font-size:8.5pt;font-family:"Times New Roman",Times,serif;background:transparent;outline:none;text-align:center;width:28px;}',
