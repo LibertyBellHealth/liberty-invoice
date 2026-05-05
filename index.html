@@ -4268,19 +4268,19 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
   pdf.setLineWidth(GRID_W);
 
   // ── Bottom block — ONE outer rect, NO internal dividers (per March reference) ──
-  var totH=20,certH=16,sigH=46;
+  var totH=22,certH=20,sigH=52;
   var blockH=totH+certH+sigH;
   pdf.setLineWidth(GRID_W);
   pdf.rect(x0,y,W,blockH);
 
-  // Total time row (no divider below)
+  // Total time row (no divider below) — 12pt per March
   if(!isPage2){
-    pdf.setFont('helvetica','bold');pdf.setFontSize(11);
+    pdf.setFont('helvetica','bold');pdf.setFontSize(12);
     var totLabel='Total Time for Services Above:';
     pdf.text(totLabel,x0+5,y+14);
     var lblWidth=pdf.getTextWidth(totLabel);
     // Number is NOT bold; add explicit gap between label and value (5pt)
-    pdf.setFont('helvetica','normal');
+    pdf.setFont('helvetica','normal');pdf.setFontSize(12);
     pdf.text((data.svcHH||'')+'.'+(data.svcMM||''),x0+5+lblWidth+5,y+14);
   } else {
     pdf.setFontSize(9);
@@ -4295,9 +4295,9 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
     dualText('Total Time for Billing Period:',(data.grandHH||'')+'.'+(data.grandMM||''),x0+395);
   }
 
-  // Cert row (no divider above or below)
-  pdf.setFont('helvetica','normal');pdf.setFontSize(9.5);
-  pdf.text('I certify that Liberty Home Care Assistance has provided all the services as checked above.',x0+5,y+totH+11);
+  // Cert row (no divider above or below) — 12pt per March
+  pdf.setFont('helvetica','normal');pdf.setFontSize(12);
+  pdf.text('I certify that Liberty Home Care Assistance has provided all the services as checked above.',x0+5,y+totH+12);
 
   // Signature row — NO vertical divider between sig and date
   var sigY=y+totH+certH;
@@ -4317,11 +4317,11 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
   pdf.line(x0+sigBoxW+5,sigY+30,x0+W-5,sigY+30);
   // Date value above the date underline
   var sigDate=isPage2?(data.sigDate2||''):(data.sigDate1||'');
-  pdf.setFontSize(10);pdf.text(sigDate,x0+sigBoxW+5,sigY+25);
-  // Labels under the underlines
-  pdf.setFontSize(9);
-  pdf.text('Signature of Authorized Representative',x0+5,sigY+40);
-  pdf.text('Date',x0+sigBoxW+5,sigY+40);
+  pdf.setFontSize(12);pdf.text(sigDate,x0+sigBoxW+5,sigY+25);
+  // Labels under the underlines — 12pt per March
+  pdf.setFontSize(12);
+  pdf.text('Signature of Authorized Representative',x0+5,sigY+42);
+  pdf.text('Date',x0+sigBoxW+5,sigY+42);
 
   y+=blockH;
 
