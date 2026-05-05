@@ -1243,6 +1243,8 @@ var ALLOWED_USERS = [
 var REDIRECT_URI = 'https://zealous-forest-01e406a10.7.azurestaticapps.net';
 var SP_DOC_LIB   = 'ClientDocuments'; // kept for SharePoint doc library (if used)
 var SP_SITE      = 'https://libertybellhealth.sharepoint.com/sites/Invoice'; // kept for doc upload
+var API_SCOPE    = 'api://' + API_APP_ID + '/user_impersonation';
+var GRAPH_SCOPES = ['openid', 'profile', 'https://graph.microsoft.com/Mail.Send'];
 var msalInstance = null, spToken = null;
 
 function apiHeaders() {
@@ -1260,14 +1262,18 @@ async function refreshApiToken() {
   if (!accounts.length) return;
   try {
     var res = await msalInstance.acquireTokenSilent({
-      scopes: ['api://' + API_APP_ID + '/user_impersonation'],
+      scopes: [API_SCOPE],
       account: accounts[0]
     });
     _apiToken = res.accessToken;
     // Auto-refresh 10 min before expiry (tokens last ~1 hour)
     var ttl = res.expiresOn ? (res.expiresOn.getTime() - Date.now() - 600000) : 3000000;
     setTimeout(refreshApiToken, Math.max(ttl, 60000));
-  } catch(e) { console.warn('API token refresh failed:', e); }
+  } catch(e) {
+    console.warn('API token silent refresh failed, redirecting for consent:', e);
+    // Trigger interactive login to get consent for the API scope
+    try { msalInstance.loginRedirect({ scopes: GRAPH_SCOPES.concat([API_SCOPE]), redirectUri: REDIRECT_URI }); } catch(e2) {}
+  }
 }
 function getIdMap() {
   try { return JSON.parse(localStorage.getItem('lhca_id_map') || '{}'); } catch(e) { return {}; }
@@ -3587,17 +3593,20 @@ function initMSAL() {
         window._aiUser = email2;
         if(window.appInsights&&window.appInsights.setAuthenticatedUserContext)window.appInsights.setAuthenticatedUserContext(email2);
         msalInstance.acquireTokenSilent({
-          scopes: ['openid', 'profile', 'https://graph.microsoft.com/Mail.Send'],
+          scopes: GRAPH_SCOPES.concat([API_SCOPE]),
           account: acc[0], redirectUri: REDIRECT_URI,
         }).then(function (r2) { spToken = r2.accessToken; aiTrack('UserSignIn',{method:'silent'}); refreshApiToken().then(function(){ updateAuthUI(true); loadProfilesAPI(); }); })
-          .catch(function () { updateAuthUI(false); });
+          .catch(function () {
+            // Silent failed — need fresh consent, redirect to login
+            msalInstance.loginRedirect({ scopes: GRAPH_SCOPES.concat([API_SCOPE]), redirectUri: REDIRECT_URI });
+          });
       } else { updateAuthUI(false); }
     }).catch(function () { updateAuthUI(false); });
   });
 }
 function signIn() {
   msalInstance.loginRedirect({
-    scopes: ['openid', 'profile', 'https://graph.microsoft.com/Mail.Send'],
+    scopes: GRAPH_SCOPES.concat([API_SCOPE]),
     redirectUri: REDIRECT_URI,
   });
 }
