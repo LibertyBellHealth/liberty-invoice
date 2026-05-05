@@ -7,7 +7,7 @@
 <link rel="icon" type="image/x-icon" href="/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Allura&family=Caveat:wght@500&family=Cedarville+Cursive&family=Dancing+Script:wght@600&family=Great+Vibes&family=Italianno&family=Mr+Dafoe&family=Sacramento&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Allura&family=Caveat:wght@500&family=Cedarville+Cursive&family=Dancing+Script:wght@600&family=Great+Vibes&family=Indie+Flower&family=Italianno&family=Marck+Script&family=Mr+Dafoe&family=Patrick+Hand&family=Sacramento&display=swap" rel="stylesheet">
 <!-- ── Azure Application Insights — server-side audit logging ── -->
 <script type="text/javascript">
 !function(T,l,y){var S=T.location,k="script",D="instrumentationKey",C="ingestionendpoint",I="disableExceptionTracking",E="ai.device.",b="toLowerCase",w="crossOriginFailed",N="hi.device.",O="name",L="path",P="user",q="id",H="url",B="ingestionendpoint",F=function(e){var a=e.getAttribute;return a?a.call(e,"type"):""},j=function(){var e=document.getElementsByTagName(k);return e.length>0?e[e.length-1]:null},R=function(e){var a,t=e&&e.getAttribute;if(t&&(a=t.call(e,"data-website-id"))){return a}return null},A=function(e){return"function"==typeof e},s=function(e,a){return e[a]||{}},f=function(){return T[y.dle||"appInsights"]||{trackException:function(){},trackEvent:function(){},trackPageView:function(){},setAuthenticatedUserContext:function(){},clearAuthenticatedUserContext:function(){}}},G=function(){return T[y.dle||"appInsights"]},V=function(){},U=T,r=[];function g(e,a){r.push(arguments)}U[y.dle||"appInsights"]={queue:r,version:2,config:y.cfg};var h=document,m=h.createElement(k);m.src=y.src;m.crossOrigin="anonymous";var p=j();p?p.parentNode.insertBefore(m,p):h.getElementsByTagName("head")[0].appendChild(m);T[y.dle||"appInsights"]=function(e,a){for(var t=0;t<r.length;t++)r[t].apply(null,arguments);r=[]};}(window,document,{
@@ -248,6 +248,9 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 .tt td.mc.on .box::after{transform:rotate(-45deg);}
 .tt tr.inactive td.mc{cursor:default;}
 .allrow{background:#ddeeff;}
+/* Per-row All-button column — screen only, hidden in print/PDF */
+.tt th.all-col,.tt td.all-col{width:38px;background:#f4f8fc;text-align:center;padding:1px;}
+@media print{.tt th.all-col,.tt td.all-col{display:none!important;}}
 .allrow td{font-size:7.5pt;cursor:pointer;padding:1px 0;border:1px solid #000;color:#333;font-family:Arial,sans-serif;}
 .bottom-block{border:1px solid #000;border-top:none;font-size:9pt;font-family:"Times New Roman",Times,serif;}
 .bottom-block .tot-row{padding:3px 5px;font-weight:bold;}
@@ -1192,6 +1195,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
   <table class="tt" id="svcTable">
     <thead>
       <tr>
+        <th class="dh all-col" style="width:32px;font-size:7.5pt;">All</th>
         <th class="dh">Days of Billing Month</th>
         <th class="th">Bathing</th><th class="th">Dressing</th><th class="th">Eating</th>
         <th class="th">Grooming</th><th class="th">Mobility</th><th class="th">Toileting</th>
@@ -1200,7 +1204,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
         <th class="th">Meal Preparation</th><th class="th">Shopping</th>
         <th class="th">Travel Time for Shopping</th><th class="th">Hospital/Nursing Facility Stay</th>
       </tr>
-      <tr class="allrow" id="svcAllRow"><td></td></tr>
+      <tr class="allrow" id="svcAllRow"><td class="all-col"></td><td></td></tr>
     </thead>
     <tbody id="svcBody"></tbody>
   </table>
@@ -1229,13 +1233,14 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
   <table class="tt" id="cplxTable">
     <thead>
       <tr>
+        <th class="dh all-col" style="width:32px;font-size:7.5pt;">All</th>
         <th class="dh">Days of Billing Month</th>
         <th class="th">Bowel Program</th><th class="th">Catheters for Leg Bags</th>
         <th class="th">Colostomy Care</th><th class="th">Eating or Feeding Assistance</th>
         <th class="th">Peritoneal Dialysis</th><th class="th">Range of Motion Exercises</th>
         <th class="th">Specialized Skin Care</th><th class="th">Suctioning</th><th class="th">Wound Care</th>
       </tr>
-      <tr class="allrow" id="cplxAllRow"><td></td></tr>
+      <tr class="allrow" id="cplxAllRow"><td class="all-col"></td><td></td></tr>
     </thead>
     <tbody id="cplxBody"></tbody>
   </table>
@@ -1360,6 +1365,9 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
       <input id="sigTypeName" placeholder="Your full name" oninput="previewCursiveSig()" style="width:100%;padding:6px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:15px;font-family:Arial,sans-serif;outline:none;margin-bottom:6px;box-sizing:border-box;">
       <select id="sigTypeFont" onchange="previewCursiveSig()" style="width:100%;padding:6px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;outline:none;margin-bottom:8px;box-sizing:border-box;background:#fff;">
         <option value="Caveat" selected>Caveat — Adobe default style</option>
+        <option value="Marck Script">Marck Script — natural flowing</option>
+        <option value="Patrick Hand">Patrick Hand — Lindsey-style handwriting</option>
+        <option value="Indie Flower">Indie Flower — Segoe-style handwriting</option>
         <option value="Cedarville Cursive">Cedarville Cursive — schoolhouse cursive</option>
         <option value="Mr Dafoe">Mr Dafoe — classic signature</option>
         <option value="Allura">Allura — elegant</option>
@@ -1373,6 +1381,18 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
         <button class="btn btn-primary" onclick="confirmTypedSig()">Save Signature</button>
         <button class="btn btn-secondary" onclick="closeSigModal()">Cancel</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRM MODAL — replaces browser confirm() popups -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal-box">
+    <h3 id="confirmTitle">Confirm</h3>
+    <p id="confirmMessage" style="font-size:13px;color:#1a2b45;margin:8px 0 14px;"></p>
+    <div class="modal-row" style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn btn-secondary" id="confirmCancelBtn">Cancel</button>
+      <button class="btn btn-danger" id="confirmOkBtn">Confirm</button>
     </div>
   </div>
 </div>
@@ -2945,8 +2965,27 @@ function renderSigSettings(){
     list.appendChild(item);
   });
 }
+// In-website confirm modal — replaces native browser confirm() for cleaner UX
+function showConfirm(message,onConfirm,opts){
+  opts=opts||{};
+  var modal=document.getElementById('confirmModal');
+  document.getElementById('confirmTitle').textContent=opts.title||'Confirm';
+  document.getElementById('confirmMessage').textContent=message||'Are you sure?';
+  var okBtn=document.getElementById('confirmOkBtn'),cancelBtn=document.getElementById('confirmCancelBtn');
+  okBtn.textContent=opts.okText||'Confirm';
+  okBtn.className='btn '+(opts.danger!==false?'btn-danger':'btn-primary');
+  // Replace handlers freshly each time
+  var newOk=okBtn.cloneNode(true),newCancel=cancelBtn.cloneNode(true);
+  okBtn.parentNode.replaceChild(newOk,okBtn);cancelBtn.parentNode.replaceChild(newCancel,cancelBtn);
+  newOk.addEventListener('click',function(){modal.classList.remove('open');if(typeof onConfirm==='function')onConfirm();});
+  newCancel.addEventListener('click',function(){modal.classList.remove('open');});
+  modal.classList.add('open');
+}
+
 function deleteSig(idOrIdx){
-  if(!confirm('Remove this signature?'))return;
+  showConfirm('Remove this signature? This cannot be undone.',function(){doDeleteSig(idOrIdx);},{title:'Remove Signature',okText:'Remove'});
+}
+function doDeleteSig(idOrIdx){
   var sigs=getSigs();
   // idOrIdx may be a string ID or a legacy numeric index
   var sigId_=typeof idOrIdx==='number'?null:(idOrIdx||null);
@@ -3723,15 +3762,13 @@ function buildRows(tbodyId,cols){
   var hospIdx=isSvc?(cols-1):-1; // Hospital column is the LAST column in SVC table
   for(var d=1;d<=31;d++){
     var tr=document.createElement('tr');if(d>active)tr.classList.add('inactive');
-    var td0=document.createElement('td');td0.className='dc';
-    // Day number + small "All" button (button hidden in print)
-    var dayLabel=document.createElement('span');dayLabel.textContent=d;
-    td0.appendChild(dayLabel);
+    // First cell: per-row "All" button (own column, hidden in print)
+    var tdAll=document.createElement('td');tdAll.className='all-col';
     if(d<=active){
       var allBtn=document.createElement('span');
       allBtn.className='row-all-btn';allBtn.textContent='All';
       allBtn.title='Toggle entire row';
-      allBtn.style.cssText='cursor:pointer;font-size:7pt;color:#185FA5;margin-left:5px;padding:0 4px;border:1px solid #aac4e0;border-radius:3px;background:#eaf4ff;font-weight:normal;display:inline-block;line-height:1.4;';
+      allBtn.style.cssText='cursor:pointer;font-size:8pt;color:#185FA5;padding:1px 6px;border:1px solid #aac4e0;border-radius:3px;background:#eaf4ff;font-weight:bold;display:inline-block;line-height:1.4;font-family:Arial,sans-serif;';
       allBtn.addEventListener('mouseenter',function(){this.style.background='#bbddff';});
       allBtn.addEventListener('mouseleave',function(){this.style.background='#eaf4ff';});
       allBtn.addEventListener('click',function(e){
@@ -3744,8 +3781,11 @@ function buildRows(tbodyId,cols){
           rowCells.forEach(function(c,i){if(hospIdx>=0&&i===hospIdx)c.classList.remove('on');else c.classList.add('on');});
         }
       });
-      td0.appendChild(allBtn);
+      tdAll.appendChild(allBtn);
     }
+    tr.appendChild(tdAll);
+    // Second cell: plain day number
+    var td0=document.createElement('td');td0.className='dc';td0.textContent=d;
     tr.appendChild(td0);
     for(var c=0;c<cols;c++){
       var td=document.createElement('td');td.className='mc';
@@ -3777,7 +3817,8 @@ function buildRows(tbodyId,cols){
   }
 }
 function buildAllRow(rowId,tbodyId,cols){
-  var row=document.getElementById(rowId);while(row.children.length>1)row.removeChild(row.lastChild);
+  // Keep first 2 children (the all-col placeholder + day-col placeholder); rebuild service-col cells
+  var row=document.getElementById(rowId);while(row.children.length>2)row.removeChild(row.lastChild);
   // Helper: get start-of-month day-of-week (Mon=0..Sun=6)
   function getStartDow(){
     var bp=document.getElementById('billingPeriod').value.trim(),startDow=0;
@@ -4178,7 +4219,6 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
 
   // Day rows (1..31)
   pdf.setFontSize(8.5);
-  pdf.setLineWidth(0.6);
   var dataRows=isPage2?(data.tasks.cplx||[]):(data.tasks.svc||[]);
   for(var d=1;d<=31;d++){
     pdf.setLineWidth(0.6);
@@ -4188,19 +4228,25 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
     var rowState=dataRows[d-1]||[];
     for(var c=0;c<nCols;c++){
       var cx=x0+dayColW+c*colW;
+      // Always reset to grid weight before drawing any column separator or box outline
+      pdf.setLineWidth(0.6);
       if(c>0)pdf.line(cx,y,cx,y+dayRowH);
       // Draw checkbox centered in cell — slightly taller than wide to match MSA-1904 reference
       var bxW=10,bxH=11,bxX=cx+colW/2-bxW/2,bxY=y+dayRowH/2-bxH/2;
-      pdf.setLineWidth(0.6);pdf.rect(bxX,bxY,bxW,bxH);
+      pdf.rect(bxX,bxY,bxW,bxH);
       if(rowState[c]){
         // Heavier diagonal X — matches government form weight
         pdf.setLineWidth(1.1);
         pdf.line(bxX,bxY,bxX+bxW,bxY+bxH);
         pdf.line(bxX+bxW,bxY,bxX,bxY+bxH);
+        // Reset back to grid weight for the NEXT iteration's column separator
+        pdf.setLineWidth(0.6);
       }
     }
     y+=dayRowH;
   }
+  // Final reset
+  pdf.setLineWidth(0.6);
 
   // ── Bottom block (totals + cert + signature) ──
   var bottomY=y;
