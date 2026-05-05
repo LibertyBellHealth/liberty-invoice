@@ -769,9 +769,9 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
           <button class="btn btn-primary" onclick="showNewCaregiverForm()">+ New Caregiver</button>
         </div>
       </div>
-      <div style="margin-top:16px;">
-        <div class="filter-bar" style="margin-bottom:14px;">
-          <input id="cgSearch" class="ct-search" placeholder="Search caregivers…" oninput="renderCaregiverGrid()">
+      <div class="client-table-wrap" style="margin-top:16px;">
+        <div class="ct-toolbar">
+          <input id="cgSearch" class="ct-search" placeholder="Filter caregivers…" oninput="renderCaregiverGrid()">
           <select id="cgFilterStatus" onchange="renderCaregiverGrid()" class="ct-filter">
             <option value="active">Active</option>
             <option value="all">All Statuses</option>
@@ -779,7 +779,20 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
             <option value="terminated">Terminated</option>
           </select>
         </div>
-        <div class="client-grid" id="cgCardGrid"></div>
+        <table class="client-table">
+          <thead>
+            <tr>
+              <th>Caregiver</th>
+              <th>Status</th>
+              <th>Role</th>
+              <th>Phone</th>
+              <th>Hire Date</th>
+              <th>Clients</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="cgTableBody"></tbody>
+        </table>
         <div id="cgTableEmpty" style="display:none;" class="ct-empty">No caregivers match your filters.</div>
       </div>
       <div id="cgFormWrap" style="display:none;margin:16px 24px 0;">
@@ -943,12 +956,24 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
           <button class="btn btn-primary" onclick="showCaseworkerForm()">+ Add Caseworker</button>
         </div>
       </div>
-      <div style="margin-top:16px;">
-        <div class="filter-bar" style="margin-bottom:14px;">
+      <div class="client-table-wrap" style="margin-top:16px;">
+        <div class="ct-toolbar">
           <input id="cwSearch" class="ct-search" placeholder="Search by name or agency…" oninput="renderCaseworkerList()">
         </div>
-        <div class="client-grid" id="cwCardGrid"></div>
-        <div id="cwTableEmpty" style="display:none;" class="ct-empty">No caseworkers match your filters.</div>
+        <table class="client-table">
+          <thead>
+            <tr>
+              <th>Caseworker</th>
+              <th>Phone</th>
+              <th>Email</th>
+              <th>County</th>
+              <th>Clients</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="cwTableBody"></tbody>
+        </table>
+        <div id="cwTableEmpty" style="display:none;" class="ct-empty">No caseworkers match your search.</div>
       </div>
     </div>
     <div id="cwFormWrap" style="display:none;margin-top:16px;">
@@ -2294,41 +2319,38 @@ function cgId(){return 'cg_'+Date.now()+'_'+Math.random().toString(36).slice(2,7
 
 function renderCaregiverGrid(){
   var cgs=getCaregivers();
-  var q=((document.getElementById('cgSearch')?document.getElementById('cgSearch').value:'')||'').toLowerCase();
-  var filterStatus=(document.getElementById('cgFilterStatus')?document.getElementById('cgFilterStatus').value:'active');
-  var profiles=getProfiles(),assignments={};
-  Object.keys(profiles).forEach(function(k){var id=profiles[k].caregiverId;if(id)assignments[id]=(assignments[id]||0)+1;});
-  var keys=Object.keys(cgs).filter(function(id){
-    var st=cgs[id].status||'active';
-    return (filterStatus==='all'||st===filterStatus)&&(!q||(cgs[id].name||'').toLowerCase().includes(q)||(cgs[id].phone||'').includes(q));
-  }).sort(function(a,b){return(cgs[a].name||'').localeCompare(cgs[b].name||'');});
-  var grid=document.getElementById('cgCardGrid'),empty=document.getElementById('cgTableEmpty');
-  if(!grid)return;grid.innerHTML='';
-  if(!keys.length){
-    if(empty)empty.style.display='block';
-    grid.innerHTML='<div class="empty-state" style="grid-column:1/-1;"><div class="ei">&#127968;</div><h3>No caregivers found</h3><p style="font-size:13px;">Click "+ New Caregiver" to add one.</p></div>';
-    return;
-  }
+  var q=(document.getElementById('cgSearch')?document.getElementById('cgSearch').value:'').toLowerCase();
+  var filterStatus=(document.getElementById('cgFilterStatus')&&document.getElementById('cgFilterStatus').value)||'active';
+  var profiles=getProfiles();
+  var tbody=document.getElementById('cgTableBody');if(!tbody)return;tbody.innerHTML='';
+  var ids=Object.keys(cgs).filter(function(id){
+    var cg=cgs[id];
+    var st=cg.status||'active';
+    var matchStatus=filterStatus==='all'||st===filterStatus;
+    var matchQ=!q||(cg.name||'').toLowerCase().includes(q)||(cg.phone||'').includes(q);
+    return matchStatus&&matchQ;
+  });
+  ids.sort(function(a,b){return (cgs[a].name||'').localeCompare(cgs[b].name||'');});
+  var empty=document.getElementById('cgTableEmpty');
+  if(!ids.length){if(empty)empty.style.display='block';return;}
   if(empty)empty.style.display='none';
-  keys.forEach(function(id){
-    var cg=cgs[id],st=cg.status||'active',count=assignments[id]||0;
-    var ini=(cg.name||'?').split(' ').map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase();
-    var stClass=st==='active'?'cs-active':st==='terminated'?'cs-terminated':'cs-inactive';
-    var card=document.createElement('div');
-    card.className='client-card';
-    card.innerHTML=
-      '<div class="cc-top">'+
-        '<div class="cc-avatar" style="width:40px;height:40px;font-size:15px;font-weight:700;">'+ini+'</div>'+
-        '<div>'+
-          '<div class="cc-name">'+esc(cg.name||'')+'</div>'+
-          '<div class="cc-id">'+esc(cg.emptype||'Caregiver')+'</div>'+
-        '</div>'+
-      '</div>'+
-      '<div style="margin-bottom:8px;"><span class="cs-badge '+stClass+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span></div>'+
-      '<div style="font-size:12px;color:#4a6a8a;margin-bottom:4px;">'+(cg.phone||'No phone')+'</div>'+
-      '<div style="font-size:12px;color:'+(count?'#185FA5':'#8ca0b4')+';font-weight:'+(count?'600':'normal')+';">'+count+' client'+(count!==1?'s':'')+' assigned</div>';
-    card.addEventListener('click',function(){openCgDetail(id);});
-    grid.appendChild(card);
+  ids.forEach(function(id){
+    var cg=cgs[id];
+    var st=cg.status||'active';
+    var clientCount=Object.keys(profiles).filter(function(k){return profiles[k].caregiverId===id;}).length;
+    var displayName=(cg.firstName&&cg.lastName)?(cg.firstName+(cg.middleName?' '+cg.middleName:'')+' '+cg.lastName).trim():(cg.name||id);
+    var tr=document.createElement('tr');
+    tr.innerHTML=
+      '<td><div class="ct-name">'+esc(displayName)+(cg.nickname?'<span style="font-weight:normal;color:#8ca0b4;"> ('+esc(cg.nickname)+')</span>':'')+'</div>'+
+        '<div class="ct-id">'+(cg.email||'No email')+'</div></td>'+
+      '<td><span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span></td>'+
+      '<td style="color:#4a6a8a;font-size:12px;">'+esc(cg.emptype||'—')+'</td>'+
+      '<td style="color:#4a6a8a;font-size:12px;">'+esc(cg.phone||'—')+'</td>'+
+      '<td style="font-size:12px;color:#4a6a8a;">'+esc(cg.hireDate||'—')+'</td>'+
+      '<td style="font-size:12px;">'+clientCount+'</td>'+
+      '<td onclick="event.stopPropagation()"><button class="ct-action-btn" onclick="event.stopPropagation();editCaregiver(\''+id+'\')">Edit</button></td>';
+    tr.addEventListener('click',function(){openCgDetail(id);});
+    tbody.appendChild(tr);
   });
 }
 function bulkDeleteCaregivers(){
@@ -2511,7 +2533,8 @@ function renderCgOverviewPane(){
   if(!cg||!pane)return;
   var profiles=getProfiles();
   var assigned=Object.keys(profiles).filter(function(k){return profiles[k].caregiverId===activeCgId;});
-  var addrStr=(cg.address||'').trim();
+  var addrStr=(cg.street||cg.address||'').trim();
+  var certsStr=cg.certifications||cg.certs||'';
   pane.innerHTML='<div class="overview-grid">'+
     '<div class="ov-card"><h4>Contact Info</h4>'+
       (cg.phone?'<div class="ov-row"><span class="ov-label">Phone</span><span class="ov-value">'+esc(cg.phone)+'</span></div>':'')+
@@ -2526,7 +2549,7 @@ function renderCgOverviewPane(){
       (cg.maxHours?'<div class="ov-row"><span class="ov-label">Max Hours/Week</span><span class="ov-value">'+esc(cg.maxHours)+'</span></div>':'')+
     '</div>'+
     '<div class="ov-card"><h4>Certifications</h4>'+
-      (cg.certs?'<div style="font-size:13px;color:#1a2b45;line-height:1.5;white-space:pre-wrap;">'+esc(cg.certs)+'</div>':'<div style="color:#8ca0b4;font-size:12px;">No certifications on file.</div>')+
+      (certsStr?'<div style="font-size:13px;color:#1a2b45;line-height:1.5;white-space:pre-wrap;">'+esc(certsStr)+'</div>':'<div style="color:#8ca0b4;font-size:12px;">No certifications on file.</div>')+
     '</div>'+
     '<div class="ov-card"><h4>Assigned Clients</h4>'+
       '<div class="ov-row" style="cursor:pointer;" onclick="switchCgTab(\'clients\')">'+
@@ -2582,20 +2605,91 @@ function renderCgAuditPane(){
 }
 function renderCgInfoPane(){
   if(!activeCgId)return;
-  var cg=getCaregivers()[activeCgId],c=document.getElementById('cgInfoContent');
-  if(!c||!cg)return;
-  var rows=[
-    ['Phone',cg.phone],['Email',cg.email],['Address',cg.address],
-    ['Hire Date',cg.hireDate],['Employment Type',cg.emptype],
-    ['Pay Rate',cg.payRate?'$'+cg.payRate+'/hr':''],['Max Hours/Week',cg.maxHours],
-    ['Certifications',cg.certs],
-    ['Emergency Contact',cg.ecName],['Emergency Phone',cg.ecPhone]
-  ].filter(function(r){return r[1];});
-  var editBtn='<div style="margin-bottom:14px;"><button class="btn btn-secondary" onclick="editCaregiverFromDetail()">Edit Profile</button>&nbsp;<button class="btn btn-danger btn-sm" onclick="deleteCaregiverFromDetail()" style="padding:6px 14px;">Delete Caregiver</button></div>';
-  if(!rows.length){c.innerHTML=editBtn+'<div style="color:#8ca0b4;">No info saved yet. Click Edit Profile to add details.</div>';return;}
-  c.innerHTML=editBtn+'<div style="display:grid;grid-template-columns:160px 1fr;gap:8px 16px;max-width:500px;font-size:13px;">'+
-    rows.map(function(r){return '<span style="color:#6b8dae;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px;padding-top:2px;">'+esc(r[0])+'</span><span>'+esc(r[1])+'</span>';}).join('')+
-    '</div>';
+  var cg=getCaregivers()[activeCgId];
+  var c=document.getElementById('cgInfoContent');c.innerHTML='';
+  if(!cg)return;
+
+  var g=document.createElement('div');g.className='info-grid';
+  c.appendChild(g);
+
+  function mkF(id,label,val,full){
+    var d=document.createElement('div');d.className='info-field'+(full?' full':'');
+    d.innerHTML='<label>'+label+'</label><input id="'+id+'" value="'+esc(val||'')+'">';
+    g.appendChild(d);
+  }
+  function mkDiv(label){
+    var d=document.createElement('div');d.className='form-section-divider full';d.innerHTML='<span>'+label+'</span>';g.appendChild(d);
+  }
+  function mkRow(children){
+    var d=document.createElement('div');d.className='info-field-row full';d.innerHTML=children;g.appendChild(d);
+  }
+
+  // Name row (3 cols)
+  var dName=document.createElement('div');dName.className='info-field-row full';dName.style.gridTemplateColumns='1fr 1fr 1fr';
+  var storedFirst=cg.firstName||cg.first_name||(cg.name||'').split(' ')[0]||'';
+  var storedLast=cg.lastName||cg.last_name||(cg.name||'').split(' ').slice(1).join(' ')||'';
+  dName.innerHTML='<div class="info-field"><label>First Name *</label><input id="cgi-first" value="'+esc(storedFirst)+'"></div>'+
+    '<div class="info-field"><label>Middle Name</label><input id="cgi-middle" value="'+esc(cg.middleName||cg.middle_name||'')+'"></div>'+
+    '<div class="info-field"><label>Last Name *</label><input id="cgi-last" value="'+esc(storedLast)+'"></div>';
+  g.appendChild(dName);
+
+  // Nickname + Status row
+  mkRow('<div class="info-field"><label>Nickname</label><input id="cgi-nickname" value="'+esc(cg.nickname||'')+'"></div>'+
+    '<div class="info-field"><label>Status</label><select id="cgi-status"><option value="active"'+((!cg.status||cg.status==="active")?" selected":"")+'>Active</option><option value="inactive"'+(cg.status==="inactive"?" selected":"")+'>Inactive</option><option value="terminated"'+(cg.status==="terminated"?" selected":"")+'>Terminated</option></select></div>');
+
+  mkF('cgi-phone','Phone',cg.phone,false);
+  mkF('cgi-email','Email',cg.email,false);
+  mkF('cgi-street','Street',cg.street||cg.address,true);
+  mkRow('<div class="info-field"><label>City</label><input id="cgi-city" value="'+esc(cg.city||'')+'"></div>'+
+    '<div class="info-field"><label>State</label><input id="cgi-state" value="'+esc(cg.state||'')+'"></div>');
+  mkRow('<div class="info-field"><label>ZIP</label><input id="cgi-zip" value="'+esc(cg.zip||'')+'" oninput="lookupZip(\'cgi-zip\',\'cgi-city\',\'cgi-state\',\'cgi-county\')"></div>'+
+    '<div class="info-field"><label>County</label><input id="cgi-county" value="'+esc(cg.county||'')+'"></div>');
+
+  mkDiv('Employment');
+  mkRow('<div class="info-field"><label>Hire Date</label><input id="cgi-hire" type="date" value="'+esc(cg.hireDate||'')+'"></div>'+
+    '<div class="info-field"><label>Employment Type</label><select id="cgi-emptype"><option value="full-time"'+(cg.emptype==='full-time'?' selected':'')+'>Full-Time</option><option value="part-time"'+(cg.emptype==='part-time'?' selected':'')+'>Part-Time</option><option value="per-diem"'+(cg.emptype==='per-diem'?' selected':'')+'>Per Diem</option></select></div>');
+  mkRow('<div class="info-field"><label>Pay Rate ($/hr)</label><input id="cgi-pay" value="'+esc(cg.payRate||'')+'"></div>'+
+    '<div class="info-field"><label>Max Hours/Week</label><input id="cgi-hours" value="'+esc(cg.maxHours||'')+'"></div>');
+
+  var certDiv=document.createElement('div');certDiv.className='info-field full';
+  certDiv.innerHTML='<label>Certifications &amp; Training</label><textarea id="cgi-certs" rows="2" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;resize:vertical;">'+esc(cg.certs||cg.certifications||'')+'</textarea>';
+  g.appendChild(certDiv);
+
+  mkDiv('Emergency Contact');
+  mkRow('<div class="info-field"><label>Contact Name</label><input id="cgi-ecname" value="'+esc(cg.ecName||'')+'"></div>'+
+    '<div class="info-field"><label>Contact Phone</label><input id="cgi-ecphone" value="'+esc(cg.ecPhone||'')+'"></div>');
+
+  // Save + Delete buttons
+  var actions=document.createElement('div');actions.style.cssText='margin-top:16px;display:flex;gap:8px;';
+  actions.innerHTML='<button class="btn btn-primary" id="cgSaveInfoBtn" onclick="saveCgInfoPane()">Save Changes</button>'+
+    '<button class="btn btn-danger btn-sm" onclick="deleteCaregiverFromDetail()" style="padding:6px 14px;">Delete Caregiver</button>';
+  c.appendChild(actions);
+}
+function saveCgInfoPane(){
+  if(!activeCgId)return;
+  var cgs=getCaregivers();var cg=cgs[activeCgId];if(!cg)return;
+  var first=(document.getElementById('cgi-first').value||'').trim();
+  var last=(document.getElementById('cgi-last').value||'').trim();
+  if(!first||!last){alert('First and last name are required.');return;}
+  cg.firstName=first;cg.middleName=document.getElementById('cgi-middle').value;cg.lastName=last;
+  cg.name=(first+(document.getElementById('cgi-middle').value?' '+document.getElementById('cgi-middle').value:'')+' '+last).trim();
+  cg.nickname=document.getElementById('cgi-nickname').value;
+  cg.status=document.getElementById('cgi-status').value;
+  cg.phone=document.getElementById('cgi-phone').value;cg.email=document.getElementById('cgi-email').value;
+  cg.street=document.getElementById('cgi-street').value;cg.city=document.getElementById('cgi-city').value;
+  cg.state=document.getElementById('cgi-state').value;cg.zip=document.getElementById('cgi-zip').value;cg.county=document.getElementById('cgi-county').value;
+  cg.hireDate=document.getElementById('cgi-hire').value;cg.emptype=document.getElementById('cgi-emptype').value;
+  cg.payRate=document.getElementById('cgi-pay').value;cg.maxHours=document.getElementById('cgi-hours').value;
+  cg.certifications=document.getElementById('cgi-certs').value;
+  cg.ecName=document.getElementById('cgi-ecname').value;cg.ecPhone=document.getElementById('cgi-ecphone').value;
+  saveCaregiversLS(cgs);saveCaregiverAPI(activeCgId,cg);
+  // Update header
+  document.getElementById('cgDetailName').textContent=cg.name;
+  var st=cg.status||'active';
+  document.getElementById('cgDetailMeta').innerHTML=esc(cg.emptype||'')+(cg.payRate?' · $'+cg.payRate+'/hr':'')+' &nbsp;<span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span>';
+  var btn=document.getElementById('cgSaveInfoBtn');if(btn){btn.textContent='Saved ✓';setTimeout(function(){btn.textContent='Save Changes';},1800);}
+  addAuditEntry(cg.name,'Caregiver profile updated');
+  renderCaregiverGrid();
 }
 function renderCgClientsPane(){
   if(!activeCgId)return;
@@ -4441,46 +4535,39 @@ function deleteCaseworker(){
   hideCaseworkerForm();
   showCwGrid();
 }
+function deleteCaseworkerFromDetail(){
+  if(!activeCwId)return;
+  var cw=getCaseworkers().find(function(c){return c.id===activeCwId;});
+  if(!cw||!confirm('Delete caseworker "'+cw.name+'"? This cannot be undone.'))return;
+  saveCaseworkersLS(getCaseworkers().filter(function(c){return c.id!==activeCwId;}));
+  deleteCaseworkerAPI(activeCwId);
+  aiTrack('CaseworkerDeleted',{caseworkerId:activeCwId,caseworkerName:cw.name||activeCwId});
+  showCwGrid();
+}
 function renderCaseworkerList(){
   var cws=getCaseworkers();
-  var q=((document.getElementById('cwSearch')?document.getElementById('cwSearch').value:'')||'').toLowerCase();
-  var grid=document.getElementById('cwCardGrid');
-  var empty=document.getElementById('cwTableEmpty');
-  if(!grid)return;
-  grid.innerHTML='';
-  if(!cws.length){
-    if(empty){empty.style.display='block';empty.innerHTML='';}
-    grid.innerHTML='<div class="empty-state" style="grid-column:1/-1;"><div class="ei">&#128101;</div><h3>No caseworkers yet</h3><p style="font-size:13px;">Click "+ Add Caseworker" to add caseworkers.</p></div>';
-    return;
-  }
+  var q=(document.getElementById('cwSearch')?document.getElementById('cwSearch').value:'').toLowerCase();
+  var profiles=getProfiles();
+  var tbody=document.getElementById('cwTableBody');if(!tbody)return;tbody.innerHTML='';
   var filtered=cws.filter(function(cw){
     return !q||(cw.name||'').toLowerCase().includes(q)||(cw.agency||'').toLowerCase().includes(q);
   });
-  if(!filtered.length){
-    if(empty)empty.style.display='block';
-    grid.innerHTML='<div class="empty-state" style="grid-column:1/-1;"><h3>No matches</h3></div>';
-    return;
-  }
+  filtered.sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
+  var empty=document.getElementById('cwTableEmpty');
+  if(!filtered.length){if(empty)empty.style.display='block';return;}
   if(empty)empty.style.display='none';
-  var profiles=getProfiles();
   filtered.forEach(function(cw){
-    var clientCount=Object.keys(profiles).filter(function(k){return profiles[k].worker===cw.name||profiles[k].caseworkerId===cw.id;}).length;
-    var ini=(cw.name||'?').split(' ').map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase();
-    var card=document.createElement('div');
-    card.className='client-card';
-    card.innerHTML=
-      '<div class="cc-top">'+
-        '<div class="cc-avatar" style="width:40px;height:40px;font-size:15px;font-weight:700;">'+ini+'</div>'+
-        '<div>'+
-          '<div class="cc-name">'+esc(cw.name||'')+'</div>'+
-          '<div class="cc-id">'+esc(cw.agency||'Caseworker')+'</div>'+
-        '</div>'+
-      '</div>'+
-      '<div style="margin-bottom:8px;"><span class="cs-badge cs-active">Active</span></div>'+
-      '<div style="font-size:12px;color:#4a6a8a;margin-bottom:4px;">'+(cw.phone||'No phone')+'</div>'+
-      '<div style="font-size:12px;color:'+(clientCount?'#185FA5':'#8ca0b4')+';font-weight:'+(clientCount?'600':'normal')+';">'+clientCount+' client'+(clientCount!==1?'s':'')+' assigned</div>';
-    card.addEventListener('click',function(){openCwDetail(cw.id);});
-    grid.appendChild(card);
+    var clientCount=Object.keys(profiles).filter(function(k){return profiles[k].caseworkerId===cw.id||profiles[k].worker===cw.name;}).length;
+    var tr=document.createElement('tr');
+    tr.innerHTML=
+      '<td><div class="ct-name">'+esc(cw.name||'')+'</div><div class="ct-id">'+esc(cw.agency||'No agency')+'</div></td>'+
+      '<td style="color:#4a6a8a;font-size:12px;">'+esc(cw.phone||'—')+'</td>'+
+      '<td style="color:#4a6a8a;font-size:12px;">'+esc(cw.email||'—')+'</td>'+
+      '<td style="color:#4a6a8a;font-size:12px;">'+esc(cw.county||'—')+'</td>'+
+      '<td style="font-size:12px;">'+clientCount+'</td>'+
+      '<td onclick="event.stopPropagation()"><button class="ct-action-btn" onclick="event.stopPropagation();showCaseworkerForm(\''+cw.id+'\')">Edit</button></td>';
+    tr.addEventListener('click',function(){openCwDetail(cw.id);});
+    tbody.appendChild(tr);
   });
 }
 
@@ -4551,17 +4638,63 @@ function renderCwOverviewPane(){
 function renderCwInfoPane(){
   if(!activeCwId)return;
   var cw=getCaseworkers().find(function(c){return c.id===activeCwId;});
-  var c=document.getElementById('cwInfoContent');
-  if(!c||!cw)return;
-  var rows=[
-    ['Agency',cw.agency],['Phone',cw.phone],['Fax',cw.fax],['Email',cw.email],
-    ['Street',cw.street],['City',cw.city],['State',cw.state],['ZIP',cw.zip],['County',cw.county]
-  ].filter(function(r){return r[1];});
-  var editBtn='<div style="margin-bottom:14px;"><button class="btn btn-secondary" onclick="showCwEditForm()">Edit Profile</button></div>';
-  if(!rows.length){c.innerHTML=editBtn+'<div style="color:#8ca0b4;">No info saved yet. Click Edit Profile to add details.</div>';return;}
-  c.innerHTML=editBtn+'<div style="display:grid;grid-template-columns:160px 1fr;gap:8px 16px;max-width:500px;font-size:13px;">'+
-    rows.map(function(r){return '<span style="color:#6b8dae;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px;padding-top:2px;">'+esc(r[0])+'</span><span>'+esc(r[1])+'</span>';}).join('')+
-    '</div>';
+  var c=document.getElementById('cwInfoContent');c.innerHTML='';
+  if(!cw)return;
+
+  var g=document.createElement('div');g.className='info-grid';c.appendChild(g);
+
+  function mkF(id,label,val,full){
+    var d=document.createElement('div');d.className='info-field'+(full?' full':'');
+    d.innerHTML='<label>'+label+'</label><input id="'+id+'" value="'+esc(val||'')+'">';g.appendChild(d);
+  }
+  function mkDiv(label){var d=document.createElement('div');d.className='form-section-divider full';d.innerHTML='<span>'+label+'</span>';g.appendChild(d);}
+  function mkRow(html){var d=document.createElement('div');d.className='info-field-row full';d.innerHTML=html;g.appendChild(d);}
+
+  // Name row
+  var firstName=cw.first_name||(cw.name||'').split(' ')[0]||'';
+  var lastName=cw.last_name||(cw.name||'').split(' ').slice(1).join(' ')||'';
+  var dName=document.createElement('div');dName.className='info-field-row full';dName.style.gridTemplateColumns='1fr 1fr 1fr';
+  dName.innerHTML='<div class="info-field"><label>First Name *</label><input id="cwi-first" value="'+esc(firstName)+'"></div>'+
+    '<div class="info-field"><label>Middle Name</label><input id="cwi-middle" value="'+esc(cw.middle_name||'')+'"></div>'+
+    '<div class="info-field"><label>Last Name *</label><input id="cwi-last" value="'+esc(lastName)+'"></div>';
+  g.appendChild(dName);
+
+  mkF('cwi-agency','Agency',cw.agency,true);
+  mkRow('<div class="info-field"><label>Phone</label><input id="cwi-phone" value="'+esc(cw.phone||'')+'"></div>'+
+    '<div class="info-field"><label>Fax</label><input id="cwi-fax" value="'+esc(cw.fax||'')+'"></div>');
+  mkF('cwi-email','Email',cw.email,true);
+
+  mkDiv('Address');
+  mkF('cwi-street','Street',cw.street,true);
+  mkRow('<div class="info-field"><label>City</label><input id="cwi-city" value="'+esc(cw.city||'')+'"></div>'+
+    '<div class="info-field"><label>State</label><input id="cwi-state" value="'+esc(cw.state||'')+'"></div>');
+  mkRow('<div class="info-field"><label>ZIP</label><input id="cwi-zip" value="'+esc(cw.zip||'')+'" oninput="lookupZip(\'cwi-zip\',\'cwi-city\',\'cwi-state\',\'cwi-county\')"></div>'+
+    '<div class="info-field"><label>County</label><input id="cwi-county" value="'+esc(cw.county||'')+'"></div>');
+
+  var actions=document.createElement('div');actions.style.cssText='margin-top:16px;display:flex;gap:8px;';
+  actions.innerHTML='<button class="btn btn-primary" id="cwSaveInfoBtn" onclick="saveCwInfoPane()">Save Changes</button>'+
+    '<button class="btn btn-danger btn-sm" onclick="deleteCaseworkerFromDetail()" style="padding:6px 14px;">Delete Caseworker</button>';
+  c.appendChild(actions);
+}
+function saveCwInfoPane(){
+  if(!activeCwId)return;
+  var arr=getCaseworkers();var cw=arr.find(function(c){return c.id===activeCwId;});if(!cw)return;
+  var first=(document.getElementById('cwi-first').value||'').trim();
+  var last=(document.getElementById('cwi-last').value||'').trim();
+  if(!first||!last){alert('First and last name are required.');return;}
+  cw.first_name=first;cw.middle_name=document.getElementById('cwi-middle').value;cw.last_name=last;
+  cw.name=(first+(document.getElementById('cwi-middle').value?' '+document.getElementById('cwi-middle').value:'')+' '+last).trim();
+  cw.agency=document.getElementById('cwi-agency').value;
+  cw.phone=document.getElementById('cwi-phone').value;cw.fax=document.getElementById('cwi-fax').value;
+  cw.email=document.getElementById('cwi-email').value;
+  cw.street=document.getElementById('cwi-street').value;cw.city=document.getElementById('cwi-city').value;
+  cw.state=document.getElementById('cwi-state').value;cw.zip=document.getElementById('cwi-zip').value;cw.county=document.getElementById('cwi-county').value;
+  saveCaseworkersLS(arr);saveCaseworkerAPI(cw);
+  document.getElementById('cwDetailName').textContent=cw.name;
+  document.getElementById('cwDetailMeta').innerHTML=esc(cw.agency||'')+(cw.phone?' · '+cw.phone:'');
+  var btn=document.getElementById('cwSaveInfoBtn');if(btn){btn.textContent='Saved ✓';setTimeout(function(){btn.textContent='Save Changes';},1800);}
+  addAuditEntry(cw.name,'Caseworker profile updated');
+  renderCaseworkerList();
 }
 function showCwEditForm(){
   if(!activeCwId)return;
