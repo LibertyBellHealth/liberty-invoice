@@ -1359,13 +1359,13 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
       <p style="font-size:12px;color:#5a7296;margin:0 0 6px;">Type your name — choose a signature style below.</p>
       <input id="sigTypeName" placeholder="Your full name" oninput="previewCursiveSig()" style="width:100%;padding:6px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:15px;font-family:Arial,sans-serif;outline:none;margin-bottom:6px;box-sizing:border-box;">
       <select id="sigTypeFont" onchange="previewCursiveSig()" style="width:100%;padding:6px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;outline:none;margin-bottom:8px;box-sizing:border-box;background:#fff;">
-        <option value="Cedarville Cursive" selected>Cedarville Cursive — Adobe default style</option>
+        <option value="Caveat" selected>Caveat — Adobe default style</option>
+        <option value="Cedarville Cursive">Cedarville Cursive — schoolhouse cursive</option>
         <option value="Mr Dafoe">Mr Dafoe — classic signature</option>
         <option value="Allura">Allura — elegant</option>
         <option value="Sacramento">Sacramento — relaxed</option>
         <option value="Italianno">Italianno — flowing script</option>
         <option value="Great Vibes">Great Vibes — formal</option>
-        <option value="Caveat">Caveat — casual handwriting</option>
         <option value="Dancing Script">Dancing Script — fancy display</option>
       </select>
       <canvas id="sigTypeCanvas" width="390" height="80" style="border:1px solid #d0d8e4;border-radius:4px;background:#fff;display:block;width:100%;"></canvas>
@@ -2936,8 +2936,12 @@ function renderSigSettings(){
   if(!sigs.length){list.innerHTML='<div style="color:#8ca0b4;font-size:13px;">No signatures saved yet.</div>';return;}
   sigs.forEach(function(s,i){
     var item=document.createElement('div');item.className='sig-stored-item';
-    item.innerHTML='<img class="sig-stored-img" src="'+s.data+'" alt="sig"><span class="sig-stored-label">'+esc(s.label||'Signature '+(i+1))+'</span>'+
-      '<button class="btn btn-danger btn-sm" onclick="deleteSig('+JSON.stringify(s.id||i)+')">Remove</button>';
+    // Build via DOM API so quoted IDs don't break the onclick attribute
+    var img=document.createElement('img');img.className='sig-stored-img';img.src=s.data;img.alt='sig';
+    var lbl=document.createElement('span');lbl.className='sig-stored-label';lbl.textContent=s.label||'Signature '+(i+1);
+    var btn=document.createElement('button');btn.className='btn btn-danger btn-sm';btn.textContent='Remove';
+    (function(target){btn.addEventListener('click',function(){deleteSig(target);});})(s.id||i);
+    item.appendChild(img);item.appendChild(lbl);item.appendChild(btn);
     list.appendChild(item);
   });
 }
@@ -3719,21 +3723,28 @@ function buildRows(tbodyId,cols){
   var hospIdx=isSvc?(cols-1):-1; // Hospital column is the LAST column in SVC table
   for(var d=1;d<=31;d++){
     var tr=document.createElement('tr');if(d>active)tr.classList.add('inactive');
-    var td0=document.createElement('td');td0.className='dc';td0.textContent=d;
-    // Per-row "All" toggle: clicking the day-number cell toggles every column in that row
+    var td0=document.createElement('td');td0.className='dc';
+    // Day number + small "All" button (button hidden in print)
+    var dayLabel=document.createElement('span');dayLabel.textContent=d;
+    td0.appendChild(dayLabel);
     if(d<=active){
-      td0.style.cursor='pointer';td0.title='Click to toggle entire row';
-      td0.addEventListener('click',function(){
-        var rowCells=this.parentNode.querySelectorAll('td.mc');
-        // Determine target state: if any cell is on and hospital not the only one, clear; otherwise fill non-hospital cells
+      var allBtn=document.createElement('span');
+      allBtn.className='row-all-btn';allBtn.textContent='All';
+      allBtn.title='Toggle entire row';
+      allBtn.style.cssText='cursor:pointer;font-size:7pt;color:#185FA5;margin-left:5px;padding:0 4px;border:1px solid #aac4e0;border-radius:3px;background:#eaf4ff;font-weight:normal;display:inline-block;line-height:1.4;';
+      allBtn.addEventListener('mouseenter',function(){this.style.background='#bbddff';});
+      allBtn.addEventListener('mouseleave',function(){this.style.background='#eaf4ff';});
+      allBtn.addEventListener('click',function(e){
+        e.stopPropagation();
+        var rowCells=this.closest('tr').querySelectorAll('td.mc');
         var nonHospOn=Array.from(rowCells).slice(0,hospIdx>=0?hospIdx:rowCells.length).some(function(c){return c.classList.contains('on');});
         if(nonHospOn){
           rowCells.forEach(function(c){c.classList.remove('on');});
         } else {
-          // Fill all non-hospital cells; clear hospital
           rowCells.forEach(function(c,i){if(hospIdx>=0&&i===hospIdx)c.classList.remove('on');else c.classList.add('on');});
         }
       });
+      td0.appendChild(allBtn);
     }
     tr.appendChild(td0);
     for(var c=0;c<cols;c++){
@@ -4227,12 +4238,12 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
   var sigEl=document.getElementById('sigArea'+(isPage2?2:1));
   if(sigEl&&sigEl.tagName==='IMG'&&sigEl.src){
     try{
-      // Sig canvas is 390x80 — preserve aspect ratio at 18pt height (compact, signature-like)
-      var sigImgH=18,aspectRatio=390/80,sigImgW=sigImgH*aspectRatio;
-      // Cap width at 60% of signature box; left-align with 8pt margin
-      var maxW=sigBoxW*0.6;
+      // Sig canvas is 390x80 — preserve aspect ratio at 14pt height (matches March compact size)
+      var sigImgH=14,aspectRatio=390/80,sigImgW=sigImgH*aspectRatio;
+      // Cap width at 50% of signature box; left-align with 8pt margin
+      var maxW=sigBoxW*0.5;
       if(sigImgW>maxW){sigImgW=maxW;sigImgH=sigImgW/aspectRatio;}
-      // Position so signature baseline sits ~3pt above the line at y+30
+      // Position so signature baseline sits ~2pt above the line at y+30
       pdf.addImage(sigEl.src,'PNG',x0+8,y+30-sigImgH-1,sigImgW,sigImgH);
     }catch(e){console.warn('Signature embed failed:',e);}
   }
@@ -4524,7 +4535,7 @@ function switchSigTab(tab){
 function previewCursiveSig(){
   var name=(document.getElementById('sigTypeName')||{}).value||'';
   var fontSel=document.getElementById('sigTypeFont');
-  var fontFamily=fontSel?fontSel.value:'Cedarville Cursive';
+  var fontFamily=fontSel?fontSel.value:'Caveat';
   var tc=document.getElementById('sigTypeCanvas');if(!tc)return;
   var ctx=tc.getContext('2d');
   ctx.clearRect(0,0,tc.width,tc.height);
