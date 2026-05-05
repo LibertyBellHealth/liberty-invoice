@@ -3828,8 +3828,8 @@ function buildAllRow(rowId,tbodyId,cols){
   function applyDowPattern(bid,col,dowSet){
     var startDow=getStartDow();
     var rows=Array.from(document.getElementById(bid).querySelectorAll('tr:not(.inactive)'));
-    rows.forEach(function(tr){var cell=tr.querySelectorAll('td')[col+1];if(cell)cell.classList.remove('on');});
-    rows.forEach(function(tr,i){if(dowSet.indexOf((startDow+i)%7)!==-1){var cell=tr.querySelectorAll('td')[col+1];if(cell)cell.classList.add('on');}});
+    rows.forEach(function(tr){var cell=tr.querySelectorAll('td')[col+2];if(cell)cell.classList.remove('on');});
+    rows.forEach(function(tr,i){if(dowSet.indexOf((startDow+i)%7)!==-1){var cell=tr.querySelectorAll('td')[col+2];if(cell)cell.classList.add('on');}});
   }
   for(var c=0;c<cols;c++){
     var td=document.createElement('td');td.style.cssText='padding:0;vertical-align:middle;';
@@ -3837,7 +3837,7 @@ function buildAllRow(rowId,tbodyId,cols){
       function mk(txt,css,fn){var d=document.createElement('div');d.textContent=txt;d.style.cssText=css;d.addEventListener('click',fn);return d;}
       var btnCss='cursor:pointer;font-size:7pt;font-weight:bold;padding:1px 0;border-bottom:1px solid #aac4e0;';
       var allBtn=mk('All','cursor:pointer;font-size:7.5pt;color:#333;padding:1px 0;border-bottom:1px solid #aac4e0;',function(){
-        allBtn._on=!allBtn._on;document.getElementById(bid).querySelectorAll('tr:not(.inactive)').forEach(function(tr){var cell=tr.querySelectorAll('td')[col+1];if(cell)cell.classList.toggle('on',allBtn._on);});
+        allBtn._on=!allBtn._on;document.getElementById(bid).querySelectorAll('tr:not(.inactive)').forEach(function(tr){var cell=tr.querySelectorAll('td')[col+2];if(cell)cell.classList.toggle('on',allBtn._on);});
       });
       allBtn.addEventListener('mouseenter',function(){this.style.background='#bbddff';});allBtn.addEventListener('mouseleave',function(){this.style.background='';});
       var wkdyBtn=mk('Wkdy',btnCss+'color:#0c5460;',function(){applyDowPattern(bid,col,[0,1,2,3,4]);});
@@ -3860,13 +3860,13 @@ function buildAllRow(rowId,tbodyId,cols){
       threeBtn.title='3x a week — click to cycle patterns';
       threeBtn.addEventListener('mouseenter',function(){this.style.background='#a8e6c4';});threeBtn.addEventListener('mouseleave',function(){this.style.background='';});
       var cpyBtn=mk('Copy','cursor:pointer;font-size:7pt;color:#721c24;font-weight:bold;padding:1px 0;border-bottom:1px solid #aac4e0;',function(){
-        clipboard[bid]=Array.from(document.getElementById(bid).querySelectorAll('tr')).map(function(tr){var cell=tr.querySelectorAll('td')[col+1];return cell?cell.classList.contains('on'):false;});
+        clipboard[bid]=Array.from(document.getElementById(bid).querySelectorAll('tr')).map(function(tr){var cell=tr.querySelectorAll('td')[col+2];return cell?cell.classList.contains('on'):false;});
         cpyBtn.style.background='#f8d7da';setTimeout(function(){cpyBtn.style.background='';},600);
       });
       cpyBtn.addEventListener('mouseenter',function(){this.style.background='#f8d7da';});cpyBtn.addEventListener('mouseleave',function(){this.style.background='';});
       var pstBtn=mk('Paste','cursor:pointer;font-size:7pt;color:#004085;font-weight:bold;padding:1px 0;',function(){
         if(!clipboard[bid])return;
-        Array.from(document.getElementById(bid).querySelectorAll('tr')).forEach(function(tr,i){var cell=tr.querySelectorAll('td')[col+1];if(cell&&!tr.classList.contains('inactive'))cell.classList.toggle('on',clipboard[bid][i]||false);});
+        Array.from(document.getElementById(bid).querySelectorAll('tr')).forEach(function(tr,i){var cell=tr.querySelectorAll('td')[col+2];if(cell&&!tr.classList.contains('inactive'))cell.classList.toggle('on',clipboard[bid][i]||false);});
         pstBtn.style.background='#cce5ff';setTimeout(function(){pstBtn.style.background='';},600);
       });
       pstBtn.addEventListener('mouseenter',function(){this.style.background='#cce5ff';});pstBtn.addEventListener('mouseleave',function(){this.style.background='';});
