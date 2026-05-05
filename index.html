@@ -4131,25 +4131,26 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
   pdf.text('Michigan Department of Health and Human Services',ML+W/2,y+24,{align:'center'});
   y+=32;
 
-  // ── Info table — lighter borders, bigger labels, inline label+value for client/billto rows ──
-  var GRID_INFO=0.4;
-  var rowH=22,labelSize=8.5,valSize=11;
+  // ── Info table — moderate borders, bigger labels, inline cells with label/value separator ──
+  var GRID_INFO=0.5;
+  var rowH=24,labelSize=10,valSize=11;
   function cell(x,y,w,h,label,value,boldVal){
     pdf.setLineWidth(GRID_INFO);pdf.rect(x,y,w,h);
     pdf.setFont('helvetica','normal');pdf.setFontSize(labelSize);
-    pdf.text(label,x+3,y+9);
+    pdf.text(label,x+3,y+10);
     pdf.setFont('helvetica',boldVal?'bold':'normal');pdf.setFontSize(valSize);
-    pdf.text(String(value||''),x+3,y+19);
+    pdf.text(String(value||''),x+3,y+21);
   }
-  // Inline cell: label and value on the same line — matches March for Client/BillTo/Attention rows
-  function inlineCell(x,y,w,h,label,value){
-    pdf.setLineWidth(GRID_INFO);pdf.rect(x,y,w,h);
+  // Inline label/value with VERTICAL DIVIDER between them (matches March)
+  function inlineLabelValue(x,y,labelW,valueW,h,label,value){
+    pdf.setLineWidth(GRID_INFO);
+    pdf.rect(x,y,labelW,h);
+    pdf.rect(x+labelW,y,valueW,h);
     pdf.setFont('helvetica','normal');pdf.setFontSize(10);
     pdf.text(label,x+3,y+14);
-    var lblW=pdf.getTextWidth(label);
-    pdf.text(String(value||''),x+3+lblW+4,y+14);
+    pdf.text(String(value||''),x+labelW+3,y+14);
   }
-  var inlineH=18;
+  var inlineH=20;
 
   if(!isPage2){
     // Row 1: Agency Name | Provider Number | Phone (stacked label/value)
@@ -4158,21 +4159,21 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
     cell(x0+c1w,y,c2w,rowH,'Agency Provider Number','6221933');
     cell(x0+c1w+c2w,y,c3w,rowH,'Agency Phone Number','248-291-4106');
     y+=rowH;
-    // Row 2: Contact | Period | Date | Rate — Hourly Rate narrower (fits "27.00")
+    // Row 2: Contact | Period | Date | Rate — Hourly Rate narrower
     var b1=210,b2=130,b3=145,b4=W-b1-b2-b3;
     cell(x0,y,b1,rowH,'Contact Person','Thomas Jaboro');
     cell(x0+b1,y,b2,rowH,'Billing Period',data.billingPeriod);
     cell(x0+b1+b2,y,b3,rowH,'Date Submitted',data.dateSubmitted);
     cell(x0+b1+b2+b3,y,b4,rowH,'Hourly Rate',data.hourlyRate||'27.00');
     y+=rowH;
-    // Row 3: Client Name | Medicaid ID — INLINE (label+value same line)
-    var d1=W*0.5,d2=W-d1;
-    inlineCell(x0,y,d1,inlineH,'Client Name:',data.clientName);
-    inlineCell(x0+d1,y,d2,inlineH,'Client Medicaid ID Number:',data.medicaidId);
+    // Row 3: Client Name | (val) | Medicaid Label | (val) — separate label and value cells
+    var halfW=W/2;
+    inlineLabelValue(x0,y,75,halfW-75,inlineH,'Client Name:',data.clientName);
+    inlineLabelValue(x0+halfW,y,160,halfW-160,inlineH,'Client Medicaid ID Number:',data.medicaidId);
     y+=inlineH;
-    // Row 4: Bill To | Attention — INLINE
-    inlineCell(x0,y,d1,inlineH,'Bill To:',data.billTo);
-    inlineCell(x0+d1,y,d2,inlineH,'Attention:',data.worker);
+    // Row 4: Bill To | (val) | Attention | (val)
+    inlineLabelValue(x0,y,52,halfW-52,inlineH,'Bill To:',data.billTo);
+    inlineLabelValue(x0+halfW,y,72,halfW-72,inlineH,'Attention:',data.worker);
     y+=inlineH;
   } else {
     // Page 2 has a 3-col info row + the title repeated below it
@@ -4197,30 +4198,30 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
   y+=secH;
 
   // ── Day grid ──
-  var dayColW=44,headerH=80,dayRowH=14,nCols=cols.length;
+  var dayColW=44,headerH=100,dayRowH=13,nCols=cols.length;
   var colW=(W-dayColW)/nCols;
 
-  // ── Light grid weight matches MSA-1904 reference better than heavier 0.6 ──
-  var GRID_W=0.4;
+  // ── Grid weight: 0.5pt — visible but not heavy, matches reference ──
+  var GRID_W=0.5;
 
   // Header row
   pdf.setLineWidth(GRID_W);pdf.rect(x0,y,W,headerH);
   // Day-of-month label
-  pdf.setFont('helvetica','normal');pdf.setFontSize(8);
+  pdf.setFont('helvetica','normal');pdf.setFontSize(9);
   var dayLabel=['Days','of','Billing','Month'];
   dayLabel.forEach(function(line,i){
-    pdf.text(line,x0+dayColW/2,y+headerH/2-12+i*9,{align:'center'});
+    pdf.text(line,x0+dayColW/2,y+headerH/2-15+i*10,{align:'center'});
   });
   // Vertical separator after day col
   pdf.line(x0+dayColW,y,x0+dayColW,y+headerH);
-  // Column headers (rotated 90°) — bigger font to match March reference
-  pdf.setFontSize(8.5);
+  // Column headers (rotated 90°) — Helvetica 11pt ≈ Arial 12pt visually (March reference size)
+  pdf.setFontSize(11);
   for(var c=0;c<nCols;c++){
     var cx=x0+dayColW+c*colW;
     if(c>0)pdf.line(cx,y,cx,y+headerH);
     // Wrap long header text into 2 lines (max ~15 chars per line)
     var label=cols[c],lines=wrapHeaderText(label,15);
-    var lineSpace=10;
+    var lineSpace=12;
     var totalW=lines.length*lineSpace;
     var startOffset=(totalW)/2-lineSpace/2;
     lines.forEach(function(line,li){
@@ -4257,27 +4258,24 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
   }
   pdf.setLineWidth(GRID_W);
 
-  // ── Bottom block — ONE outer rect + internal dividers (no doubled lines) ──
-  var totH=18,certH=14,sigH=44;
+  // ── Bottom block — ONE outer rect, NO internal dividers (per March reference) ──
+  var totH=20,certH=16,sigH=46;
   var blockH=totH+certH+sigH;
   pdf.setLineWidth(GRID_W);
   pdf.rect(x0,y,W,blockH);
-  // Internal horizontal dividers
-  pdf.line(x0,y+totH,x0+W,y+totH);
-  pdf.line(x0,y+totH+certH,x0+W,y+totH+certH);
 
-  // Total time row
+  // Total time row (no divider below)
   if(!isPage2){
-    pdf.setFont('helvetica','bold');pdf.setFontSize(9.5);
+    pdf.setFont('helvetica','bold');pdf.setFontSize(10);
     var totLabel='Total Time for Services Above: ';
-    pdf.text(totLabel,x0+5,y+12);
+    pdf.text(totLabel,x0+5,y+13);
     var lblWidth=pdf.getTextWidth(totLabel);
     // Number is NOT bold (only the label is)
     pdf.setFont('helvetica','normal');
-    pdf.text((data.svcHH||'')+'.'+(data.svcMM||''),x0+5+lblWidth,y+12);
+    pdf.text((data.svcHH||'')+'.'+(data.svcMM||''),x0+5+lblWidth,y+13);
   } else {
-    pdf.setFontSize(8.5);
-    var lblY=y+12;
+    pdf.setFontSize(9);
+    var lblY=y+13;
     function dualText(label,val,xPos){
       pdf.setFont('helvetica','bold');pdf.text(label,xPos,lblY);
       var w=pdf.getTextWidth(label);
@@ -4288,36 +4286,31 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
     dualText('Total Time for Billing Period: ',(data.grandHH||'')+'.'+(data.grandMM||''),x0+395);
   }
 
-  // Cert row
-  pdf.setFont('helvetica','normal');pdf.setFontSize(9);
-  pdf.text('I certify that Liberty Home Care Assistance has provided all the services as checked above.',x0+5,y+totH+10);
+  // Cert row (no divider above or below)
+  pdf.setFont('helvetica','normal');pdf.setFontSize(9.5);
+  pdf.text('I certify that Liberty Home Care Assistance has provided all the services as checked above.',x0+5,y+totH+11);
 
-  // Signature row
+  // Signature row — NO vertical divider between sig and date
   var sigY=y+totH+certH;
   var sigBoxW=W*0.62;
-  // Vertical divider between sig and date areas — only spans the sig sub-row
-  pdf.line(x0+sigBoxW,sigY,x0+sigBoxW,sigY+sigH);
-  // Sig underline (the row's bottom IS the only line — no extra underline)
-  // Place signature image just above the bottom of the sig sub-row
+  // Place signature image
   var sigEl=document.getElementById('sigArea'+(isPage2?2:1));
   if(sigEl&&sigEl.tagName==='IMG'&&sigEl.src){
     try{
-      // 18pt height, preserve aspect ratio, cap at 50% of sig box width
       var sigImgH=18,aspectRatio=390/80,sigImgW=sigImgH*aspectRatio;
       var maxW=sigBoxW*0.5;
       if(sigImgW>maxW){sigImgW=maxW;sigImgH=sigImgW/aspectRatio;}
-      // Position signature so descenders rest near the underline (sigY+30)
       pdf.addImage(sigEl.src,'PNG',x0+8,sigY+30-sigImgH-1,sigImgW,sigImgH);
     }catch(e){console.warn('Signature embed failed:',e);}
   }
-  // Single underline at sigY+30 for both sig + date
+  // Underlines for sig and date — these are the ONLY internal lines in the bottom block
   pdf.line(x0+5,sigY+30,x0+sigBoxW-5,sigY+30);
   pdf.line(x0+sigBoxW+5,sigY+30,x0+W-5,sigY+30);
   // Date value above the date underline
   var sigDate=isPage2?(data.sigDate2||''):(data.sigDate1||'');
   pdf.setFontSize(10);pdf.text(sigDate,x0+sigBoxW+5,sigY+25);
-  // Labels under the underline
-  pdf.setFontSize(8);
+  // Labels under the underlines
+  pdf.setFontSize(9);
   pdf.text('Signature of Authorized Representative',x0+5,sigY+40);
   pdf.text('Date',x0+sigBoxW+5,sigY+40);
 
