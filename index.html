@@ -3705,32 +3705,99 @@ function today(){var d=new Date();return String(d.getMonth()+1).padStart(2,'0')+
 function daysIn(mm,yyyy){var m=parseInt(mm),y=parseInt(yyyy);if(isNaN(m)||isNaN(y)||m<1||m>12)return 31;return new Date(y,m,0).getDate();}
 function buildRows(tbodyId,cols){
   var tb=document.getElementById(tbodyId);tb.innerHTML='';
+  var isSvc=(tbodyId==='svcBody');
+  var hospIdx=isSvc?(cols-1):-1; // Hospital column is the LAST column in SVC table
   for(var d=1;d<=31;d++){
     var tr=document.createElement('tr');if(d>active)tr.classList.add('inactive');
-    var td0=document.createElement('td');td0.className='dc';td0.textContent=d;tr.appendChild(td0);
-    for(var c=0;c<cols;c++){var td=document.createElement('td');td.className='mc';var box=document.createElement('span');box.className='box';td.appendChild(box);if(d<=active){td.addEventListener('click',function(){this.classList.toggle('on');});}tr.appendChild(td);}
+    var td0=document.createElement('td');td0.className='dc';td0.textContent=d;
+    // Per-row "All" toggle: clicking the day-number cell toggles every column in that row
+    if(d<=active){
+      td0.style.cursor='pointer';td0.title='Click to toggle entire row';
+      td0.addEventListener('click',function(){
+        var rowCells=this.parentNode.querySelectorAll('td.mc');
+        // Determine target state: if any cell is on and hospital not the only one, clear; otherwise fill non-hospital cells
+        var nonHospOn=Array.from(rowCells).slice(0,hospIdx>=0?hospIdx:rowCells.length).some(function(c){return c.classList.contains('on');});
+        if(nonHospOn){
+          rowCells.forEach(function(c){c.classList.remove('on');});
+        } else {
+          // Fill all non-hospital cells; clear hospital
+          rowCells.forEach(function(c,i){if(hospIdx>=0&&i===hospIdx)c.classList.remove('on');else c.classList.add('on');});
+        }
+      });
+    }
+    tr.appendChild(td0);
+    for(var c=0;c<cols;c++){
+      var td=document.createElement('td');td.className='mc';
+      var box=document.createElement('span');box.className='box';td.appendChild(box);
+      if(d<=active){
+        (function(colIdx){
+          td.addEventListener('click',function(){
+            this.classList.toggle('on');
+            // Hospital exclusivity (SVC table only)
+            if(hospIdx<0)return;
+            var rowCells=this.parentNode.querySelectorAll('td.mc');
+            if(colIdx===hospIdx){
+              // Just turned hospital on/off — if on, clear all other cells in row
+              if(this.classList.contains('on')){
+                rowCells.forEach(function(c,i){if(i!==hospIdx)c.classList.remove('on');});
+              }
+            } else {
+              // Just toggled a service column — if turned on, clear hospital
+              if(this.classList.contains('on')){
+                var hosp=rowCells[hospIdx];if(hosp)hosp.classList.remove('on');
+              }
+            }
+          });
+        })(c);
+      }
+      tr.appendChild(td);
+    }
     tb.appendChild(tr);
   }
 }
 function buildAllRow(rowId,tbodyId,cols){
   var row=document.getElementById(rowId);while(row.children.length>1)row.removeChild(row.lastChild);
+  // Helper: get start-of-month day-of-week (Mon=0..Sun=6)
+  function getStartDow(){
+    var bp=document.getElementById('billingPeriod').value.trim(),startDow=0;
+    if(bp&&bp.length===7){var pts=bp.split('/'),m=parseInt(pts[0]),y=parseInt(pts[1]);if(!isNaN(m)&&!isNaN(y))startDow=(new Date(y,m-1,1).getDay()+6)%7;}
+    return startDow;
+  }
+  // Apply a day-of-week pattern (array of dow indices 0-6 where 0=Mon) to a column
+  function applyDowPattern(bid,col,dowSet){
+    var startDow=getStartDow();
+    var rows=Array.from(document.getElementById(bid).querySelectorAll('tr:not(.inactive)'));
+    rows.forEach(function(tr){var cell=tr.querySelectorAll('td')[col+1];if(cell)cell.classList.remove('on');});
+    rows.forEach(function(tr,i){if(dowSet.indexOf((startDow+i)%7)!==-1){var cell=tr.querySelectorAll('td')[col+1];if(cell)cell.classList.add('on');}});
+  }
   for(var c=0;c<cols;c++){
     var td=document.createElement('td');td.style.cssText='padding:0;vertical-align:middle;';
     (function(col,bid){
       function mk(txt,css,fn){var d=document.createElement('div');d.textContent=txt;d.style.cssText=css;d.addEventListener('click',fn);return d;}
+      var btnCss='cursor:pointer;font-size:7pt;font-weight:bold;padding:1px 0;border-bottom:1px solid #aac4e0;';
       var allBtn=mk('All','cursor:pointer;font-size:7.5pt;color:#333;padding:1px 0;border-bottom:1px solid #aac4e0;',function(){
         allBtn._on=!allBtn._on;document.getElementById(bid).querySelectorAll('tr:not(.inactive)').forEach(function(tr){var cell=tr.querySelectorAll('td')[col+1];if(cell)cell.classList.toggle('on',allBtn._on);});
       });
       allBtn.addEventListener('mouseenter',function(){this.style.background='#bbddff';});allBtn.addEventListener('mouseleave',function(){this.style.background='';});
-      var rndBtn=mk('2x/wk','cursor:pointer;font-size:7pt;color:#155724;font-weight:bold;padding:1px 0;border-bottom:1px solid #aac4e0;',function(){
-        var patterns=[[1,3],[2,4],[3,5]],cycle=parseInt(rndBtn.dataset.cycle)||0,pair=patterns[cycle];rndBtn.dataset.cycle=String((cycle+1)%patterns.length);
-        var bp=document.getElementById('billingPeriod').value.trim(),startDow=0;
-        if(bp&&bp.length===7){var pts=bp.split('/'),m=parseInt(pts[0]),y=parseInt(pts[1]);if(!isNaN(m)&&!isNaN(y))startDow=(new Date(y,m-1,1).getDay()+6)%7;}
-        var rows=Array.from(document.getElementById(bid).querySelectorAll('tr:not(.inactive)'));
-        rows.forEach(function(tr){var cell=tr.querySelectorAll('td')[col+1];if(cell)cell.classList.remove('on');});
-        rows.forEach(function(tr,i){if(pair.indexOf((startDow+i)%7)!==-1){var cell=tr.querySelectorAll('td')[col+1];if(cell)cell.classList.add('on');}});
+      var wkdyBtn=mk('Wkdy',btnCss+'color:#0c5460;',function(){applyDowPattern(bid,col,[0,1,2,3,4]);});
+      wkdyBtn.title='Weekdays (Mon-Fri)';
+      wkdyBtn.addEventListener('mouseenter',function(){this.style.background='#bee5eb';});wkdyBtn.addEventListener('mouseleave',function(){this.style.background='';});
+      var oneBtn=mk('1x/wk',btnCss+'color:#856404;',function(){
+        var cycle=parseInt(oneBtn.dataset.cycle)||0;applyDowPattern(bid,col,[cycle]);oneBtn.dataset.cycle=String((cycle+1)%7);
       });
+      oneBtn.title='Once a week — click to cycle through days';
+      oneBtn.addEventListener('mouseenter',function(){this.style.background='#fff3cd';});oneBtn.addEventListener('mouseleave',function(){this.style.background='';});
+      var rndBtn=mk('2x/wk',btnCss+'color:#155724;',function(){
+        var patterns=[[1,3],[2,4],[3,5]],cycle=parseInt(rndBtn.dataset.cycle)||0,pair=patterns[cycle];rndBtn.dataset.cycle=String((cycle+1)%patterns.length);
+        applyDowPattern(bid,col,pair);
+      });
+      rndBtn.title='2x a week — click to cycle patterns';
       rndBtn.addEventListener('mouseenter',function(){this.style.background='#b8dfc4';});rndBtn.addEventListener('mouseleave',function(){this.style.background='';});
+      var threeBtn=mk('3x/wk',btnCss+'color:#1a7740;',function(){
+        var patterns=[[0,2,4],[1,3,5],[0,2,5],[1,3,4]],cycle=parseInt(threeBtn.dataset.cycle)||0;applyDowPattern(bid,col,patterns[cycle]);threeBtn.dataset.cycle=String((cycle+1)%patterns.length);
+      });
+      threeBtn.title='3x a week — click to cycle patterns';
+      threeBtn.addEventListener('mouseenter',function(){this.style.background='#a8e6c4';});threeBtn.addEventListener('mouseleave',function(){this.style.background='';});
       var cpyBtn=mk('Copy','cursor:pointer;font-size:7pt;color:#721c24;font-weight:bold;padding:1px 0;border-bottom:1px solid #aac4e0;',function(){
         clipboard[bid]=Array.from(document.getElementById(bid).querySelectorAll('tr')).map(function(tr){var cell=tr.querySelectorAll('td')[col+1];return cell?cell.classList.contains('on'):false;});
         cpyBtn.style.background='#f8d7da';setTimeout(function(){cpyBtn.style.background='';},600);
@@ -3742,7 +3809,7 @@ function buildAllRow(rowId,tbodyId,cols){
         pstBtn.style.background='#cce5ff';setTimeout(function(){pstBtn.style.background='';},600);
       });
       pstBtn.addEventListener('mouseenter',function(){this.style.background='#cce5ff';});pstBtn.addEventListener('mouseleave',function(){this.style.background='';});
-      td.appendChild(allBtn);td.appendChild(rndBtn);td.appendChild(cpyBtn);td.appendChild(pstBtn);
+      td.appendChild(allBtn);td.appendChild(wkdyBtn);td.appendChild(oneBtn);td.appendChild(rndBtn);td.appendChild(threeBtn);td.appendChild(cpyBtn);td.appendChild(pstBtn);
     })(c,tbodyId);
     row.appendChild(td);
   }
@@ -3955,7 +4022,228 @@ function printInvoiceAsPDF(){
   win.document.close();
 }
 
-async function captureInvoicePDF(){
+// ============================================================
+//  VECTOR PDF — direct jsPDF drawing (small file, government-form fidelity)
+// ============================================================
+// Letter = 612x792 pt; we use 18pt (0.25") margins matching @page setting.
+// Output PDFs are 80-150 KB vs 1.6 MB for the raster path.
+// Signature is the only raster element (small embedded PNG).
+async function captureInvoicePDFVector(){
+  var jsPDF=window.jspdf.jsPDF;
+  var pdf=new jsPDF({unit:'pt',format:'letter',orientation:'p'});
+  var data=captureFullInvoice();
+
+  var SVC_COLS=['Bathing','Dressing','Eating','Grooming','Mobility','Toileting',
+    'Transferring','Housework','Laundry','Travel Time for Laundry','Medication',
+    'Meal Preparation','Shopping','Travel Time for Shopping','Hospital/Nursing Facility Stay'];
+  var CPLX_COLS=['Bowel Program','Catheters for Leg Bags','Colostomy Care',
+    'Eating or Feeding Assistance','Peritoneal Dialysis','Range of Motion Exercises',
+    'Specialized Skin Care','Suctioning','Wound Care'];
+
+  drawInvoicePageVector(pdf,data,false,SVC_COLS);
+  var hasCplx=data.hasComplex && (data.tasks.cplx||[]).some(function(r){return r.some(function(c){return c;});});
+  if(hasCplx){pdf.addPage();drawInvoicePageVector(pdf,data,true,CPLX_COLS);}
+
+  return pdf.output('datauristring').split(',')[1];
+}
+
+function drawInvoicePageVector(pdf,data,isPage2,cols){
+  // ── Layout constants (points, 612x792 letter) ──
+  var ML=18,MT=18,W=576;        // content area
+  var x0=ML,y=MT;
+
+  // ── Title block ──
+  pdf.setFont('helvetica','bold');pdf.setFontSize(13);
+  pdf.text('HOME HELP AGENCY INVOICE',ML+W/2,y+12,{align:'center'});
+  pdf.setFont('helvetica','normal');pdf.setFontSize(9.5);
+  pdf.text('Michigan Department of Health and Human Services',ML+W/2,y+24,{align:'center'});
+  y+=32;
+
+  // ── Info table (3 rows) ──
+  var rowH=22,labelSize=7,valSize=10;
+  function cell(x,y,w,h,label,value,boldVal){
+    pdf.setLineWidth(0.6);pdf.rect(x,y,w,h);
+    pdf.setFont('helvetica','normal');pdf.setFontSize(labelSize);
+    pdf.text(label,x+3,y+8);
+    pdf.setFont('helvetica',boldVal?'bold':'normal');pdf.setFontSize(valSize);
+    pdf.text(String(value||''),x+3,y+18);
+  }
+
+  if(!isPage2){
+    // Row 1: Agency Name | Provider Number | Phone
+    var c1w=288,c2w=144,c3w=144;
+    cell(x0,y,c1w,rowH,'Agency Name','Liberty Home Care Assistance');
+    cell(x0+c1w,y,c2w,rowH,'Agency Provider Number','6221933');
+    cell(x0+c1w+c2w,y,c3w,rowH,'Agency Phone Number','248-291-4106');
+    y+=rowH;
+    // Row 2: Contact | Billing Period | Date Submitted | Hourly Rate
+    var b1=185,b2=130,b3=130,b4=W-b1-b2-b3;
+    cell(x0,y,b1,rowH,'Contact Person','Thomas Jaboro');
+    cell(x0+b1,y,b2,rowH,'Billing Period',data.billingPeriod);
+    cell(x0+b1+b2,y,b3,rowH,'Date Submitted',data.dateSubmitted);
+    cell(x0+b1+b2+b3,y,b4,rowH,'Hourly Rate',data.hourlyRate||'27.00');
+    y+=rowH;
+    // Row 3: Client Name | Medicaid ID
+    var d1=W*0.5,d2=W-d1;
+    cell(x0,y,d1,rowH,'Client Name:',data.clientName);
+    cell(x0+d1,y,d2,rowH,'Client Medicaid ID Number:',data.medicaidId);
+    y+=rowH;
+    // Row 4: Bill To | Attention
+    cell(x0,y,d1,rowH,'Bill To:',data.billTo);
+    cell(x0+d1,y,d2,rowH,'Attention:',data.worker);
+    y+=rowH;
+  } else {
+    // Page 2 has a 3-col info row + the title repeated below it
+    var p1=W*0.34,p2=W*0.33,p3=W-p1-p2;
+    cell(x0,y,p1,rowH,'Client Name',data.clientName);
+    cell(x0+p1,y,p2,rowH,'Caseworker Name',data.worker);
+    cell(x0+p1+p2,y,p3,rowH,'Billing Period',data.billingPeriod);
+    y+=rowH+4;
+    pdf.setFont('helvetica','normal');pdf.setFontSize(9.5);
+    pdf.text('Michigan Department of Health and Human Services',ML+W/2,y+9,{align:'center'});
+    pdf.setFont('helvetica','bold');pdf.setFontSize(13);
+    pdf.text('HOME HELP AGENCY INVOICE',ML+W/2,y+22,{align:'center'});
+    y+=28;
+  }
+
+  // ── Section header bar ──
+  var secH=15;
+  pdf.setLineWidth(0.6);pdf.rect(x0,y,W,secH);
+  pdf.setFont('helvetica','bold');pdf.setFontSize(9.5);
+  var secText=isPage2?'VERIFICATION OF COMPLEX CARE TASKS':'VERIFICATION OF SERVICES AND HOSPITAL/NURSING FACILITY STAYS';
+  pdf.text(secText,ML+W/2,y+10,{align:'center'});
+  y+=secH;
+
+  // ── Day grid ──
+  var dayColW=44,headerH=80,dayRowH=14,nCols=cols.length;
+  var colW=(W-dayColW)/nCols;
+
+  // Header row
+  pdf.setLineWidth(0.6);pdf.rect(x0,y,W,headerH);
+  // Day-of-month label
+  pdf.setFont('helvetica','normal');pdf.setFontSize(8);
+  var dayLabel=['Days','of','Billing','Month'];
+  dayLabel.forEach(function(line,i){
+    pdf.text(line,x0+dayColW/2,y+headerH/2-12+i*9,{align:'center'});
+  });
+  // Vertical separator after day col
+  pdf.line(x0+dayColW,y,x0+dayColW,y+headerH);
+  // Column headers (rotated 90°)
+  pdf.setFontSize(7.5);
+  for(var c=0;c<nCols;c++){
+    var cx=x0+dayColW+c*colW;
+    if(c>0)pdf.line(cx,y,cx,y+headerH);
+    // Wrap long header text into 2 lines if > ~13 chars
+    var label=cols[c],lines=wrapHeaderText(label,15);
+    var totalW=lines.length*9;
+    var startOffset=(totalW)/2-9/2;
+    lines.forEach(function(line,li){
+      var lineX=cx+colW/2-startOffset+li*9;
+      pdf.text(line,lineX,y+headerH-4,{angle:90});
+    });
+  }
+  y+=headerH;
+
+  // Day rows (1..31)
+  pdf.setFontSize(8.5);
+  pdf.setLineWidth(0.5);
+  var dataRows=isPage2?(data.tasks.cplx||[]):(data.tasks.svc||[]);
+  for(var d=1;d<=31;d++){
+    pdf.rect(x0,y,W,dayRowH);
+    pdf.line(x0+dayColW,y,x0+dayColW,y+dayRowH);
+    pdf.setFont('helvetica','normal');pdf.text(String(d),x0+dayColW/2,y+9,{align:'center'});
+    var rowState=dataRows[d-1]||[];
+    for(var c=0;c<nCols;c++){
+      var cx=x0+dayColW+c*colW;
+      if(c>0)pdf.line(cx,y,cx,y+dayRowH);
+      // Draw checkbox centered in cell
+      var bxSize=8,bxX=cx+colW/2-bxSize/2,bxY=y+dayRowH/2-bxSize/2;
+      pdf.setLineWidth(0.5);pdf.rect(bxX,bxY,bxSize,bxSize);
+      if(rowState[c]){
+        // Diagonal X via two lines
+        pdf.setLineWidth(0.7);
+        pdf.line(bxX,bxY,bxX+bxSize,bxY+bxSize);
+        pdf.line(bxX+bxSize,bxY,bxX,bxY+bxSize);
+        pdf.setLineWidth(0.5);
+      }
+    }
+    y+=dayRowH;
+  }
+
+  // ── Bottom block (totals + cert + signature) ──
+  var bottomY=y;
+  var totH=18;
+  pdf.setLineWidth(0.6);pdf.rect(x0,y,W,totH);
+  pdf.setFont('helvetica','bold');pdf.setFontSize(9.5);
+  if(!isPage2){
+    var totLabel='Total Time for Services Above: ';
+    var hh=data.svcHH||'',mm=data.svcMM||'';
+    pdf.text(totLabel+hh+'.'+mm,x0+5,y+12);
+  } else {
+    pdf.setFontSize(8.5);
+    var lblY=y+12;
+    var s1='Total Time for Services Above: '+(data.cplxHH||'')+'.'+(data.cplxMM||'');
+    var s2='Total Time from Previous Page: '+(data.p1HH||'')+'.'+(data.p1MM||'');
+    var s3='Total Time for Billing Period: '+(data.grandHH||'')+'.'+(data.grandMM||'');
+    pdf.text(s1,x0+5,lblY);
+    pdf.text(s2,x0+200,lblY);
+    pdf.text(s3,x0+395,lblY);
+  }
+  y+=totH;
+
+  var certH=16;
+  pdf.rect(x0,y,W,certH);
+  pdf.setFont('helvetica','normal');pdf.setFontSize(9);
+  pdf.text('I certify that Liberty Home Care Assistance has provided all the services as checked above.',x0+5,y+11);
+  y+=certH;
+
+  var sigH=42;
+  pdf.rect(x0,y,W,sigH);
+  // Signature line + label
+  var sigBoxW=W*0.62,dateBoxW=W-sigBoxW;
+  pdf.line(x0+sigBoxW,y,x0+sigBoxW,y+sigH);
+  // Embed signature image if one was placed
+  var sigEl=document.getElementById('sigArea'+(isPage2?2:1));
+  if(sigEl&&sigEl.tagName==='IMG'&&sigEl.src){
+    try{
+      // place image above the bottom-line
+      pdf.addImage(sigEl.src,'PNG',x0+8,y+3,sigBoxW-16,24);
+    }catch(e){console.warn('Signature embed failed:',e);}
+  }
+  pdf.setLineWidth(0.4);pdf.line(x0+5,y+30,x0+sigBoxW-5,y+30);
+  pdf.setFontSize(8);
+  pdf.text('Signature of Authorized Representative',x0+5,y+39);
+  // Date
+  var sigDate=isPage2?(data.sigDate2||''):(data.sigDate1||'');
+  pdf.setFontSize(10);
+  pdf.text(sigDate,x0+sigBoxW+5,y+24);
+  pdf.line(x0+sigBoxW+5,y+30,x0+W-5,y+30);
+  pdf.setFontSize(8);
+  pdf.text('Date',x0+sigBoxW+5,y+39);
+  y+=sigH;
+
+  // ── Footer ──
+  pdf.setFont('helvetica','normal');pdf.setFontSize(8);
+  pdf.text('MSA-1904 (1/2022)',x0,y+12);
+  pdf.text(isPage2?'2':'1',x0+W,y+12,{align:'right'});
+}
+
+// Wrap header label text by greedy word break at maxLen chars
+function wrapHeaderText(s,maxLen){
+  if(s.length<=maxLen)return [s];
+  var words=s.split(' '),lines=[],cur='';
+  words.forEach(function(w){
+    if((cur+' '+w).trim().length<=maxLen)cur=(cur?cur+' ':'')+w;
+    else{if(cur)lines.push(cur);cur=w;}
+  });
+  if(cur)lines.push(cur);
+  return lines;
+}
+
+// ============================================================
+//  RASTER FALLBACK — html2canvas → JPEG (kept for emergency rollback)
+// ============================================================
+async function captureInvoicePDFRaster(){
   var jsPDF=window.jspdf.jsPDF;
   var pdf=new jsPDF('p','mm','letter');
   var pageW=195,pageH=257,marginL=10,marginT=11;
@@ -3997,6 +4285,19 @@ async function captureInvoicePDF(){
   document.body.removeChild(iframe);
   URL.revokeObjectURL(blobUrl);
   return pdf.output('datauristring').split(',')[1];
+}
+
+// ── Unified entry point — vector by default, raster fallback ──
+// Set localStorage 'lhca_pdf_mode' to 'raster' to force the old path.
+async function captureInvoicePDF(){
+  var mode=(localStorage.getItem('lhca_pdf_mode')||'vector').toLowerCase();
+  if(mode==='raster')return captureInvoicePDFRaster();
+  try{
+    return await captureInvoicePDFVector();
+  }catch(e){
+    console.warn('Vector PDF failed, falling back to raster:',e);
+    return captureInvoicePDFRaster();
+  }
 }
 
 // ── Graph API Email with PDF Attachments ──────────────────────
