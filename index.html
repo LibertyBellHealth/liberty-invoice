@@ -7,7 +7,7 @@
 <link rel="icon" type="image/x-icon" href="/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Allura&family=Caveat:wght@500&family=Dancing+Script:wght@600&family=Great+Vibes&family=Italianno&family=Sacramento&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Allura&family=Caveat:wght@500&family=Cedarville+Cursive&family=Dancing+Script:wght@600&family=Great+Vibes&family=Italianno&family=Mr+Dafoe&family=Sacramento&display=swap" rel="stylesheet">
 <!-- ── Azure Application Insights — server-side audit logging ── -->
 <script type="text/javascript">
 !function(T,l,y){var S=T.location,k="script",D="instrumentationKey",C="ingestionendpoint",I="disableExceptionTracking",E="ai.device.",b="toLowerCase",w="crossOriginFailed",N="hi.device.",O="name",L="path",P="user",q="id",H="url",B="ingestionendpoint",F=function(e){var a=e.getAttribute;return a?a.call(e,"type"):""},j=function(){var e=document.getElementsByTagName(k);return e.length>0?e[e.length-1]:null},R=function(e){var a,t=e&&e.getAttribute;if(t&&(a=t.call(e,"data-website-id"))){return a}return null},A=function(e){return"function"==typeof e},s=function(e,a){return e[a]||{}},f=function(){return T[y.dle||"appInsights"]||{trackException:function(){},trackEvent:function(){},trackPageView:function(){},setAuthenticatedUserContext:function(){},clearAuthenticatedUserContext:function(){}}},G=function(){return T[y.dle||"appInsights"]},V=function(){},U=T,r=[];function g(e,a){r.push(arguments)}U[y.dle||"appInsights"]={queue:r,version:2,config:y.cfg};var h=document,m=h.createElement(k);m.src=y.src;m.crossOrigin="anonymous";var p=j();p?p.parentNode.insertBefore(m,p):h.getElementsByTagName("head")[0].appendChild(m);T[y.dle||"appInsights"]=function(e,a){for(var t=0;t<r.length;t++)r[t].apply(null,arguments);r=[]};}(window,document,{
@@ -1359,10 +1359,12 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
       <p style="font-size:12px;color:#5a7296;margin:0 0 6px;">Type your name — choose a signature style below.</p>
       <input id="sigTypeName" placeholder="Your full name" oninput="previewCursiveSig()" style="width:100%;padding:6px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:15px;font-family:Arial,sans-serif;outline:none;margin-bottom:6px;box-sizing:border-box;">
       <select id="sigTypeFont" onchange="previewCursiveSig()" style="width:100%;padding:6px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;outline:none;margin-bottom:8px;box-sizing:border-box;background:#fff;">
-        <option value="Allura" selected>Allura — elegant signature</option>
-        <option value="Sacramento">Sacramento — relaxed handwriting</option>
+        <option value="Cedarville Cursive" selected>Cedarville Cursive — Adobe default style</option>
+        <option value="Mr Dafoe">Mr Dafoe — classic signature</option>
+        <option value="Allura">Allura — elegant</option>
+        <option value="Sacramento">Sacramento — relaxed</option>
         <option value="Italianno">Italianno — flowing script</option>
-        <option value="Great Vibes">Great Vibes — formal calligraphy</option>
+        <option value="Great Vibes">Great Vibes — formal</option>
         <option value="Caveat">Caveat — casual handwriting</option>
         <option value="Dancing Script">Dancing Script — fancy display</option>
       </select>
@@ -4522,13 +4524,15 @@ function switchSigTab(tab){
 function previewCursiveSig(){
   var name=(document.getElementById('sigTypeName')||{}).value||'';
   var fontSel=document.getElementById('sigTypeFont');
-  var fontFamily=fontSel?fontSel.value:'Allura';
+  var fontFamily=fontSel?fontSel.value:'Cedarville Cursive';
   var tc=document.getElementById('sigTypeCanvas');if(!tc)return;
   var ctx=tc.getContext('2d');
   ctx.clearRect(0,0,tc.width,tc.height);
   if(!name)return;
-  // Real-signature fonts (Allura, Sacramento, Italianno) need larger sizes to read well
-  var sizeBoost=(fontFamily==='Allura'||fontFamily==='Italianno'||fontFamily==='Great Vibes')?1.25:1.0;
+  // Real-signature fonts (Allura, Italianno, Great Vibes) need larger sizes to read well
+  var sizeBoost=(fontFamily==='Allura'||fontFamily==='Italianno'||fontFamily==='Great Vibes'||fontFamily==='Mr Dafoe')?1.25:1.0;
+  // Cedarville Cursive renders smaller naturally — boost it for legibility
+  if(fontFamily==='Cedarville Cursive')sizeBoost=1.4;
   var fontSize=Math.min(56,Math.max(32,Math.floor(tc.width*0.11*sizeBoost)));
   ctx.font=fontSize+'px "'+fontFamily+'", cursive';
   ctx.fillStyle='#000';
