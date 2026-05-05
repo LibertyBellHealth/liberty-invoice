@@ -4167,8 +4167,8 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
     cell(x0+c1w,y,c2w,rowH,'Agency Provider Number','6221933');
     cell(x0+c1w+c2w,y,c3w,rowH,'Agency Phone Number','248-291-4106');
     y+=rowH;
-    // Row 2: Contact | Period | Date | Rate — Hourly Rate and Date narrower per March
-    var b1=215,b2=140,b3=125,b4=W-b1-b2-b3; // 215+140+125 = 480; b4 = 96 (narrow Hourly Rate)
+    // Row 2: Contact | Period | Date | Rate — equal-ish proportions per March (Hourly Rate slightly wider; Date narrower)
+    var b1=205,b2=128,b3=128,b4=W-b1-b2-b3; // 205+128+128 = 461; b4 = 115 (Hourly Rate wider)
     cell(x0,y,b1,rowH,'Contact Person','Thomas Jaboro');
     cell(x0+b1,y,b2,rowH,'Billing Period',data.billingPeriod);
     cell(x0+b1+b2,y,b3,rowH,'Date Submitted',data.dateSubmitted);
@@ -4256,7 +4256,8 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
       var bxW=10,bxH=11,bxX=cx+colW/2-bxW/2,bxY=y+dayRowH/2-bxH/2;
       pdf.rect(bxX,bxY,bxW,bxH);
       if(rowState[c]){
-        pdf.setLineWidth(1.1);
+        // X stroke — lighter than before (was 1.1pt — too dark per user feedback)
+        pdf.setLineWidth(0.8);
         pdf.line(bxX,bxY,bxX+bxW,bxY+bxH);
         pdf.line(bxX+bxW,bxY,bxX,bxY+bxH);
         pdf.setLineWidth(GRID_W);
