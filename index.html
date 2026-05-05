@@ -173,6 +173,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 .ff label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;}
 .ff input,.ff select,.ff textarea{padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;color:#1a2b45;outline:none;width:100%;}
 .ff input:focus,.ff select:focus,.ff textarea:focus{border-color:#185FA5;}
+.ff textarea{resize:vertical;}
 .ff-row{display:grid;grid-template-columns:1fr 1fr;gap:11px;}
 .page-subtitle{font-size:13px;color:#6b8dae;margin-bottom:18px;}
 .form-actions{display:flex;gap:8px;margin-top:6px;}
@@ -712,8 +713,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
   <div class="page" id="page-new-client">
     <div class="home-title" style="margin-bottom:4px;">New Client</div>
     <div class="page-subtitle">Fill in the details. Everything can be edited later from their profile.</div>
-    <div class="form-card">
-      <h3>Client Information</h3>
+    <div class="form-card" style="max-width:620px;">
       <div class="ff-row" style="grid-template-columns:1fr 1fr 1fr;">
         <div class="ff"><label>First Name *</label><input id="nc-first" placeholder="First name" maxlength="40"></div>
         <div class="ff"><label>Middle Name</label><input id="nc-middle" placeholder="Middle" maxlength="40"></div>
@@ -743,6 +743,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
         <div class="ff"><label>ZIP</label><input id="nc-zip" placeholder="ZIP" maxlength="10" oninput="lookupZip('nc-zip','nc-city','nc-state','nc-county')"></div>
         <div class="ff"><label>County</label><input id="nc-county" placeholder="County" maxlength="60"></div>
       </div>
+      <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Assignments</div>
       <div class="ff"><label>Assigned Caregiver</label><select id="nc-caregiver"><option value="">— None assigned —</option></select></div>
       <div class="ff" style="position:relative;">
         <label>Caseworker</label>
@@ -796,7 +797,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
         <div id="cgTableEmpty" style="display:none;" class="ct-empty">No caregivers match your filters.</div>
       </div>
       <div id="cgFormWrap" style="display:none;margin:16px 24px 0;">
-        <div class="form-card" style="max-width:640px;">
+        <div class="form-card" style="max-width:620px;">
           <h3 id="cgFormTitle">New Caregiver</h3>
           <input type="hidden" id="cg-editing-id">
           <div class="ff-row" style="grid-template-columns:1fr 1fr 1fr;">
@@ -805,7 +806,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
             <div class="ff"><label>Last Name *</label><input id="cg-last" placeholder="Last name" maxlength="40"></div>
           </div>
           <div class="ff-row">
-            <div class="ff"><label>Nickname</label><input id="cg-nickname" placeholder="Optional" maxlength="40"></div>
+            <div class="ff"><label>Nickname / Goes By</label><input id="cg-nickname" placeholder="Optional" maxlength="40"></div>
             <div class="ff"><label>Status</label>
               <select id="cg-status"><option value="active">Active</option><option value="inactive">Inactive</option><option value="terminated">Terminated</option></select>
             </div>
@@ -814,7 +815,17 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
             <div class="ff"><label>Phone</label><input id="cg-phone" placeholder="(555) 555-5555" maxlength="20"></div>
             <div class="ff"><label>Email</label><input id="cg-email" placeholder="caregiver@email.com" maxlength="80"></div>
           </div>
-          <div class="ff"><label>Address</label><input id="cg-address" placeholder="Street, City, State ZIP" maxlength="120"></div>
+          <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Address</div>
+          <div class="ff"><label>Street</label><input id="cg-street" placeholder="Street address" maxlength="120"></div>
+          <div class="ff-row">
+            <div class="ff"><label>City</label><input id="cg-city" placeholder="City" maxlength="60"></div>
+            <div class="ff"><label>State</label><input id="cg-state" placeholder="MI" maxlength="30"></div>
+          </div>
+          <div class="ff-row">
+            <div class="ff"><label>ZIP</label><input id="cg-zip" placeholder="ZIP" maxlength="10" oninput="lookupZip('cg-zip','cg-city','cg-state','cg-county')"></div>
+            <div class="ff"><label>County</label><input id="cg-county" placeholder="County" maxlength="60"></div>
+          </div>
+          <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Employment</div>
           <div class="ff-row">
             <div class="ff"><label>Hire Date</label><input id="cg-hire" type="date"></div>
             <div class="ff"><label>Employment Type</label>
@@ -825,13 +836,13 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
             <div class="ff"><label>Pay Rate ($/hr)</label><input id="cg-pay" placeholder="0.00" maxlength="10"></div>
             <div class="ff"><label>Max Hours/Week</label><input id="cg-hours" placeholder="40" maxlength="5"></div>
           </div>
-          <div class="ff"><label>Certifications &amp; Training</label><textarea id="cg-certs" placeholder="CPR, First Aid, HHA, CNA…" rows="2" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;resize:vertical;"></textarea></div>
+          <div class="ff"><label>Certifications &amp; Training</label><textarea id="cg-certs" rows="2" placeholder="CPR, First Aid, HHA, CNA…"></textarea></div>
           <div class="ff-row">
             <div class="ff"><label>Emergency Contact Name</label><input id="cg-ec-name" placeholder="Contact name" maxlength="60"></div>
             <div class="ff"><label>Emergency Contact Phone</label><input id="cg-ec-phone" placeholder="(555) 555-5555" maxlength="20"></div>
           </div>
-          <div class="ff"><label>Notes</label><textarea id="cg-notes" placeholder="Any additional notes…" rows="2" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;resize:vertical;"></textarea></div>
-          <div id="cgDocsSection" style="display:none;padding:10px;background:#f8fafc;border:1px solid #e1e5ea;border-radius:6px;margin-top:8px;"></div>
+          <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Notes</div>
+          <div class="ff"><label>Notes</label><textarea id="cg-notes" rows="3" placeholder="Any additional notes…"></textarea></div>
           <div class="form-actions">
             <button class="btn btn-primary" onclick="saveCaregiver()">Save Caregiver</button>
             <button class="btn btn-secondary" onclick="hideCgForm()">Cancel</button>
@@ -977,19 +988,24 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
       </div>
     </div>
     <div id="cwFormWrap" style="display:none;margin-top:16px;">
-      <div class="form-card" style="max-width:640px;">
+      <div class="form-card" style="max-width:620px;">
         <h3 id="cwFormTitle">New Caseworker</h3>
         <input type="hidden" id="cw-editing-id">
-        <div class="ff-row">
+        <div class="ff-row" style="grid-template-columns:1fr 1fr 1fr;">
           <div class="ff"><label>First Name *</label><input id="cw-first-name" placeholder="First name" maxlength="60"></div>
+          <div class="ff"><label>Middle Name</label><input id="cw-middle-name" placeholder="Middle" maxlength="40"></div>
           <div class="ff"><label>Last Name *</label><input id="cw-last-name" placeholder="Last name" maxlength="60"></div>
         </div>
-        <div class="ff"><label>Agency</label><input id="cw-agency" placeholder="e.g. MDHHS" maxlength="80"></div>
+        <div class="ff-row">
+          <div class="ff"><label>Nickname / Goes By</label><input id="cw-nickname" placeholder="Optional" maxlength="40"></div>
+          <div class="ff"><label>Agency</label><input id="cw-agency" placeholder="e.g. MDHHS" maxlength="80"></div>
+        </div>
         <div class="ff-row">
           <div class="ff"><label>Phone</label><input id="cw-phone" placeholder="(555) 555-5555" maxlength="20"></div>
           <div class="ff"><label>Fax</label><input id="cw-fax" placeholder="(555) 555-5555" maxlength="20"></div>
         </div>
         <div class="ff"><label>Email</label><input id="cw-email" placeholder="worker@michigan.gov" maxlength="80"></div>
+        <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Address</div>
         <div class="ff"><label>Street</label><input id="cw-street" placeholder="Street address" maxlength="120"></div>
         <div class="ff-row">
           <div class="ff"><label>City</label><input id="cw-city" placeholder="City" maxlength="60"></div>
@@ -999,9 +1015,10 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
           <div class="ff"><label>ZIP</label><input id="cw-zip" placeholder="ZIP" maxlength="10" oninput="lookupZip('cw-zip','cw-city','cw-state','cw-county')"></div>
           <div class="ff"><label>County</label><input id="cw-county" placeholder="County" maxlength="60"></div>
         </div>
-        <div class="ff"><label>Notes</label><textarea id="cw-notes" rows="2" placeholder="Any additional notes…" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;resize:vertical;"></textarea></div>
+        <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Notes</div>
+        <div class="ff"><label>Notes</label><textarea id="cw-notes" rows="3" placeholder="Any additional notes…"></textarea></div>
         <div class="form-actions">
-          <button class="btn btn-primary" onclick="saveCaseworker()">Save</button>
+          <button class="btn btn-primary" onclick="saveCaseworker()">Save Caseworker</button>
           <button class="btn btn-secondary" onclick="hideCaseworkerForm()">Cancel</button>
           <button class="btn btn-danger btn-sm" id="cwDeleteBtn" onclick="deleteCaseworker()" style="display:none;padding:6px 14px;">Delete</button>
         </div>
@@ -2372,7 +2389,7 @@ function showNewCaregiverForm(){
   document.getElementById('cgFormWrap').style.display='block';
   document.getElementById('cgFormTitle').textContent='New Caregiver';
   document.getElementById('cg-editing-id').value='';
-  ['cg-first','cg-middle','cg-last','cg-nickname','cg-phone','cg-email','cg-address','cg-hire','cg-pay','cg-hours','cg-certs','cg-ec-name','cg-ec-phone','cg-notes'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  ['cg-first','cg-middle','cg-last','cg-nickname','cg-phone','cg-email','cg-street','cg-city','cg-state','cg-zip','cg-county','cg-hire','cg-pay','cg-hours','cg-certs','cg-ec-name','cg-ec-phone','cg-notes'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('cg-status').value='active';document.getElementById('cg-emptype').value='full-time';
   document.getElementById('cgDeleteBtn').style.display='none';
   var cgDocSec=document.getElementById('cgDocsSection');if(cgDocSec)cgDocSec.style.display='none';
@@ -2391,7 +2408,12 @@ function editCaregiver(id){
   document.getElementById('cg-last').value=cgLast;
   document.getElementById('cg-nickname').value=cg.nickname||'';
   document.getElementById('cg-phone').value=cg.phone||'';
-  document.getElementById('cg-email').value=cg.email||'';document.getElementById('cg-address').value=cg.address||'';
+  document.getElementById('cg-email').value=cg.email||'';
+  document.getElementById('cg-street').value=cg.street||cg.address||'';
+  document.getElementById('cg-city').value=cg.city||'';
+  document.getElementById('cg-state').value=cg.state||'';
+  document.getElementById('cg-zip').value=cg.zip||'';
+  document.getElementById('cg-county').value=cg.county||'';
   document.getElementById('cg-hire').value=cg.hireDate||'';document.getElementById('cg-pay').value=cg.payRate||'';
   document.getElementById('cg-hours').value=cg.maxHours||'';document.getElementById('cg-certs').value=cg.certs||'';
   document.getElementById('cg-ec-name').value=cg.ecName||'';document.getElementById('cg-ec-phone').value=cg.ecPhone||'';
@@ -2413,7 +2435,13 @@ function saveCaregiver(){
   var id=document.getElementById('cg-editing-id').value||cgId();
   cgs[id]={name:name,firstName:first,middleName:middle,lastName:last,nickname:nickname,
     status:document.getElementById('cg-status').value,phone:document.getElementById('cg-phone').value,
-    email:document.getElementById('cg-email').value,address:document.getElementById('cg-address').value,
+    email:document.getElementById('cg-email').value,
+    street:document.getElementById('cg-street').value,
+    city:document.getElementById('cg-city').value,
+    state:document.getElementById('cg-state').value,
+    zip:document.getElementById('cg-zip').value,
+    county:document.getElementById('cg-county').value,
+    address:[document.getElementById('cg-street').value,document.getElementById('cg-city').value,document.getElementById('cg-state').value,document.getElementById('cg-zip').value].filter(Boolean).join(', '),
     hireDate:document.getElementById('cg-hire').value,emptype:document.getElementById('cg-emptype').value,
     payRate:document.getElementById('cg-pay').value,maxHours:document.getElementById('cg-hours').value,
     certs:document.getElementById('cg-certs').value,ecName:document.getElementById('cg-ec-name').value,
@@ -4460,7 +4488,9 @@ function showCaseworkerForm(id){
       var firstName=nameParts[0]||'';
       var lastName=nameParts.slice(1).join(' ')||'';
       document.getElementById('cw-first-name').value=cw.first_name||firstName;
+      document.getElementById('cw-middle-name').value=cw.middle_name||'';
       document.getElementById('cw-last-name').value=cw.last_name||lastName;
+      document.getElementById('cw-nickname').value=cw.nickname||'';
       document.getElementById('cw-agency').value=cw.agency||'';
       document.getElementById('cw-phone').value=cw.phone||'';
       document.getElementById('cw-fax').value=cw.fax||'';
@@ -4474,7 +4504,7 @@ function showCaseworkerForm(id){
     }
     document.getElementById('cwDeleteBtn').style.display='inline-block';
   } else {
-    ['cw-first-name','cw-last-name','cw-agency','cw-phone','cw-fax','cw-email','cw-street','cw-city','cw-state','cw-zip','cw-county','cw-notes'].forEach(function(fid){var e=document.getElementById(fid);if(e)e.value='';});
+    ['cw-first-name','cw-middle-name','cw-last-name','cw-nickname','cw-agency','cw-phone','cw-fax','cw-email','cw-street','cw-city','cw-state','cw-zip','cw-county','cw-notes'].forEach(function(fid){var e=document.getElementById(fid);if(e)e.value='';});
     document.getElementById('cwDeleteBtn').style.display='none';
   }
   document.getElementById('cwFormWrap').scrollIntoView({behavior:'smooth'});
@@ -4490,13 +4520,15 @@ function hideCaseworkerForm(){
 }
 function saveCaseworker(){
   var firstName=document.getElementById('cw-first-name').value.trim();
+  var middleName=document.getElementById('cw-middle-name').value.trim();
   var lastName=document.getElementById('cw-last-name').value.trim();
-  var name=(firstName+' '+lastName).trim();
+  var nickname=document.getElementById('cw-nickname').value.trim();
+  var name=(firstName+(middleName?' '+middleName:'')+' '+lastName).trim();
   if(!name){alert('Name is required.');return;}
   var cws=getCaseworkers();
   var editingId=document.getElementById('cw-editing-id').value;
   var rec={
-    id:editingId||cwId(),name:name,first_name:firstName,last_name:lastName,
+    id:editingId||cwId(),name:name,first_name:firstName,middle_name:middleName,last_name:lastName,nickname:nickname,
     agency:document.getElementById('cw-agency').value,
     phone:document.getElementById('cw-phone').value,
     fax:document.getElementById('cw-fax').value,
