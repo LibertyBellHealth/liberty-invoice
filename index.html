@@ -4145,9 +4145,9 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
   function inlineCell(x,y,w,h,label,value){
     pdf.setLineWidth(GRID_INFO);pdf.rect(x,y,w,h);
     pdf.setFont('helvetica','normal');pdf.setFontSize(11);
-    pdf.text(label,x+3,y+15);
+    pdf.text(label,x+3,y+13);
     var lblW=pdf.getTextWidth(label);
-    pdf.text(String(value||''),x+3+lblW+5,y+15);
+    pdf.text(String(value||''),x+3+lblW+5,y+13);
   }
   // Inline with vertical DIVIDER (used only for Bill To per March reference)
   function inlineDividerCell(x,y,labelW,valueW,h,label,value){
@@ -4155,10 +4155,10 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
     pdf.rect(x,y,labelW,h);
     pdf.rect(x+labelW,y,valueW,h);
     pdf.setFont('helvetica','normal');pdf.setFontSize(11);
-    pdf.text(label,x+3,y+15);
-    pdf.text(String(value||''),x+labelW+3,y+15);
+    pdf.text(label,x+3,y+13);
+    pdf.text(String(value||''),x+labelW+3,y+13);
   }
-  var inlineH=22;
+  var inlineH=18; // tighter rows for Client/Medicaid/BillTo/Attention
 
   if(!isPage2){
     // Row 1: Agency Name | Provider Number | Phone (stacked label/value)
@@ -4167,8 +4167,8 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
     cell(x0+c1w,y,c2w,rowH,'Agency Provider Number','6221933');
     cell(x0+c1w+c2w,y,c3w,rowH,'Agency Phone Number','248-291-4106');
     y+=rowH;
-    // Row 2: Contact | Period | Date | Rate — equal-ish proportions per March (Hourly Rate slightly wider; Date narrower)
-    var b1=205,b2=128,b3=128,b4=W-b1-b2-b3; // 205+128+128 = 461; b4 = 115 (Hourly Rate wider)
+    // Row 2: Contact | Period | Date | Rate — Period wider, Date narrower per user
+    var b1=205,b2=145,b3=110,b4=W-b1-b2-b3; // 205+145+110 = 460; b4 = 116
     cell(x0,y,b1,rowH,'Contact Person','Thomas Jaboro');
     cell(x0+b1,y,b2,rowH,'Billing Period',data.billingPeriod);
     cell(x0+b1+b2,y,b3,rowH,'Date Submitted',data.dateSubmitted);
@@ -4275,24 +4275,24 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
 
   // Total time row (no divider below)
   if(!isPage2){
-    pdf.setFont('helvetica','bold');pdf.setFontSize(10);
-    var totLabel='Total Time for Services Above: ';
-    pdf.text(totLabel,x0+5,y+13);
+    pdf.setFont('helvetica','bold');pdf.setFontSize(11);
+    var totLabel='Total Time for Services Above:';
+    pdf.text(totLabel,x0+5,y+14);
     var lblWidth=pdf.getTextWidth(totLabel);
-    // Number is NOT bold (only the label is)
+    // Number is NOT bold; add explicit gap between label and value (5pt)
     pdf.setFont('helvetica','normal');
-    pdf.text((data.svcHH||'')+'.'+(data.svcMM||''),x0+5+lblWidth,y+13);
+    pdf.text((data.svcHH||'')+'.'+(data.svcMM||''),x0+5+lblWidth+5,y+14);
   } else {
     pdf.setFontSize(9);
-    var lblY=y+13;
+    var lblY=y+14;
     function dualText(label,val,xPos){
       pdf.setFont('helvetica','bold');pdf.text(label,xPos,lblY);
       var w=pdf.getTextWidth(label);
-      pdf.setFont('helvetica','normal');pdf.text(val,xPos+w,lblY);
+      pdf.setFont('helvetica','normal');pdf.text(val,xPos+w+4,lblY);
     }
-    dualText('Total Time for Services Above: ',(data.cplxHH||'')+'.'+(data.cplxMM||''),x0+5);
-    dualText('Total Time from Previous Page: ',(data.p1HH||'')+'.'+(data.p1MM||''),x0+200);
-    dualText('Total Time for Billing Period: ',(data.grandHH||'')+'.'+(data.grandMM||''),x0+395);
+    dualText('Total Time for Services Above:',(data.cplxHH||'')+'.'+(data.cplxMM||''),x0+5);
+    dualText('Total Time from Previous Page:',(data.p1HH||'')+'.'+(data.p1MM||''),x0+200);
+    dualText('Total Time for Billing Period:',(data.grandHH||'')+'.'+(data.grandMM||''),x0+395);
   }
 
   // Cert row (no divider above or below)
@@ -4325,10 +4325,10 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
 
   y+=blockH;
 
-  // ── Footer ──
-  pdf.setFont('helvetica','normal');pdf.setFontSize(8);
-  pdf.text('MSA-1904 (1/2022)',x0,y+12);
-  pdf.text(isPage2?'2':'1',x0+W,y+12,{align:'right'});
+  // ── Footer — MSA form id on left, page number CENTERED (per March) ──
+  pdf.setFont('helvetica','normal');pdf.setFontSize(10);
+  pdf.text('MSA-1904 (1/2022)',x0,y+13);
+  pdf.text(isPage2?'2':'1',x0+W/2,y+13,{align:'center'});
 }
 
 // Wrap header label text by greedy word break at maxLen chars
