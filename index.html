@@ -3609,8 +3609,10 @@ function initMSAL() {
   });
 }
 function signIn() {
+  // Only Graph scopes here — mixing API_SCOPE causes 400 on token endpoint (different resource).
+  // refreshApiToken() acquires API token silently after login (admin consent already granted).
   msalInstance.loginRedirect({
-    scopes: GRAPH_SCOPES.concat([API_SCOPE]), // consent for Graph + API at login time
+    scopes: GRAPH_SCOPES,
     redirectUri: REDIRECT_URI,
   });
 }
