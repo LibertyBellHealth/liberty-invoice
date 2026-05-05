@@ -4395,8 +4395,29 @@ async function captureInvoicePDF(){
 }
 
 // ── Graph API Email with PDF Attachments ──────────────────────
-async function sendMailWithPDF(toEmail,subject,bodyHtml,attachments){
+// ──────────────────────────────────────────────────────────────────
+//  Graph email send — auto picks fast path or upload-session path
+//  based on total attachment size:
+//   - Total ≤ 3.5 MB: single POST /me/sendMail (fast, ~1 sec)
+//   - Total > 3.5 MB: createDraft → uploadSession per attachment → send
+//                      (handles up to ~150 MB; ~3-10 sec for 30 PDFs)
+//  attachments: [{name, base64}], onProgress?: (done,total,label) => void
+// ──────────────────────────────────────────────────────────────────
+async function sendMailWithPDF(toEmail,subject,bodyHtml,attachments,onProgress){
   if(!spToken)return {ok:false,err:'Not signed in'};
+  // Calculate total attachment size in bytes (base64 inflates ~33%, so actual=base64Length*0.75)
+  var totalBytes=0;
+  attachments.forEach(function(a){totalBytes+=Math.floor(a.base64.length*0.75);});
+  var THRESHOLD_BYTES=3.5*1024*1024; // stay safely under Graph's 4 MB sendMail cap
+  if(totalBytes<=THRESHOLD_BYTES){
+    return _sendMailDirect(toEmail,subject,bodyHtml,attachments);
+  }
+  console.log('[Graph] Total attachments '+(totalBytes/1024/1024).toFixed(2)+' MB exceeds 3.5 MB — using upload-session flow');
+  return _sendMailUploadSession(toEmail,subject,bodyHtml,attachments,onProgress);
+}
+
+// Fast path — direct sendMail with attachments inline (≤4 MB total)
+async function _sendMailDirect(toEmail,subject,bodyHtml,attachments){
   var msg={subject:subject,body:{contentType:'HTML',content:bodyHtml},toRecipients:[{emailAddress:{address:toEmail}}],attachments:attachments.map(function(a){return{'@odata.type':'#microsoft.graph.fileAttachment',name:a.name,contentType:'application/pdf',contentBytes:a.base64};})};
   try{
     var resp=await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{'Authorization':'Bearer '+spToken,'Content-Type':'application/json'},body:JSON.stringify({message:msg,saveToSentItems:true})});
@@ -4405,6 +4426,61 @@ async function sendMailWithPDF(toEmail,subject,bodyHtml,attachments){
     console.error('Graph sendMail failed',resp.status,errText);
     return {ok:false,status:resp.status,err:errText};
   }catch(e){console.error('Graph email error:',e);return {ok:false,err:e.message};}
+}
+
+// Upload-session path — for emails > 4 MB. Creates draft, uploads each attachment via session, then sends.
+async function _sendMailUploadSession(toEmail,subject,bodyHtml,attachments,onProgress){
+  function progress(done,total,label){if(typeof onProgress==='function')onProgress(done,total,label);}
+  try{
+    // 1) Create draft message (no attachments yet)
+    progress(0,attachments.length,'Creating draft…');
+    var draftBody={subject:subject,body:{contentType:'HTML',content:bodyHtml},toRecipients:[{emailAddress:{address:toEmail}}]};
+    var draftResp=await fetch('https://graph.microsoft.com/v1.0/me/messages',{method:'POST',headers:{'Authorization':'Bearer '+spToken,'Content-Type':'application/json'},body:JSON.stringify(draftBody)});
+    if(!draftResp.ok){var t=await draftResp.text();return {ok:false,status:draftResp.status,err:'Draft creation failed: '+t};}
+    var draft=await draftResp.json();
+    var msgId=draft.id;
+
+    // 2) Upload each attachment via createUploadSession
+    for(var i=0;i<attachments.length;i++){
+      var att=attachments[i];
+      progress(i,attachments.length,'Uploading '+att.name+'…');
+      // Decode base64 to byte length
+      var byteLen=Math.floor(att.base64.length*0.75);
+      // a) Create upload session
+      var sessResp=await fetch('https://graph.microsoft.com/v1.0/me/messages/'+msgId+'/attachments/createUploadSession',{
+        method:'POST',
+        headers:{'Authorization':'Bearer '+spToken,'Content-Type':'application/json'},
+        body:JSON.stringify({AttachmentItem:{attachmentType:'file',name:att.name,size:byteLen,contentType:'application/pdf'}})
+      });
+      if(!sessResp.ok){var et=await sessResp.text();return {ok:false,status:sessResp.status,err:'Upload session failed for '+att.name+': '+et};}
+      var sess=await sessResp.json();
+      var uploadUrl=sess.uploadUrl;
+      // b) Decode base64 → bytes (Uint8Array)
+      var bin=atob(att.base64);
+      var bytes=new Uint8Array(bin.length);
+      for(var j=0;j<bin.length;j++)bytes[j]=bin.charCodeAt(j);
+      // c) Upload — for files <4 MB, single PUT works; for >4 MB, chunk in 4 MB pieces
+      var CHUNK=4*1024*1024;
+      if(bytes.length<=CHUNK){
+        var putResp=await fetch(uploadUrl,{method:'PUT',headers:{'Content-Type':'application/octet-stream','Content-Range':'bytes 0-'+(bytes.length-1)+'/'+bytes.length},body:bytes});
+        if(!putResp.ok&&putResp.status!==201){var pt=await putResp.text();return {ok:false,status:putResp.status,err:'Upload failed for '+att.name+': '+pt};}
+      } else {
+        // Chunked upload (rare — only triggered for very large signed PDFs)
+        for(var off=0;off<bytes.length;off+=CHUNK){
+          var end=Math.min(off+CHUNK,bytes.length);
+          var slice=bytes.slice(off,end);
+          var pr=await fetch(uploadUrl,{method:'PUT',headers:{'Content-Type':'application/octet-stream','Content-Range':'bytes '+off+'-'+(end-1)+'/'+bytes.length},body:slice});
+          if(!pr.ok&&pr.status!==201&&pr.status!==202){var prt=await pr.text();return {ok:false,status:pr.status,err:'Chunked upload failed: '+prt};}
+        }
+      }
+    }
+
+    // 3) Send the draft
+    progress(attachments.length,attachments.length,'Sending email…');
+    var sendResp=await fetch('https://graph.microsoft.com/v1.0/me/messages/'+msgId+'/send',{method:'POST',headers:{'Authorization':'Bearer '+spToken}});
+    if(!sendResp.ok&&sendResp.status!==202){var st=await sendResp.text();return {ok:false,status:sendResp.status,err:'Send failed: '+st};}
+    return {ok:true};
+  }catch(e){console.error('Graph upload-session error:',e);return {ok:false,err:e.message};}
 }
 
 // ── Load invoice into page for capture ────────────────────────
@@ -5977,7 +6053,10 @@ async function sendMonthlyEmail(email,workerName,clients,period){
     '</ul><p>Please review and process at your earliest convenience.</p>'+
     '<p>Thank you,<br><b>Thomas Jaboro</b><br>Liberty Home Care Assistance<br>(248) 291-4106</p>';
 
-  var result=await sendMailWithPDF(email,subj,body,attachments);
+  var result=await sendMailWithPDF(email,subj,body,attachments,function(done,total,label){
+    if(pb)pb.style.width=Math.round((done/Math.max(total,1))*100)+'%';
+    if(pl)pl.textContent=label||('Sending '+done+' of '+total+'…');
+  });
   if(po)po.classList.remove('open');
 
   if(result.ok){
