@@ -4006,20 +4006,31 @@ function buildInvoiceHTML(){
     p1.outerHTML+(includeCplx?'\n'+cs.outerHTML:'')+'</body></html>';
 }
 
-function printInvoiceAsPDF(){
-  // Fully synchronous — no await, so window.open() is never blocked by popup blocker
+async function printInvoiceAsPDF(){
   var cn=document.getElementById('clientName')?document.getElementById('clientName').value.trim():'';
   var bp=document.getElementById('billingPeriod')?document.getElementById('billingPeriod').value.trim():'';
   aiTrack('InvoicePrinted',{clientName:cn,billingPeriod:bp});
-  var html=buildInvoiceHTML();
-  // Inject auto-print + auto-close script into the standalone document
-  html=html.replace('</body>',
-    '<scr'+'ipt>window.onload=function(){setTimeout(function(){window.print();},350);};</scr'+'ipt></body>');
-  var win=window.open('','_blank','width=900,height=700');
-  if(!win){alert('Please allow popups for this site, then try again.');return;}
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
+  var btn=document.querySelector('button[onclick="printInvoiceAsPDF()"]');
+  var oldText=btn?btn.textContent:'';
+  if(btn){btn.disabled=true;btn.textContent='Generating…';}
+  try{
+    var base64=await captureInvoicePDF();
+    // Convert base64 to blob and download
+    var bin=atob(base64);
+    var bytes=new Uint8Array(bin.length);
+    for(var i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+    var blob=new Blob([bytes],{type:'application/pdf'});
+    var url=URL.createObjectURL(blob);
+    var fname=((cn||'Invoice').replace(/[^a-z0-9]/gi,'_'))+'_'+((bp||'').replace('/','_'))+'.pdf';
+    var a=document.createElement('a');a.href=url;a.download=fname;
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(function(){URL.revokeObjectURL(url);},2000);
+  }catch(e){
+    console.error('PDF generation failed:',e);
+    alert('PDF generation failed: '+e.message);
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent=oldText||'Print / PDF';}
+  }
 }
 
 // ============================================================
