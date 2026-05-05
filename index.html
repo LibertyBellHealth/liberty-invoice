@@ -3703,8 +3703,9 @@ function loadProfilesAPI() {
     })
     .catch(function (e) { console.error('Load error:', e); renderSidebarClients(); renderClientTable(); updateStats(); });
 
-  // Also load caregivers and tasks from API
+  // Also load caregivers, caseworkers, and tasks from API
   loadCaregiversAPI();
+  loadCaseworkersAPI();
   loadTasksAPI();
 }
 
@@ -3845,8 +3846,32 @@ function deleteTaskAPI(dbId) {
 // ============================================================
 //  CASEWORKERS
 // ============================================================
+// Caseworkers: source of truth is Azure SQL via /api/caseworkers.
+// localStorage only used as a UI cache (refilled by loadCaseworkersAPI on sign-in).
 function getCaseworkers(){try{return JSON.parse(localStorage.getItem('lhca_caseworkers')||'[]');}catch(e){return[];}}
-function saveCaseworkers(arr){localStorage.setItem('lhca_caseworkers',JSON.stringify(arr));}
+function saveCaseworkersLS(arr){localStorage.setItem('lhca_caseworkers',JSON.stringify(arr));}
+function loadCaseworkersAPI(){
+  return fetch(API_BASE + '/caseworkers', { headers: apiHeaders() })
+    .then(function(r){ return r.json(); })
+    .then(function(rows){
+      var arr = (rows||[]).map(function(c){
+        return { id:c.id, name:c.name||'', agency:c.agency||'', phone:c.phone||'', email:c.email||'', notes:c.notes||'' };
+      });
+      saveCaseworkersLS(arr);
+      if (typeof renderCaseworkerList === 'function' && document.getElementById('cwList')) renderCaseworkerList();
+    })
+    .catch(function(e){ console.error('Load caseworkers error:', e); });
+}
+function saveCaseworkerAPI(cw){
+  return fetch(API_BASE + '/caseworkers', {
+    method: 'POST', headers: apiHeaders(), body: JSON.stringify(cw),
+  }).catch(function(e){ console.error('Save caseworker error:', e); });
+}
+function deleteCaseworkerAPI(id){
+  return fetch(API_BASE + '/caseworkers/' + encodeURIComponent(id), {
+    method: 'DELETE', headers: apiHeaders(),
+  }).catch(function(e){ console.error('Delete caseworker error:', e); });
+}
 function cwId(){return 'cw_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);}
 function navCaseworkers(){
   showPage('caseworkers');bc([{l:'Caseworkers'}]);document.getElementById('topbarActions').innerHTML='';
@@ -3877,19 +3902,23 @@ function saveCaseworker(){
   var name=document.getElementById('cw-name').value.trim();if(!name){alert('Name is required.');return;}
   var cws=getCaseworkers();
   var editingId=document.getElementById('cw-editing-id').value;
+  var rec={id:editingId||cwId(),name:name,agency:document.getElementById('cw-agency').value,phone:document.getElementById('cw-phone').value,email:document.getElementById('cw-email').value,notes:document.getElementById('cw-notes').value};
   if(editingId){
     var idx=cws.findIndex(function(c){return c.id===editingId;});
-    if(idx>=0){cws[idx]={id:editingId,name:name,agency:document.getElementById('cw-agency').value,phone:document.getElementById('cw-phone').value,email:document.getElementById('cw-email').value,notes:document.getElementById('cw-notes').value};}
+    if(idx>=0){cws[idx]=rec;}
   } else {
-    cws.push({id:cwId(),name:name,agency:document.getElementById('cw-agency').value,phone:document.getElementById('cw-phone').value,email:document.getElementById('cw-email').value,notes:document.getElementById('cw-notes').value});
+    cws.push(rec);
   }
-  saveCaseworkers(cws);hideCaseworkerForm();renderCaseworkerList();
+  saveCaseworkersLS(cws);
+  saveCaseworkerAPI(rec);
+  hideCaseworkerForm();renderCaseworkerList();
 }
 function deleteCaseworker(){
   var id=document.getElementById('cw-editing-id').value;if(!id)return;
   var cws=getCaseworkers().find(function(c){return c.id===id;});
   if(!cws||!confirm('Delete caseworker "'+cws.name+'"?'))return;
-  saveCaseworkers(getCaseworkers().filter(function(c){return c.id!==id;}));
+  saveCaseworkersLS(getCaseworkers().filter(function(c){return c.id!==id;}));
+  deleteCaseworkerAPI(id);
   hideCaseworkerForm();renderCaseworkerList();
 }
 function renderCaseworkerList(){
