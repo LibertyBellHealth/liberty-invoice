@@ -3610,7 +3610,7 @@ function initMSAL() {
 }
 function signIn() {
   msalInstance.loginRedirect({
-    scopes: GRAPH_SCOPES, // Graph only
+    scopes: GRAPH_SCOPES.concat([API_SCOPE]), // consent for Graph + API at login time
     redirectUri: REDIRECT_URI,
   });
 }
