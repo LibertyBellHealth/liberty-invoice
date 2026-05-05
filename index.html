@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Liberty Home Care — Client Manager</title>
 <!-- ── Azure Application Insights — server-side audit logging ── -->
 <script type="text/javascript">
@@ -322,8 +323,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 .ov-quick{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
 .ov-inv-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #f0f3f7;font-size:12px;}
 .ov-inv-row:last-child{border-bottom:none;}
-.ov-notes-preview{font-size:12px;color:#4a6a8a;line-height:1.5;white-space:pre-wrap;max-height:90px;overflow:hidden;position:relative;}
-.ov-notes-preview::after{content:'';position:absolute;bottom:0;left:0;right:0;height:24px;background:linear-gradient(transparent,#fff);}
+.ov-notes-preview{font-size:12px;color:#4a6a8a;line-height:1.5;white-space:pre-wrap;max-height:90px;overflow:hidden;}
 
 /* INVOICE STATUS BADGES */
 .inv-status{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;cursor:pointer;user-select:none;}
@@ -478,6 +478,23 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 .cw-client-list{display:flex;flex-direction:column;gap:0;}
 .cw-client-row{display:flex;align-items:center;gap:8px;font-size:12px;color:#4a6a8a;padding:5px 4px;border-bottom:1px solid #f0f3f7;}
 .cw-client-row:last-child{border-bottom:none;}
+/* MOBILE RESPONSIVE */
+@media (max-width: 768px) {
+  #sidebar { display: none; }
+  #sidebar.mobile-open { display: flex; position: fixed; z-index: 1000; height: 100vh; }
+  #main { width: 100%; }
+  .stats-row { flex-direction: column; }
+  .client-grid { grid-template-columns: 1fr; }
+  .overview-grid { grid-template-columns: 1fr; }
+  .ff-row { flex-direction: column; }
+  .page { padding: 14px 16px; }
+  #topbar { padding: 0 12px; }
+  .client-table-wrap { overflow-x: auto; }
+  .form-card { padding: 14px 16px; }
+  .ov-card { padding: 14px; }
+}
+@media (max-width: 768px) { #mobileMenuBtn { display: block !important; } }
+
 /* PRINT */
 @media print{
   /* ── Reset body — eliminates blank first page caused by min-height:100vh ── */
@@ -561,6 +578,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 <!-- ===== MAIN ===== -->
 <div id="main">
   <div id="topbar">
+    <button id="mobileMenuBtn" style="display:none;background:none;border:none;font-size:20px;cursor:pointer;color:#1a2b45;padding:0 8px;" onclick="document.getElementById('sidebar').classList.toggle('mobile-open')">&#9776;</button>
     <div class="tb-bc" id="breadcrumb"></div>
     <div class="tb-spacer"></div>
     <span class="draft-badge" id="draftBadge">● Unsaved draft</span>
@@ -696,13 +714,20 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
     <div class="page-subtitle">Fill in the details. Everything can be edited later from their profile.</div>
     <div class="form-card">
       <h3>Client Information</h3>
-      <div class="ff"><label>Full Name *</label><input id="nc-name" placeholder="e.g. Jane Smith" maxlength="60"></div>
+      <div class="ff-row" style="grid-template-columns:1fr 1fr 1fr;">
+        <div class="ff"><label>First Name *</label><input id="nc-first" placeholder="First name" maxlength="40"></div>
+        <div class="ff"><label>Middle Name</label><input id="nc-middle" placeholder="Middle" maxlength="40"></div>
+        <div class="ff"><label>Last Name *</label><input id="nc-last" placeholder="Last name" maxlength="40"></div>
+      </div>
       <div class="ff-row">
-        <div class="ff"><label>Medicaid ID</label><input id="nc-medicaid" placeholder="Medicaid ID" maxlength="20"></div>
-        <div class="ff"><label>Hourly Rate</label><input id="nc-rate" placeholder="0.00" maxlength="10"></div>
+        <div class="ff"><label>Nickname / Goes By</label><input id="nc-nickname" placeholder="Optional" maxlength="40"></div>
         <div class="ff"><label>Status</label>
           <select id="nc-status"><option value="active">Active</option><option value="inactive">Inactive</option><option value="lost">Lost</option><option value="terminated">Terminated</option></select>
         </div>
+      </div>
+      <div class="ff-row">
+        <div class="ff"><label>Medicaid ID</label><input id="nc-medicaid" placeholder="Medicaid ID" maxlength="20"></div>
+        <div class="ff"><label>Hourly Rate</label><input id="nc-rate" placeholder="0.00" maxlength="10"></div>
       </div>
       <div class="ff-row">
         <div class="ff"><label>Phone #</label><input id="nc-phone" placeholder="(555) 555-5555" maxlength="20"></div>
@@ -777,8 +802,13 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
         <div class="form-card" style="max-width:640px;">
           <h3 id="cgFormTitle">New Caregiver</h3>
           <input type="hidden" id="cg-editing-id">
+          <div class="ff-row" style="grid-template-columns:1fr 1fr 1fr;">
+            <div class="ff"><label>First Name *</label><input id="cg-first" placeholder="First name" maxlength="40"></div>
+            <div class="ff"><label>Middle Name</label><input id="cg-middle" placeholder="Middle" maxlength="40"></div>
+            <div class="ff"><label>Last Name *</label><input id="cg-last" placeholder="Last name" maxlength="40"></div>
+          </div>
           <div class="ff-row">
-            <div class="ff"><label>Full Name *</label><input id="cg-name" placeholder="e.g. Maria Lopez" maxlength="60"></div>
+            <div class="ff"><label>Nickname</label><input id="cg-nickname" placeholder="Optional" maxlength="40"></div>
             <div class="ff"><label>Status</label>
               <select id="cg-status"><option value="active">Active</option><option value="inactive">Inactive</option><option value="terminated">Terminated</option></select>
             </div>
@@ -915,11 +945,35 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 
   <!-- CASEWORKERS PAGE -->
   <div class="page" id="page-caseworkers">
-    <div class="home-header" style="margin-bottom:16px;">
-      <div><div class="home-title">Caseworkers</div><div class="home-subtitle">Manage caseworkers and their client assignments.</div></div>
-      <button class="btn btn-primary" onclick="showCaseworkerForm()">+ Add Caseworker</button>
+    <div class="dashboard-header">
+      <div class="dashboard-title-block">
+        <div class="dashboard-title">Caseworkers</div>
+        <div class="dashboard-sub">Manage caseworkers and their client assignments.</div>
+      </div>
+      <div class="dashboard-actions">
+        <button class="btn btn-primary" onclick="showCaseworkerForm()">+ Add Caseworker</button>
+      </div>
     </div>
-    <div id="cwFormWrap" style="display:none;margin-bottom:20px;">
+    <div class="client-table-wrap" style="margin-top:16px;">
+      <div class="ct-toolbar">
+        <input id="cwSearch" class="ct-search" placeholder="Filter by name or agency…" oninput="renderCaseworkerList()">
+      </div>
+      <table class="client-table" id="cwTable">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Agency</th>
+            <th>Phone</th>
+            <th>Email</th>
+            <th>County</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="cwTableBody"></tbody>
+      </table>
+      <div id="cwTableEmpty" style="display:none;" class="ct-empty">No caseworkers match your filters.</div>
+    </div>
+    <div id="cwFormWrap" style="display:none;margin:16px 24px 0;">
       <div class="form-card" style="max-width:640px;">
         <h3 id="cwFormTitle">New Caseworker</h3>
         <input type="hidden" id="cw-editing-id">
@@ -950,7 +1004,6 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
         </div>
       </div>
     </div>
-    <div id="cwList"></div>
   </div>
 
   <!-- FORMS PAGE -->
@@ -1404,7 +1457,7 @@ function _openEmailAfterPrint(toAddr,clientName,bp){
 }
 function navNewClient(){
   showPage('new-client');bc([{l:'Clients',fn:navHome},{l:'New Client'}]);document.getElementById('topbarActions').innerHTML='';
-  ['nc-name','nc-medicaid','nc-rate','nc-phone','nc-cemail','nc-street','nc-city','nc-state','nc-zip','nc-county','nc-worker-search','nc-worker-val'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  ['nc-first','nc-middle','nc-last','nc-nickname','nc-medicaid','nc-rate','nc-phone','nc-cemail','nc-street','nc-city','nc-state','nc-zip','nc-county','nc-worker-search','nc-worker-val'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
   var drop=document.getElementById('nc-worker-drop');if(drop)drop.style.display='none';
   populateCaregiverSelect('nc-caregiver','');
 }
@@ -1414,7 +1467,7 @@ function navDetail(name,tab){
   showPage('detail');
   var ini=name.split(' ').map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase();
   document.getElementById('detailAvatar').textContent=ini;
-  document.getElementById('detailName').textContent=name;
+  document.getElementById('detailName').textContent=name+(prof.nickname?' ('+prof.nickname+')':'');
   var st=prof.clientStatus||'active';
   document.getElementById('detailMeta').innerHTML=(prof.medicaidId?'Medicaid: '+prof.medicaidId:'No Medicaid ID')+(prof.phone?' &nbsp;·&nbsp; '+prof.phone:'')+
     ' &nbsp;<span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span>';
@@ -1520,7 +1573,8 @@ function renderSidebarClients(){
   keys.slice(0,15).forEach(function(name){
     var ini=name.split(' ').map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase();
     var row=document.createElement('div');row.className='sb-client-row'+(name===activeProfileName?' active':'');
-    row.innerHTML='<div class="sb-avatar">'+ini+'</div><div class="sb-client-info"><div class="sb-client-name">'+esc(name)+'</div><div class="sb-client-meta">'+(profiles[name].medicaidId||'No ID')+'</div></div>';
+    var sbDisplay=name+(profiles[name].nickname?' ('+profiles[name].nickname+')':'');
+    row.innerHTML='<div class="sb-avatar">'+ini+'</div><div class="sb-client-info"><div class="sb-client-name">'+esc(sbDisplay)+'</div><div class="sb-client-meta">'+(profiles[name].medicaidId||'No ID')+'</div></div>';
     row.addEventListener('click',function(){navDetail(name);});list.appendChild(row);
   });
   if(keys.length>15){var m=document.createElement('div');m.style.cssText='padding:5px 14px;font-size:10px;color:#435f7a;cursor:pointer;';m.textContent='+'+(keys.length-15)+' more — view all';m.onclick=navHome;list.appendChild(m);}
@@ -1600,7 +1654,7 @@ function renderClientTable(forceStatus){
     var tr=document.createElement('tr');
     tr.innerHTML=
       '<td style="width:32px;" onclick="event.stopPropagation()"><input type="checkbox" '+checked+' onchange="toggleBulkClient(\''+esc(name)+'\',this)" style="width:13px;height:13px;cursor:pointer;"></td>'+
-      '<td><div class="ct-name">'+esc(name)+'</div><div class="ct-id">'+(prof.medicaidId||'No Medicaid ID')+'</div></td>'+
+      '<td><div class="ct-name">'+esc(name)+(prof.nickname?'<span style="font-weight:normal;color:#8ca0b4;"> ('+esc(prof.nickname)+')</span>':'')+'</div><div class="ct-id">'+(prof.medicaidId||'No Medicaid ID')+'</div></td>'+
       '<td><span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span></td>'+
       '<td style="color:#4a6a8a;font-size:12px;">'+esc(cgName)+'</td>'+
       '<td style="font-size:12px;color:#4a6a8a;">'+esc(lastInv)+'</td>'+
@@ -1689,9 +1743,11 @@ function renderOverviewPane(){
   if(!invoices.length){recentInvHtmlRO='<div style="color:#8ca0b4;font-size:12px;padding:6px 0;">No invoices yet.</div>';}
   else{invoices.slice(0,4).forEach(function(inv){
     var st=inv.status||'draft';
+    var daysSince=Math.floor((Date.now()-new Date(inv.savedAt))/86400000);
+    var overdueFlag=(st==='submitted'&&daysSince>30)?'<span style="background:#ff8c00;color:#fff;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;">'+daysSince+'d</span>':'';
     recentInvHtmlRO+='<div class="ov-inv-row" style="cursor:pointer;" onclick="switchTab(\'history\')" title="Open Invoices tab">'+
       '<span class="inv-badge" style="min-width:60px;text-align:center;">'+esc(inv.billingPeriod)+'</span>'+
-      '<span class="inv-badge st-'+st+'" style="min-width:70px;text-align:center;">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span>'+
+      '<span class="inv-badge st-'+st+'" style="min-width:70px;text-align:center;">'+st.charAt(0).toUpperCase()+st.slice(1)+overdueFlag+'</span>'+
       '<span style="flex:1;color:#8ca0b4;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(inv.invoiceNote||'')+'</span>'+
       '<span style="font-size:11px;color:#6b8dae;white-space:nowrap;">'+esc(inv.savedAt.split(',')[0])+'</span></div>';
   });}
@@ -1794,6 +1850,14 @@ function renderInfoPane(){
   if(!activeProfileName)return;
   var prof=getProfiles()[activeProfileName],g=document.getElementById('infoGrid');g.innerHTML='';
 
+  // Derive first/last from stored fields or split activeProfileName as fallback
+  var storedFirst=prof.firstName||'';
+  var storedLast=prof.lastName||'';
+  if(!storedFirst&&!storedLast){
+    var parts=activeProfileName.split(' ');
+    storedFirst=parts[0]||'';storedLast=parts.slice(1).join(' ')||'';
+  }
+
   // Helper to create simple text field
   function mkField(id,label,val,full){
     var d=document.createElement('div');d.className='info-field'+(full?' full':'');
@@ -1805,7 +1869,21 @@ function renderInfoPane(){
     var div=document.createElement('div');div.className='form-section-divider full';div.innerHTML='<span>'+label+'</span>';g.appendChild(div);
   }
 
-  mkField('ei-name','Full Name',prof.clientName||'',false);
+  // Name row: First / Middle / Last
+  var dName=document.createElement('div');dName.className='info-field-row full';dName.style.gridTemplateColumns='1fr 1fr 1fr';
+  dName.innerHTML='<div class="info-field"><label>First Name *</label><input id="ei-first" value="'+esc(storedFirst)+'" oninput="unsavedChanges=true;"></div>'+
+    '<div class="info-field"><label>Middle Name</label><input id="ei-middle" value="'+esc(prof.middleName||'')+'" oninput="unsavedChanges=true;"></div>'+
+    '<div class="info-field"><label>Last Name *</label><input id="ei-last" value="'+esc(storedLast)+'" oninput="unsavedChanges=true;"></div>';
+  g.appendChild(dName);
+
+  // Nickname + Status row
+  var dNickSt=document.createElement('div');dNickSt.className='info-field-row full';
+  dNickSt.innerHTML='<div class="info-field"><label>Nickname / Goes By</label><input id="ei-nickname" value="'+esc(prof.nickname||'')+'" oninput="unsavedChanges=true;"></div>'+
+    '<div class="info-field"><label>Client Status</label><select id="ei-status">'+
+      ['active','inactive','lost','terminated'].map(function(s){return '<option value="'+s+'"'+((prof.clientStatus||'active')===s?' selected':'')+'>'+s.charAt(0).toUpperCase()+s.slice(1)+'</option>';}).join('')+
+    '</select></div>';
+  g.appendChild(dNickSt);
+
   mkField('ei-medicaid','Medicaid ID',prof.medicaidId||'',false);
   mkField('ei-rate','Hourly Rate',prof.hourlyRate||'',false);
   mkField('ei-phone','Client Phone',prof.phone||'',false);
@@ -1826,30 +1904,44 @@ function renderInfoPane(){
 
   mkDivider('Assignments');
 
-  // Caregiver select + navigate button
-  var dCg=document.createElement('div');dCg.className='info-field';
-  dCg.innerHTML='<label>Assigned Caregiver</label><div style="display:flex;align-items:center;gap:6px;"><select id="ei-caregiver" style="flex:1;"></select><button class="btn btn-secondary btn-sm" style="margin-left:6px;white-space:nowrap;" onclick="navCaregivers()">→ View</button></div>';
+  // Caregiver searchable autocomplete + View button
+  var dCg=document.createElement('div');dCg.className='info-field full';
+  var cgName='';var cgsMap=getCaregivers();if(prof.caregiverId&&cgsMap[prof.caregiverId])cgName=cgsMap[prof.caregiverId].name;
+  dCg.innerHTML='<label>Assigned Caregiver</label>'+
+    '<div style="display:flex;align-items:center;gap:6px;position:relative;">'+
+      '<div style="flex:1;position:relative;">'+
+        '<input id="ei-caregiver-search" placeholder="Search caregiver…" maxlength="80" autocomplete="off" value="'+esc(cgName)+'" oninput="cgSearch(this,\'ei-caregiver-val\',\'ei-caregiver-drop\');unsavedChanges=true;" onblur="setTimeout(function(){var d=document.getElementById(\'ei-caregiver-drop\');if(d)d.style.display=\'none\';},200)" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;">'+
+        '<input type="hidden" id="ei-caregiver-val" value="'+esc(prof.caregiverId||'')+'">'+
+        '<div id="ei-caregiver-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>'+
+      '</div>'+
+      '<button class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="navCaregivers()">→ View</button>'+
+    '</div>';
   g.appendChild(dCg);
-  populateCaregiverSelect('ei-caregiver',prof.caregiverId||'');
 
-  // Caseworker select + navigate button
-  var dCw=document.createElement('div');dCw.className='info-field';
-  dCw.innerHTML='<label>Caseworker</label><div style="display:flex;align-items:center;gap:6px;"><select id="ei-worker" style="flex:1;"></select><button class="btn btn-secondary btn-sm" style="margin-left:6px;white-space:nowrap;" onclick="navCaseworkers()">→ View</button></div>';
+  // Caseworker searchable autocomplete + View button
+  var dCw=document.createElement('div');dCw.className='info-field full';
+  var cwName=prof.worker||'';
+  dCw.innerHTML='<label>Caseworker</label>'+
+    '<div style="display:flex;align-items:center;gap:6px;position:relative;">'+
+      '<div style="flex:1;position:relative;">'+
+        '<input id="ei-worker-search" placeholder="Search caseworker…" maxlength="80" autocomplete="off" value="'+esc(cwName)+'" oninput="cwSearch(this,\'ei-worker-val\',\'ei-worker-drop\');unsavedChanges=true;" onblur="setTimeout(function(){var d=document.getElementById(\'ei-worker-drop\');if(d)d.style.display=\'none\';},200)" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;">'+
+        '<input type="hidden" id="ei-worker-val" value="'+esc(prof.caseworkerId||'')+'">'+
+        '<div id="ei-worker-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>'+
+      '</div>'+
+      '<button class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="navCaseworkers()">→ View</button>'+
+    '</div>';
   g.appendChild(dCw);
-  populateCaseworkerSelect('ei-worker',prof.worker||'');
-
-  // Status select
-  var dSt=document.createElement('div');dSt.className='info-field';
-  dSt.innerHTML='<label>Client Status</label><select id="ei-status">'+
-    ['active','inactive','lost','terminated'].map(function(s){return '<option value="'+s+'"'+((prof.clientStatus||'active')===s?' selected':'')+'>'+s.charAt(0).toUpperCase()+s.slice(1)+'</option>';}).join('')+
-    '</select>';
-  g.appendChild(dSt);
 }
 function saveClientInfo(){
   if(!activeProfileName)return;
   var p=getProfiles();
-  var newName=document.getElementById('ei-name').value.trim()||activeProfileName;
   var rec=p[activeProfileName];
+  var first=(document.getElementById('ei-first').value||'').trim();
+  var middle=(document.getElementById('ei-middle').value||'').trim();
+  var last=(document.getElementById('ei-last').value||'').trim();
+  var nickname=(document.getElementById('ei-nickname').value||'').trim();
+  var newName=((first+' '+last).trim())||activeProfileName;
+  rec.firstName=first;rec.middleName=middle;rec.lastName=last;rec.nickname=nickname;
   rec.clientName=newName;rec.medicaidId=document.getElementById('ei-medicaid').value;
   rec.hourlyRate=document.getElementById('ei-rate').value;
   rec.phone=document.getElementById('ei-phone').value;rec.clientEmail=document.getElementById('ei-cemail').value;
@@ -1858,15 +1950,18 @@ function saveClientInfo(){
   rec.state=document.getElementById('ei-state').value;
   rec.zip=document.getElementById('ei-zip').value;
   rec.county=document.getElementById('ei-county').value;
-  rec.worker=document.getElementById('ei-worker').value;
-  rec.caregiverId=document.getElementById('ei-caregiver').value;
+  // Searchable autocomplete fields
+  var cgValEl=document.getElementById('ei-caregiver-val');rec.caregiverId=cgValEl?cgValEl.value:'';
+  var cwValEl=document.getElementById('ei-worker-val');var cwSearchEl=document.getElementById('ei-worker-search');
+  rec.caseworkerId=cwValEl?cwValEl.value:'';rec.worker=cwSearchEl?cwSearchEl.value:'';
   var statusEl=document.getElementById('ei-status');if(statusEl)rec.clientStatus=statusEl.value;
   if(newName!==activeProfileName){p[newName]=rec;delete p[activeProfileName];activeProfileName=newName;}
   saveProfilesLS(p);saveProfileSP(activeProfileName,p[activeProfileName]);
   unsavedChanges=false;
   logActivity('edit','Profile updated for '+activeProfileName);
   addAuditEntry(activeProfileName,'Profile information updated');
-  document.getElementById('detailName').textContent=activeProfileName;
+  var displayName=activeProfileName+(rec.nickname?' ('+rec.nickname+')':'');
+  document.getElementById('detailName').textContent=displayName;
   var st=rec.clientStatus||'active';
   document.getElementById('detailMeta').innerHTML=(rec.medicaidId?'Medicaid: '+rec.medicaidId:'No Medicaid ID')+(rec.phone?' &nbsp;·&nbsp; '+rec.phone:'')+' &nbsp;<span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span>';
   renderSidebarClients();
@@ -1893,11 +1988,13 @@ function renderInvHistory(){
   c.innerHTML='<div style="margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;"><span style="font-size:13px;color:#6b8dae;">'+invoices.length+' invoice'+(invoices.length!==1?'s':'')+' saved</span></div>';
   invoices.forEach(function(inv,idx){
     var st=inv.status||'draft';
+    var daysSince=Math.floor((Date.now()-new Date(inv.savedAt))/86400000);
+    var overdueFlag=(st==='submitted'&&daysSince>30)?'<span style="background:#ff8c00;color:#fff;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:6px;">'+daysSince+'d overdue</span>':'';
     var card=document.createElement('div');card.className='inv-file-card';
     card.innerHTML=
       ''+
       '<div class="inv-file-info">'+
-        '<div class="inv-file-period">'+esc(inv.billingPeriod)+'</div>'+
+        '<div class="inv-file-period">'+esc(inv.billingPeriod)+overdueFlag+'</div>'+
         '<div class="inv-file-meta">Saved '+esc(inv.savedAt)+'</div>'+
         (inv.invoiceNote?'<div class="inv-file-note">'+esc(inv.invoiceNote)+'</div>':'')+
       '</div>'+
@@ -2016,6 +2113,8 @@ function renderDocsPane(){
     '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'+
     '<input type="file" id="hcDocFileInput" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple style="font-size:12px;flex:1;min-width:0;">'+
     '<button class="btn btn-primary" onclick="uploadHcDoc()">&#8593; Upload</button>'+
+    '<input type="file" id="docScanInput" accept="image/*" capture="environment" style="display:none;" onchange="handleDocScan(this)">'+
+    '<button class="btn btn-secondary" onclick="document.getElementById(\'docScanInput\').click()">&#128247; Scan / Photo</button>'+
     '</div>'+
     '<span id="hcDocStatus" style="font-size:11px;color:#666;display:block;margin-top:4px;"></span>'+
     '</div>'+
@@ -2081,6 +2180,25 @@ function uploadHcDoc(){
   })
   .catch(function(e){status.textContent='Upload failed: '+e;});
 }
+function handleDocScan(input){
+  var clientId=getHcClientId();
+  if(!clientId){alert('Save this client first before uploading documents.');return;}
+  if(!input||!input.files||!input.files.length)return;
+  var cat=(document.getElementById('hcDocCategory')&&document.getElementById('hcDocCategory').value)||'Other';
+  var status=document.getElementById('hcDocStatus');
+  if(status)status.textContent='Uploading scanned image…';
+  var fd=new FormData();
+  fd.append('clientType','homecare');fd.append('clientId',clientId);
+  var f=input.files[0];
+  var prefixedFile=new File([f],cat+'__'+f.name,{type:f.type});
+  fd.append('file',prefixedFile);
+  fetch(API_BASE+'/documents',{method:'POST',headers:authUploadHeaders(),body:fd})
+  .then(function(){
+    aiTrack('DocumentUploaded',{clientType:'homecare',clientId:clientId,category:cat,files:f.name,source:'scan'});
+    if(status)status.textContent='';input.value='';loadHcDocs(clientId);
+  })
+  .catch(function(e){if(status)status.textContent='Upload failed: '+e;});
+}
 function deleteHcDoc(clientId,encodedName){
   if(!confirm('Delete this document?'))return;
   fetch(API_BASE+'/documents?clientType=homecare&clientId='+clientId+'&name='+encodedName,{method:'DELETE',headers:apiHeaders()})
@@ -2138,13 +2256,18 @@ function deleteCgDoc(cgId,encodedName){
 //  NEW CLIENT
 // ============================================================
 function createClient(){
-  var name=document.getElementById('nc-name').value.trim();
-  if(!name){alert('Client name is required.');return;}
+  var first=(document.getElementById('nc-first').value||'').trim();
+  var middle=(document.getElementById('nc-middle').value||'').trim();
+  var last=(document.getElementById('nc-last').value||'').trim();
+  var nickname=(document.getElementById('nc-nickname').value||'').trim();
+  if(!first||!last){alert('First Name and Last Name are required.');return;}
+  var name=(first+' '+last).trim();
   var p=getProfiles();
   if(p[name]&&!confirm('"'+name+'" already exists. Overwrite?'))return;
   aiTrack('ClientCreated',{client:name});
   if(!p[name])p[name]={invoices:[],clientNotes:''};
-  p[name].clientName=name;p[name].medicaidId=document.getElementById('nc-medicaid').value.trim();
+  p[name].clientName=name;p[name].firstName=first;p[name].middleName=middle;p[name].lastName=last;p[name].nickname=nickname;
+  p[name].medicaidId=document.getElementById('nc-medicaid').value.trim();
   p[name].hourlyRate=document.getElementById('nc-rate').value.trim();
   p[name].phone=document.getElementById('nc-phone').value.trim();p[name].clientEmail=document.getElementById('nc-cemail').value.trim();
   p[name].street=document.getElementById('nc-street').value.trim();
@@ -2186,7 +2309,7 @@ function renderCaregiverGrid(){
     var tr=document.createElement('tr');
     tr.innerHTML=
       '<td style="width:32px;" onclick="event.stopPropagation()"><input type="checkbox" class="cg-select" data-id="'+id+'" style="width:13px;height:13px;cursor:pointer;"></td>'+
-      '<td><div class="ct-name">'+esc(cg.name||'')+'</div>'+(cg.email?'<div class="ct-id">'+esc(cg.email)+'</div>':'')+'</td>'+
+      '<td><div class="ct-name">'+esc(cg.name||'')+(cg.nickname?'<span style="font-weight:normal;color:#8ca0b4;"> ('+esc(cg.nickname)+')</span>':'')+'</div>'+(cg.email?'<div class="ct-id">'+esc(cg.email)+'</div>':'')+'</td>'+
       '<td><span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span></td>'+
       '<td style="font-size:12px;color:#4a6a8a;">'+esc(cg.emptype||'—')+'</td>'+
       '<td style="font-size:12px;color:#4a6a8a;">'+(cg.payRate?'$'+cg.payRate+'/hr':'—')+'</td>'+
@@ -2218,7 +2341,7 @@ function showNewCaregiverForm(){
   document.getElementById('cgFormWrap').style.display='block';
   document.getElementById('cgFormTitle').textContent='New Caregiver';
   document.getElementById('cg-editing-id').value='';
-  ['cg-name','cg-phone','cg-email','cg-address','cg-hire','cg-pay','cg-hours','cg-certs','cg-ec-name','cg-ec-phone','cg-notes'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  ['cg-first','cg-middle','cg-last','cg-nickname','cg-phone','cg-email','cg-address','cg-hire','cg-pay','cg-hours','cg-certs','cg-ec-name','cg-ec-phone','cg-notes'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('cg-status').value='active';document.getElementById('cg-emptype').value='full-time';
   document.getElementById('cgDeleteBtn').style.display='none';
   var cgDocSec=document.getElementById('cgDocsSection');if(cgDocSec)cgDocSec.style.display='none';
@@ -2229,7 +2352,14 @@ function editCaregiver(id){
   showNewCaregiverForm();
   document.getElementById('cgFormTitle').textContent='Edit Caregiver';
   document.getElementById('cg-editing-id').value=id;
-  document.getElementById('cg-name').value=cg.name||'';document.getElementById('cg-phone').value=cg.phone||'';
+  // Populate split name fields (fall back to splitting cg.name if firstName not stored)
+  var cgFirst=cg.firstName||'';var cgLast=cg.lastName||'';
+  if(!cgFirst&&!cgLast){var cgParts=(cg.name||'').split(' ');cgFirst=cgParts[0]||'';cgLast=cgParts.slice(1).join(' ')||'';}
+  document.getElementById('cg-first').value=cgFirst;
+  document.getElementById('cg-middle').value=cg.middleName||'';
+  document.getElementById('cg-last').value=cgLast;
+  document.getElementById('cg-nickname').value=cg.nickname||'';
+  document.getElementById('cg-phone').value=cg.phone||'';
   document.getElementById('cg-email').value=cg.email||'';document.getElementById('cg-address').value=cg.address||'';
   document.getElementById('cg-hire').value=cg.hireDate||'';document.getElementById('cg-pay').value=cg.payRate||'';
   document.getElementById('cg-hours').value=cg.maxHours||'';document.getElementById('cg-certs').value=cg.certs||'';
@@ -2241,11 +2371,17 @@ function editCaregiver(id){
   if(cgDocSec){cgDocSec.style.display='block';loadCgDocs(id);}
 }
 function saveCaregiver(){
-  var name=document.getElementById('cg-name').value.trim();if(!name){alert('Name is required.');return;}
+  var first=(document.getElementById('cg-first').value||'').trim();
+  var middle=(document.getElementById('cg-middle').value||'').trim();
+  var last=(document.getElementById('cg-last').value||'').trim();
+  var nickname=(document.getElementById('cg-nickname').value||'').trim();
+  if(!first||!last){alert('First Name and Last Name are required.');return;}
+  var name=(first+' '+last).trim();
   aiTrack('CaregiverSaved',{caregiver:name});
   var cgs=getCaregivers();
   var id=document.getElementById('cg-editing-id').value||cgId();
-  cgs[id]={name:name,status:document.getElementById('cg-status').value,phone:document.getElementById('cg-phone').value,
+  cgs[id]={name:name,firstName:first,middleName:middle,lastName:last,nickname:nickname,
+    status:document.getElementById('cg-status').value,phone:document.getElementById('cg-phone').value,
     email:document.getElementById('cg-email').value,address:document.getElementById('cg-address').value,
     hireDate:document.getElementById('cg-hire').value,emptype:document.getElementById('cg-emptype').value,
     payRate:document.getElementById('cg-pay').value,maxHours:document.getElementById('cg-hours').value,
@@ -2577,8 +2713,15 @@ function lookupZip(zipId, cityId, stateId, countyId) {
     .then(function(data){
       if (data.places && data.places.length) {
         var p = data.places[0];
-        var cEl = document.getElementById(cityId); if(cEl && !cEl.value) cEl.value = p['place name'] || '';
-        var sEl = document.getElementById(stateId); if(sEl && !sEl.value) sEl.value = p['state abbreviation'] || '';
+        var cEl = document.getElementById(cityId); if(cEl) cEl.value = p['place name'] || '';
+        var sEl = document.getElementById(stateId); if(sEl) sEl.value = p['state abbreviation'] || '';
+        var coEl = document.getElementById(countyId);
+        if(coEl) {
+          fetch('https://geo.fcc.gov/api/census/block/find?format=json&zip='+zip)
+            .then(function(r2){return r2.ok?r2.json():Promise.reject();})
+            .then(function(d2){if(d2&&d2.County&&d2.County.name&&coEl)coEl.value=d2.County.name.replace(' County','');})
+            .catch(function(){});
+        }
       }
     })
     .catch(function(){});
@@ -2620,6 +2763,36 @@ function cwSearch(input, hiddenId, dropId) {
       hidden.value = newId;
     });
     drop.appendChild(addItem);
+  }
+  drop.style.display = 'block';
+}
+
+// ============================================================
+//  CAREGIVER SEARCH AUTOCOMPLETE
+// ============================================================
+function cgSearch(input, hiddenId, dropId) {
+  var val = input.value.trim().toLowerCase();
+  var drop = document.getElementById(dropId);
+  var hidden = document.getElementById(hiddenId);
+  if (!val) { drop.style.display = 'none'; if(hidden)hidden.value = ''; return; }
+  var cgs = getCaregivers();
+  var matches = Object.keys(cgs).filter(function(id){ return (cgs[id].name||'').toLowerCase().includes(val); });
+  drop.innerHTML = '';
+  matches.slice(0, 8).forEach(function(id) {
+    var cg = cgs[id];
+    var item = document.createElement('div');
+    item.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f3f7;';
+    item.textContent = cg.name + (cg.emptype ? ' — ' + cg.emptype : '') + (cg.status !== 'active' ? ' (' + cg.status + ')' : '');
+    item.addEventListener('mousedown', function(e){ e.preventDefault(); input.value = cg.name; if(hidden)hidden.value = id; drop.style.display = 'none'; });
+    item.addEventListener('mouseover', function(){ this.style.background='#f0f5fb'; });
+    item.addEventListener('mouseout', function(){ this.style.background=''; });
+    drop.appendChild(item);
+  });
+  if (!matches.length) {
+    var noItem = document.createElement('div');
+    noItem.style.cssText = 'padding:8px 12px;font-size:13px;color:#8ca0b4;';
+    noItem.textContent = 'No caregivers found';
+    drop.appendChild(noItem);
   }
   drop.style.display = 'block';
 }
@@ -3866,7 +4039,9 @@ function loadProfilesAPI() {
         results.forEach(function (r3) {
           var name = r3.name, c = r3.client;
           profiles[name] = Object.assign({}, {
-            clientName: name, medicaidId: c.medicaid_id || '', hourlyRate: c.hourly_rate || '',
+            clientName: name, firstName: c.first_name || '', lastName: c.last_name || '',
+            middleName: c.middle_name || '', nickname: c.nickname || '',
+            medicaidId: c.medicaid_id || '', hourlyRate: c.hourly_rate || '',
             worker: c.worker || '', caseworkerId: c.caseworker_id || '',
             street: c.street || '', city: c.city || '', state: c.state || '',
             zip: c.zip || '', county: c.county || '',
@@ -3897,6 +4072,8 @@ function saveProfileSP(name, data) {
   var dbId = data._dbId || idMap[name];
   var body = {
     id: dbId || undefined, client_name: name,
+    first_name: data.firstName || '', last_name: data.lastName || '',
+    middle_name: data.middleName || '', nickname: data.nickname || '',
     medicaid_id: data.medicaidId || '', hourly_rate: data.hourlyRate || '',
     worker: data.worker || '', caseworker_id: data.caseworkerId || '',
     street: data.street || '', city: data.city || '', state: data.state || '',
@@ -3973,7 +4150,9 @@ function loadCaregiversAPI() {
       var obj = {};
       cgs.forEach(function (cg) {
         obj[cg.id] = {
-          name: cg.name, status: cg.status, phone: cg.phone, email: cg.email,
+          name: cg.name, firstName: cg.first_name || '', lastName: cg.last_name || '',
+          middleName: cg.middle_name || '', nickname: cg.nickname || '',
+          status: cg.status, phone: cg.phone, email: cg.email,
           hireDate: cg.start_date || '', emptype: cg.role || '', payRate: '',
           notes: cg.notes || '',
         };
@@ -3985,7 +4164,9 @@ function saveCaregiverAPI(id, cg) {
   fetch(API_BASE + '/caregivers', {
     method: 'POST', headers: apiHeaders(),
     body: JSON.stringify({
-      id: id, name: cg.name || '', role: cg.emptype || '', phone: cg.phone || '',
+      id: id, name: cg.name || '', first_name: cg.firstName || '',
+      last_name: cg.lastName || '', middle_name: cg.middleName || '', nickname: cg.nickname || '',
+      role: cg.emptype || '', phone: cg.phone || '',
       email: cg.email || '', start_date: cg.hireDate || '', status: cg.status || 'active', notes: cg.notes || '',
     }),
   }).catch(function (e) { console.error('Save caregiver error:', e); });
@@ -4136,47 +4317,32 @@ function deleteCaseworker(){
 }
 function renderCaseworkerList(){
   var cws=getCaseworkers();
-  var list=document.getElementById('cwList');if(!list)return;
+  var q=((document.getElementById('cwSearch')?document.getElementById('cwSearch').value:'')||'').toLowerCase();
+  var tbody=document.getElementById('cwTableBody');
+  var empty=document.getElementById('cwTableEmpty');
+  if(!tbody)return;
+  tbody.innerHTML='';
   if(!cws.length){
-    list.innerHTML='<div class="empty-state"><div class="ei">&#128101;</div><h3>No caseworkers yet</h3><p style="font-size:13px;">Click "+ Add Caseworker" to add caseworkers.</p></div>';
+    if(empty)empty.style.display='block';
+    empty.innerHTML='<div class="empty-state" style="padding:32px;text-align:center;color:#8ca0b4;"><div style="font-size:38px;margin-bottom:10px;">&#128101;</div><h3 style="font-size:15px;font-weight:600;color:#4a6a8a;margin-bottom:5px;">No caseworkers yet</h3><p style="font-size:13px;">Click "+ Add Caseworker" to add caseworkers.</p></div>';
     return;
   }
-  var profiles=getProfiles();
-  list.innerHTML='';
-  cws.forEach(function(cw){
-    // Find clients assigned to this caseworker by matching prof.worker field or caseworkerId
-    var assignedClients=Object.keys(profiles).filter(function(k){
-      return (profiles[k].caseworkerId&&profiles[k].caseworkerId===cw.id)||(profiles[k].worker||'').toLowerCase()===cw.name.toLowerCase();
-    });
-    var addrStr=[(cw.street||''),(cw.city||''),(cw.state||''),(cw.zip||'')].filter(Boolean).join(', ');
-    var card=document.createElement('div');
-    card.style.cssText='background:#fff;border:1px solid #e1e5ea;border-radius:8px;padding:16px 18px;margin-bottom:12px;max-width:700px;';
-    card.innerHTML=
-      '<div style="display:flex;align-items:flex-start;gap:14px;">'+
-        '<div style="width:40px;height:40px;border-radius:50%;background:#e8f0f9;color:#185FA5;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">'+
-          esc((cw.name||'?').split(' ').map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase())+
-        '</div>'+
-        '<div style="flex:1;min-width:0;">'+
-          '<div style="font-size:14px;font-weight:700;color:#1a2b45;">'+esc(cw.name)+'</div>'+
-          '<div style="font-size:12px;color:#6b8dae;margin-top:2px;">'+
-            (cw.agency?'<span style="margin-right:10px;">&#127970; '+esc(cw.agency)+'</span>':'')+
-            (cw.phone?'<span style="margin-right:10px;">&#128222; '+esc(cw.phone)+'</span>':'')+
-            (cw.fax?'<span style="margin-right:10px;">&#128224; Fax: '+esc(cw.fax)+'</span>':'')+
-            (cw.email?'<span>&#9993; '+esc(cw.email)+'</span>':'')+
-          '</div>'+
-          (addrStr?'<div style="font-size:12px;color:#4a6a8a;margin-top:4px;">&#128205; '+esc(addrStr)+'</div>':'')+
-          (cw.notes?'<div style="font-size:12px;color:#4a6a8a;margin-top:4px;font-style:italic;">'+esc(cw.notes)+'</div>':'')+
-          (assignedClients.length?
-            '<div style="margin-top:8px;"><span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#6b8dae;">Assigned Clients ('+assignedClients.length+')</span><div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px;">'+
-              assignedClients.map(function(n){return '<span style="background:#eef4fb;color:#185FA5;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer;" onclick="navDetail(\''+esc(n)+'\')">'+esc(n)+'</span>';}).join('')+
-            '</div></div>':'<div style="margin-top:6px;font-size:11px;color:#8ca0b4;">No clients matched to this worker.</div>')+
-        '</div>'+
-        '<div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;flex-shrink:0;">'+
-          (cw.email?'<button class="btn btn-secondary btn-sm" onclick="openEmailComposer(\''+esc(cw.email)+'\',\'\',\'\')">&#9993; Email</button>':'')+
-          '<button class="btn btn-secondary btn-sm" onclick="showCaseworkerForm(\''+cw.id+'\')">Edit</button>'+
-        '</div>'+
-      '</div>';
-    list.appendChild(card);
+  var filtered=cws.filter(function(cw){
+    return !q||(cw.name||'').toLowerCase().includes(q)||(cw.agency||'').toLowerCase().includes(q);
+  });
+  if(!filtered.length){if(empty)empty.style.display='block';return;}
+  if(empty)empty.style.display='none';
+  filtered.forEach(function(cw){
+    var tr=document.createElement('tr');
+    tr.innerHTML=
+      '<td><div class="ct-name">'+esc(cw.name||'')+'</div></td>'+
+      '<td style="font-size:12px;color:#4a6a8a;">'+esc(cw.agency||'—')+'</td>'+
+      '<td style="font-size:12px;color:#4a6a8a;">'+(cw.phone?'<a href="tel:'+esc(cw.phone)+'" style="color:#4a6a8a;text-decoration:none;">'+esc(cw.phone)+'</a>':'—')+'</td>'+
+      '<td style="font-size:12px;color:#4a6a8a;">'+(cw.email?'<a href="mailto:'+esc(cw.email)+'" style="color:#185FA5;text-decoration:none;">'+esc(cw.email)+'</a>':'—')+'</td>'+
+      '<td style="font-size:12px;color:#4a6a8a;">'+esc(cw.county||'—')+'</td>'+
+      '<td><button class="ct-action-btn" onclick="event.stopPropagation();showCaseworkerForm(\''+esc(cw.id)+'\')">Edit</button></td>';
+    tr.style.cursor='pointer';
+    tbody.appendChild(tr);
   });
 }
 
