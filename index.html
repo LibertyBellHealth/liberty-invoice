@@ -4131,26 +4131,34 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
   pdf.text('Michigan Department of Health and Human Services',ML+W/2,y+24,{align:'center'});
   y+=32;
 
-  // ── Info table — moderate borders, bigger labels, inline cells with label/value separator ──
+  // ── Info table — sizes bumped to match Arial 12pt visually ──
   var GRID_INFO=0.5;
-  var rowH=24,labelSize=10,valSize=11;
+  var rowH=26,labelSize=11,valSize=12;
   function cell(x,y,w,h,label,value,boldVal){
     pdf.setLineWidth(GRID_INFO);pdf.rect(x,y,w,h);
     pdf.setFont('helvetica','normal');pdf.setFontSize(labelSize);
-    pdf.text(label,x+3,y+10);
+    pdf.text(label,x+3,y+11);
     pdf.setFont('helvetica',boldVal?'bold':'normal');pdf.setFontSize(valSize);
-    pdf.text(String(value||''),x+3,y+21);
+    pdf.text(String(value||''),x+3,y+22);
   }
-  // Inline label/value with VERTICAL DIVIDER between them (matches March)
-  function inlineLabelValue(x,y,labelW,valueW,h,label,value){
+  // Inline cell: label + value on same line, ONE cell (no internal divider)
+  function inlineCell(x,y,w,h,label,value){
+    pdf.setLineWidth(GRID_INFO);pdf.rect(x,y,w,h);
+    pdf.setFont('helvetica','normal');pdf.setFontSize(11);
+    pdf.text(label,x+3,y+15);
+    var lblW=pdf.getTextWidth(label);
+    pdf.text(String(value||''),x+3+lblW+5,y+15);
+  }
+  // Inline with vertical DIVIDER (used only for Bill To per March reference)
+  function inlineDividerCell(x,y,labelW,valueW,h,label,value){
     pdf.setLineWidth(GRID_INFO);
     pdf.rect(x,y,labelW,h);
     pdf.rect(x+labelW,y,valueW,h);
-    pdf.setFont('helvetica','normal');pdf.setFontSize(10);
-    pdf.text(label,x+3,y+14);
-    pdf.text(String(value||''),x+labelW+3,y+14);
+    pdf.setFont('helvetica','normal');pdf.setFontSize(11);
+    pdf.text(label,x+3,y+15);
+    pdf.text(String(value||''),x+labelW+3,y+15);
   }
-  var inlineH=20;
+  var inlineH=22;
 
   if(!isPage2){
     // Row 1: Agency Name | Provider Number | Phone (stacked label/value)
@@ -4159,21 +4167,21 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
     cell(x0+c1w,y,c2w,rowH,'Agency Provider Number','6221933');
     cell(x0+c1w+c2w,y,c3w,rowH,'Agency Phone Number','248-291-4106');
     y+=rowH;
-    // Row 2: Contact | Period | Date | Rate — Hourly Rate narrower
-    var b1=210,b2=130,b3=145,b4=W-b1-b2-b3;
+    // Row 2: Contact | Period | Date | Rate — Hourly Rate and Date narrower per March
+    var b1=215,b2=140,b3=125,b4=W-b1-b2-b3; // 215+140+125 = 480; b4 = 96 (narrow Hourly Rate)
     cell(x0,y,b1,rowH,'Contact Person','Thomas Jaboro');
     cell(x0+b1,y,b2,rowH,'Billing Period',data.billingPeriod);
     cell(x0+b1+b2,y,b3,rowH,'Date Submitted',data.dateSubmitted);
     cell(x0+b1+b2+b3,y,b4,rowH,'Hourly Rate',data.hourlyRate||'27.00');
     y+=rowH;
-    // Row 3: Client Name | (val) | Medicaid Label | (val) — separate label and value cells
+    // Row 3: 'Client Name: VAL' (one cell)  |  'Client Medicaid ID Number: VAL' (one cell)
     var halfW=W/2;
-    inlineLabelValue(x0,y,75,halfW-75,inlineH,'Client Name:',data.clientName);
-    inlineLabelValue(x0+halfW,y,160,halfW-160,inlineH,'Client Medicaid ID Number:',data.medicaidId);
+    inlineCell(x0,y,halfW,inlineH,'Client Name:',data.clientName);
+    inlineCell(x0+halfW,y,halfW,inlineH,'Client Medicaid ID Number:',data.medicaidId);
     y+=inlineH;
-    // Row 4: Bill To | (val) | Attention | (val)
-    inlineLabelValue(x0,y,52,halfW-52,inlineH,'Bill To:',data.billTo);
-    inlineLabelValue(x0+halfW,y,72,halfW-72,inlineH,'Attention:',data.worker);
+    // Row 4: 'Bill To:' (cell) | VAL (cell) WITH vertical divider | 'Attention: VAL' (one cell, no divider)
+    inlineDividerCell(x0,y,52,halfW-52,inlineH,'Bill To:',data.billTo);
+    inlineCell(x0+halfW,y,halfW,inlineH,'Attention:',data.worker);
     y+=inlineH;
   } else {
     // Page 2 has a 3-col info row + the title repeated below it
