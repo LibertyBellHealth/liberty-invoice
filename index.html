@@ -4125,11 +4125,11 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
   var x0=ML,y=MT;
 
   // ── Title block ──
-  pdf.setFont('helvetica','bold');pdf.setFontSize(13);
-  pdf.text('HOME HELP AGENCY INVOICE',ML+W/2,y+12,{align:'center'});
-  pdf.setFont('helvetica','normal');pdf.setFontSize(9.5);
-  pdf.text('Michigan Department of Health and Human Services',ML+W/2,y+24,{align:'center'});
-  y+=32;
+  pdf.setFont('helvetica','bold');pdf.setFontSize(14);
+  pdf.text('HOME HELP AGENCY INVOICE',ML+W/2,y+14,{align:'center'});
+  pdf.setFont('helvetica','normal');pdf.setFontSize(13);
+  pdf.text('Michigan Department of Health and Human Services',ML+W/2,y+30,{align:'center'});
+  y+=38;
 
   // ── Info table — sizes bumped to match Arial 12pt visually ──
   var GRID_INFO=0.5;
