@@ -1477,6 +1477,22 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
   </div>
 </div>
 
+<!-- TASK EDIT MODAL — used for both editing tasks and creating follow-ups -->
+<div class="modal-overlay" id="taskEditModal">
+  <div class="modal-box">
+    <h3 id="taskEditTitle">Edit Task</h3>
+    <p id="taskEditSubtitle" style="font-size:12px;color:#5a7296;margin:6px 0 12px;"></p>
+    <label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Task name</label>
+    <input id="taskEditName" type="text" placeholder="What needs to be done?" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:14px;font-family:Arial,sans-serif;outline:none;box-sizing:border-box;margin-bottom:12px;">
+    <label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Due date <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#8ca0b4;">(optional)</span></label>
+    <input id="taskEditDue" type="date" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;outline:none;box-sizing:border-box;">
+    <div class="modal-row" style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+      <button class="btn btn-secondary" id="taskEditCancelBtn">Cancel</button>
+      <button class="btn btn-primary" id="taskEditSaveBtn">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- PROMPT MODAL — replaces browser prompt() popups -->
 <div class="modal-overlay" id="promptModal">
   <div class="modal-box">
@@ -3602,16 +3618,67 @@ function addTodo(){
   renderTodos();updateTaskBadge();
 }
 // Add a follow-up task that comes AFTER an existing task (linked via parentId)
+// Generic show task edit/create modal — used for both editing and creating follow-ups
+function showTaskEditModal(opts){
+  opts=opts||{};
+  var modal=document.getElementById('taskEditModal');
+  document.getElementById('taskEditTitle').textContent=opts.title||'Edit Task';
+  document.getElementById('taskEditSubtitle').textContent=opts.subtitle||'';
+  var nameInp=document.getElementById('taskEditName');
+  var dueInp=document.getElementById('taskEditDue');
+  nameInp.value=opts.name||'';
+  dueInp.value=opts.due||'';
+  var saveBtn=document.getElementById('taskEditSaveBtn');
+  var cancelBtn=document.getElementById('taskEditCancelBtn');
+  saveBtn.textContent=opts.okText||'Save';
+  // Replace handlers freshly each open
+  var newSave=saveBtn.cloneNode(true),newCancel=cancelBtn.cloneNode(true);
+  saveBtn.parentNode.replaceChild(newSave,saveBtn);
+  cancelBtn.parentNode.replaceChild(newCancel,cancelBtn);
+  newSave.addEventListener('click',function(){
+    var name=(nameInp.value||'').trim();if(!name){nameInp.focus();return;}
+    var due=dueInp.value||'';
+    modal.classList.remove('open');
+    if(typeof opts.onSave==='function')opts.onSave({name:name,due:due});
+  });
+  newCancel.addEventListener('click',function(){modal.classList.remove('open');});
+  modal.classList.add('open');
+  setTimeout(function(){nameInp.focus();nameInp.select();},50);
+}
+
+// Edit an existing task's name + due date
+function editTodoTask(id){
+  var todos=getTodos();var t=todos.find(function(x){return String(x.id)===String(id);});if(!t)return;
+  showTaskEditModal({
+    title:'Edit Task',
+    subtitle:t.parentId?'(follow-up task)':'',
+    name:t.text||'',
+    due:t.due||'',
+    okText:'Save Changes',
+    onSave:function(vals){
+      var todos2=getTodos();var t2=todos2.find(function(x){return String(x.id)===String(id);});if(!t2)return;
+      t2.text=vals.name;t2.due=vals.due||'';
+      saveTodos(todos2);saveTaskAPI(t2);renderTodos();updateTaskBadge();
+    }
+  });
+}
+
 function addFollowUpTask(parentId){
   var todos=getTodos();var parent=todos.find(function(x){return String(x.id)===String(parentId);});if(!parent)return;
-  showPrompt('Follow-up task (will appear under "'+parent.text+'"):','',function(text){
-    var t=(text||'').trim();if(!t)return;
-    var todos2=getTodos();
-    var idx=todos2.findIndex(function(x){return String(x.id)===String(parentId);});
-    var newTask={id:todoId(),text:t,client:parent.client||'',due:'',note:'',parentId:String(parentId),done:false,created:new Date().toLocaleString()};
-    if(idx>=0)todos2.splice(idx+1,0,newTask);else todos2.unshift(newTask);
-    saveTodos(todos2);saveTaskAPI(newTask);renderTodos();updateTaskBadge();
-  },{title:'Add Follow-up Task',okText:'Add'});
+  showTaskEditModal({
+    title:'Add Follow-up Task',
+    subtitle:'Comes after: '+parent.text,
+    name:'',
+    due:'',
+    okText:'Add Follow-up',
+    onSave:function(vals){
+      var todos2=getTodos();
+      var idx=todos2.findIndex(function(x){return String(x.id)===String(parentId);});
+      var newTask={id:todoId(),text:vals.name,client:parent.client||'',due:vals.due||'',note:'',parentId:String(parentId),done:false,created:new Date().toLocaleString()};
+      if(idx>=0)todos2.splice(idx+1,0,newTask);else todos2.unshift(newTask);
+      saveTodos(todos2);saveTaskAPI(newTask);renderTodos();updateTaskBadge();
+    }
+  });
 }
 function toggleTodo(id){
   // Use loose equality so legacy numeric IDs from DB still match string IDs from inline onclick
@@ -3710,8 +3777,9 @@ function renderTodos(filterClient){
               (!filterClient&&t.client?'<span class="todo-link" onclick="navDetail(\''+esc(t.client)+'\')">'+esc(t.client)+'</span>':'')+
             '</div>'+
           '</div>'+
+          '<button class="btn btn-secondary btn-sm" onclick="editTodoTask(\''+t.id+'\')" style="padding:3px 7px;font-size:11px;" title="Edit task name + due date">Edit</button>'+
           '<button class="btn btn-secondary btn-sm" onclick="addFollowUpTask(\''+(isFollowUp?(t.parentId||t.id):t.id)+'\')" style="padding:3px 7px;font-size:11px;" title="Add a follow-up that comes after this one">+ Follow-up</button>'+
-          '<button class="btn btn-secondary btn-sm" onclick="editTodoNote(\''+t.id+'\')" style="padding:3px 7px;font-size:11px;">Note</button>'+
+          '<button class="btn btn-secondary btn-sm" onclick="editTodoNote(\''+t.id+'\')" style="padding:3px 7px;font-size:11px;" title="Add a note to this task">Note</button>'+
           '<button class="btn btn-danger btn-sm" onclick="deleteTodo(\''+t.id+'\')" style="padding:3px 7px;font-size:11px;">Remove</button>';
         return item;
       }
@@ -3723,10 +3791,14 @@ function renderTodos(filterClient){
         // If has follow-ups, append a small toggle bar inside the parent row
         if(fups.length){
           var toggleBar=document.createElement('div');
-          toggleBar.style.cssText='margin-top:8px;padding:6px 10px;background:#eef3fb;border:1px solid #d0dbe9;border-radius:5px;cursor:pointer;font-size:11px;color:#185FA5;font-weight:600;display:flex;justify-content:space-between;align-items:center;user-select:none;width:100%;';
-          var toggleLabel=document.createElement('span');toggleLabel.textContent='▶ '+fups.length+' follow-up'+(fups.length>1?'s':'');
-          var clearBtn=document.createElement('span');clearBtn.style.cssText='font-size:10px;color:#8ca0b4;';clearBtn.textContent='click to expand';
+          toggleBar.style.cssText='margin-top:8px;padding:8px 12px;background:#eef3fb;border:1px solid #d0dbe9;border-radius:5px;cursor:pointer;font-size:12px;color:#185FA5;font-weight:600;display:flex;justify-content:space-between;align-items:center;user-select:none;width:100%;transition:background 0.15s;';
+          var toggleLabel=document.createElement('span');
+          toggleLabel.style.cssText='display:flex;align-items:center;gap:8px;';
+          toggleLabel.innerHTML='<span class="fup-arrow" style="display:inline-block;font-size:14px;transition:transform 0.18s;">▶</span><span>'+fups.length+' follow-up'+(fups.length>1?'s':'')+'</span>';
+          var clearBtn=document.createElement('span');clearBtn.style.cssText='font-size:11px;color:#8ca0b4;font-weight:400;';clearBtn.textContent='click to expand';
           toggleBar.appendChild(toggleLabel);toggleBar.appendChild(clearBtn);
+          toggleBar.addEventListener('mouseenter',function(){this.style.background='#dde8f5';});
+          toggleBar.addEventListener('mouseleave',function(){this.style.background='#eef3fb';});
           // Insert toggle bar at end of parentRow body
           parentRow.querySelector('.todo-body').appendChild(toggleBar);
           openC.appendChild(parentRow);
@@ -3737,7 +3809,8 @@ function renderTodos(filterClient){
           toggleBar.addEventListener('click',function(){
             var isOpen=fupContainer.style.display!=='none';
             fupContainer.style.display=isOpen?'none':'block';
-            toggleLabel.textContent=(isOpen?'▶ ':'▼ ')+fups.length+' follow-up'+(fups.length>1?'s':'');
+            var arrow=toggleLabel.querySelector('.fup-arrow');
+            if(arrow)arrow.style.transform=isOpen?'rotate(0deg)':'rotate(90deg)';
             clearBtn.textContent=isOpen?'click to expand':'click to collapse';
           });
         } else {
@@ -3839,23 +3912,44 @@ function addWfStep(){
 }
 function saveWorkflow(){
   var client=document.getElementById('wfClientSelect').value;
+  // Filter out empty step rows
+  var validSteps=wfSteps.filter(function(s){return s.text&&s.text.trim();});
+  if(!validSteps.length){
+    showConfirm('Add at least one step before saving the workflow.',function(){},{title:'No Steps',okText:'OK',danger:false});
+    return;
+  }
+  // First step = parent task; remaining steps = follow-ups linked to it via parentId
   var todos=getTodos();
-  var added=0;
-  wfSteps.forEach(function(s){
-    if(!s.text.trim())return;
-    todos.unshift({id:todoId(),text:s.text,client:client,due:s.due,note:'',done:false,created:new Date().toLocaleString()});
-    added++;
+  var newTasks=[];
+  var parentId=null;
+  validSteps.forEach(function(s,i){
+    var tId=todoId();
+    var newTask={
+      id:tId,
+      text:s.text.trim(),
+      client:client,
+      due:s.due,
+      note:'',
+      done:false,
+      created:new Date().toLocaleString(),
+      parentId:i===0?null:parentId
+    };
+    if(i===0)parentId=tId;
+    newTasks.push(newTask);
   });
-  if(!added){alert('Add at least one step.');return;}
+  // Insert in reverse so the parent ends up at the top, follow-ups directly below
+  todos.unshift.apply(todos,newTasks);
   saveTodos(todos);
-  // Sync new workflow tasks to API
-  todos.slice(0, added).forEach(function(t){ saveTaskAPI(t); });
+  // Sync to API
+  newTasks.forEach(function(t){saveTaskAPI(t);});
   updateTaskBadge();
   document.getElementById('workflowModal').classList.remove('open');
   if(document.getElementById('page-tasks').classList.contains('active'))renderTodos();
   if(activeProfileName&&document.getElementById('page-detail').classList.contains('active'))renderOverviewPane();
   logActivity('client','Workflow created'+(client?' for '+client:''));
-  alert(added+' task'+(added>1?'s':'')+' added'+(client?' for '+client:'')+'.');
+  var msg=newTasks.length+' task'+(newTasks.length>1?'s':'')+' added'+(client?' for '+client:'')+'.';
+  if(newTasks.length>1)msg+='\n\nThe first step is the parent task; the rest are follow-ups under it (collapsed by default).';
+  showConfirm(msg,function(){},{title:'Workflow Created',okText:'OK',danger:false});
 }
 
 // ============================================================
