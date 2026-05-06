@@ -3735,7 +3735,14 @@ function saveInvoiceToClient(){
     } else {
       if(!confirm('Invoice for '+bp+' already exists. Overwrite?'))return;
     }
-    p[activeProfileName].invoices[ex]={billingPeriod:bp,savedAt:new Date().toLocaleString(),status:existingStatus,invoiceNote:p[activeProfileName].invoices[ex].invoiceNote||'',data:captureFullInvoice()};
+    // CRITICAL: preserve dbId so we UPDATE the existing DB row instead of POSTing a duplicate
+    var prevInv=p[activeProfileName].invoices[ex];
+    p[activeProfileName].invoices[ex]=Object.assign({},prevInv,{
+      billingPeriod:bp,
+      savedAt:new Date().toLocaleString(),
+      status:existingStatus,
+      data:captureFullInvoice()
+    });
     addAuditEntry(activeProfileName,'Invoice '+bp+' overwritten');
   } else {
     p[activeProfileName].invoices.unshift({billingPeriod:bp,savedAt:new Date().toLocaleString(),status:'draft',invoiceNote:'',data:captureFullInvoice()});
@@ -5016,9 +5023,30 @@ function loadProfilesAPI() {
         return fetch(API_BASE + '/invoices?clientId=' + client.id, { headers: apiHeaders() })
           .then(function (r2) { return r2.json(); })
           .then(function (invs) {
+            // Dedupe by billing_period — keep the most recently saved invoice for each period.
+            // Older duplicates are scheduled for DB deletion on next sync to prevent re-fetch.
+            var dedupedInvs = [];
+            var seenByPeriod = {};
+            // Sort by saved_at descending so the first occurrence per period is the newest
+            var sortedInvs = (invs||[]).slice().sort(function(a,b){
+              return new Date(b.saved_at||0) - new Date(a.saved_at||0);
+            });
+            sortedInvs.forEach(function(inv){
+              var key = (inv.billing_period||'').trim();
+              if (!key) { dedupedInvs.push(inv); return; }
+              if (seenByPeriod[key]) {
+                // Duplicate — schedule for deletion in DB
+                console.warn('[invoices] Duplicate found for '+name+' '+key+' — deleting old DB id '+inv.id);
+                fetch(API_BASE + '/invoices/' + inv.id, {method:'DELETE',headers:apiHeaders()})
+                  .catch(function(e){console.error('Failed to delete duplicate invoice:',e);});
+                return;
+              }
+              seenByPeriod[key] = true;
+              dedupedInvs.push(inv);
+            });
             return {
               name: name, client: client,
-              invoices: invs.map(function (inv) {
+              invoices: dedupedInvs.map(function (inv) {
                 var data = null; try { data = JSON.parse(inv.invoice_data || 'null'); } catch (e) {}
                 return {
                   dbId: inv.id, billingPeriod: inv.billing_period || '',
