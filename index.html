@@ -985,6 +985,10 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
         <button class="btn btn-secondary" onclick="document.getElementById('importFile').click()">Import Clients from File</button>
         <input type="file" id="importFile" accept=".json" style="display:none;" onchange="importProfiles(event)">
       </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed #e1e5ea;">
+        <button class="btn btn-primary" onclick="backupToOneDrive()" id="oneDriveBackupBtn">☁ Backup to OneDrive</button>
+        <span style="font-size:11px;color:#8ca0b4;align-self:center;">Saves to <b>OneDrive / Liberty Home Care Backups /</b></span>
+      </div>
       <p style="font-size:11px;color:#8ca0b4;margin-top:10px;line-height:1.6;">
         <b>JSON</b>: backup for re-import. <span style="color:#1e7e34;">SSN masked by default</span> — opt in to "Include Full SSN" if you need to preserve them across a restore.<br>
         <b>Excel</b>: spreadsheet of all client/invoice/caregiver data. <span style="color:#1e7e34;">SSN auto-masked to last 4 digits.</span><br>
@@ -1530,7 +1534,7 @@ var REDIRECT_URI = window.location.origin;
 var SP_DOC_LIB   = 'ClientDocuments'; // kept for SharePoint doc library (if used)
 var SP_SITE      = 'https://libertybellhealth.sharepoint.com/sites/Invoice'; // kept for doc upload
 var API_SCOPE    = 'api://' + API_APP_ID + '/user_impersonation';
-var GRAPH_SCOPES = ['openid', 'profile', 'https://graph.microsoft.com/Mail.Send']; // Graph only — never mix with API_SCOPE
+var GRAPH_SCOPES = ['openid', 'profile', 'https://graph.microsoft.com/Mail.Send', 'https://graph.microsoft.com/Files.ReadWrite']; // Graph only — never mix with API_SCOPE
 var msalInstance = null, spToken = null;
 
 function apiHeaders() {
@@ -4021,6 +4025,95 @@ function exportProfiles(){
     }
   );
 }
+// One-click backup straight to user's OneDrive via Microsoft Graph.
+// Asks whether to include full SSN, then uploads to /Liberty Home Care Backups/.
+async function backupToOneDrive(){
+  if(!spToken){
+    showConfirm('Sign in with your Microsoft account to back up to OneDrive.',function(){signIn();},{title:'Sign In Required',okText:'Sign In',danger:false});
+    return;
+  }
+  showConfirm(
+    'Back up all client data to your OneDrive?\n\n'+
+    'File goes to: OneDrive / Liberty Home Care Backups /\n\n'+
+    'SSN is masked by default. Choose "Include Full SSN" if this backup needs to restore real SSNs (file stays on YOUR OneDrive — covered by your Microsoft BAA).',
+    function(){doBackupToOneDrive(false);},
+    {
+      title:'Backup to OneDrive',
+      okText:'Backup with Masked SSN',
+      danger:false,
+      extraText:'Include Full SSN',
+      extraDanger:true,
+      onExtra:function(){doBackupToOneDrive(true);}
+    }
+  );
+}
+
+async function doBackupToOneDrive(includeFullSSN){
+  var btn=document.getElementById('oneDriveBackupBtn');
+  var oldText=btn?btn.textContent:'';
+  if(btn){btn.disabled=true;btn.textContent='Uploading…';}
+  try{
+    // Build the backup payload (same logic as JSON export)
+    var p=getProfiles();
+    if(!Object.keys(p).length){throw new Error('No clients yet.');}
+    var copy=JSON.parse(JSON.stringify(p));
+    if(!includeFullSSN){
+      Object.keys(copy).forEach(function(name){
+        var prof=copy[name];if(prof.ssn){
+          var digits=String(prof.ssn).replace(/\D/g,'');
+          prof.ssn=digits.length>=4?'***-**-'+digits.slice(-4):'***-**-****';
+        }
+      });
+    }
+    var payload={
+      _exportedAt:new Date().toISOString(),
+      _exportedBy:(window.signedInEmail||'unknown'),
+      _includesFullSSN:!!includeFullSSN,
+      _appVersion:'liberty-homecare-v13',
+      caregivers:getCaregivers(),
+      caseworkers:getCaseworkers(),
+      signatures:getSigs(),
+      clients:copy
+    };
+    var content=JSON.stringify(payload,null,2);
+    var bytes=new Blob([content]).size;
+    if(bytes>4*1024*1024){throw new Error('Backup too large for direct upload ('+(bytes/1024/1024).toFixed(1)+' MB). Contact support to add chunked upload.');}
+
+    // Upload to OneDrive — auto-creates the folder if missing
+    var fname='liberty_clients_'+new Date().toISOString().slice(0,10)+(includeFullSSN?'_FULL':'_masked')+'.json';
+    var path='Liberty Home Care Backups/'+fname;
+    var url='https://graph.microsoft.com/v1.0/me/drive/root:/'+encodeURIComponent(path).replace(/%2F/g,'/')+':/content';
+    var resp=await fetch(url,{
+      method:'PUT',
+      headers:{'Authorization':'Bearer '+spToken,'Content-Type':'application/json'},
+      body:content
+    });
+    if(!resp.ok){
+      var errTxt=await resp.text();
+      // 403 likely means we don't have Files.ReadWrite scope yet — prompt re-sign-in
+      if(resp.status===403){throw new Error('Permission denied. Sign out and sign back in, then accept OneDrive permission when prompted.');}
+      throw new Error('Upload failed ('+resp.status+'): '+errTxt.slice(0,200));
+    }
+    var info=await resp.json();
+    aiTrack('OneDriveBackup',{file:fname,size:bytes,fullSSN:!!includeFullSSN});
+    showConfirm(
+      'Backup uploaded to OneDrive.\n\n'+
+      'File: '+fname+'\n'+
+      'Folder: Liberty Home Care Backups\n'+
+      'Size: '+(bytes/1024).toFixed(1)+' KB\n'+
+      (includeFullSSN?'\n⚠️ This backup contains full SSN — keep your OneDrive access controlled.':'')+
+      '\n\nClick Open to view in OneDrive, or OK to dismiss.',
+      function(){if(info.webUrl)window.open(info.webUrl,'_blank');},
+      {title:'Backup Complete',okText:'Open in OneDrive',danger:false,extraText:'OK',onExtra:function(){}}
+    );
+  }catch(e){
+    console.error('OneDrive backup failed:',e);
+    showConfirm('Backup failed: '+e.message,function(){},{title:'Backup Failed',okText:'OK',danger:false});
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent=oldText||'☁ Backup to OneDrive';}
+  }
+}
+
 function doExportProfiles(includeFullSSN){
   var p=getProfiles();
   // Deep clone so we don't mutate live data
