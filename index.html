@@ -6061,7 +6061,7 @@ async function sendMonthlyEmail(email,workerName,clients,period){
   var body='<p>Dear '+workerDisplay+',</p>'+
     '<p>You will find invoice'+(attachments.length>1?'s':'')+' attached for our shared client'+(attachments.length>1?'s':'')+' for the billing period <b>'+period+'</b>. Please confirm receipt of these documents.</p>'+
     '<p><b>Clients</b></p><ul>'+
-    attachments.map(function(a){var c2=clients.find(function(x){return x.name===a.clientName;})||{};return '<li>'+a.clientName+(c2.medicaidId?' (Medicaid ID: '+c2.medicaidId+')':'')+'</li>';}).join('')+
+    attachments.map(function(a){return '<li>'+a.clientName+'</li>';}).join('')+
     '</ul><p>Please review and process at your earliest convenience.</p>'+
     '<p>Thank you,<br>Thomas Jaboro<br>Liberty Home Care Assistance<br>(248) 291-4106</p>';
 
