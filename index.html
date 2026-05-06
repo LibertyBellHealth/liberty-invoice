@@ -780,6 +780,10 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
         <div class="ff"><label>Hourly Rate</label><input id="nc-rate" placeholder="0.00" maxlength="10"></div>
       </div>
       <div class="ff-row">
+        <div class="ff"><label>Driver's License #</label><input id="nc-dl" placeholder="DL number" maxlength="40"></div>
+        <div class="ff"><label>Social Security #</label><input id="nc-ssn" placeholder="XXX-XX-XXXX" maxlength="20" autocomplete="off"></div>
+      </div>
+      <div class="ff-row">
         <div class="ff"><label>Phone #</label><input id="nc-phone" placeholder="(555) 555-5555" maxlength="20"></div>
         <div class="ff"><label>Client Email</label><input id="nc-cemail" placeholder="client@email.com" maxlength="80"></div>
       </div>
@@ -794,9 +798,13 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
         <div class="ff"><label>County</label><input id="nc-county" placeholder="County" maxlength="60"></div>
       </div>
       <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Assignments</div>
-      <div class="ff"><label>Assigned Caregiver</label><select id="nc-caregiver"><option value="">— None assigned —</option></select></div>
-      <div class="ff"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="nc-live-in" style="width:14px;height:14px;cursor:pointer;"> Live-In Caregiver <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(caregiver lives with this client)</span></label></div>
       <div class="ff"><label>Service Start Date <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(prevents "missing invoice" warnings for months before this date)</span></label><input id="nc-start-date" type="date"></div>
+      <div class="ff-row">
+        <div class="ff"><label>Assigned Caregiver</label><select id="nc-caregiver"><option value="">— None assigned —</option></select></div>
+        <div class="ff" style="display:flex;align-items:flex-end;padding-bottom:8px;">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:500;"><input type="checkbox" id="nc-live-in" style="width:14px;height:14px;cursor:pointer;"> Live-In Caregiver</label>
+        </div>
+      </div>
       <div class="ff" style="position:relative;">
         <label>Caseworker</label>
         <input id="nc-worker-search" placeholder="Click to browse, or type to search…" maxlength="80" autocomplete="off" oninput="cwSearch(this,'nc-worker-val','nc-worker-drop')" onfocus="cwSearch(this,'nc-worker-val','nc-worker-drop')" onblur="setTimeout(function(){var d=document.getElementById('nc-worker-drop');if(d)d.style.display='none';},200)">
@@ -866,6 +874,10 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
           <div class="ff-row">
             <div class="ff"><label>Phone</label><input id="cg-phone" placeholder="(555) 555-5555" maxlength="20"></div>
             <div class="ff"><label>Email</label><input id="cg-email" placeholder="caregiver@email.com" maxlength="80"></div>
+          </div>
+          <div class="ff-row">
+            <div class="ff"><label>Driver's License #</label><input id="cg-dl" placeholder="DL number" maxlength="40"></div>
+            <div class="ff"><label>Social Security #</label><input id="cg-ssn" placeholder="XXX-XX-XXXX" maxlength="20" autocomplete="off"></div>
           </div>
           <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Address</div>
           <div class="ff"><label>Street</label><input id="cg-street" placeholder="Street address" maxlength="120"></div>
@@ -1637,7 +1649,7 @@ function _openEmailAfterPrint(toAddr,clientName,bp){
 }
 function navNewClient(){
   showPage('new-client');bc([{l:'Clients',fn:navHome},{l:'New Client'}]);document.getElementById('topbarActions').innerHTML='';
-  ['nc-first','nc-middle','nc-last','nc-nickname','nc-medicaid','nc-rate','nc-phone','nc-cemail','nc-street','nc-city','nc-state','nc-zip','nc-county','nc-worker-search','nc-worker-val'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  ['nc-first','nc-middle','nc-last','nc-nickname','nc-medicaid','nc-rate','nc-dl','nc-ssn','nc-phone','nc-cemail','nc-street','nc-city','nc-state','nc-zip','nc-county','nc-start-date','nc-worker-search','nc-worker-val'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
   var drop=document.getElementById('nc-worker-drop');if(drop)drop.style.display='none';
   populateCaregiverSelect('nc-caregiver','');
 }
@@ -2097,6 +2109,8 @@ function renderInfoPane(){
 
   mkField('ei-medicaid','Medicaid ID',prof.medicaidId||'',false);
   mkField('ei-rate','Hourly Rate',prof.hourlyRate||'',false);
+  mkField('ei-dl',"Driver's License #",prof.driversLicense||'',false);
+  mkField('ei-ssn','Social Security #',prof.ssn||'',false);
   mkField('ei-phone','Client Phone',prof.phone||'',false);
   mkField('ei-cemail','Client Email',prof.clientEmail||'',false);
   mkField('ei-street','Street',prof.street||'',true);
@@ -2115,19 +2129,28 @@ function renderInfoPane(){
 
   mkDivider('Assignments');
 
-  // Caregiver searchable autocomplete + View button
-  var dCg=document.createElement('div');dCg.className='info-field full';
+  // Service Start Date — moved ABOVE caregiver per user
+  var dStart=document.createElement('div');dStart.className='info-field full';
+  dStart.innerHTML='<label>Service Start Date <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(prevents missing-invoice warnings for months before this date)</span></label><input type="date" id="ei-start-date" value="'+esc(prof.startDate||'')+'" oninput="unsavedChanges=true;">';
+  g.appendChild(dStart);
+
+  // Caregiver + Live-In side by side
+  var dCgRow=document.createElement('div');dCgRow.className='info-field-row full';
   var cgName='';var cgsMap=getCaregivers();if(prof.caregiverId&&cgsMap[prof.caregiverId])cgName=cgsMap[prof.caregiverId].name;
-  dCg.innerHTML='<label>Assigned Caregiver</label>'+
-    '<div style="display:flex;align-items:center;gap:6px;position:relative;">'+
-      '<div style="flex:1;position:relative;">'+
-        '<input id="ei-caregiver-search" placeholder="Click to browse, or type to search…" maxlength="80" autocomplete="off" value="'+esc(cgName)+'" oninput="cgSearch(this,\'ei-caregiver-val\',\'ei-caregiver-drop\');unsavedChanges=true;" onfocus="cgSearch(this,\'ei-caregiver-val\',\'ei-caregiver-drop\')" onblur="setTimeout(function(){var d=document.getElementById(\'ei-caregiver-drop\');if(d)d.style.display=\'none\';},200)" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;">'+
-        '<input type="hidden" id="ei-caregiver-val" value="'+esc(prof.caregiverId||'')+'">'+
-        '<div id="ei-caregiver-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>'+
+  dCgRow.innerHTML='<div class="info-field"><label>Assigned Caregiver</label>'+
+      '<div style="display:flex;align-items:center;gap:6px;position:relative;">'+
+        '<div style="flex:1;position:relative;">'+
+          '<input id="ei-caregiver-search" placeholder="Click to browse, or type to search…" maxlength="80" autocomplete="off" value="'+esc(cgName)+'" oninput="cgSearch(this,\'ei-caregiver-val\',\'ei-caregiver-drop\');unsavedChanges=true;" onfocus="cgSearch(this,\'ei-caregiver-val\',\'ei-caregiver-drop\')" onblur="setTimeout(function(){var d=document.getElementById(\'ei-caregiver-drop\');if(d)d.style.display=\'none\';},200)" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;">'+
+          '<input type="hidden" id="ei-caregiver-val" value="'+esc(prof.caregiverId||'')+'">'+
+          '<div id="ei-caregiver-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>'+
+        '</div>'+
+        (prof.caregiverId?'<button class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="navCaregivers();setTimeout(function(){openCgDetail(\''+esc(prof.caregiverId)+'\');},50)">Open</button>':'')+
       '</div>'+
-      (prof.caregiverId?'<button class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="navCaregivers();setTimeout(function(){openCgDetail(\''+esc(prof.caregiverId)+'\');},50)">Open</button>':'')+
+    '</div>'+
+    '<div class="info-field" style="display:flex;align-items:flex-end;padding-bottom:8px;">'+
+      '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:500;margin:0;"><input type="checkbox" id="ei-live-in" '+(prof.liveIn?'checked':'')+' onchange="unsavedChanges=true;" style="width:14px;height:14px;cursor:pointer;"> Live-In Caregiver</label>'+
     '</div>';
-  g.appendChild(dCg);
+  g.appendChild(dCgRow);
 
   // Caseworker searchable autocomplete + Open button
   var dCw=document.createElement('div');dCw.className='info-field full';
@@ -2142,16 +2165,6 @@ function renderInfoPane(){
       (prof.caseworkerId?'<button class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="navCaseworkers();setTimeout(function(){openCwDetail(\''+esc(prof.caseworkerId)+'\');},50)">Open</button>':'')+
     '</div>';
   g.appendChild(dCw);
-
-  // Live-In Caregiver toggle
-  var dLive=document.createElement('div');dLive.className='info-field full';
-  dLive.innerHTML='<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:500;"><input type="checkbox" id="ei-live-in" '+(prof.liveIn?'checked':'')+' onchange="unsavedChanges=true;" style="width:14px;height:14px;cursor:pointer;"> Live-In Caregiver <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(caregiver lives with this client)</span></label>';
-  g.appendChild(dLive);
-
-  // Service Start Date — prevents 'missing invoice' warnings for months before client started
-  var dStart=document.createElement('div');dStart.className='info-field full';
-  dStart.innerHTML='<label>Service Start Date <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(prevents missing-invoice warnings for months before this date)</span></label><input type="date" id="ei-start-date" value="'+esc(prof.startDate||'')+'" oninput="unsavedChanges=true;">';
-  g.appendChild(dStart);
 }
 function saveClientInfo(){
   if(!activeProfileName)return;
@@ -2165,6 +2178,8 @@ function saveClientInfo(){
   rec.firstName=first;rec.middleName=middle;rec.lastName=last;rec.nickname=nickname;
   rec.clientName=newName;rec.medicaidId=document.getElementById('ei-medicaid').value;
   rec.hourlyRate=document.getElementById('ei-rate').value;
+  var dlEl=document.getElementById('ei-dl');if(dlEl)rec.driversLicense=dlEl.value;
+  var ssnEl=document.getElementById('ei-ssn');if(ssnEl)rec.ssn=ssnEl.value;
   rec.phone=document.getElementById('ei-phone').value;rec.clientEmail=document.getElementById('ei-cemail').value;
   rec.street=document.getElementById('ei-street').value;
   rec.city=document.getElementById('ei-city').value;
@@ -2569,6 +2584,8 @@ function createClient(){
   p[name].clientName=name;p[name].firstName=first;p[name].middleName=middle;p[name].lastName=last;p[name].nickname=nickname;
   p[name].medicaidId=document.getElementById('nc-medicaid').value.trim();
   p[name].hourlyRate=document.getElementById('nc-rate').value.trim();
+  p[name].driversLicense=document.getElementById('nc-dl').value.trim();
+  p[name].ssn=document.getElementById('nc-ssn').value.trim();
   p[name].phone=document.getElementById('nc-phone').value.trim();p[name].clientEmail=document.getElementById('nc-cemail').value.trim();
   p[name].street=document.getElementById('nc-street').value.trim();
   p[name].city=document.getElementById('nc-city').value.trim();
@@ -2647,7 +2664,7 @@ function showNewCaregiverForm(){
   document.getElementById('cgFormWrap').style.display='block';
   document.getElementById('cgFormTitle').textContent='New Caregiver';
   document.getElementById('cg-editing-id').value='';
-  ['cg-first','cg-middle','cg-last','cg-nickname','cg-phone','cg-email','cg-street','cg-city','cg-state','cg-zip','cg-county','cg-hire','cg-pay','cg-hours','cg-certs','cg-ec-name','cg-ec-phone','cg-notes'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  ['cg-first','cg-middle','cg-last','cg-nickname','cg-phone','cg-email','cg-dl','cg-ssn','cg-street','cg-city','cg-state','cg-zip','cg-county','cg-hire','cg-pay','cg-hours','cg-certs','cg-ec-name','cg-ec-phone','cg-notes'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('cg-status').value='active';document.getElementById('cg-emptype').value='full-time';
   document.getElementById('cgDeleteBtn').style.display='none';
   var cgDocSec=document.getElementById('cgDocsSection');if(cgDocSec)cgDocSec.style.display='none';
@@ -2667,6 +2684,8 @@ function editCaregiver(id){
   document.getElementById('cg-nickname').value=cg.nickname||'';
   document.getElementById('cg-phone').value=cg.phone||'';
   document.getElementById('cg-email').value=cg.email||'';
+  var cgDlEl=document.getElementById('cg-dl');if(cgDlEl)cgDlEl.value=cg.driversLicense||'';
+  var cgSsnEl=document.getElementById('cg-ssn');if(cgSsnEl)cgSsnEl.value=cg.ssn||'';
   document.getElementById('cg-street').value=cg.street||cg.address||'';
   document.getElementById('cg-city').value=cg.city||'';
   document.getElementById('cg-state').value=cg.state||'';
@@ -2694,6 +2713,8 @@ function saveCaregiver(){
   cgs[id]={name:name,firstName:first,middleName:middle,lastName:last,nickname:nickname,
     status:document.getElementById('cg-status').value,phone:document.getElementById('cg-phone').value,
     email:document.getElementById('cg-email').value,
+    driversLicense:(document.getElementById('cg-dl')||{}).value||'',
+    ssn:(document.getElementById('cg-ssn')||{}).value||'',
     street:document.getElementById('cg-street').value,
     city:document.getElementById('cg-city').value,
     state:document.getElementById('cg-state').value,
@@ -2925,6 +2946,8 @@ function renderCgInfoPane(){
 
   mkF('cgi-phone','Phone',cg.phone,false);
   mkF('cgi-email','Email',cg.email,false);
+  mkF('cgi-dl',"Driver's License #",cg.driversLicense,false);
+  mkF('cgi-ssn','Social Security #',cg.ssn,false);
   mkF('cgi-street','Street',cg.street||cg.address,true);
   mkRow('<div class="info-field"><label>City</label><input id="cgi-city" value="'+esc(cg.city||'')+'"></div>'+
     '<div class="info-field"><label>State</label><input id="cgi-state" value="'+esc(cg.state||'')+'"></div>');
@@ -2962,6 +2985,8 @@ function saveCgInfoPane(){
   cg.nickname=document.getElementById('cgi-nickname').value;
   cg.status=document.getElementById('cgi-status').value;
   cg.phone=document.getElementById('cgi-phone').value;cg.email=document.getElementById('cgi-email').value;
+  var cgiDl=document.getElementById('cgi-dl');if(cgiDl)cg.driversLicense=cgiDl.value;
+  var cgiSsn=document.getElementById('cgi-ssn');if(cgiSsn)cg.ssn=cgiSsn.value;
   cg.street=document.getElementById('cgi-street').value;cg.city=document.getElementById('cgi-city').value;
   cg.state=document.getElementById('cgi-state').value;cg.zip=document.getElementById('cgi-zip').value;cg.county=document.getElementById('cgi-county').value;
   cg.hireDate=document.getElementById('cgi-hire').value;cg.emptype=document.getElementById('cgi-emptype').value;
