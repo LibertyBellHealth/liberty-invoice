@@ -985,7 +985,11 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
         <button class="btn btn-secondary" onclick="document.getElementById('importFile').click()">Import Clients from File</button>
         <input type="file" id="importFile" accept=".json" style="display:none;" onchange="importProfiles(event)">
       </div>
-      <p style="font-size:11px;color:#8ca0b4;margin-top:10px;">JSON: full backup for re-import. Excel: spreadsheet of all client/invoice data. PDFs: ZIP file with one folder per client containing their generated invoice PDFs.</p>
+      <p style="font-size:11px;color:#8ca0b4;margin-top:10px;line-height:1.6;">
+        <b>JSON</b>: full backup for re-import. <span style="color:#a05000;">Includes plaintext SSN — store securely.</span><br>
+        <b>Excel</b>: spreadsheet of all client/invoice/caregiver data. <span style="color:#1e7e34;">SSN auto-masked to last 4 digits.</span><br>
+        <b>PDFs</b>: ZIP with one folder per client containing their invoice PDFs (no SSN — invoices don't include SSN by design).
+      </p>
     </div>
 
     <div class="settings-section">
@@ -4014,6 +4018,13 @@ function exportClientsXLSX(){
   if(!Object.keys(profiles).length){alert('No clients yet.');return;}
 
   // Sheet 1: Clients
+  // Mask SSN to last 4 digits (PII safety in exports)
+  function maskSSN(ssn){
+    if(!ssn)return '';
+    var digits=String(ssn).replace(/\D/g,'');
+    if(digits.length<4)return '***-**-****';
+    return '***-**-'+digits.slice(-4);
+  }
   var clientsRows=Object.keys(profiles).map(function(name){
     var p=profiles[name];
     var cg=caregivers[p.caregiverId]||{};
@@ -4024,6 +4035,10 @@ function exportClientsXLSX(){
       'Medicaid ID':p.medicaidId||'',
       'Status':p.status||'active',
       'Hourly Pay Rate':p.hourlyRate||'',
+      "Driver's License":p.driversLicense||'',
+      'SSN (masked)':maskSSN(p.ssn),
+      'Service Start':p.startDate||'',
+      'Live-In':p.liveIn?'Yes':'',
       'Street':p.street||'','City':p.city||'','State':p.state||'','Zip':p.zip||'','County':p.county||'',
       'Caregiver':cg.name||'',
       'Caseworker':cw.name||'',
@@ -4051,10 +4066,10 @@ function exportClientsXLSX(){
       });
     });
   });
-  // Sheet 3: Caregivers
+  // Sheet 3: Caregivers (SSN masked to last 4)
   var caregiversRows=Object.keys(caregivers).map(function(id){
     var c=caregivers[id];
-    return {'ID':id,'Name':c.name||'','First':c.firstName||'','Last':c.lastName||'','Status':c.status||'','Role':c.emptype||'','Phone':c.phone||'','Email':c.email||'','Hire Date':c.hireDate||'','Notes':(c.notes||'').slice(0,500)};
+    return {'ID':id,'Name':c.name||'','First':c.firstName||'','Last':c.lastName||'','Status':c.status||'','Role':c.emptype||'','Phone':c.phone||'','Email':c.email||'',"Driver's License":c.driversLicense||'','SSN (masked)':maskSSN(c.ssn),'Hire Date':c.hireDate||'','Notes':(c.notes||'').slice(0,500)};
   });
   // Sheet 4: Caseworkers
   var caseworkersRows=caseworkers.map(function(c){
