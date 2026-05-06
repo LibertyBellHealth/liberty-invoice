@@ -987,7 +987,7 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed #e1e5ea;">
         <button class="btn btn-primary" onclick="backupToOneDrive()" id="oneDriveBackupBtn">☁ Backup to OneDrive Now</button>
-        <span style="font-size:11px;color:#8ca0b4;align-self:center;line-height:1.5;">Auto-backs up <b>weekly</b> on first sign-in. Keeps 12 most recent (~3 months). Saves to <b>OneDrive / Liberty Home Care Backups /</b></span>
+        <span style="font-size:11px;color:#8ca0b4;align-self:center;line-height:1.5;">Auto-backs up <b>weekly</b> on first sign-in. Keeps 26 most recent (~6 months). Saves to <b>OneDrive / Liberty Home Care Backups /</b></span>
       </div>
       <p style="font-size:11px;color:#8ca0b4;margin-top:10px;line-height:1.6;">
         <b>JSON</b>: backup for re-import. <span style="color:#1e7e34;">SSN masked by default</span> — opt in to "Include Full SSN" if you need to preserve them across a restore.<br>
@@ -4030,7 +4030,7 @@ function exportProfiles(){
 //  Fires once per 7 days on first sign-in, silently uploads to
 //  /Liberty Home Care Backups/. Keeps 12 most recent (auto-deletes older).
 // ──────────────────────────────────────────────────────────────────
-var ONEDRIVE_BACKUP_RETENTION=12;          // keep 12 weekly backups (~3 months)
+var ONEDRIVE_BACKUP_RETENTION=26;          // keep 26 weekly backups (~6 months)
 var ONEDRIVE_BACKUP_INTERVAL_DAYS=7;
 function _msSinceLastBackup(){
   var last=localStorage.getItem('lhca_last_onedrive_backup');
