@@ -1477,7 +1477,7 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
   </div>
 </div>
 
-<!-- TASK EDIT MODAL — used for both editing tasks and creating follow-ups -->
+<!-- TASK EDIT MODAL — used for editing, creating follow-ups, and adding tasks -->
 <div class="modal-overlay" id="taskEditModal">
   <div class="modal-box">
     <h3 id="taskEditTitle">Edit Task</h3>
@@ -1485,7 +1485,9 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
     <label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Task name</label>
     <input id="taskEditName" type="text" placeholder="What needs to be done?" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:14px;font-family:Arial,sans-serif;outline:none;box-sizing:border-box;margin-bottom:12px;">
     <label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Due date <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#8ca0b4;">(optional)</span></label>
-    <input id="taskEditDue" type="date" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;outline:none;box-sizing:border-box;">
+    <input id="taskEditDue" type="date" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:12px;">
+    <label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Note <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#8ca0b4;">(optional)</span></label>
+    <textarea id="taskEditNote" rows="3" placeholder="Any details or context…" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;box-sizing:border-box;resize:vertical;"></textarea>
     <div class="modal-row" style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
       <button class="btn btn-secondary" id="taskEditCancelBtn">Cancel</button>
       <button class="btn btn-primary" id="taskEditSaveBtn">Save</button>
@@ -3652,7 +3654,7 @@ function addTodo(){
   renderTodos();updateTaskBadge();
 }
 // Add a follow-up task that comes AFTER an existing task (linked via parentId)
-// Generic show task edit/create modal — used for both editing and creating follow-ups
+// Generic show task edit/create modal — handles name, due date, and note
 function showTaskEditModal(opts){
   opts=opts||{};
   var modal=document.getElementById('taskEditModal');
@@ -3660,8 +3662,10 @@ function showTaskEditModal(opts){
   document.getElementById('taskEditSubtitle').textContent=opts.subtitle||'';
   var nameInp=document.getElementById('taskEditName');
   var dueInp=document.getElementById('taskEditDue');
+  var noteInp=document.getElementById('taskEditNote');
   nameInp.value=opts.name||'';
   dueInp.value=opts.due||'';
+  noteInp.value=opts.note||'';
   var saveBtn=document.getElementById('taskEditSaveBtn');
   var cancelBtn=document.getElementById('taskEditCancelBtn');
   saveBtn.textContent=opts.okText||'Save';
@@ -3671,16 +3675,15 @@ function showTaskEditModal(opts){
   cancelBtn.parentNode.replaceChild(newCancel,cancelBtn);
   newSave.addEventListener('click',function(){
     var name=(nameInp.value||'').trim();if(!name){nameInp.focus();return;}
-    var due=dueInp.value||'';
     modal.classList.remove('open');
-    if(typeof opts.onSave==='function')opts.onSave({name:name,due:due});
+    if(typeof opts.onSave==='function')opts.onSave({name:name,due:dueInp.value||'',note:(noteInp.value||'').trim()});
   });
   newCancel.addEventListener('click',function(){modal.classList.remove('open');});
   modal.classList.add('open');
   setTimeout(function(){nameInp.focus();nameInp.select();},50);
 }
 
-// Edit an existing task's name + due date
+// Edit an existing task — name, due date, and note all in one modal
 function editTodoTask(id){
   var todos=getTodos();var t=todos.find(function(x){return String(x.id)===String(id);});if(!t)return;
   showTaskEditModal({
@@ -3688,10 +3691,11 @@ function editTodoTask(id){
     subtitle:t.parentId?'(follow-up task)':'',
     name:t.text||'',
     due:t.due||'',
+    note:t.note||'',
     okText:'Save Changes',
     onSave:function(vals){
       var todos2=getTodos();var t2=todos2.find(function(x){return String(x.id)===String(id);});if(!t2)return;
-      t2.text=vals.name;t2.due=vals.due||'';
+      t2.text=vals.name;t2.due=vals.due||'';t2.note=vals.note||'';
       saveTodos(todos2);saveTaskAPI(t2);renderTodos();updateTaskBadge();
     }
   });
@@ -3704,11 +3708,12 @@ function addFollowUpTask(parentId){
     subtitle:'Comes after: '+parent.text,
     name:'',
     due:'',
+    note:'',
     okText:'Add Follow-up',
     onSave:function(vals){
       var todos2=getTodos();
       var idx=todos2.findIndex(function(x){return String(x.id)===String(parentId);});
-      var newTask={id:todoId(),text:vals.name,client:parent.client||'',due:vals.due||'',note:'',parentId:String(parentId),done:false,created:new Date().toLocaleString()};
+      var newTask={id:todoId(),text:vals.name,client:parent.client||'',due:vals.due||'',note:vals.note||'',parentId:String(parentId),done:false,created:new Date().toLocaleString()};
       if(idx>=0)todos2.splice(idx+1,0,newTask);else todos2.unshift(newTask);
       saveTodos(todos2);saveTaskAPI(newTask);renderTodos();updateTaskBadge();
     }
@@ -3754,10 +3759,11 @@ function addTaskForClient(clientName){
     subtitle:'For client: '+clientName,
     name:'',
     due:'',
+    note:'',
     okText:'Add Task',
     onSave:function(vals){
       var todos=getTodos();
-      todos.unshift({id:todoId(),text:vals.name,client:clientName,due:vals.due||'',note:'',done:false,created:new Date().toLocaleString()});
+      todos.unshift({id:todoId(),text:vals.name,client:clientName,due:vals.due||'',note:vals.note||'',done:false,created:new Date().toLocaleString()});
       saveTodos(todos);saveTaskAPI(todos[0]);updateTaskBadge();
       renderOverviewPane();
       logActivity('client','Task added for '+clientName+': '+vals.name);
@@ -3818,9 +3824,8 @@ function renderTodos(filterClient){
               (!filterClient&&t.client?'<span class="todo-link" onclick="navDetail(\''+esc(t.client)+'\')">'+esc(t.client)+'</span>':'')+
             '</div>'+
           '</div>'+
-          '<button class="btn btn-secondary btn-sm" onclick="editTodoTask(\''+t.id+'\')" style="padding:3px 7px;font-size:11px;" title="Edit task name + due date">Edit</button>'+
+          '<button class="btn btn-secondary btn-sm" onclick="editTodoTask(\''+t.id+'\')" style="padding:3px 7px;font-size:11px;" title="Edit task name, due date, or note">Edit</button>'+
           '<button class="btn btn-secondary btn-sm" onclick="addFollowUpTask(\''+(isFollowUp?(t.parentId||t.id):t.id)+'\')" style="padding:3px 7px;font-size:11px;" title="Add a follow-up that comes after this one">+ Follow-up</button>'+
-          '<button class="btn btn-secondary btn-sm" onclick="editTodoNote(\''+t.id+'\')" style="padding:3px 7px;font-size:11px;" title="Add a note to this task">Note</button>'+
           '<button class="btn btn-danger btn-sm" onclick="deleteTodo(\''+t.id+'\')" style="padding:3px 7px;font-size:11px;">Remove</button>';
         return item;
       }
