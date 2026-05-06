@@ -248,6 +248,14 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 .tt td.mc.on .box::after{transform:rotate(-45deg);}
 .tt tr.inactive td.mc{cursor:default;}
 .allrow{background:#ddeeff;}
+/* DB sync-in-progress banner — top of page during initial DB load */
+.db-sync-banner{display:none;position:fixed;top:0;left:0;right:0;z-index:9998;background:linear-gradient(90deg,#fff8e1,#fff3cd);color:#856404;padding:8px 16px;font-family:Arial,sans-serif;font-size:13px;border-bottom:1px solid #ffeaa7;box-shadow:0 2px 6px rgba(0,0,0,0.08);text-align:center;}
+.db-sync-banner .spin{display:inline-block;animation:dbSpin 1s linear infinite;margin-right:6px;}
+@keyframes dbSpin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
+body.db-syncing .db-sync-banner{display:block;}
+/* Disable all "Add" buttons during sync; UX hint via cursor + opacity */
+body.db-syncing button.btn-add-during-sync,
+body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-allowed!important;pointer-events:none!important;}
 /* Per-row All-button column — screen only, hidden in print/PDF */
 .tt th.all-col,.tt td.all-col{width:38px;background:#f4f8fc;text-align:center;padding:1px;}
 @media print{.tt th.all-col,.tt td.all-col{display:none!important;}}
@@ -577,6 +585,8 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
+<!-- DB sync-in-progress banner (auto-shown by body.db-syncing class) -->
+<div class="db-sync-banner" id="dbSyncBanner"><span class="spin">⟳</span> Syncing with database… Adding new clients/caseworkers/caregivers is paused until sync finishes (typically 5–15 sec on warm DB, up to 90 sec on cold start).</div>
 
 <!-- ===== LOGIN WALL (shown until MSAL confirms authenticated) ===== -->
 <div id="loginWall" style="position:fixed;inset:0;z-index:99999;background:#1a2b45;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;">
@@ -634,7 +644,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
           <input id="globalSearch" class="global-search" placeholder="Search clients, invoices, tasks…" oninput="runGlobalSearch(this.value)" onkeydown="if(event.key==='Escape')closeGlobalSearch()">
           <div class="global-results" id="globalResults" style="display:none;"></div>
         </div>
-        <button class="btn btn-primary" onclick="navNewClient()">+ New Client</button>
+        <button class="btn btn-primary" data-sync-disable="1" onclick="navNewClient()">+ New Client</button>
       </div>
     </div>
 
@@ -803,7 +813,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
           <div class="dashboard-sub">Employment records and client assignments</div>
         </div>
         <div class="dashboard-actions">
-          <button class="btn btn-primary" onclick="showNewCaregiverForm()">+ New Caregiver</button>
+          <button class="btn btn-primary" data-sync-disable="1" onclick="showNewCaregiverForm()">+ New Caregiver</button>
         </div>
       </div>
       <div class="client-table-wrap" style="margin-top:16px;">
@@ -1012,7 +1022,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
           <div class="dashboard-sub">Manage caseworkers and their client assignments.</div>
         </div>
         <div class="dashboard-actions">
-          <button class="btn btn-primary" onclick="showCaseworkerForm()">+ Add Caseworker</button>
+          <button class="btn btn-primary" data-sync-disable="1" onclick="showCaseworkerForm()">+ Add Caseworker</button>
         </div>
       </div>
       <div class="client-table-wrap" style="margin-top:16px;">
@@ -4981,8 +4991,22 @@ function updateAuthUI(on) {
   updateSettingsAuth();
 }
 
+// ── DB sync-state tracker — disables Add buttons during initial load ──
+window._dbSyncPending=0;
+function syncStart(){
+  window._dbSyncPending++;
+  document.body.classList.add('db-syncing');
+}
+function syncEnd(){
+  window._dbSyncPending=Math.max(0,window._dbSyncPending-1);
+  if(window._dbSyncPending===0){
+    document.body.classList.remove('db-syncing');
+  }
+}
+
 // ── LOAD all clients + invoices from Azure SQL ───────────────
 function loadProfilesAPI() {
+  syncStart(); // primary clients+invoices load
   fetch(API_BASE + '/homecare-clients', { headers: apiHeaders() })
     .then(function (r) { return r.json(); })
     .then(function (clients) {
@@ -5027,9 +5051,10 @@ function loadProfilesAPI() {
         var now = new Date().toLocaleString(); localStorage.setItem('lhca_last_synced', now);
         renderSidebarClients(); renderClientTable(); updateStats();
         if (document.getElementById('lastSyncedLabel')) document.getElementById('lastSyncedLabel').textContent = 'Last synced: ' + now;
-      });
+        syncEnd(); // primary load complete
+      }).catch(function(e){console.error('Load invoices error:',e);syncEnd();});
     })
-    .catch(function (e) { console.error('Load error:', e); renderSidebarClients(); renderClientTable(); updateStats(); });
+    .catch(function (e) { console.error('Load error:', e); renderSidebarClients(); renderClientTable(); updateStats(); syncEnd(); });
 
   // Also load caregivers, caseworkers, tasks, and signatures from API
   loadCaregiversAPI();
@@ -5116,6 +5141,7 @@ function deleteInvoiceAPI(dbId, clientName, billingPeriod) {
 
 // ── CAREGIVERS API ───────────────────────────────────────────
 function loadCaregiversAPI() {
+  syncStart();
   fetch(API_BASE + '/caregivers', { headers: apiHeaders() })
     .then(function (r) { return r.json(); })
     .then(function (cgs) {
@@ -5130,7 +5156,8 @@ function loadCaregiversAPI() {
         };
       });
       if (Object.keys(obj).length) saveCaregiversLS(obj);
-    }).catch(function (e) { console.error('Load caregivers error:', e); });
+      syncEnd();
+    }).catch(function (e) { console.error('Load caregivers error:', e); syncEnd(); });
 }
 function saveCaregiverAPI(id, cg) {
   fetch(API_BASE + '/caregivers', {
@@ -5188,6 +5215,7 @@ function deleteTaskAPI(dbId) {
 function getCaseworkers(){try{return JSON.parse(localStorage.getItem('lhca_caseworkers')||'[]');}catch(e){return[];}}
 function saveCaseworkersLS(arr){localStorage.setItem('lhca_caseworkers',JSON.stringify(arr));}
 function loadCaseworkersAPI(){
+  syncStart();
   return fetch(API_BASE + '/caseworkers', { headers: apiHeaders() })
     .then(function(r){ return r.json(); })
     .then(function(rows){
@@ -5199,8 +5227,9 @@ function loadCaseworkersAPI(){
       });
       saveCaseworkersLS(arr);
       if (typeof renderCaseworkerList === 'function' && document.getElementById('cwList')) renderCaseworkerList();
+      syncEnd();
     })
-    .catch(function(e){ console.error('Load caseworkers error:', e); });
+    .catch(function(e){ console.error('Load caseworkers error:', e); syncEnd(); });
 }
 function saveCaseworkerAPI(cw){
   return fetch(API_BASE + '/caseworkers', {
