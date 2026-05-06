@@ -4040,21 +4040,38 @@ function _msSinceLastBackup(){
 async function maybeAutoBackupOneDrive(){
   if(!spToken)return; // not signed in yet
   if(window._onedriveAutoRunning)return;
+  // Wait for DB sync to finish — empty localStorage right after sign-in is normal
+  // until loadProfilesAPI completes. Poll up to 60 seconds.
+  var waitedMs=0;
+  while((window._dbSyncPending>0||!Object.keys(getProfiles()).length)&&waitedMs<60000){
+    await new Promise(function(r){setTimeout(r,1000);});
+    waitedMs+=1000;
+  }
+  // If still no clients after 60s, there genuinely is nothing to back up — skip silently
+  if(!Object.keys(getProfiles()).length){
+    console.log('[OneDrive backup] Skipped — no clients to back up.');
+    return;
+  }
   var failed=localStorage.getItem('lhca_onedrive_backup_failed')==='1';
   var ms=_msSinceLastBackup();
   var dueByTime=ms>=ONEDRIVE_BACKUP_INTERVAL_DAYS*24*60*60*1000;
   if(!dueByTime&&!failed)return;
-  if(failed){renderOneDriveBackupBanner('failed');}
-  else{renderOneDriveBackupBanner('running');}
   window._onedriveAutoRunning=true;
   try{
     await doBackupToOneDrive(false,/*silent=*/true);
     localStorage.setItem('lhca_last_onedrive_backup',new Date().toISOString());
     localStorage.removeItem('lhca_onedrive_backup_failed');
+    localStorage.removeItem('lhca_onedrive_backup_failed_msg');
     await pruneOldOneDriveBackups();
     renderOneDriveBackupBanner('done');
   }catch(e){
     console.error('Auto-backup failed:',e);
+    // Soft-skip "No clients yet" — it's not really a failure
+    if(/no clients yet/i.test(e.message||'')){
+      console.log('[OneDrive backup] No clients to back up — skipping silently.');
+      window._onedriveAutoRunning=false;
+      return;
+    }
     localStorage.setItem('lhca_onedrive_backup_failed','1');
     localStorage.setItem('lhca_onedrive_backup_failed_msg',e.message||'unknown error');
     renderOneDriveBackupBanner('failed');
@@ -4084,6 +4101,12 @@ function renderOneDriveBackupBanner(state){
 }
 async function retryOneDriveBackup(){
   var b=document.getElementById('odBackupBanner');if(b)b.remove();
+  // Clear stale "no clients yet" failure (it's no longer a failure)
+  var msg=(localStorage.getItem('lhca_onedrive_backup_failed_msg')||'');
+  if(/no clients yet/i.test(msg)){
+    localStorage.removeItem('lhca_onedrive_backup_failed');
+    localStorage.removeItem('lhca_onedrive_backup_failed_msg');
+  }
   await maybeAutoBackupOneDrive();
 }
 
