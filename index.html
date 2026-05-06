@@ -1369,6 +1369,7 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
     <div style="display:flex;gap:0;margin-bottom:10px;border:1px solid #d0d8e4;border-radius:6px;overflow:hidden;">
       <button id="sigTabDraw" onclick="switchSigTab('draw')" style="flex:1;padding:7px;border:none;background:#1a2b45;color:#fff;font-size:13px;cursor:pointer;font-family:Arial,sans-serif;">Draw</button>
       <button id="sigTabType" onclick="switchSigTab('type')" style="flex:1;padding:7px;border:none;background:#f0f3f7;color:#1a2b45;font-size:13px;cursor:pointer;font-family:Arial,sans-serif;">Type Name</button>
+      <button id="sigTabUpload" onclick="switchSigTab('upload')" style="flex:1;padding:7px;border:none;background:#f0f3f7;color:#1a2b45;font-size:13px;cursor:pointer;font-family:Arial,sans-serif;">Upload</button>
     </div>
     <!-- Draw tab -->
     <div id="sigPaneDraw">
@@ -1400,6 +1401,22 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
       <canvas id="sigTypeCanvas" width="390" height="80" style="border:1px solid #d0d8e4;border-radius:4px;background:#fff;display:block;width:100%;"></canvas>
       <div class="sig-row">
         <button class="btn btn-primary" onclick="confirmTypedSig()">Save Signature</button>
+        <button class="btn btn-secondary" onclick="closeSigModal()">Cancel</button>
+      </div>
+    </div>
+    <!-- Upload tab -->
+    <div id="sigPaneUpload" style="display:none;">
+      <p style="font-size:12px;color:#5a7296;margin:0 0 6px;">Upload an image of your signature (PNG, JPG). Whitespace and signature lines are auto-removed.</p>
+      <label for="sigUploadFile" style="display:block;padding:18px;border:2px dashed #d0d8e4;border-radius:6px;background:#f7faff;text-align:center;cursor:pointer;font-size:13px;color:#5a7296;margin-bottom:10px;">
+        <span id="sigUploadHint">Click to choose file or drag &amp; drop</span>
+        <input type="file" id="sigUploadFile" accept="image/*" onchange="handleSigUpload(event)" style="display:none;">
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#5a7296;margin-bottom:8px;cursor:pointer;">
+        <input type="checkbox" id="sigUploadRemoveLine" checked onchange="rerenderSigUpload()" style="margin:0;"> Auto-remove horizontal lines (signature lines)
+      </label>
+      <canvas id="sigUploadCanvas" width="390" height="80" style="border:1px solid #d0d8e4;border-radius:4px;background:#fff;display:block;width:100%;max-height:120px;object-fit:contain;"></canvas>
+      <div class="sig-row">
+        <button class="btn btn-primary" onclick="confirmUploadedSig()">Save Signature</button>
         <button class="btn btn-secondary" onclick="closeSigModal()">Cancel</button>
       </div>
     </div>
@@ -3023,6 +3040,11 @@ function doDeleteSig(idOrIdx){
 function openAddSigModal(){
   document.getElementById('sigLabel').value='';
   var tn=document.getElementById('sigTypeName');if(tn)tn.value='';
+  // Reset upload state
+  window._sigUploadOriginal=null;window._sigUploadProcessed=null;
+  var uf=document.getElementById('sigUploadFile');if(uf)uf.value='';
+  var uh=document.getElementById('sigUploadHint');if(uh)uh.textContent='Click to choose file or drag & drop';
+  var uc=document.getElementById('sigUploadCanvas');if(uc){var uctx=uc.getContext('2d');uctx.clearRect(0,0,uc.width,uc.height);uctx.fillStyle='#fff';uctx.fillRect(0,0,uc.width,uc.height);}
   document.getElementById('sigModal').classList.add('open');
   if(!sigCanvas)initSigCanvas();
   clearSigPad();
@@ -4851,12 +4873,110 @@ function changeSignature(){placeSignature(1);}// Alias for topbar button
 
 // ── Signature modal tab switching ────────────────────────────────
 function switchSigTab(tab){
-  var isDraw=(tab==='draw');
-  document.getElementById('sigPaneDraw').style.display=isDraw?'':'none';
-  document.getElementById('sigPaneType').style.display=isDraw?'none':'';
-  document.getElementById('sigTabDraw').style.cssText='flex:1;padding:7px;border:none;cursor:pointer;font-size:13px;font-family:Arial,sans-serif;background:'+(isDraw?'#1a2b45':'#f0f3f7')+';color:'+(isDraw?'#fff':'#1a2b45')+';';
-  document.getElementById('sigTabType').style.cssText='flex:1;padding:7px;border:none;cursor:pointer;font-size:13px;font-family:Arial,sans-serif;background:'+(isDraw?'#f0f3f7':'#1a2b45')+';color:'+(isDraw?'#1a2b45':'#fff')+';';
-  if(!isDraw){previewCursiveSig();}
+  var panes={draw:'sigPaneDraw',type:'sigPaneType',upload:'sigPaneUpload'};
+  var tabs={draw:'sigTabDraw',type:'sigTabType',upload:'sigTabUpload'};
+  Object.keys(panes).forEach(function(k){
+    var p=document.getElementById(panes[k]);if(p)p.style.display=(k===tab?'':'none');
+    var t=document.getElementById(tabs[k]);if(t){
+      var active=(k===tab);
+      t.style.cssText='flex:1;padding:7px;border:none;cursor:pointer;font-size:13px;font-family:Arial,sans-serif;background:'+(active?'#1a2b45':'#f0f3f7')+';color:'+(active?'#fff':'#1a2b45')+';';
+    }
+  });
+  if(tab==='type'){previewCursiveSig();}
+}
+
+// ── Upload signature handling ───────────────────────────────────
+window._sigUploadOriginal=null; // raw uploaded image (HTMLImageElement)
+function handleSigUpload(ev){
+  var file=ev.target.files&&ev.target.files[0];
+  if(!file)return;
+  if(!/^image\//.test(file.type)){alert('Please choose an image file (PNG or JPG).');return;}
+  var hint=document.getElementById('sigUploadHint');if(hint)hint.textContent=file.name;
+  var reader=new FileReader();
+  reader.onload=function(e){
+    var img=new Image();
+    img.onload=function(){window._sigUploadOriginal=img;rerenderSigUpload();};
+    img.onerror=function(){alert('Could not load that image. Try a different file.');};
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// Re-render preview using current settings (line removal toggle)
+function rerenderSigUpload(){
+  var img=window._sigUploadOriginal;if(!img)return;
+  var removeLine=document.getElementById('sigUploadRemoveLine').checked;
+  var c=document.createElement('canvas');c.width=img.width;c.height=img.height;
+  var ctx=c.getContext('2d');
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height); // flatten transparency to white bg
+  ctx.drawImage(img,0,0);
+  if(removeLine)removeHorizontalLinesFromCanvas(c);
+  var trimmed=trimCanvasToContent(c,8);
+  // Draw trimmed result into preview canvas
+  var preview=document.getElementById('sigUploadCanvas');
+  var pctx=preview.getContext('2d');
+  pctx.clearRect(0,0,preview.width,preview.height);
+  pctx.fillStyle='#fff';pctx.fillRect(0,0,preview.width,preview.height);
+  if(trimmed){
+    var pImg=new Image();
+    pImg.onload=function(){
+      // Fit preserving aspect ratio inside 390x80 preview
+      var sx=preview.width/pImg.width,sy=preview.height/pImg.height;
+      var s=Math.min(sx,sy,1);
+      var dw=pImg.width*s,dh=pImg.height*s;
+      pctx.drawImage(pImg,(preview.width-dw)/2,(preview.height-dh)/2,dw,dh);
+      window._sigUploadProcessed=trimmed;
+    };
+    pImg.src=trimmed;
+  } else {
+    pctx.fillStyle='#aaa';pctx.font='12px Arial';
+    pctx.fillText('Image looks empty after processing.',10,40);
+    window._sigUploadProcessed=null;
+  }
+}
+
+// Detect rows that are mostly dark (a horizontal line) and clear them.
+// Used to strip signature lines from scanned signatures.
+function removeHorizontalLinesFromCanvas(c){
+  var ctx=c.getContext('2d'),w=c.width,h=c.height;
+  var data;try{data=ctx.getImageData(0,0,w,h);}catch(e){return;}
+  var px=data.data;
+  // For each row, count dark pixels (R+G+B < 300, alpha > 100)
+  for(var y=0;y<h;y++){
+    var dark=0;
+    for(var x=0;x<w;x++){
+      var i=(y*w+x)*4;
+      if(px[i+3]>100&&(px[i]+px[i+1]+px[i+2])<300)dark++;
+    }
+    // Heuristic: row is a "line" if >=50% of its pixels are dark
+    // AND the row above/below it are NOT both equally dense (so we don't erase real glyph rows)
+    if(dark>=w*0.5){
+      // Erase this row + 2px above/below (typical line is 1-3px tall)
+      for(var dy=-2;dy<=2;dy++){
+        var yy=y+dy;if(yy<0||yy>=h)continue;
+        for(var x2=0;x2<w;x2++){
+          var i2=(yy*w+x2)*4;
+          px[i2]=255;px[i2+1]=255;px[i2+2]=255;px[i2+3]=255;
+        }
+      }
+    }
+  }
+  ctx.putImageData(data,0,0);
+}
+
+function confirmUploadedSig(){
+  var data=window._sigUploadProcessed;
+  if(!data){alert('Please upload an image first.');return;}
+  var label=document.getElementById('sigLabel').value.trim()||'Uploaded Signature';
+  var id=sigId();
+  var sigs=getSigs();sigs.push({id:id,label:label,data:data});saveSigsLS(sigs);
+  if(spToken){
+    fetch(API_BASE+'/signatures',{method:'POST',headers:apiHeaders(),body:JSON.stringify({id:id,label:label,data_url:data})})
+      .catch(function(e){console.error('Sig save error:',e);});
+  }
+  closeSigModal();
+  if(pendingSigTarget!==null){stampSignatureData(pendingSigTarget,data);}
+  if(document.getElementById('page-settings').classList.contains('active'))renderSigSettings();
 }
 
 // ── Cursive typed signature preview ──────────────────────────────
