@@ -15,11 +15,14 @@
   crossOrigin:"anonymous",
   cfg:{connectionString:"InstrumentationKey=5521b7a7-3097-4437-9d50-9b48d102ba6f;IngestionEndpoint=https://centralus-2.in.applicationinsights.azure.com/;LiveEndpoint=https://centralus.livediagnostics.monitor.azure.com/;ApplicationId=092534a1-fc51-4e3e-92ba-b02cd6e4a49f"}
 });
-// Helper: track HIPAA-relevant events with signed-in user context
+// Helper: track HIPAA-relevant events with signed-in user context.
+// Uses AppInsights SDK v3 API (single-arg event with properties merged in).
 function aiTrack(name, props){
   try{
     var ai=window.appInsights;
-    if(ai&&ai.trackEvent){ai.trackEvent({name:name},{user:window._aiUser||'unknown',...(props||{})});}
+    if(!ai||!ai.trackEvent)return;
+    var properties=Object.assign({user:window._aiUser||'unknown'},props||{});
+    ai.trackEvent({name:String(name),properties:properties});
   }catch(e){}
 }
 </script>
@@ -3600,34 +3603,33 @@ function addTodo(){
 }
 // Add a follow-up task that comes AFTER an existing task (linked via parentId)
 function addFollowUpTask(parentId){
-  var todos=getTodos();var parent=todos.find(function(x){return x.id===parentId;});if(!parent)return;
+  var todos=getTodos();var parent=todos.find(function(x){return String(x.id)===String(parentId);});if(!parent)return;
   showPrompt('Follow-up task (will appear under "'+parent.text+'"):','',function(text){
     var t=(text||'').trim();if(!t)return;
     var todos2=getTodos();
-    // Find parent index, insert directly after
-    var idx=todos2.findIndex(function(x){return x.id===parentId;});
-    var newTask={id:todoId(),text:t,client:parent.client||'',due:'',note:'',parentId:parentId,done:false,created:new Date().toLocaleString()};
+    var idx=todos2.findIndex(function(x){return String(x.id)===String(parentId);});
+    var newTask={id:todoId(),text:t,client:parent.client||'',due:'',note:'',parentId:String(parentId),done:false,created:new Date().toLocaleString()};
     if(idx>=0)todos2.splice(idx+1,0,newTask);else todos2.unshift(newTask);
     saveTodos(todos2);saveTaskAPI(newTask);renderTodos();updateTaskBadge();
   },{title:'Add Follow-up Task',okText:'Add'});
 }
 function toggleTodo(id){
-  var todos=getTodos(),t=todos.find(function(x){return x.id===id;});
+  // Use loose equality so legacy numeric IDs from DB still match string IDs from inline onclick
+  var todos=getTodos(),t=todos.find(function(x){return String(x.id)===String(id);});
   if(t){t.done=!t.done;t.doneAt=t.done?new Date().toLocaleString():null;}
   saveTodos(todos);if(t) saveTaskAPI(t);renderTodos();updateTaskBadge();
 }
 function deleteTodo(id){
-  var toDelete=getTodos().find(function(x){return x.id===id;});
+  // Use string-coerced comparison so legacy DB tasks (numeric IDs) match too
+  var toDelete=getTodos().find(function(x){return String(x.id)===String(id);});
   if(!toDelete)return;
-  // Find any follow-ups attached to this task
-  var followUps=getTodos().filter(function(x){return x.parentId===id;});
+  var followUps=getTodos().filter(function(x){return String(x.parentId||'')===String(id);});
   var msg='Remove this task?';
   if(followUps.length)msg='Remove this task AND its '+followUps.length+' follow-up'+(followUps.length>1?'s':'')+'?';
   showConfirm(msg,function(){
-    var idsToRemove={};idsToRemove[id]=true;followUps.forEach(function(t){idsToRemove[t.id]=true;});
-    var remaining=getTodos().filter(function(x){return !idsToRemove[x.id];});
+    var idsToRemove={};idsToRemove[String(id)]=true;followUps.forEach(function(t){idsToRemove[String(t.id)]=true;});
+    var remaining=getTodos().filter(function(x){return !idsToRemove[String(x.id)];});
     saveTodos(remaining);
-    // Delete from DB
     if(toDelete.dbId)deleteTaskAPI(toDelete.dbId);
     followUps.forEach(function(t){if(t.dbId)deleteTaskAPI(t.dbId);});
     renderTodos();updateTaskBadge();
@@ -3761,9 +3763,9 @@ function renderTodos(filterClient){
   }
 }
 function editTodoNote(id){
-  var todos=getTodos(),t=todos.find(function(x){return x.id===id;});if(!t)return;
+  var todos=getTodos(),t=todos.find(function(x){return String(x.id)===String(id);});if(!t)return;
   showPrompt('Note for this task:',t.note||'',function(note){
-    var todos2=getTodos(),t2=todos2.find(function(x){return x.id===id;});if(!t2)return;
+    var todos2=getTodos(),t2=todos2.find(function(x){return String(x.id)===String(id);});if(!t2)return;
     t2.note=note||'';saveTodos(todos2);saveTaskAPI(t2);renderTodos();
   },{title:'Task Note',okText:'Save Note'});
 }
@@ -6119,13 +6121,21 @@ function loadTasksAPI() {
     .then(function (r) { return r.json(); })
     .then(function (tasks) {
       var todos = tasks.map(function (t) {
+        // CRITICAL: id MUST be a string to match the format used by todoId() (e.g. 'td_xxx_yyy').
+        // If id is a number, all task button click handlers (deleteTodo / toggleTodo / etc.)
+        // fail their strict-equality lookup and silently do nothing.
         return {
-          id: t.id, dbId: t.id, text: t.task_text, done: !!t.done,
+          id: String(t.id), dbId: t.id, text: t.task_text, done: !!t.done,
           due: t.due_date ? t.due_date.split('T')[0] : '', client: t.client_name || '',
-          priority: t.priority || 'normal', note: '',
+          priority: t.priority || 'normal', note: t.note || '',
+          parentId: t.parent_id ? String(t.parent_id) : null,
         };
       });
       if (todos.length) saveTodos(todos);
+      // Re-render if user is currently on the tasks page so DB-loaded tasks become clickable
+      if(document.getElementById('page-tasks')&&document.getElementById('page-tasks').classList.contains('active')){
+        renderTodos();updateTaskBadge();
+      }
     }).catch(function (e) { console.error('Load tasks error:', e); });
 }
 function saveTaskAPI(todo) {
