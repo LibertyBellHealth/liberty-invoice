@@ -3184,15 +3184,20 @@ function lookupZip(zipId, cityId, stateId, countyId) {
         var cEl = document.getElementById(cityId); if(cEl) cEl.value = p['place name'] || '';
         var sEl = document.getElementById(stateId); if(sEl) sEl.value = p['state abbreviation'] || '';
         var coEl = document.getElementById(countyId);
-        if(coEl) {
-          fetch('https://geo.fcc.gov/api/census/block/find?format=json&zip='+zip)
+        // FCC block/find requires latitude+longitude; the &zip= variant doesn't work.
+        // Zippopotam already gave us lat/lon so we use that.
+        if (coEl && p.latitude && p.longitude) {
+          fetch('https://geo.fcc.gov/api/census/block/find?format=json&latitude='+p.latitude+'&longitude='+p.longitude+'&showall=true')
             .then(function(r2){return r2.ok?r2.json():Promise.reject();})
-            .then(function(d2){if(d2&&d2.County&&d2.County.name&&coEl)coEl.value=d2.County.name.replace(' County','');})
-            .catch(function(){});
+            .then(function(d2){
+              var countyName = d2 && d2.County && d2.County.name;
+              if (countyName && coEl) coEl.value = countyName.replace(/ County$/i,'').trim();
+            })
+            .catch(function(e){console.warn('County lookup failed:',e);});
         }
       }
     })
-    .catch(function(){});
+    .catch(function(e){console.warn('ZIP lookup failed:',e);});
 }
 
 // ============================================================
