@@ -795,9 +795,10 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
       </div>
       <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Assignments</div>
       <div class="ff"><label>Assigned Caregiver</label><select id="nc-caregiver"><option value="">— None assigned —</option></select></div>
+      <div class="ff"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="nc-live-in" style="width:14px;height:14px;cursor:pointer;"> Live-In Caregiver <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(caregiver lives with this client)</span></label></div>
       <div class="ff" style="position:relative;">
         <label>Caseworker</label>
-        <input id="nc-worker-search" placeholder="Search by name…" maxlength="80" autocomplete="off" oninput="cwSearch(this,'nc-worker-val','nc-worker-drop')" onblur="setTimeout(function(){var d=document.getElementById('nc-worker-drop');if(d)d.style.display='none';},200)">
+        <input id="nc-worker-search" placeholder="Click to browse, or type to search…" maxlength="80" autocomplete="off" oninput="cwSearch(this,'nc-worker-val','nc-worker-drop')" onfocus="cwSearch(this,'nc-worker-val','nc-worker-drop')" onblur="setTimeout(function(){var d=document.getElementById('nc-worker-drop');if(d)d.style.display='none';},200)">
         <input type="hidden" id="nc-worker-val">
         <div id="nc-worker-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>
       </div>
@@ -2085,7 +2086,7 @@ function renderInfoPane(){
   dCg.innerHTML='<label>Assigned Caregiver</label>'+
     '<div style="display:flex;align-items:center;gap:6px;position:relative;">'+
       '<div style="flex:1;position:relative;">'+
-        '<input id="ei-caregiver-search" placeholder="Search caregiver…" maxlength="80" autocomplete="off" value="'+esc(cgName)+'" oninput="cgSearch(this,\'ei-caregiver-val\',\'ei-caregiver-drop\');unsavedChanges=true;" onblur="setTimeout(function(){var d=document.getElementById(\'ei-caregiver-drop\');if(d)d.style.display=\'none\';},200)" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;">'+
+        '<input id="ei-caregiver-search" placeholder="Click to browse, or type to search…" maxlength="80" autocomplete="off" value="'+esc(cgName)+'" oninput="cgSearch(this,\'ei-caregiver-val\',\'ei-caregiver-drop\');unsavedChanges=true;" onfocus="cgSearch(this,\'ei-caregiver-val\',\'ei-caregiver-drop\')" onblur="setTimeout(function(){var d=document.getElementById(\'ei-caregiver-drop\');if(d)d.style.display=\'none\';},200)" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;">'+
         '<input type="hidden" id="ei-caregiver-val" value="'+esc(prof.caregiverId||'')+'">'+
         '<div id="ei-caregiver-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>'+
       '</div>'+
@@ -2099,13 +2100,18 @@ function renderInfoPane(){
   dCw.innerHTML='<label>Caseworker</label>'+
     '<div style="display:flex;align-items:center;gap:6px;position:relative;">'+
       '<div style="flex:1;position:relative;">'+
-        '<input id="ei-worker-search" placeholder="Search caseworker…" maxlength="80" autocomplete="off" value="'+esc(cwName)+'" oninput="cwSearch(this,\'ei-worker-val\',\'ei-worker-drop\');unsavedChanges=true;" onblur="setTimeout(function(){var d=document.getElementById(\'ei-worker-drop\');if(d)d.style.display=\'none\';},200)" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;">'+
+        '<input id="ei-worker-search" placeholder="Click to browse, or type to search…" maxlength="80" autocomplete="off" value="'+esc(cwName)+'" oninput="cwSearch(this,\'ei-worker-val\',\'ei-worker-drop\');unsavedChanges=true;" onfocus="cwSearch(this,\'ei-worker-val\',\'ei-worker-drop\')" onblur="setTimeout(function(){var d=document.getElementById(\'ei-worker-drop\');if(d)d.style.display=\'none\';},200)" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;">'+
         '<input type="hidden" id="ei-worker-val" value="'+esc(prof.caseworkerId||'')+'">'+
         '<div id="ei-worker-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>'+
       '</div>'+
       (prof.caseworkerId?'<button class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="navCaseworkers();setTimeout(function(){openCwDetail(\''+esc(prof.caseworkerId)+'\');},50)">Open</button>':'')+
     '</div>';
   g.appendChild(dCw);
+
+  // Live-In Caregiver toggle
+  var dLive=document.createElement('div');dLive.className='info-field full';
+  dLive.innerHTML='<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:500;"><input type="checkbox" id="ei-live-in" '+(prof.liveIn?'checked':'')+' onchange="unsavedChanges=true;" style="width:14px;height:14px;cursor:pointer;"> Live-In Caregiver <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(caregiver lives with this client)</span></label>';
+  g.appendChild(dLive);
 }
 function saveClientInfo(){
   if(!activeProfileName)return;
@@ -2127,6 +2133,7 @@ function saveClientInfo(){
   rec.county=document.getElementById('ei-county').value;
   // Searchable autocomplete fields
   var cgValEl=document.getElementById('ei-caregiver-val');rec.caregiverId=cgValEl?cgValEl.value:'';
+  var liveInEl=document.getElementById('ei-live-in');if(liveInEl)rec.liveIn=liveInEl.checked;
   var cwValEl=document.getElementById('ei-worker-val');var cwSearchEl=document.getElementById('ei-worker-search');
   rec.caseworkerId=cwValEl?cwValEl.value:'';rec.worker=cwSearchEl?cwSearchEl.value:'';
   var statusEl=document.getElementById('ei-status');if(statusEl)rec.clientStatus=statusEl.value;
@@ -2481,6 +2488,7 @@ function createClient(){
   p[name].worker=document.getElementById('nc-worker-search').value.trim();
   p[name].caseworkerId=document.getElementById('nc-worker-val').value.trim();
   p[name].caregiverId=document.getElementById('nc-caregiver').value;
+  p[name].liveIn=document.getElementById('nc-live-in').checked;
   p[name].clientStatus=document.getElementById('nc-status').value||'active';
   p[name].hasComplex=false;if(!p[name].tasks)p[name].tasks=captureStates();
   saveProfilesLS(p);saveProfileSP(name,p[name]);logActivity('client','New client added: '+name);navDetail(name);
@@ -2890,9 +2898,10 @@ function renderCgClientsPane(){
     var ini=name.split(' ').map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase();
     var row=document.createElement('div');
     row.style.cssText='display:flex;align-items:center;gap:12px;padding:11px 14px;background:#fff;border:1px solid #e1e5ea;border-radius:8px;margin-bottom:8px;cursor:pointer;transition:border-color 0.15s;max-width:500px;';
+    var liveBadge=prof.liveIn?'<span style="display:inline-block;background:#fff3cd;color:#856404;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;border:1px solid #ffeaa7;margin-left:6px;">LIVE-IN</span>':'';
     row.innerHTML='<div class="cc-avatar" style="width:36px;height:36px;font-size:13px;">'+ini+'</div>'+
       '<div style="flex:1;min-width:0;">'+
-        '<div style="font-size:13px;font-weight:600;color:#1a2b45;">'+esc(name)+'</div>'+
+        '<div style="font-size:13px;font-weight:600;color:#1a2b45;">'+esc(name)+liveBadge+'</div>'+
         '<div style="font-size:11px;color:#6b8dae;">'+(prof.medicaidId||'No Medicaid ID')+(prof.phone?' · '+prof.phone:'')+'</div>'+
       '</div>'+
       '<span style="font-size:11px;color:#185FA5;font-weight:500;">Open →</span>';
@@ -3193,21 +3202,21 @@ function cwSearch(input, hiddenId, dropId) {
   var val = input.value.trim().toLowerCase();
   var drop = document.getElementById(dropId);
   var hidden = document.getElementById(hiddenId);
-  if (!val) { drop.style.display = 'none'; hidden.value = ''; return; }
-  var cws = getCaseworkers();
-  var matches = cws.filter(function(c){ return (c.name||'').toLowerCase().includes(val); });
+  var cws = getCaseworkers().slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
+  // When empty: show ALL caseworkers (scrollable). When typing: filter.
+  var matches = val ? cws.filter(function(c){ return (c.name||'').toLowerCase().includes(val); }) : cws.slice();
   drop.innerHTML = '';
-  matches.slice(0, 8).forEach(function(c) {
+  matches.slice(0, 50).forEach(function(c) {
     var item = document.createElement('div');
     item.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f3f7;';
     item.textContent = c.name + (c.agency ? ' — ' + c.agency : '');
-    item.addEventListener('mousedown', function(e){ e.preventDefault(); input.value = c.name; hidden.value = c.id; drop.style.display = 'none'; });
+    item.addEventListener('mousedown', function(e){ e.preventDefault(); input.value = c.name; if(hidden)hidden.value = c.id; drop.style.display = 'none'; });
     item.addEventListener('mouseover', function(){ this.style.background='#f0f5fb'; });
     item.addEventListener('mouseout', function(){ this.style.background=''; });
     drop.appendChild(item);
   });
-  // "Add new" option if no exact match
-  if (!matches.some(function(c){ return (c.name||'').toLowerCase() === val; })) {
+  // "Add new" option only when typing AND no exact match exists
+  if (val && !matches.some(function(c){ return (c.name||'').toLowerCase() === val; })) {
     var addItem = document.createElement('div');
     addItem.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;color:#185FA5;font-weight:600;';
     addItem.textContent = '+ Add "' + input.value.trim() + '" as new caseworker';
@@ -3219,9 +3228,12 @@ function cwSearch(input, hiddenId, dropId) {
       var newCw = { id: newId, name: newName, first_name: '', last_name: '', agency: '', phone: '', email: '', fax: '', street: '', city: '', state: '', zip: '', county: '', notes: '' };
       var arr = getCaseworkers(); arr.push(newCw); saveCaseworkersLS(arr);
       saveCaseworkerAPI(newCw);
-      hidden.value = newId;
+      if(hidden)hidden.value = newId;
     });
     drop.appendChild(addItem);
+  }
+  if(!matches.length && !val){
+    var noItem=document.createElement('div');noItem.style.cssText='padding:8px 12px;font-size:13px;color:#8ca0b4;';noItem.textContent='No caseworkers yet';drop.appendChild(noItem);
   }
   drop.style.display = 'block';
 }
@@ -3233,11 +3245,13 @@ function cgSearch(input, hiddenId, dropId) {
   var val = input.value.trim().toLowerCase();
   var drop = document.getElementById(dropId);
   var hidden = document.getElementById(hiddenId);
-  if (!val) { drop.style.display = 'none'; if(hidden)hidden.value = ''; return; }
   var cgs = getCaregivers();
-  var matches = Object.keys(cgs).filter(function(id){ return (cgs[id].name||'').toLowerCase().includes(val); });
+  // When empty: show ALL caregivers (scrollable). When typing: filter.
+  var ids = Object.keys(cgs).sort(function(a,b){return (cgs[a].name||'').localeCompare(cgs[b].name||'');});
+  if (val) ids = ids.filter(function(id){ return (cgs[id].name||'').toLowerCase().includes(val); });
   drop.innerHTML = '';
-  matches.slice(0, 8).forEach(function(id) {
+  // Show up to 50 (dropdown is scrollable beyond initial 180px)
+  ids.slice(0, 50).forEach(function(id) {
     var cg = cgs[id];
     var item = document.createElement('div');
     item.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f3f7;';
@@ -3247,14 +3261,16 @@ function cgSearch(input, hiddenId, dropId) {
     item.addEventListener('mouseout', function(){ this.style.background=''; });
     drop.appendChild(item);
   });
-  if (!matches.length) {
+  if (!ids.length) {
     var noItem = document.createElement('div');
     noItem.style.cssText = 'padding:8px 12px;font-size:13px;color:#8ca0b4;';
-    noItem.textContent = 'No caregivers found';
+    noItem.textContent = val ? 'No caregivers found' : 'No caregivers yet';
     drop.appendChild(noItem);
   }
   drop.style.display = 'block';
 }
+// Focus handler — opens the dropdown showing all options
+function cgSearchFocus(input, hiddenId, dropId){ cgSearch(input, hiddenId, dropId); }
 
 // ============================================================
 //  ACTIVITY LOG
@@ -3379,6 +3395,19 @@ function addTodo(){
   if(document.getElementById('todoNote'))document.getElementById('todoNote').value='';
   renderTodos();updateTaskBadge();
 }
+// Add a follow-up task that comes AFTER an existing task (linked via parentId)
+function addFollowUpTask(parentId){
+  var todos=getTodos();var parent=todos.find(function(x){return x.id===parentId;});if(!parent)return;
+  showPrompt('Follow-up task (will appear under "'+parent.text+'"):','',function(text){
+    var t=(text||'').trim();if(!t)return;
+    var todos2=getTodos();
+    // Find parent index, insert directly after
+    var idx=todos2.findIndex(function(x){return x.id===parentId;});
+    var newTask={id:todoId(),text:t,client:parent.client||'',due:'',note:'',parentId:parentId,done:false,created:new Date().toLocaleString()};
+    if(idx>=0)todos2.splice(idx+1,0,newTask);else todos2.unshift(newTask);
+    saveTodos(todos2);saveTaskAPI(newTask);renderTodos();updateTaskBadge();
+  },{title:'Add Follow-up Task',okText:'Add'});
+}
 function toggleTodo(id){
   var todos=getTodos(),t=todos.find(function(x){return x.id===id;});
   if(t){t.done=!t.done;t.doneAt=t.done?new Date().toLocaleString():null;}
@@ -3429,58 +3458,34 @@ function renderTodos(filterClient){
   var oc=document.getElementById('openTaskCount');if(oc)oc.textContent='('+open.length+')';
   var dc=document.getElementById('doneTaskCount');if(dc)dc.textContent='('+done.length+')';
 
-  // OPEN TASKS: show current task fully, collapse rest into a stack indicator
+  // OPEN TASKS — all visible as a flat list (no auto-queue)
   var openC=document.getElementById('todoList');
   if(openC){
     openC.innerHTML='';
     if(!open.length){openC.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:8px 0;">No open tasks.</div>';}
     else {
-      // Current task — fully visible
-      var t=open[0],overdue=t.due&&new Date(t.due)<now;
-      var curr=document.createElement('div');curr.className='todo-item';
-      curr.style.cssText='background:#f5f8fc;border-left:3px solid #185FA5;border-radius:6px;padding:10px 10px;margin-bottom:6px;';
-      curr.innerHTML=
-        '<input type="checkbox" class="todo-cb" onchange="toggleTodo(\''+t.id+'\')" style="margin-top:3px;">'+
-        '<div class="todo-body">'+
-          '<div class="todo-text" style="font-weight:600;">'+esc(t.text)+'</div>'+
-          (t.note?'<div style="font-size:11px;color:#4a6a8a;margin-top:4px;padding:4px 6px;background:#e8f0fb;border-radius:3px;white-space:pre-wrap;">'+esc(t.note)+'</div>':'')+
-          '<div class="todo-meta">'+
-            (t.due?'<span class="'+(overdue?'todo-due-overdue':'')+'">Due: '+t.due+'</span>':'')+
-            (!filterClient&&t.client?'<span class="todo-link" onclick="navDetail(\''+esc(t.client)+'\')">'+esc(t.client)+'</span>':'')+
+      open.forEach(function(t,idx){
+        var overdue=t.due&&new Date(t.due)<now;
+        var item=document.createElement('div');item.className='todo-item';
+        // First task highlighted; follow-up tasks (linked via parentId) indented
+        var isFollowUp=!!t.parentId;
+        item.style.cssText='background:'+(idx===0&&!isFollowUp?'#f5f8fc':'#fff')+';border-left:3px solid '+(isFollowUp?'#b0c8e8':'#185FA5')+';border:1px solid #e1e5ea;border-left-width:3px;border-radius:6px;padding:10px;margin-bottom:6px;'+(isFollowUp?'margin-left:24px;':'');
+        item.innerHTML=
+          '<input type="checkbox" class="todo-cb" onchange="toggleTodo(\''+t.id+'\')" style="margin-top:3px;">'+
+          '<div class="todo-body">'+
+            (isFollowUp?'<div style="font-size:10px;color:#8ca0b4;margin-bottom:2px;">↳ Follow-up</div>':'')+
+            '<div class="todo-text" style="font-weight:600;">'+esc(t.text)+'</div>'+
+            (t.note?'<div style="font-size:11px;color:#4a6a8a;margin-top:4px;padding:4px 6px;background:#e8f0fb;border-radius:3px;white-space:pre-wrap;">'+esc(t.note)+'</div>':'')+
+            '<div class="todo-meta">'+
+              (t.due?'<span class="'+(overdue?'todo-due-overdue':'')+'">Due: '+t.due+'</span>':'')+
+              (!filterClient&&t.client?'<span class="todo-link" onclick="navDetail(\''+esc(t.client)+'\')">'+esc(t.client)+'</span>':'')+
+            '</div>'+
           '</div>'+
-        '</div>'+
-        '<button class="btn btn-secondary btn-sm" onclick="editTodoNote(\''+t.id+'\')" style="padding:3px 7px;font-size:11px;">Note</button>'+
-        '<button class="btn btn-danger btn-sm" onclick="deleteTodo(\''+t.id+'\')" style="padding:3px 7px;font-size:11px;">Remove</button>';
-      openC.appendChild(curr);
-      // Remaining tasks — collapsed stack
-      if(open.length>1){
-        var stack=document.createElement('div');
-        stack.style.cssText='border:1px solid #e1e5ea;border-radius:6px;overflow:hidden;';
-        var stackHeader=document.createElement('div');
-        stackHeader.style.cssText='display:flex;align-items:center;justify-content:space-between;padding:9px 14px;cursor:pointer;font-size:12px;color:#4a6a8a;background:#fafbfc;user-select:none;';
-        stackHeader.innerHTML='<span style="font-weight:600;">'+( open.length-1)+' more task'+(open.length-1>1?'s':'')+' in queue</span><span id="stackToggleArrow" style="font-size:10px;color:#8ca0b4;">Show all</span>';
-        var stackBody=document.createElement('div');
-        stackBody.id='todoStackBody';stackBody.style.display='none';
-        open.slice(1).forEach(function(t2,i){
-          var overdue2=t2.due&&new Date(t2.due)<now;
-          var row=document.createElement('div');
-          row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 14px;border-top:1px solid #f0f3f7;font-size:12px;';
-          row.innerHTML=
-            '<span style="color:#8ca0b4;min-width:18px;font-size:10px;">'+(i+2)+'.</span>'+
-            '<input type="checkbox" class="todo-cb" style="width:13px;height:13px;" onchange="toggleTodo(\''+t2.id+'\')">'+
-            '<span style="flex:1;'+(overdue2?'color:#b03030;font-weight:600;':'color:#1a2b45;')+'">'+esc(t2.text)+'</span>'+
-            (t2.due?'<span style="color:#8ca0b4;font-size:11px;">'+t2.due+'</span>':'')+
-            '<button class="btn btn-danger btn-sm" onclick="deleteTodo(\''+t2.id+'\')" style="padding:2px 6px;font-size:10px;">Remove</button>';
-          stackBody.appendChild(row);
-        });
-        stackHeader.addEventListener('click',function(){
-          var open2=stackBody.style.display==='none';
-          stackBody.style.display=open2?'block':'none';
-          document.getElementById('stackToggleArrow').textContent=open2?'Hide':'Show all';
-        });
-        stack.appendChild(stackHeader);stack.appendChild(stackBody);
-        openC.appendChild(stack);
-      }
+          '<button class="btn btn-secondary btn-sm" onclick="addFollowUpTask(\''+t.id+'\')" style="padding:3px 7px;font-size:11px;" title="Add a follow-up task that comes after this one">+ Follow-up</button>'+
+          '<button class="btn btn-secondary btn-sm" onclick="editTodoNote(\''+t.id+'\')" style="padding:3px 7px;font-size:11px;">Note</button>'+
+          '<button class="btn btn-danger btn-sm" onclick="deleteTodo(\''+t.id+'\')" style="padding:3px 7px;font-size:11px;">Remove</button>';
+        openC.appendChild(item);
+      });
     }
   }
   // DONE TASKS — compact
@@ -5832,9 +5837,27 @@ function renderCwOverviewPane(){
   var pane=document.getElementById('cwpane-overview');
   if(!cw||!pane)return;
   var profiles=getProfiles();
-  var clientCount=Object.keys(profiles).filter(function(k){return profiles[k].worker===cw.name||profiles[k].caseworkerId===cw.id;}).length;
+  var assignedNames=Object.keys(profiles).filter(function(k){return profiles[k].worker===cw.name||profiles[k].caseworkerId===cw.id;}).sort();
   var addrParts=[cw.street,cw.city?(cw.city+(cw.state?' '+cw.state:'')+(cw.zip?' '+cw.zip:'')):''].filter(Boolean);
   var addrStr=addrParts.join(', ');
+  // Build clickable client list
+  var clientListHtml='';
+  if(assignedNames.length){
+    clientListHtml='<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;">'+
+      assignedNames.map(function(name){
+        var p=profiles[name]||{};
+        var st=p.clientStatus||'active';
+        var stColor=st==='active'?'#1e7e34':st==='inactive'?'#888':'#a83232';
+        return '<div onclick="navDetail(\''+esc(name).replace(/'/g,"\\'")+'\')" style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#f7faff;border:1px solid #e1e5ea;border-radius:5px;cursor:pointer;font-size:12px;" onmouseover="this.style.borderColor=\'#b0c8e8\'" onmouseout="this.style.borderColor=\'#e1e5ea\'">'+
+          '<span style="flex:1;color:#185FA5;font-weight:500;">'+esc(name)+'</span>'+
+          (p.medicaidId?'<span style="color:#8ca0b4;">'+esc(p.medicaidId)+'</span>':'')+
+          '<span style="color:'+stColor+';font-size:10px;font-weight:600;text-transform:uppercase;">'+st+'</span>'+
+        '</div>';
+      }).join('')+
+    '</div>';
+  } else {
+    clientListHtml='<div style="font-size:12px;color:#8ca0b4;margin-top:6px;">No clients assigned.</div>';
+  }
   pane.innerHTML='<div class="overview-grid">'+
     '<div class="ov-card"><h4>Contact Info</h4>'+
       (cw.phone?'<div class="ov-row"><span class="ov-label">Phone</span><span class="ov-value">'+esc(cw.phone)+'</span></div>':'')+
@@ -5843,12 +5866,8 @@ function renderCwOverviewPane(){
       (cw.agency?'<div class="ov-row"><span class="ov-label">Agency</span><span class="ov-value">'+esc(cw.agency)+'</span></div>':'')+
       (addrStr?'<div class="ov-row"><span class="ov-label">Address</span><span class="ov-value">'+esc(addrStr)+'</span></div>':'')+
     '</div>'+
-    '<div class="ov-card"><h4>Assigned Clients</h4>'+
-      '<div class="ov-row" style="cursor:pointer;" onclick="switchCwTab(\'clients\')">'+
-        '<span class="ov-label">Clients</span>'+
-        '<span class="ov-value" style="color:#185FA5;font-size:18px;font-weight:700;">'+clientCount+'</span>'+
-      '</div>'+
-      (clientCount?'<button class="btn btn-secondary btn-sm" style="margin-top:8px;" onclick="switchCwTab(\'clients\')">View Clients →</button>':'<div style="font-size:12px;color:#8ca0b4;margin-top:6px;">No clients assigned.</div>')+
+    '<div class="ov-card"><h4>Assigned Clients ('+assignedNames.length+')</h4>'+
+      clientListHtml+
     '</div>'+
   '</div>';
 }
