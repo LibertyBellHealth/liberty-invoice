@@ -6064,6 +6064,58 @@ function openMonthlyInvModal(){
 function closeMonthlyInvModal(){
   var modal=document.getElementById('monthlyInvModal');if(modal)modal.classList.remove('open');
 }
+// Generate the vector PDF for one client's invoice and open in new tab
+async function previewClientInvoice(clientName,period){
+  var prof=getProfiles()[clientName];
+  if(!prof){alert('Client not found.');return;}
+  var inv=(prof.invoices||[]).find(function(i){return i.billingPeriod===period;});
+  if(!inv){alert('No invoice found for '+clientName+' in '+period+'.');return;}
+  // Stage current state so we can restore (loadInvoiceForCapture mutates the form)
+  var savedActive=document.querySelector('.page.active')&&document.querySelector('.page.active').id;
+  var invPage=document.getElementById('page-invoice');
+  // Briefly activate invoice page off-screen to populate data
+  invPage.style.position='fixed';invPage.style.left='-9999px';invPage.style.top='0';invPage.style.zIndex='-1';
+  invPage.classList.add('active');
+  try{
+    await loadInvoiceForCapture(clientName,inv,period);
+    var base64=await captureInvoicePDF();
+    var bin=atob(base64);
+    var bytes=new Uint8Array(bin.length);
+    for(var i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+    var blob=new Blob([bytes],{type:'application/pdf'});
+    var url=URL.createObjectURL(blob);
+    window.open(url,'_blank');
+    // Cleanup blob after a delay so the new tab can render
+    setTimeout(function(){URL.revokeObjectURL(url);},10000);
+  }catch(e){alert('Preview failed: '+e.message);console.error(e);}
+  finally{
+    invPage.classList.remove('active');
+    invPage.style.position='';invPage.style.left='';invPage.style.top='';invPage.style.zIndex='';
+    document.querySelectorAll('.page').forEach(function(el){el.classList.remove('active');});
+    if(savedActive){var p=document.getElementById(savedActive);if(p)p.classList.add('active');}
+  }
+}
+
+// Per-invoice validation — returns array of issue strings (empty = ready)
+function validateInvoiceForSend(name,prof,inv,cwRec){
+  var issues=[];
+  if(!inv)return ['No invoice for this period — fill out the invoice first'];
+  var d=inv.data||{};
+  if(!prof.medicaidId)issues.push('Missing Medicaid ID');
+  if(!cwRec||!cwRec.agency)issues.push('Caseworker has no Agency set (Bill To will be empty)');
+  if(!cwRec||!cwRec.email)issues.push('Caseworker has no email');
+  if(!prof.worker)issues.push('No caseworker assigned');
+  // Total Time HH must be present
+  if(!d.svcHH||String(d.svcHH).trim()===''){
+    // Allow zero-time only if there's at least one task checked in the saved invoice data
+    var hasTask=d.tasks&&d.tasks.svc&&d.tasks.svc.some(function(r){return r&&r.some(function(c){return c;});});
+    if(!hasTask)issues.push('Total Time empty AND no tasks checked');
+    else issues.push('Total Time hours blank');
+  }
+  if(!getSigs().length)issues.push('No signature saved (will export blank)');
+  return issues;
+}
+
 function previewMonthlyInvoices(){
   var period=(document.getElementById('monthlyInvPeriod').value||'').trim();
   if(!period||period.length<7){alert('Enter a billing period in MM/YYYY format.');return;}
@@ -6080,8 +6132,10 @@ function previewMonthlyInvoices(){
     var email=cwRec.email||'';
     groups[wname].email=groups[wname].email||email;
     groups[wname].cwName=wname;
+    groups[wname].cwRec=cwRec;
     var inv=(prof.invoices||[]).find(function(i){return i.billingPeriod===period;})||null;
-    groups[wname].clients.push({name:name,prof:prof,inv:inv});
+    var issues=validateInvoiceForSend(name,prof,inv,cwRec);
+    groups[wname].clients.push({name:name,prof:prof,inv:inv,issues:issues});
   });
   var workerNames=Object.keys(groups).sort();
   if(!workerNames.length){
@@ -6122,11 +6176,30 @@ function previewMonthlyInvoices(){
       var st=c.inv?(c.inv.status||'draft'):'none';
       var stColor=st==='paid'?'#1e7e34':st==='submitted'?'#1565a0':st==='none'?'#b03030':'#888';
       var stLabel=st==='none'?'No invoice':st.charAt(0).toUpperCase()+st.slice(1);
-      html+='<div class="cw-client-row">'+
-        '<span style="flex:1;font-weight:500;color:#1a2b45;">'+esc(c.name)+'</span>'+
-        (c.prof.medicaidId?'<span style="color:#8ca0b4;font-size:11px;margin-right:8px;">ID: '+esc(c.prof.medicaidId)+'</span>':'')+
-        '<span style="font-size:11px;font-weight:600;color:'+stColor+';min-width:90px;text-align:right;">'+stLabel+'</span>'+
-      '</div>';
+      var hasIssues=c.issues&&c.issues.length>0;
+      var issueTitle=hasIssues?c.issues.join('\n• '):'';
+      html+='<div class="cw-client-row" style="display:flex;align-items:center;gap:6px;">';
+      // Warning indicator if validation issues
+      if(hasIssues){
+        html+='<span title="• '+esc(issueTitle)+'" style="color:#c07000;font-size:14px;cursor:help;flex-shrink:0;" aria-label="Has issues">⚠</span>';
+      } else if(c.inv){
+        html+='<span title="Looks complete" style="color:#1e7e34;font-size:13px;flex-shrink:0;">✓</span>';
+      } else {
+        html+='<span style="display:inline-block;width:14px;flex-shrink:0;"></span>';
+      }
+      html+='<span style="flex:1;font-weight:500;color:#1a2b45;">'+esc(c.name)+'</span>'+
+        (c.prof.medicaidId?'<span style="color:#8ca0b4;font-size:11px;margin-right:6px;">ID: '+esc(c.prof.medicaidId)+'</span>':'');
+      // Preview button (only if invoice exists)
+      if(c.inv){
+        html+='<button class="btn btn-secondary btn-sm" style="font-size:10px;padding:2px 8px;margin-right:6px;" onclick=\'previewClientInvoice('+JSON.stringify(c.name)+','+JSON.stringify(period)+')\'>Preview</button>';
+      }
+      html+='<span style="font-size:11px;font-weight:600;color:'+stColor+';min-width:80px;text-align:right;">'+stLabel+'</span>';
+      html+='</div>';
+      // Issues detail line below row when present
+      if(hasIssues){
+        html+='<div style="font-size:10px;color:#c07000;padding:2px 22px 4px;line-height:1.4;">'+
+          c.issues.map(function(s){return '• '+esc(s);}).join('<br>')+'</div>';
+      }
     });
     html+='</div>';
     html+='</div>';
