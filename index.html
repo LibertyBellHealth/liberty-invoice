@@ -4803,6 +4803,14 @@ async function loadInvoiceForCapture(clientName,inv,period){
   var hc=inv.data&&inv.data.hasComplex;
   document.getElementById('showComplex').checked=!!hc;
   document.getElementById('complexSection').style.display=hc?'block':'none';
+  // Auto-place the user's primary signature (so every captured PDF has a sig)
+  // Reset first to avoid stale stamps from prior client; then stamp if any sig exists.
+  resetSigArea(1);resetSigArea(2);
+  var sigs=getSigs();
+  if(sigs.length){
+    stampSignatureData(1,sigs[0].data);
+    if(hc)stampSignatureData(2,sigs[0].data);
+  }
   await new Promise(function(r){setTimeout(r,150);});
 }
 
@@ -6557,12 +6565,12 @@ function validateInvoiceForSend(name,prof,inv,cwRec){
   if(!prof.worker)issues.push('No caseworker assigned');
   // Total Time HH must be present
   if(!d.svcHH||String(d.svcHH).trim()===''){
-    // Allow zero-time only if there's at least one task checked in the saved invoice data
     var hasTask=d.tasks&&d.tasks.svc&&d.tasks.svc.some(function(r){return r&&r.some(function(c){return c;});});
     if(!hasTask)issues.push('Total Time empty AND no tasks checked');
     else issues.push('Total Time hours blank');
   }
-  if(!getSigs().length)issues.push('No signature saved (will export blank)');
+  // Signature: at least one must exist locally so the PDF auto-places it
+  if(!getSigs().length)issues.push('Missing signature — PDF will export with no signature on it');
   return issues;
 }
 
@@ -6677,14 +6685,10 @@ async function sendMonthlyEmail(email,workerName,clients,period){
     readyToSend.push(c);
   });
 
-  // Always offer "Send Anyway" — combine readyToSend + hasIssues
   var allWithInvoice=readyToSend.concat(hasIssues);
 
   function sendReadyOnly(){
     _doMonthlyEmailSend(email,workerName,period,readyToSend,alreadySent.length,hasIssues,missingInvoice);
-  }
-  function sendEverythingAnyway(){
-    _doMonthlyEmailSend(email,workerName,period,allWithInvoice,alreadySent.length,[],missingInvoice);
   }
 
   // Case 1: nothing has an invoice for this period at all
@@ -6697,31 +6701,30 @@ async function sendMonthlyEmail(email,workerName,clients,period){
     return;
   }
 
-  // Case 2: at least one client has an invoice; check for validation issues
-  if(hasIssues.length>0){
-    var problemNames=hasIssues.map(function(c){return c.name+(c.issues&&c.issues.length?' ('+c.issues[0]+')':'');}).join('\n• ');
-    var prompt;
-    if(readyToSend.length>0){
-      prompt=readyToSend.length+' of '+allWithInvoice.length+' invoices are ready to send.\n\n'+
-        hasIssues.length+' have issues:\n• '+problemNames+'\n\nWhat would you like to do?';
-    } else {
-      prompt='All '+hasIssues.length+' invoice'+(hasIssues.length>1?'s have':' has')+' validation issues:\n• '+problemNames+'\n\nYou can send anyway, or fix the issues first.';
-    }
-    showConfirm(prompt,
-      readyToSend.length>0?sendReadyOnly:function(){},
-      {
-        title:'Validation Issues',
-        okText:readyToSend.length>0?'Send '+readyToSend.length+' Ready':'',
-        danger:false,
-        extraText:'Send All '+allWithInvoice.length+' Anyway',
-        extraDanger:true,
-        onExtra:sendEverythingAnyway
-      }
+  // Case 2: ALL invoices have issues — block. User must fix before sending.
+  if(readyToSend.length===0&&hasIssues.length>0){
+    var allProblemNames=hasIssues.map(function(c){return c.name+(c.issues&&c.issues.length?' ('+c.issues[0]+')':'');}).join('\n• ');
+    showConfirm(
+      'Cannot send — all '+hasIssues.length+' invoice'+(hasIssues.length>1?'s have':' has')+' validation issues that must be fixed first:\n\n• '+allProblemNames+'\n\nUse the Preview button on each client to see the specific issue, or open the client and fix the missing fields.',
+      function(){},
+      {title:'Cannot Send',okText:'OK',danger:false}
     );
     return;
   }
 
-  // Case 3: all ready, no issues — send straight through
+  // Case 3: SOME ready + SOME with issues — push through the ready ones; the others stay queued for follow-up
+  if(hasIssues.length>0){
+    var problemNames=hasIssues.map(function(c){return c.name+(c.issues&&c.issues.length?' ('+c.issues[0]+')':'');}).join('\n• ');
+    showConfirm(
+      readyToSend.length+' of '+allWithInvoice.length+' invoices are ready to send.\n\n'+
+      hasIssues.length+' will be skipped (must fix issues first):\n• '+problemNames+'\n\nSend the '+readyToSend.length+' ready one'+(readyToSend.length>1?'s':'')+' now? You can fix and send the rest later — they will be marked as a follow-up.',
+      sendReadyOnly,
+      {title:'Send Ready Invoices?',okText:'Send '+readyToSend.length+' Now',danger:false}
+    );
+    return;
+  }
+
+  // Case 4: all ready, no issues — send straight through
   sendReadyOnly();
 }
 
