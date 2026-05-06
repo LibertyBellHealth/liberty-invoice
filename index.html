@@ -1441,6 +1441,19 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
   </div>
 </div>
 
+<!-- PROMPT MODAL — replaces browser prompt() popups -->
+<div class="modal-overlay" id="promptModal">
+  <div class="modal-box">
+    <h3 id="promptTitle">Enter value</h3>
+    <p id="promptMessage" style="font-size:13px;color:#1a2b45;margin:8px 0 8px;"></p>
+    <textarea id="promptInput" rows="3" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;box-sizing:border-box;resize:vertical;"></textarea>
+    <div class="modal-row" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+      <button class="btn btn-secondary" id="promptCancelBtn">Cancel</button>
+      <button class="btn btn-primary" id="promptOkBtn">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- PICK SIG MODAL -->
 <div class="modal-overlay" id="pickSigModal">
   <div class="modal-box">
@@ -1919,8 +1932,8 @@ function renderOverviewPane(){
       '<div class="ov-row"><span class="ov-label">Hourly Rate</span><span class="ov-value">'+(prof.hourlyRate?'$'+prof.hourlyRate+'/hr':'—')+'</span></div>'+
       '<div class="ov-row"><span class="ov-label">Phone</span><span class="ov-value">'+(prof.phone||'—')+'</span></div>'+
       (addrStr.trim()?'<div class="ov-row"><span class="ov-label">Address</span><span class="ov-value">'+esc(addrStr.trim())+'</span></div>':'')+
-      '<div class="ov-row"><span class="ov-label">Caregiver</span><span class="ov-value" style="color:#185FA5;cursor:pointer;" onclick="navCaregivers()">'+esc(cgName||'Unassigned')+'</span></div>'+
-      '<div class="ov-row"><span class="ov-label">Caseworker</span><span class="ov-value" style="color:#185FA5;cursor:pointer;" onclick="navCaseworkers()">'+esc(cwName||'—')+'</span></div>'+
+      '<div class="ov-row"><span class="ov-label">Caregiver</span>'+(cgName&&prof.caregiverId?'<span class="ov-value" style="color:#185FA5;cursor:pointer;text-decoration:underline;" onclick="navCaregivers();setTimeout(function(){openCgDetail(\''+esc(prof.caregiverId)+'\');},50)">'+esc(cgName)+'</span>':'<span class="ov-value">'+esc(cgName||'Unassigned')+'</span>')+'</div>'+
+      '<div class="ov-row"><span class="ov-label">Caseworker</span>'+(cwRec?'<span class="ov-value" style="color:#185FA5;cursor:pointer;text-decoration:underline;" onclick="navCaseworkers();setTimeout(function(){openCwDetail(\''+esc(cwRec.id)+'\');},50)">'+esc(cwName)+'</span>':'<span class="ov-value">'+esc(cwName||'—')+'</span>')+'</div>'+
     '</div>'+
     '<div class="ov-card"><h4>Invoice Summary</h4>'+
       '<div class="ov-row"><span class="ov-label">Total Saved</span><span class="ov-value">'+invoices.length+'</span></div>'+
@@ -2076,11 +2089,11 @@ function renderInfoPane(){
         '<input type="hidden" id="ei-caregiver-val" value="'+esc(prof.caregiverId||'')+'">'+
         '<div id="ei-caregiver-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>'+
       '</div>'+
-      '<button class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="navCaregivers()">→ View</button>'+
+      (prof.caregiverId?'<button class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="navCaregivers();setTimeout(function(){openCgDetail(\''+esc(prof.caregiverId)+'\');},50)">Open</button>':'')+
     '</div>';
   g.appendChild(dCg);
 
-  // Caseworker searchable autocomplete + View button
+  // Caseworker searchable autocomplete + Open button
   var dCw=document.createElement('div');dCw.className='info-field full';
   var cwName=prof.worker||'';
   dCw.innerHTML='<label>Caseworker</label>'+
@@ -2090,7 +2103,7 @@ function renderInfoPane(){
         '<input type="hidden" id="ei-worker-val" value="'+esc(prof.caseworkerId||'')+'">'+
         '<div id="ei-worker-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>'+
       '</div>'+
-      '<button class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="navCaseworkers()">→ View</button>'+
+      (prof.caseworkerId?'<button class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="navCaseworkers();setTimeout(function(){openCwDetail(\''+esc(prof.caseworkerId)+'\');},50)">Open</button>':'')+
     '</div>';
   g.appendChild(dCw);
 }
@@ -2187,10 +2200,11 @@ function changeInvStatus(sel){
 function promptInvNote(idx){
   var p=getProfiles();if(!p[activeProfileName]||!p[activeProfileName].invoices[idx])return;
   var cur=p[activeProfileName].invoices[idx].invoiceNote||'';
-  var note=prompt('Invoice note:',cur);
-  if(note===null)return;
-  p[activeProfileName].invoices[idx].invoiceNote=note;
-  saveProfilesLS(p);renderInvHistory();renderOverviewPane();
+  showPrompt('Note for this invoice:',cur,function(note){
+    var p2=getProfiles();if(!p2[activeProfileName]||!p2[activeProfileName].invoices[idx])return;
+    p2[activeProfileName].invoices[idx].invoiceNote=note||'';
+    saveProfilesLS(p2);renderInvHistory();renderOverviewPane();
+  },{title:'Invoice Note',okText:'Save Note'});
 }
 function cycleStatusByIdx(idx,el){
   var states=['draft','submitted','paid'];
@@ -2212,15 +2226,34 @@ function deleteInv(idx){
   deleteInvoiceAPI(inv.dbId,activeProfileName,inv.billingPeriod);
   p[activeProfileName].invoices.splice(idx,1);saveProfilesLS(p);saveProfileSP(activeProfileName,p[activeProfileName]);renderInvHistory();
 }
-function downloadInvoice(idx){
+async function downloadInvoice(idx){
   var inv=getProfiles()[activeProfileName].invoices[idx];if(!inv)return;
-  // Store current state, apply invoice, open print dialog, restore
-  var current=captureFullInvoice();
-  applyFullInvoice(inv.data);
-  setTimeout(function(){
-    window.print();
-    setTimeout(function(){applyFullInvoice(current);},800);
-  },200);
+  var clientName=activeProfileName;
+  var period=inv.billingPeriod||'';
+  // Use the same vector PDF path as Print/PDF and Email Worker — works whether or not the invoice page is currently open
+  var savedActive=document.querySelector('.page.active')&&document.querySelector('.page.active').id;
+  var invPage=document.getElementById('page-invoice');
+  invPage.style.position='fixed';invPage.style.left='-9999px';invPage.style.top='0';invPage.style.zIndex='-1';
+  invPage.classList.add('active');
+  try{
+    await loadInvoiceForCapture(clientName,inv,period);
+    var base64=await captureInvoicePDF();
+    var bin=atob(base64);
+    var bytes=new Uint8Array(bin.length);
+    for(var i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+    var blob=new Blob([bytes],{type:'application/pdf'});
+    var url=URL.createObjectURL(blob);
+    var fname=(clientName.replace(/[^a-z0-9]/gi,'_'))+'_'+(period.replace('/','_'))+'.pdf';
+    var a=document.createElement('a');a.href=url;a.download=fname;
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(function(){URL.revokeObjectURL(url);},2000);
+  }catch(e){alert('Download failed: '+e.message);console.error(e);}
+  finally{
+    invPage.classList.remove('active');
+    invPage.style.position='';invPage.style.left='';invPage.style.top='';invPage.style.zIndex='';
+    document.querySelectorAll('.page').forEach(function(el){el.classList.remove('active');});
+    if(savedActive){var p=document.getElementById(savedActive);if(p)p.classList.add('active');}
+  }
 }
 
 // ============================================================
@@ -3026,6 +3059,25 @@ function showConfirm(message,onConfirm,opts){
   modal.classList.add('open');
 }
 
+// In-website prompt modal — replaces native browser prompt() for cleaner UX
+function showPrompt(message,initialValue,onSave,opts){
+  opts=opts||{};
+  var modal=document.getElementById('promptModal');
+  document.getElementById('promptTitle').textContent=opts.title||'Enter value';
+  document.getElementById('promptMessage').textContent=message||'';
+  var inp=document.getElementById('promptInput');
+  inp.value=initialValue||'';
+  var okBtn=document.getElementById('promptOkBtn'),cancelBtn=document.getElementById('promptCancelBtn');
+  okBtn.textContent=opts.okText||'Save';
+  // Replace handlers
+  var newOk=okBtn.cloneNode(true),newCancel=cancelBtn.cloneNode(true);
+  okBtn.parentNode.replaceChild(newOk,okBtn);cancelBtn.parentNode.replaceChild(newCancel,cancelBtn);
+  newOk.addEventListener('click',function(){modal.classList.remove('open');if(typeof onSave==='function')onSave(inp.value);});
+  newCancel.addEventListener('click',function(){modal.classList.remove('open');});
+  modal.classList.add('open');
+  setTimeout(function(){inp.focus();inp.select();},50);
+}
+
 function deleteSig(idOrIdx){
   showConfirm('Remove this signature? This cannot be undone.',function(){doDeleteSig(idOrIdx);},{title:'Remove Signature',okText:'Remove'});
 }
@@ -3333,13 +3385,16 @@ function toggleTodo(id){
   saveTodos(todos);if(t) saveTaskAPI(t);renderTodos();updateTaskBadge();
 }
 function deleteTodo(id){
-  var toDelete = getTodos().find(function(x){return x.id===id;});
-  var todos=getTodos().filter(function(x){return x.id!==id;});
-  saveTodos(todos);if(toDelete) deleteTaskAPI(toDelete.dbId);renderTodos();updateTaskBadge();
+  showConfirm('Remove this task?',function(){
+    var toDelete = getTodos().find(function(x){return x.id===id;});
+    var todos=getTodos().filter(function(x){return x.id!==id;});
+    saveTodos(todos);if(toDelete) deleteTaskAPI(toDelete.dbId);renderTodos();updateTaskBadge();
+  },{title:'Remove Task',okText:'Remove'});
 }
 function clearDoneTasks(){
-  if(!confirm('Remove all completed tasks?'))return;
-  saveTodos(getTodos().filter(function(t){return !t.done;}));renderTodos();updateTaskBadge();
+  showConfirm('Remove all completed tasks?',function(){
+    saveTodos(getTodos().filter(function(t){return !t.done;}));renderTodos();updateTaskBadge();
+  },{title:'Clear Completed Tasks',okText:'Remove All'});
 }
 function populateTodoClientSelect(){
   var sel=document.getElementById('todoClient');if(!sel)return;
@@ -3446,8 +3501,10 @@ function renderTodos(filterClient){
 }
 function editTodoNote(id){
   var todos=getTodos(),t=todos.find(function(x){return x.id===id;});if(!t)return;
-  var note=prompt('Task note:',t.note||'');if(note===null)return;
-  t.note=note;saveTodos(todos);renderTodos();
+  showPrompt('Note for this task:',t.note||'',function(note){
+    var todos2=getTodos(),t2=todos2.find(function(x){return x.id===id;});if(!t2)return;
+    t2.note=note||'';saveTodos(todos2);saveTaskAPI(t2);renderTodos();
+  },{title:'Task Note',okText:'Save Note'});
 }
 function updateTaskBadge(){
   var overdue=getTodos().filter(function(t){
@@ -4070,11 +4127,12 @@ function onBillingTextInput(el){
   if(formatted.length>7)formatted=formatted.slice(0,7);
   el.value=formatted;
   document.getElementById('billingPeriod2').value=formatted;
-  // If complete, rebuild grid
+  // If complete, rebuild grid — preserve current checkbox state
   var parts=formatted.split('/');
   if(parts.length===2&&parts[1].length===4){
+    var savedStates=captureStates();
     rebuild(daysIn(parts[0],parts[1]));
-    if(lastLoadedStates)applyStates(lastLoadedStates);
+    applyStates(savedStates);
     checkDuplicatePeriod(formatted);
   }
 }
@@ -4089,7 +4147,9 @@ function onBillingBlur(el){
     el.value=val;
     document.getElementById('billingPeriod2').value=val;
     var parts=val.split('/');
+    var savedStates=captureStates();
     rebuild(daysIn(parts[0],parts[1]));
+    applyStates(savedStates);
     checkDuplicatePeriod(val);
   } else if(raw.length===6){
     // mmyyyy shorthand e.g. 042025
@@ -4098,7 +4158,9 @@ function onBillingBlur(el){
     el.value=val;
     document.getElementById('billingPeriod2').value=val;
     var parts=val.split('/');
+    var savedStates=captureStates();
     rebuild(daysIn(parts[0],parts[1]));
+    applyStates(savedStates);
     checkDuplicatePeriod(val);
   }
 }
