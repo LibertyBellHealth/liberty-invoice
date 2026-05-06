@@ -1705,7 +1705,7 @@ function navDetail(name,tab){
   switchTab(tab||'overview');renderSidebarClients();
 }
 function navInvoice(loadSpecific){
-  if(!activeProfileName){alert('Select a client first.');return;}
+  if(!activeProfileName){showAlert('Select a client first.');return;}
   var prof=getProfiles()[activeProfileName];
   if(loadSpecific){
     // Opening a saved invoice file
@@ -1942,7 +1942,7 @@ function bulkSetStatus(status){
   });
   logActivity('status','Bulk update: '+changed+' invoices set to '+status);
   clearBulkSelect();updateStats();
-  alert(changed+' invoice'+(changed!==1?'s':'')+' updated to '+status+'.');
+  showAlert(changed+' invoice'+(changed!==1?'s':'')+' updated to '+status+'.');
 }
 
 // ============================================================
@@ -1950,9 +1950,15 @@ function bulkSetStatus(status){
 // ============================================================
 function switchTab(tab){
   if(unsavedChanges&&tab!=='info'){
-    if(!confirm('You have unsaved changes on the Profile tab. Leave anyway?')){return;}
-    unsavedChanges=false;
+    showConfirm('You have unsaved changes on the Profile tab. Leave anyway?',function(){
+      unsavedChanges=false;
+      _doSwitchTab(tab);
+    },{title:'Unsaved Changes',okText:'Discard & Leave',danger:true});
+    return;
   }
+  _doSwitchTab(tab);
+}
+function _doSwitchTab(tab){
   ['overview','info','history','notes','docs','audit'].forEach(function(t){
     var dtab=document.getElementById('dtab-'+t);
     var dpane=document.getElementById('dpane-'+t);
@@ -2250,11 +2256,14 @@ function saveClientInfo(){
   var btn=document.getElementById('saveInfoBtn');btn.textContent='Saved';setTimeout(function(){btn.textContent='Save Changes';},1800);
 }
 function deleteClient(){
-  if(!activeProfileName||!confirm('Delete "'+activeProfileName+'" and all their data? Cannot be undone.'))return;
-  aiTrack('ClientDeleted',{client:activeProfileName});
-  var p=getProfiles();deleteProfileSP(activeProfileName);delete p[activeProfileName];
-  try{localStorage.removeItem('lhca_draft_'+activeProfileName);}catch(e){}
-  saveProfilesLS(p);activeProfileName=null;logActivity('delete','Client deleted: '+activeProfileName);navHome();
+  if(!activeProfileName)return;
+  var name=activeProfileName;
+  showConfirm('Delete "'+name+'" and all their data? This cannot be undone.',function(){
+    aiTrack('ClientDeleted',{client:name});
+    var p=getProfiles();deleteProfileSP(name);delete p[name];
+    try{localStorage.removeItem('lhca_draft_'+name);}catch(e){}
+    saveProfilesLS(p);activeProfileName=null;logActivity('delete','Client deleted: '+name);navHome();
+  },{title:'Delete Client',okText:'Delete'});
 }
 
 // ============================================================
@@ -2403,7 +2412,7 @@ async function downloadInvoice(idx){
     var a=document.createElement('a');a.href=url;a.download=fname;
     document.body.appendChild(a);a.click();document.body.removeChild(a);
     setTimeout(function(){URL.revokeObjectURL(url);},2000);
-  }catch(e){alert('Download failed: '+e.message);console.error(e);}
+  }catch(e){showAlert('Download failed: '+e.message);console.error(e);}
   finally{
     invPage.classList.remove('active');
     invPage.style.position='';invPage.style.left='';invPage.style.top='';invPage.style.zIndex='';
@@ -2519,9 +2528,9 @@ function renderHcDocList(clientId,docs){
 }
 function uploadHcDoc(){
   var clientId=getHcClientId();
-  if(!clientId){alert('Save this client first before uploading documents.');return;}
+  if(!clientId){showAlert('Save this client first before uploading documents.');return;}
   var input=document.getElementById('hcDocFileInput');
-  if(!input||!input.files||!input.files.length){alert('Please select a file first.');return;}
+  if(!input||!input.files||!input.files.length){showAlert('Please select a file first.');return;}
   var cat=(document.getElementById('hcDocCategory')&&document.getElementById('hcDocCategory').value)||'Other';
   var status=document.getElementById('hcDocStatus');
   status.textContent='Uploading...';
@@ -2541,7 +2550,7 @@ function uploadHcDoc(){
 }
 function handleDocScan(input){
   var clientId=getHcClientId();
-  if(!clientId){alert('Save this client first before uploading documents.');return;}
+  if(!clientId){showAlert('Save this client first before uploading documents.');return;}
   if(!input||!input.files||!input.files.length)return;
   var cat=(document.getElementById('hcDocCategory')&&document.getElementById('hcDocCategory').value)||'Other';
   var status=document.getElementById('hcDocStatus');
@@ -2559,9 +2568,10 @@ function handleDocScan(input){
   .catch(function(e){if(status)status.textContent='Upload failed: '+e;});
 }
 function deleteHcDoc(clientId,encodedName){
-  if(!confirm('Delete this document?'))return;
-  fetch(API_BASE+'/documents?clientType=homecare&clientId='+clientId+'&name='+encodedName,{method:'DELETE',headers:apiHeaders()})
-  .then(function(){loadHcDocs(clientId);}).catch(function(e){alert('Delete failed: '+e);});
+  showConfirm('Delete this document?',function(){
+    fetch(API_BASE+'/documents?clientType=homecare&clientId='+clientId+'&name='+encodedName,{method:'DELETE',headers:apiHeaders()})
+    .then(function(){loadHcDocs(clientId);}).catch(function(e){showAlert('Delete failed: '+e);});
+  },{title:'Delete Document',okText:'Delete'});
 }
 
 // ── CAREGIVER DOCUMENTS ──────────────────────────────────────
@@ -2593,7 +2603,7 @@ function loadCgDocs(cgId){
 }
 function uploadCgDoc(cgId){
   var input=document.getElementById('cgDocFileInput');
-  if(!input||!input.files||!input.files.length){alert('Please select a file first.');return;}
+  if(!input||!input.files||!input.files.length){showAlert('Please select a file first.');return;}
   var status=document.getElementById('cgDocStatus');status.textContent='Uploading...';
   var fd=new FormData();fd.append('clientType','caregiver');fd.append('clientId',cgId);
   var cgFileNames=Array.from(input.files).map(function(f){return f.name;}).join(', ');
@@ -2606,9 +2616,10 @@ function uploadCgDoc(cgId){
   .catch(function(e){status.textContent='Upload failed: '+e;});
 }
 function deleteCgDoc(cgId,encodedName){
-  if(!confirm('Delete this document?'))return;
-  fetch(API_BASE+'/documents?clientType=caregiver&clientId='+cgId+'&name='+encodedName,{method:'DELETE',headers:apiHeaders()})
-  .then(function(){loadCgDocs(cgId);}).catch(function(e){alert('Delete failed: '+e);});
+  showConfirm('Delete this document?',function(){
+    fetch(API_BASE+'/documents?clientType=caregiver&clientId='+cgId+'&name='+encodedName,{method:'DELETE',headers:apiHeaders()})
+    .then(function(){loadCgDocs(cgId);}).catch(function(e){showAlert('Delete failed: '+e);});
+  },{title:'Delete Document',okText:'Delete'});
 }
 
 // ============================================================
@@ -2619,10 +2630,17 @@ function createClient(){
   var middle=(document.getElementById('nc-middle').value||'').trim();
   var last=(document.getElementById('nc-last').value||'').trim();
   var nickname=(document.getElementById('nc-nickname').value||'').trim();
-  if(!first||!last){alert('First Name and Last Name are required.');return;}
+  if(!first||!last){showAlert('First Name and Last Name are required.');return;}
   var name=(first+' '+last).trim();
   var p=getProfiles();
-  if(p[name]&&!confirm('"'+name+'" already exists. Overwrite?'))return;
+  if(p[name]){
+    showConfirm('"'+name+'" already exists. Overwrite their existing data?',function(){_doCreateClient(name,first,middle,last,nickname);},{title:'Client Exists',okText:'Overwrite'});
+    return;
+  }
+  _doCreateClient(name,first,middle,last,nickname);
+}
+function _doCreateClient(name,first,middle,last,nickname){
+  var p=getProfiles();
   aiTrack('ClientCreated',{client:name});
   if(!p[name])p[name]={invoices:[],clientNotes:''};
   p[name].clientName=name;p[name].firstName=first;p[name].middleName=middle;p[name].lastName=last;p[name].nickname=nickname;
@@ -2691,15 +2709,16 @@ function renderCaregiverGrid(){
 }
 function bulkDeleteCaregivers(){
   var checked=Array.from(document.querySelectorAll('.cg-select:checked'));
-  if(!checked.length){alert('No caregivers selected.');return;}
-  if(!confirm('Delete '+checked.length+' caregiver(s)?'))return;
-  var cgs=getCaregivers();
-  checked.forEach(function(cb){
-    var id=cb.dataset.id;
-    delete cgs[id];
-    deleteCaregiverAPI(id);
-  });
-  saveCaregiversLS(cgs);renderCaregiverGrid();updateStats();
+  if(!checked.length){showAlert('No caregivers selected.');return;}
+  showConfirm('Delete '+checked.length+' caregiver'+(checked.length>1?'s':'')+'? This cannot be undone.',function(){
+    var cgs=getCaregivers();
+    checked.forEach(function(cb){
+      var id=cb.dataset.id;
+      delete cgs[id];
+      deleteCaregiverAPI(id);
+    });
+    saveCaregiversLS(cgs);renderCaregiverGrid();updateStats();
+  },{title:'Bulk Delete Caregivers',okText:'Delete All'});
 }
 function toggleAllCaregivers(cb){
   document.querySelectorAll('.cg-select').forEach(function(c){c.checked=cb.checked;});
@@ -2749,7 +2768,7 @@ function saveCaregiver(){
   var middle=(document.getElementById('cg-middle').value||'').trim();
   var last=(document.getElementById('cg-last').value||'').trim();
   var nickname=(document.getElementById('cg-nickname').value||'').trim();
-  if(!first||!last){alert('First Name and Last Name are required.');return;}
+  if(!first||!last){showAlert('First Name and Last Name are required.');return;}
   var name=(first+' '+last).trim();
   aiTrack('CaregiverSaved',{caregiver:name});
   var cgs=getCaregivers();
@@ -2779,7 +2798,10 @@ function saveCaregiver(){
 }
 function deleteCaregiver(){
   var id=document.getElementById('cg-editing-id').value;if(!id)return;
-  if(!confirm('Delete this caregiver?'))return;
+  var cgs=getCaregivers();var cgName=(cgs[id]&&cgs[id].name)||id;
+  showConfirm('Delete caregiver "'+cgName+'"? This cannot be undone.',function(){_doDeleteCaregiver(id);},{title:'Delete Caregiver',okText:'Delete'});
+}
+function _doDeleteCaregiver(id){
   var cgs=getCaregivers();var cgName=(cgs[id]&&cgs[id].name)||id;
   delete cgs[id];saveCaregiversLS(cgs);deleteCaregiverAPI(id);
   aiTrack('CaregiverDeleted',{caregiverId:id,caregiverName:cgName});
@@ -2858,7 +2880,10 @@ function editCaregiverFromDetail(){
 }
 function deleteCaregiverFromDetail(){
   var cg=getCaregivers()[activeCgId];
-  if(!cg||!confirm('Delete caregiver "'+cg.name+'"? This cannot be undone.'))return;
+  if(!cg)return;
+  showConfirm('Delete caregiver "'+cg.name+'"? This cannot be undone.',function(){_doDeleteCaregiverFromDetail();},{title:'Delete Caregiver',okText:'Delete'});
+}
+function _doDeleteCaregiverFromDetail(){
   var cgs=getCaregivers();delete cgs[activeCgId];saveCaregiversLS(cgs);deleteCaregiverAPI(activeCgId);
   aiTrack('CaregiverDeleted',{caregiverId:activeCgId,caregiverName:cg.name||activeCgId});
   showCgGrid();
@@ -3030,7 +3055,7 @@ function saveCgInfoPane(){
   var cgs=getCaregivers();var cg=cgs[activeCgId];if(!cg)return;
   var first=(document.getElementById('cgi-first').value||'').trim();
   var last=(document.getElementById('cgi-last').value||'').trim();
-  if(!first||!last){alert('First and last name are required.');return;}
+  if(!first||!last){showAlert('First and last name are required.');return;}
   cg.firstName=first;cg.middleName=document.getElementById('cgi-middle').value;cg.lastName=last;
   cg.name=(first+(document.getElementById('cgi-middle').value?' '+document.getElementById('cgi-middle').value:'')+' '+last).trim();
   cg.nickname=document.getElementById('cgi-nickname').value;
@@ -3152,7 +3177,7 @@ function renderCgDocListAzure(cgId,docs){
 }
 function uploadCgDocAzure(){
   var input=document.getElementById('cgDocFileInput2');
-  if(!input||!input.files||!input.files.length){alert('Please select a file first.');return;}
+  if(!input||!input.files||!input.files.length){showAlert('Please select a file first.');return;}
   var cat=document.getElementById('cgDocCategory').value||'Other';
   var status=document.getElementById('cgDocUploadStatus');status.textContent='Uploading...';
   var fd=new FormData();fd.append('clientType','caregiver');fd.append('clientId',activeCgId);
@@ -3166,12 +3191,13 @@ function uploadCgDocAzure(){
   .catch(function(e){status.textContent='Upload failed: '+e;});
 }
 function deleteCgDocAzure(cgId,encodedName){
-  if(!confirm('Delete this document?'))return;
-  fetch(API_BASE+'/documents?clientType=caregiver&clientId='+cgId+'&name='+encodedName,{method:'DELETE',headers:apiHeaders()})
-  .then(function(){loadCgDocsAzure(cgId);}).catch(function(e){alert('Delete failed: '+e);});
+  showConfirm('Delete this document?',function(){
+    fetch(API_BASE+'/documents?clientType=caregiver&clientId='+cgId+'&name='+encodedName,{method:'DELETE',headers:apiHeaders()})
+    .then(function(){loadCgDocsAzure(cgId);}).catch(function(e){showAlert('Delete failed: '+e);});
+  },{title:'Delete Document',okText:'Delete'});
 }
 function handleCgDocScan(input){
-  if(!activeCgId){alert('Open a caregiver first.');return;}
+  if(!activeCgId){showAlert('Open a caregiver first.');return;}
   if(!input||!input.files||!input.files.length)return;
   var cat=(document.getElementById('cgDocCategory')&&document.getElementById('cgDocCategory').value)||'Other';
   var status=document.getElementById('cgDocUploadStatus');
@@ -3225,6 +3251,8 @@ function showConfirm(message,onConfirm,opts){
   document.getElementById('confirmTitle').textContent=opts.title||'Confirm';
   document.getElementById('confirmMessage').textContent=message||'Are you sure?';
   var okBtn=document.getElementById('confirmOkBtn'),cancelBtn=document.getElementById('confirmCancelBtn'),extraBtn=document.getElementById('confirmExtraBtn');
+  // Alert mode: hide cancel button (used by showAlert)
+  cancelBtn.style.display=opts.hideCancel?'none':'';
   // If okText is explicitly empty, hide the OK button entirely (e.g., extra-only choice)
   if(opts.okText===''||opts.okText===null){
     okBtn.style.display='none';
@@ -3251,6 +3279,12 @@ function showConfirm(message,onConfirm,opts){
   newCancel.addEventListener('click',function(){modal.classList.remove('open');if(typeof opts.onCancel==='function')opts.onCancel();});
   newExtra.addEventListener('click',function(){modal.classList.remove('open');if(typeof opts.onExtra==='function')opts.onExtra();});
   modal.classList.add('open');
+}
+
+// Single-button alert modal — replaces native showAlert()
+function showAlert(message,opts){
+  opts=opts||{};
+  showConfirm(message,function(){if(typeof opts.onOK==='function')opts.onOK();},{title:opts.title||'Notice',okText:opts.okText||'OK',danger:!!opts.danger,hideCancel:true});
 }
 
 // In-website prompt modal — replaces native browser prompt() for cleaner UX
@@ -3715,13 +3749,20 @@ function populateTodoClientSelect(){
   });
 }
 function addTaskForClient(clientName){
-  var text=prompt('Task description:');if(!text||!text.trim())return;
-  var due=prompt('Due date (YYYY-MM-DD), or leave blank:');
-  var todos=getTodos();
-  todos.unshift({id:todoId(),text:text.trim(),client:clientName,due:due||'',note:'',done:false,created:new Date().toLocaleString()});
-  saveTodos(todos);saveTaskAPI(todos[0]);updateTaskBadge();
-  renderOverviewPane();
-  logActivity('client','Task added for '+clientName+': '+text.trim());
+  showTaskEditModal({
+    title:'Add Task',
+    subtitle:'For client: '+clientName,
+    name:'',
+    due:'',
+    okText:'Add Task',
+    onSave:function(vals){
+      var todos=getTodos();
+      todos.unshift({id:todoId(),text:vals.name,client:clientName,due:vals.due||'',note:'',done:false,created:new Date().toLocaleString()});
+      saveTodos(todos);saveTaskAPI(todos[0]);updateTaskBadge();
+      renderOverviewPane();
+      logActivity('client','Task added for '+clientName+': '+vals.name);
+    }
+  });
 }
 function sendEmailMailto(toAddr){
   var prof=getProfiles()[activeProfileName]||{};
@@ -3962,11 +4003,11 @@ function openEmailComposer(toAddr,subject,body){
   document.getElementById('emailComposerModal').classList.add('open');
 }
 function sendGraphEmail(){
-  if(!spToken){alert('Please sign in with your Microsoft account to send email.');return;}
+  if(!spToken){showAlert('Please sign in with your Microsoft account to send email.');return;}
   var to=document.getElementById('emailTo').value.trim();
   var subj=document.getElementById('emailSubject').value.trim();
   var body=document.getElementById('emailBody').value.trim();
-  if(!to||!subj||!body){alert('Please fill in To, Subject, and Message.');return;}
+  if(!to||!subj||!body){showAlert('Please fill in To, Subject, and Message.');return;}
   var btn=document.getElementById('emailSendBtn');btn.textContent='Sending…';btn.disabled=true;
   var payload={message:{subject:subj,body:{contentType:'Text',content:body},toRecipients:[{emailAddress:{address:to}}]},saveToSentItems:true};
   fetch('https://graph.microsoft.com/v1.0/me/sendMail',{
@@ -3978,12 +4019,12 @@ function sendGraphEmail(){
       logActivity('edit','Email sent to '+to);
       document.getElementById('emailComposerModal').classList.remove('open');
       btn.textContent='Send Email';btn.disabled=false;
-      alert('Email sent successfully.');
+      showAlert('Email sent successfully.');
     } else {
       btn.textContent='Send Email';btn.disabled=false;
-      r.text().then(function(t){alert('Error sending email: '+r.status+'\n'+t);});
+      r.text().then(function(t){showAlert('Error sending email: '+r.status+'\n'+t);});
     }
-  }).catch(function(e){btn.textContent='Send Email';btn.disabled=false;alert('Network error: '+e.message);});
+  }).catch(function(e){btn.textContent='Send Email';btn.disabled=false;showAlert('Network error: '+e.message);});
 }
 function renderReports(){
   var c=document.getElementById('reportsContent');if(!c)return;c.innerHTML='';
@@ -4357,11 +4398,11 @@ function doExportProfiles(includeFullSSN){
 
 // Export all client+invoice data as multi-sheet Excel workbook
 function exportClientsXLSX(){
-  if(!window.XLSX){alert('Excel library not loaded — please reload the page.');return;}
+  if(!window.XLSX){showAlert('Excel library not loaded — please reload the page.');return;}
   var profiles=getProfiles();
   var caregivers=getCaregivers();
   var caseworkers=getCaseworkers();
-  if(!Object.keys(profiles).length){alert('No clients yet.');return;}
+  if(!Object.keys(profiles).length){showAlert('No clients yet.');return;}
 
   // Sheet 1: Clients
   // Mask SSN to last 4 digits (PII safety in exports)
@@ -4433,14 +4474,19 @@ function exportClientsXLSX(){
 
 // Export each client as a folder with all their invoice PDFs — all packaged into one ZIP
 async function exportClientsAsPDFFolders(){
-  if(!window.JSZip){alert('JSZip library not loaded — please reload the page.');return;}
+  if(!window.JSZip){showAlert('JSZip library not loaded — please reload the page.');return;}
   var profiles=getProfiles();
   var clientNames=Object.keys(profiles);
-  if(!clientNames.length){alert('No clients yet.');return;}
+  if(!clientNames.length){showAlert('No clients yet.');return;}
   var clientsWithInvoices=clientNames.filter(function(n){return (profiles[n].invoices||[]).length>0;});
-  if(!clientsWithInvoices.length){alert('No saved invoices to export.');return;}
-  if(!confirm('Generate PDFs for '+clientsWithInvoices.length+' client'+(clientsWithInvoices.length>1?'s':'')+' and download as ZIP?\n\nThis may take a minute or two.'))return;
-
+  if(!clientsWithInvoices.length){showAlert('No saved invoices to export.');return;}
+  showConfirm(
+    'Generate PDFs for '+clientsWithInvoices.length+' client'+(clientsWithInvoices.length>1?'s':'')+' and download as ZIP?\n\nThis may take a minute or two.',
+    function(){_doExportClientsAsPDFFolders(clientsWithInvoices,profiles);},
+    {title:'Export PDFs',okText:'Generate ZIP',danger:false}
+  );
+}
+async function _doExportClientsAsPDFFolders(clientsWithInvoices,profiles){
   var btn=document.getElementById('exportPDFFoldersBtn');
   var oldText=btn?btn.textContent:'';
   if(btn){btn.disabled=true;btn.textContent='Preparing…';}
@@ -4483,7 +4529,7 @@ async function exportClientsAsPDFFolders(){
     var a=document.createElement('a');a.href=url;a.download='liberty_invoices_'+new Date().toISOString().slice(0,10)+'.zip';
     document.body.appendChild(a);a.click();document.body.removeChild(a);
     setTimeout(function(){URL.revokeObjectURL(url);},2000);
-  }catch(e){alert('Export failed: '+e.message);console.error(e);}
+  }catch(e){showAlert('Export failed: '+e.message);console.error(e);}
   finally{
     invPage.classList.remove('active');
     invPage.style.position='';invPage.style.left='';invPage.style.top='';invPage.style.zIndex='';
@@ -4563,25 +4609,28 @@ function applyFullInvoice(data){
   document.getElementById('showComplex').checked=data.hasComplex||false;toggleComplex();
 }
 function saveInvoiceToClient(){
-  if(!activeProfileName){alert('No client selected.');return;}
-  var bp=document.getElementById('billingPeriod').value.trim();if(!bp){alert('Enter a billing period first.');return;}
-  aiTrack('InvoiceSaved',{client:activeProfileName,period:bp});
+  if(!activeProfileName){showAlert('No client selected.');return;}
+  var bp=document.getElementById('billingPeriod').value.trim();if(!bp){showAlert('Enter a billing period first.');return;}
   var p=getProfiles();if(!p[activeProfileName])return;if(!p[activeProfileName].invoices)p[activeProfileName].invoices=[];
   var ex=p[activeProfileName].invoices.findIndex(function(i){return i.billingPeriod===bp;});
   if(ex>=0){
     var existingStatus=p[activeProfileName].invoices[ex].status||'draft';
-    // Paid invoices are locked
     if(existingStatus==='paid'){
-      alert('Warning: Invoice '+bp+' is marked Paid and cannot be overwritten. Change the status to Draft first if you need to edit it.');
+      showAlert('Invoice '+bp+' is marked Paid and cannot be overwritten. Change the status to Draft first if you need to edit it.',{title:'Invoice Locked'});
       return;
     }
-    // Duplicate warning for submitted
-    if(existingStatus==='submitted'){
-      if(!confirm('Invoice '+bp+' has already been submitted. Are you sure you want to overwrite it?'))return;
-    } else {
-      if(!confirm('Invoice for '+bp+' already exists. Overwrite?'))return;
-    }
-    // CRITICAL: preserve dbId so we UPDATE the existing DB row instead of POSTing a duplicate
+    var msg=existingStatus==='submitted'
+      ? 'Invoice '+bp+' has already been submitted. Are you sure you want to overwrite it?'
+      : 'Invoice for '+bp+' already exists. Overwrite?';
+    showConfirm(msg,function(){_doSaveInvoiceToClient(bp,ex,existingStatus);},{title:'Overwrite Invoice',okText:'Overwrite'});
+    return;
+  }
+  _doSaveInvoiceToClient(bp,-1,null);
+}
+function _doSaveInvoiceToClient(bp,ex,existingStatus){
+  aiTrack('InvoiceSaved',{client:activeProfileName,period:bp});
+  var p=getProfiles();if(!p[activeProfileName])return;if(!p[activeProfileName].invoices)p[activeProfileName].invoices=[];
+  if(ex>=0){
     var prevInv=p[activeProfileName].invoices[ex];
     p[activeProfileName].invoices[ex]=Object.assign({},prevInv,{
       billingPeriod:bp,
@@ -4602,12 +4651,13 @@ function saveInvoiceToClient(){
   updateStats();
 }
 function clearInvoiceForm(){
-  if(!confirm('Clear the invoice form?'))return;
-  ['clientName','medicaidId','billTo','worker','billingPeriod','billingPeriod2','hourlyRate','clientName2','worker2','svcHH','svcMM','cplxHH','cplxMM','p1HH','p1MM','grandHH','grandMM'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
-  var bpp=document.getElementById('billingPeriodPicker');if(bpp)bpp.value='';
-  var T=today();document.getElementById('dateSubmitted').value=T;document.getElementById('sigDate1').value=T;document.getElementById('sigDate2').value=T;
-  document.getElementById('showComplex').checked=false;document.getElementById('complexSection').style.display='none';rebuild(31);resetSigArea(1);resetSigArea(2);lastLoadedStates=null;
-  document.getElementById('dupWarning').style.display='none';
+  showConfirm('Clear the invoice form? Unsaved changes will be lost.',function(){
+    ['clientName','medicaidId','billTo','worker','billingPeriod','billingPeriod2','hourlyRate','clientName2','worker2','svcHH','svcMM','cplxHH','cplxMM','p1HH','p1MM','grandHH','grandMM'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+    var bpp=document.getElementById('billingPeriodPicker');if(bpp)bpp.value='';
+    var T=today();document.getElementById('dateSubmitted').value=T;document.getElementById('sigDate1').value=T;document.getElementById('sigDate2').value=T;
+    document.getElementById('showComplex').checked=false;document.getElementById('complexSection').style.display='none';rebuild(31);resetSigArea(1);resetSigArea(2);lastLoadedStates=null;
+    document.getElementById('dupWarning').style.display='none';
+  },{title:'Clear Invoice Form',okText:'Clear'});
 }
 
 // ============================================================
@@ -4968,7 +5018,7 @@ async function printInvoiceAsPDF(){
     setTimeout(function(){URL.revokeObjectURL(url);},2000);
   }catch(e){
     console.error('PDF generation failed:',e);
-    alert('PDF generation failed: '+e.message);
+    showAlert('PDF generation failed: '+e.message);
   }finally{
     if(btn){btn.disabled=false;btn.textContent=oldText||'Print / PDF';}
   }
@@ -5468,7 +5518,7 @@ function renderEmailAuditTable(){
 
 function downloadEmailAuditCSV(){
   var arr=getEmailAuditLog();
-  if(!arr.length){alert('No audit log entries to download.');return;}
+  if(!arr.length){showAlert('No audit log entries to download.');return;}
   function csvEscape(v){var s=String(v==null?'':v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
   var header=['Timestamp','SentBy','Type','Recipient','CaseworkerName','BillingPeriod','AttachmentCount','ClientNames','Success','ErrorMsg'].join(',');
   var lines=arr.map(function(r){return [
@@ -5528,9 +5578,9 @@ async function sendEmail(){
     ae=cwRec2.email||'';
     if(ae){var ef=document.getElementById('activeAgentEmail');if(ef)ef.value=ae;}
   }
-  if(!ae){alert('No caseworker email on file. Add an email to the caseworker record from the Caseworkers page.');return;}
+  if(!ae){showAlert('No caseworker email on file. Add an email to the caseworker record from the Caseworkers page.');return;}
   if(!spToken){
-    if(confirm('Sign in with your Microsoft account to send email via Outlook?\n\nClicking OK will redirect you to sign in.')){signIn();}
+    showConfirm('Sign in with your Microsoft account to send email via Outlook?\n\nClicking Sign In will redirect you to authenticate.',function(){signIn();},{title:'Sign In Required',okText:'Sign In',danger:false});
     return;
   }
   var btn=document.getElementById('sendEmailInvBtn');
@@ -5566,13 +5616,13 @@ async function sendEmail(){
       if(result.status===401)msg='Authentication error (401) — please sign out and sign back in.';
       else if(result.status===403)msg='Permission denied (403) — sign out, sign back in, and accept the Mail.Send permission when prompted.';
       else if(result.err)msg='Error ('+( result.status||'?')+'):\n'+result.err.slice(0,300);
-      alert(msg);
+      showAlert(msg);
     }
-  }catch(e){alert('Error generating PDF: '+e.message);}
+  }catch(e){showAlert('Error generating PDF: '+e.message);}
   if(btn){btn.disabled=false;btn.textContent='✉ Email Worker';}
 }
 function copyMonth(){
-  var bp=document.getElementById('billingPeriod').value.trim();if(!bp||bp.length<7){alert('Enter a billing period first (MM/YYYY).');return;}
+  var bp=document.getElementById('billingPeriod').value.trim();if(!bp||bp.length<7){showAlert('Enter a billing period first (MM/YYYY).');return;}
   var pts=bp.split('/'),m=parseInt(pts[0]),y=parseInt(pts[1]);m++;if(m>12){m=1;y++;}
   var newBP=String(m).padStart(2,'0')+'/'+y;
   // Smart fill: capture current task state to carry forward
@@ -5690,7 +5740,7 @@ function cropDataURL(dataUrl){
 
 function confirmSig(){
   var data=sigCanvas.toDataURL('image/png'),blank=document.createElement('canvas');blank.width=sigCanvas.width;blank.height=sigCanvas.height;
-  if(blank.toDataURL()===data){alert('Please draw your signature first.');return;}
+  if(blank.toDataURL()===data){showAlert('Please draw your signature first.');return;}
   // Trim padding
   var trimmed=trimCanvasToContent(sigCanvas,4);if(trimmed)data=trimmed;
   var label=document.getElementById('sigLabel').value.trim()||'Signature';
@@ -5728,13 +5778,13 @@ window._sigUploadOriginal=null; // raw uploaded image (HTMLImageElement)
 function handleSigUpload(ev){
   var file=ev.target.files&&ev.target.files[0];
   if(!file)return;
-  if(!/^image\//.test(file.type)){alert('Please choose an image file (PNG or JPG).');return;}
+  if(!/^image\//.test(file.type)){showAlert('Please choose an image file (PNG or JPG).');return;}
   var hint=document.getElementById('sigUploadHint');if(hint)hint.textContent=file.name;
   var reader=new FileReader();
   reader.onload=function(e){
     var img=new Image();
     img.onload=function(){window._sigUploadOriginal=img;rerenderSigUpload();};
-    img.onerror=function(){alert('Could not load that image. Try a different file.');};
+    img.onerror=function(){showAlert('Could not load that image. Try a different file.');};
     img.src=e.target.result;
   };
   reader.readAsDataURL(file);
@@ -5804,7 +5854,7 @@ function removeHorizontalLinesFromCanvas(c){
 
 function confirmUploadedSig(){
   var data=window._sigUploadProcessed;
-  if(!data){alert('Please upload an image first.');return;}
+  if(!data){showAlert('Please upload an image first.');return;}
   var label=document.getElementById('sigLabel').value.trim()||'Uploaded Signature';
   var id=sigId();
   var sigs=getSigs();sigs.push({id:id,label:label,data:data});saveSigsLS(sigs);
@@ -5848,10 +5898,10 @@ function previewCursiveSig(){
 // ── Save cursive typed signature ──────────────────────────────────
 function confirmTypedSig(){
   var name=(document.getElementById('sigTypeName')||{}).value.trim();
-  if(!name){alert('Please type your name first.');return;}
+  if(!name){showAlert('Please type your name first.');return;}
   var tc=document.getElementById('sigTypeCanvas');
   var blank=document.createElement('canvas');blank.width=tc.width;blank.height=tc.height;
-  if(blank.toDataURL()===tc.toDataURL()){alert('Please type your name first.');return;}
+  if(blank.toDataURL()===tc.toDataURL()){showAlert('Please type your name first.');return;}
   // Trim padding around the typed text — keeps the signature tight when embedded in PDF
   var data=trimCanvasToContent(tc,4)||tc.toDataURL('image/png');
   var label=document.getElementById('sigLabel').value.trim()||name;
@@ -6359,7 +6409,7 @@ function saveCaseworker(){
   var lastName=document.getElementById('cw-last-name').value.trim();
   var nickname=document.getElementById('cw-nickname').value.trim();
   var name=(firstName+(middleName?' '+middleName:'')+' '+lastName).trim();
-  if(!name){alert('Name is required.');return;}
+  if(!name){showAlert('Name is required.');return;}
   var cws=getCaseworkers();
   var editingId=document.getElementById('cw-editing-id').value;
   var rec={
@@ -6394,22 +6444,25 @@ function saveCaseworker(){
 }
 function deleteCaseworker(){
   var id=document.getElementById('cw-editing-id').value;if(!id)return;
-  var cws=getCaseworkers().find(function(c){return c.id===id;});
-  if(!cws||!confirm('Delete caseworker "'+cws.name+'"?'))return;
-  saveCaseworkersLS(getCaseworkers().filter(function(c){return c.id!==id;}));
-  deleteCaseworkerAPI(id);
-  activeCwId=null;
-  hideCaseworkerForm();
-  showCwGrid();
+  var cws=getCaseworkers().find(function(c){return c.id===id;});if(!cws)return;
+  showConfirm('Delete caseworker "'+cws.name+'"? This cannot be undone.',function(){
+    saveCaseworkersLS(getCaseworkers().filter(function(c){return c.id!==id;}));
+    deleteCaseworkerAPI(id);
+    activeCwId=null;
+    hideCaseworkerForm();
+    showCwGrid();
+  },{title:'Delete Caseworker',okText:'Delete'});
 }
 function deleteCaseworkerFromDetail(){
   if(!activeCwId)return;
-  var cw=getCaseworkers().find(function(c){return c.id===activeCwId;});
-  if(!cw||!confirm('Delete caseworker "'+cw.name+'"? This cannot be undone.'))return;
-  saveCaseworkersLS(getCaseworkers().filter(function(c){return c.id!==activeCwId;}));
-  deleteCaseworkerAPI(activeCwId);
-  aiTrack('CaseworkerDeleted',{caseworkerId:activeCwId,caseworkerName:cw.name||activeCwId});
-  showCwGrid();
+  var cw=getCaseworkers().find(function(c){return c.id===activeCwId;});if(!cw)return;
+  var idToDelete=activeCwId;
+  showConfirm('Delete caseworker "'+cw.name+'"? This cannot be undone.',function(){
+    saveCaseworkersLS(getCaseworkers().filter(function(c){return c.id!==idToDelete;}));
+    deleteCaseworkerAPI(idToDelete);
+    aiTrack('CaseworkerDeleted',{caseworkerId:idToDelete,caseworkerName:cw.name||idToDelete});
+    showCwGrid();
+  },{title:'Delete Caseworker',okText:'Delete'});
 }
 function renderCaseworkerList(){
   var cws=getCaseworkers();
@@ -6562,7 +6615,7 @@ function saveCwInfoPane(){
   var arr=getCaseworkers();var cw=arr.find(function(c){return c.id===activeCwId;});if(!cw)return;
   var first=(document.getElementById('cwi-first').value||'').trim();
   var last=(document.getElementById('cwi-last').value||'').trim();
-  if(!first||!last){alert('First and last name are required.');return;}
+  if(!first||!last){showAlert('First and last name are required.');return;}
   cw.first_name=first;cw.middle_name=document.getElementById('cwi-middle').value;cw.last_name=last;
   cw.name=(first+(document.getElementById('cwi-middle').value?' '+document.getElementById('cwi-middle').value:'')+' '+last).trim();
   cw.agency=document.getElementById('cwi-agency').value;
@@ -6684,7 +6737,7 @@ function renderCwDocListAzure(cwId,docs){
 }
 function uploadCwDoc(){
   var input=document.getElementById('cwDocFileInput');
-  if(!input||!input.files||!input.files.length){alert('Please select a file first.');return;}
+  if(!input||!input.files||!input.files.length){showAlert('Please select a file first.');return;}
   var status=document.getElementById('cwDocUploadStatus');status.textContent='Uploading...';
   var fd=new FormData();fd.append('clientType','caseworker');fd.append('clientId',activeCwId);
   Array.from(input.files).forEach(function(f){fd.append('file',f);});
@@ -6693,12 +6746,13 @@ function uploadCwDoc(){
     .catch(function(e){status.textContent='Upload failed: '+e;});
 }
 function deleteCwDoc(cwId,encodedName){
-  if(!confirm('Delete this document?'))return;
-  fetch(API_BASE+'/documents?clientType=caseworker&clientId='+cwId+'&name='+encodedName,{method:'DELETE',headers:apiHeaders()})
-    .then(function(){renderCwDocsPane();}).catch(function(e){alert('Delete failed: '+e);});
+  showConfirm('Delete this document?',function(){
+    fetch(API_BASE+'/documents?clientType=caseworker&clientId='+cwId+'&name='+encodedName,{method:'DELETE',headers:apiHeaders()})
+      .then(function(){renderCwDocsPane();}).catch(function(e){showAlert('Delete failed: '+e);});
+  },{title:'Delete Document',okText:'Delete'});
 }
 function handleCwDocScan(input){
-  if(!activeCwId){alert('Open a caseworker first.');return;}
+  if(!activeCwId){showAlert('Open a caseworker first.');return;}
   if(!input||!input.files||!input.files.length)return;
   var status=document.getElementById('cwDocUploadStatus');
   if(status)status.textContent='Uploading scanned image…';
@@ -7138,9 +7192,9 @@ function closeMonthlyInvModal(){
 // Generate the vector PDF for one client's invoice and open in new tab
 async function previewClientInvoice(clientName,period){
   var prof=getProfiles()[clientName];
-  if(!prof){alert('Client not found.');return;}
+  if(!prof){showAlert('Client not found.');return;}
   var inv=(prof.invoices||[]).find(function(i){return i.billingPeriod===period;});
-  if(!inv){alert('No invoice found for '+clientName+' in '+period+'.');return;}
+  if(!inv){showAlert('No invoice found for '+clientName+' in '+period+'.');return;}
   // Stage current state so we can restore (loadInvoiceForCapture mutates the form)
   var savedActive=document.querySelector('.page.active')&&document.querySelector('.page.active').id;
   var invPage=document.getElementById('page-invoice');
@@ -7158,7 +7212,7 @@ async function previewClientInvoice(clientName,period){
     window.open(url,'_blank');
     // Cleanup blob after a delay so the new tab can render
     setTimeout(function(){URL.revokeObjectURL(url);},10000);
-  }catch(e){alert('Preview failed: '+e.message);console.error(e);}
+  }catch(e){showAlert('Preview failed: '+e.message);console.error(e);}
   finally{
     invPage.classList.remove('active');
     invPage.style.position='';invPage.style.left='';invPage.style.top='';invPage.style.zIndex='';
@@ -7189,7 +7243,7 @@ function validateInvoiceForSend(name,prof,inv,cwRec){
 
 function previewMonthlyInvoices(){
   var period=(document.getElementById('monthlyInvPeriod').value||'').trim();
-  if(!period||period.length<7){alert('Enter a billing period in MM/YYYY format.');return;}
+  if(!period||period.length<7){showAlert('Enter a billing period in MM/YYYY format.');return;}
   var profiles=getProfiles();
   var cws=getCaseworkers();
   // Group ALL active clients by worker name
@@ -7457,7 +7511,7 @@ async function _doMonthlyEmailSend(email,workerName,period,readyToSend,alreadySe
 
   if(!attachments.length){
     if(po)po.classList.remove('open');
-    alert('No PDFs could be generated. Please check the console for errors.');return;
+    showAlert('No PDFs could be generated. Please check the console for errors.');return;
   }
 
   var workerDisplay=workerName&&workerName!=='(No Worker Assigned)'?workerName:'Caseworker';
@@ -7515,7 +7569,7 @@ async function _doMonthlyEmailSend(email,workerName,period,readyToSend,alreadySe
     if(result.status===401)msg2='Authentication error (401) — please sign out and sign back in.';
     else if(result.status===403)msg2='Permission denied (403) — sign out, sign back in, and accept the Mail.Send permission when prompted.';
     else if(result.err)msg2='Error ('+(result.status||'?')+'):\n'+result.err.slice(0,300);
-    alert(msg2);
+    showAlert(msg2);
   }
 }
 </script>
