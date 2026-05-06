@@ -986,7 +986,7 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
         <input type="file" id="importFile" accept=".json" style="display:none;" onchange="importProfiles(event)">
       </div>
       <p style="font-size:11px;color:#8ca0b4;margin-top:10px;line-height:1.6;">
-        <b>JSON</b>: full backup for re-import. <span style="color:#a05000;">Includes plaintext SSN — store securely.</span><br>
+        <b>JSON</b>: backup for re-import. <span style="color:#1e7e34;">SSN masked by default</span> — opt in to "Include Full SSN" if you need to preserve them across a restore.<br>
         <b>Excel</b>: spreadsheet of all client/invoice/caregiver data. <span style="color:#1e7e34;">SSN auto-masked to last 4 digits.</span><br>
         <b>PDFs</b>: ZIP with one folder per client containing their invoice PDFs (no SSN — invoices don't include SSN by design).
       </p>
@@ -4005,8 +4005,40 @@ function exportReportExcel(){
 function getProfiles(){try{return JSON.parse(localStorage.getItem('lhca_profiles')||'{}');}catch(e){return{};}}
 function saveProfilesLS(p){localStorage.setItem('lhca_profiles',JSON.stringify(p));}
 function exportProfiles(){
-  var p=getProfiles();if(!Object.keys(p).length){alert('No clients yet.');return;}
-  var b=new Blob([JSON.stringify(p,null,2)],{type:'application/json'}),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download='liberty_clients.json';a.click();URL.revokeObjectURL(u);
+  var p=getProfiles();if(!Object.keys(p).length){showConfirm('No clients yet.',function(){},{title:'Nothing to Export',okText:'OK',danger:false});return;}
+  // Ask whether to include plaintext SSN (default: masked)
+  showConfirm(
+    'Export client data as JSON for backup or transfer between devices.\n\n'+
+    'By default, SSN is masked (last 4 digits only). Choose "Include Full SSN" if this backup will be used to restore data — only do this if you will store the file in a secure location (encrypted drive, OneDrive, etc).',
+    function(){doExportProfiles(false);},
+    {
+      title:'Export Clients (JSON)',
+      okText:'Export with Masked SSN',
+      danger:false,
+      extraText:'Include Full SSN',
+      extraDanger:true,
+      onExtra:function(){doExportProfiles(true);}
+    }
+  );
+}
+function doExportProfiles(includeFullSSN){
+  var p=getProfiles();
+  // Deep clone so we don't mutate live data
+  var copy=JSON.parse(JSON.stringify(p));
+  if(!includeFullSSN){
+    Object.keys(copy).forEach(function(name){
+      var prof=copy[name];if(prof.ssn){
+        var digits=String(prof.ssn).replace(/\D/g,'');
+        prof.ssn=digits.length>=4?'***-**-'+digits.slice(-4):'***-**-****';
+      }
+    });
+  }
+  var fname='liberty_clients_'+new Date().toISOString().slice(0,10)+(includeFullSSN?'_FULL':'_masked')+'.json';
+  var b=new Blob([JSON.stringify(copy,null,2)],{type:'application/json'}),u=URL.createObjectURL(b);
+  var a=document.createElement('a');a.href=u;a.download=fname;a.click();URL.revokeObjectURL(u);
+  if(includeFullSSN){
+    showConfirm('Backup downloaded with FULL SSN.\n\nFile: '+fname+'\n\nStore this in a secure encrypted location. Do not email or share it.',function(){},{title:'Sensitive Backup',okText:'OK',danger:false});
+  }
 }
 
 // Export all client+invoice data as multi-sheet Excel workbook
@@ -4151,11 +4183,31 @@ function importProfiles(ev){
   var r=new FileReader();r.onload=function(e){
     try{
       var imp=JSON.parse(e.target.result),ex=getProfiles(),keys=Object.keys(imp);
-      if(!keys.length){alert('No clients found.');return;}
+      if(!keys.length){showConfirm('No clients found in that file.',function(){},{title:'Nothing to Import',okText:'OK',danger:false});return;}
+      // For each imported record: if SSN looks masked (***-**-****), preserve any existing real SSN
+      keys.forEach(function(name){
+        var incoming=imp[name],existing=ex[name];
+        if(incoming&&incoming.ssn&&/^\*\*\*-\*\*-/.test(incoming.ssn)){
+          // Masked SSN — keep existing real value if we have one, otherwise drop the masked placeholder
+          if(existing&&existing.ssn&&!/^\*\*\*-\*\*-/.test(existing.ssn)){
+            incoming.ssn=existing.ssn;
+          } else {
+            delete incoming.ssn;
+          }
+        }
+      });
       var conf=keys.filter(function(k){return ex[k];});
-      if(conf.length&&!confirm('Overwrite existing: '+conf.join(', ')+'?'))return;
-      saveProfilesLS(Object.assign({},ex,imp));renderSidebarClients();renderClientGrid();updateStats();alert('Imported '+keys.length+' client(s)!');
-    }catch(err){alert('Could not read file.');}ev.target.value='';
+      function doImport(){
+        saveProfilesLS(Object.assign({},ex,imp));renderSidebarClients();renderClientGrid();updateStats();
+        showConfirm('Imported '+keys.length+' client'+(keys.length>1?'s':'')+'.',function(){},{title:'Import Complete',okText:'OK',danger:false});
+      }
+      if(conf.length){
+        showConfirm('Overwrite existing client'+(conf.length>1?'s':'')+'?\n\n'+conf.join(', '),doImport,{title:'Overwrite Confirm',okText:'Overwrite'});
+      } else {
+        doImport();
+      }
+    }catch(err){showConfirm('Could not read that file. It may be corrupted or not a valid JSON export.',function(){},{title:'Import Failed',okText:'OK',danger:false});}
+    ev.target.value='';
   };r.readAsText(file);
 }
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
