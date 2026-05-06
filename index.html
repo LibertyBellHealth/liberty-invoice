@@ -986,8 +986,8 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
         <input type="file" id="importFile" accept=".json" style="display:none;" onchange="importProfiles(event)">
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed #e1e5ea;">
-        <button class="btn btn-primary" onclick="backupToOneDrive()" id="oneDriveBackupBtn">☁ Backup to OneDrive</button>
-        <span style="font-size:11px;color:#8ca0b4;align-self:center;">Saves to <b>OneDrive / Liberty Home Care Backups /</b></span>
+        <button class="btn btn-primary" onclick="backupToOneDrive()" id="oneDriveBackupBtn">☁ Backup to OneDrive Now</button>
+        <span style="font-size:11px;color:#8ca0b4;align-self:center;line-height:1.5;">Auto-backs up <b>weekly</b> on first sign-in. Keeps 12 most recent (~3 months). Saves to <b>OneDrive / Liberty Home Care Backups /</b></span>
       </div>
       <p style="font-size:11px;color:#8ca0b4;margin-top:10px;line-height:1.6;">
         <b>JSON</b>: backup for re-import. <span style="color:#1e7e34;">SSN masked by default</span> — opt in to "Include Full SSN" if you need to preserve them across a restore.<br>
@@ -4025,6 +4025,88 @@ function exportProfiles(){
     }
   );
 }
+// ──────────────────────────────────────────────────────────────────
+//  AUTOMATIC WEEKLY ONEDRIVE BACKUP
+//  Fires once per 7 days on first sign-in, silently uploads to
+//  /Liberty Home Care Backups/. Keeps 12 most recent (auto-deletes older).
+// ──────────────────────────────────────────────────────────────────
+var ONEDRIVE_BACKUP_RETENTION=12;          // keep 12 weekly backups (~3 months)
+var ONEDRIVE_BACKUP_INTERVAL_DAYS=7;
+function _msSinceLastBackup(){
+  var last=localStorage.getItem('lhca_last_onedrive_backup');
+  if(!last)return Infinity;
+  return Date.now()-new Date(last).getTime();
+}
+async function maybeAutoBackupOneDrive(){
+  if(!spToken)return; // not signed in yet
+  if(window._onedriveAutoRunning)return;
+  var failed=localStorage.getItem('lhca_onedrive_backup_failed')==='1';
+  var ms=_msSinceLastBackup();
+  var dueByTime=ms>=ONEDRIVE_BACKUP_INTERVAL_DAYS*24*60*60*1000;
+  if(!dueByTime&&!failed)return;
+  if(failed){renderOneDriveBackupBanner('failed');}
+  else{renderOneDriveBackupBanner('running');}
+  window._onedriveAutoRunning=true;
+  try{
+    await doBackupToOneDrive(false,/*silent=*/true);
+    localStorage.setItem('lhca_last_onedrive_backup',new Date().toISOString());
+    localStorage.removeItem('lhca_onedrive_backup_failed');
+    await pruneOldOneDriveBackups();
+    renderOneDriveBackupBanner('done');
+  }catch(e){
+    console.error('Auto-backup failed:',e);
+    localStorage.setItem('lhca_onedrive_backup_failed','1');
+    localStorage.setItem('lhca_onedrive_backup_failed_msg',e.message||'unknown error');
+    renderOneDriveBackupBanner('failed');
+  }finally{
+    window._onedriveAutoRunning=false;
+  }
+}
+
+// Show a small banner near the top of the page when auto-backup needs attention
+function renderOneDriveBackupBanner(state){
+  var existing=document.getElementById('odBackupBanner');
+  if(state==='done'||state==='running'){
+    if(existing)existing.remove();
+    if(state==='done'){showToast('☁ Weekly backup to OneDrive complete',3500);}
+    return;
+  }
+  if(state!=='failed')return;
+  if(existing)return;
+  var msg=localStorage.getItem('lhca_onedrive_backup_failed_msg')||'';
+  var banner=document.createElement('div');
+  banner.id='odBackupBanner';
+  banner.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9997;background:linear-gradient(90deg,#fff3cd,#ffe9a8);color:#856404;padding:8px 16px;border-bottom:1px solid #ffeaa7;box-shadow:0 2px 6px rgba(0,0,0,0.08);font-family:Arial,sans-serif;font-size:13px;display:flex;align-items:center;gap:12px;';
+  banner.innerHTML='<span>⚠ Last weekly OneDrive backup failed'+(msg?': '+esc(msg.slice(0,80)):'')+'</span>'+
+    '<button class="btn btn-primary btn-sm" onclick="retryOneDriveBackup()" style="margin-left:auto;">Retry Now</button>'+
+    '<button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'odBackupBanner\').remove();">Dismiss</button>';
+  document.body.appendChild(banner);
+}
+async function retryOneDriveBackup(){
+  var b=document.getElementById('odBackupBanner');if(b)b.remove();
+  await maybeAutoBackupOneDrive();
+}
+
+// Delete OneDrive backup files beyond the retention count (keeps newest N)
+async function pruneOldOneDriveBackups(){
+  if(!spToken)return;
+  try{
+    var url='https://graph.microsoft.com/v1.0/me/drive/root:/Liberty Home Care Backups:/children?$select=id,name,lastModifiedDateTime&$orderby=lastModifiedDateTime desc&$top=200';
+    var r=await fetch(url,{headers:{'Authorization':'Bearer '+spToken}});
+    if(!r.ok)return;
+    var data=await r.json();
+    var files=(data.value||[]).filter(function(f){return /^liberty_clients_.*\.json$/.test(f.name);});
+    if(files.length<=ONEDRIVE_BACKUP_RETENTION)return;
+    var toDelete=files.slice(ONEDRIVE_BACKUP_RETENTION);
+    for(var i=0;i<toDelete.length;i++){
+      try{
+        await fetch('https://graph.microsoft.com/v1.0/me/drive/items/'+toDelete[i].id,{method:'DELETE',headers:{'Authorization':'Bearer '+spToken}});
+      }catch(e){console.warn('Failed to prune',toDelete[i].name,e);}
+    }
+    console.log('[OneDrive] Pruned '+toDelete.length+' old backup'+(toDelete.length>1?'s':'')+', keeping '+ONEDRIVE_BACKUP_RETENTION+' newest');
+  }catch(e){console.warn('Prune failed:',e);}
+}
+
 // One-click backup straight to user's OneDrive via Microsoft Graph.
 // Asks whether to include full SSN, then uploads to /Liberty Home Care Backups/.
 async function backupToOneDrive(){
@@ -4048,10 +4130,10 @@ async function backupToOneDrive(){
   );
 }
 
-async function doBackupToOneDrive(includeFullSSN){
+async function doBackupToOneDrive(includeFullSSN,silent){
   var btn=document.getElementById('oneDriveBackupBtn');
   var oldText=btn?btn.textContent:'';
-  if(btn){btn.disabled=true;btn.textContent='Uploading…';}
+  if(btn&&!silent){btn.disabled=true;btn.textContent='Uploading…';}
   try{
     // Build the backup payload (same logic as JSON export)
     var p=getProfiles();
@@ -4095,22 +4177,28 @@ async function doBackupToOneDrive(includeFullSSN){
       throw new Error('Upload failed ('+resp.status+'): '+errTxt.slice(0,200));
     }
     var info=await resp.json();
-    aiTrack('OneDriveBackup',{file:fname,size:bytes,fullSSN:!!includeFullSSN});
-    showConfirm(
-      'Backup uploaded to OneDrive.\n\n'+
-      'File: '+fname+'\n'+
-      'Folder: Liberty Home Care Backups\n'+
-      'Size: '+(bytes/1024).toFixed(1)+' KB\n'+
-      (includeFullSSN?'\n⚠️ This backup contains full SSN — keep your OneDrive access controlled.':'')+
-      '\n\nClick Open to view in OneDrive, or OK to dismiss.',
-      function(){if(info.webUrl)window.open(info.webUrl,'_blank');},
-      {title:'Backup Complete',okText:'Open in OneDrive',danger:false,extraText:'OK',onExtra:function(){}}
-    );
+    aiTrack('OneDriveBackup',{file:fname,size:bytes,fullSSN:!!includeFullSSN,auto:!!silent});
+    // After a successful manual backup, also prune old files
+    if(!silent)pruneOldOneDriveBackups();
+    if(!silent){
+      showConfirm(
+        'Backup uploaded to OneDrive.\n\n'+
+        'File: '+fname+'\n'+
+        'Folder: Liberty Home Care Backups\n'+
+        'Size: '+(bytes/1024).toFixed(1)+' KB\n'+
+        (includeFullSSN?'\n⚠️ This backup contains full SSN — keep your OneDrive access controlled.':'')+
+        '\n\nClick Open to view in OneDrive, or OK to dismiss.',
+        function(){if(info.webUrl)window.open(info.webUrl,'_blank');},
+        {title:'Backup Complete',okText:'Open in OneDrive',danger:false,extraText:'OK',onExtra:function(){}}
+      );
+    }
+    return info;
   }catch(e){
     console.error('OneDrive backup failed:',e);
-    showConfirm('Backup failed: '+e.message,function(){},{title:'Backup Failed',okText:'OK',danger:false});
+    if(!silent)showConfirm('Backup failed: '+e.message,function(){},{title:'Backup Failed',okText:'OK',danger:false});
+    throw e;
   }finally{
-    if(btn){btn.disabled=false;btn.textContent=oldText||'☁ Backup to OneDrive';}
+    if(btn&&!silent){btn.disabled=false;btn.textContent=oldText||'☁ Backup to OneDrive';}
   }
 }
 
@@ -5723,11 +5811,11 @@ function initMSAL() {
           setTimeout(refreshApiToken, Math.max(ttl, 60000));
           // Now also need Graph token for email — try silent
           msalInstance.acquireTokenSilent({ scopes: GRAPH_SCOPES, account: r.account })
-            .then(function(g){ spToken = g.accessToken; }).catch(function(){});
+            .then(function(g){ spToken = g.accessToken; setTimeout(maybeAutoBackupOneDrive,8000); }).catch(function(){});
           updateAuthUI(true); loadProfilesAPI();
         } else {
           spToken = r.accessToken;
-          refreshApiToken().then(function(){ updateAuthUI(true); loadProfilesAPI(); });
+          refreshApiToken().then(function(){ updateAuthUI(true); loadProfilesAPI(); setTimeout(maybeAutoBackupOneDrive,8000); });
         }
         return;
       }
@@ -5742,7 +5830,7 @@ function initMSAL() {
         msalInstance.acquireTokenSilent({
           scopes: GRAPH_SCOPES, // Graph only — API token fetched separately in refreshApiToken()
           account: acc[0], redirectUri: REDIRECT_URI,
-        }).then(function (r2) { spToken = r2.accessToken; aiTrack('UserSignIn',{method:'silent'}); refreshApiToken().then(function(){ updateAuthUI(true); loadProfilesAPI(); }); })
+        }).then(function (r2) { spToken = r2.accessToken; aiTrack('UserSignIn',{method:'silent'}); refreshApiToken().then(function(){ updateAuthUI(true); loadProfilesAPI(); setTimeout(maybeAutoBackupOneDrive,8000); }); })
           .catch(function () {
             msalInstance.loginRedirect({ scopes: GRAPH_SCOPES, redirectUri: REDIRECT_URI });
           });
