@@ -1434,9 +1434,10 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
 <div class="modal-overlay" id="confirmModal">
   <div class="modal-box">
     <h3 id="confirmTitle">Confirm</h3>
-    <p id="confirmMessage" style="font-size:13px;color:#1a2b45;margin:8px 0 14px;"></p>
-    <div class="modal-row" style="display:flex;gap:8px;justify-content:flex-end;">
+    <p id="confirmMessage" style="font-size:13px;color:#1a2b45;margin:8px 0 14px;white-space:pre-line;"></p>
+    <div class="modal-row" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
       <button class="btn btn-secondary" id="confirmCancelBtn">Cancel</button>
+      <button class="btn btn-secondary" id="confirmExtraBtn" style="display:none;">Extra</button>
       <button class="btn btn-danger" id="confirmOkBtn">Confirm</button>
     </div>
   </div>
@@ -3057,14 +3058,32 @@ function showConfirm(message,onConfirm,opts){
   var modal=document.getElementById('confirmModal');
   document.getElementById('confirmTitle').textContent=opts.title||'Confirm';
   document.getElementById('confirmMessage').textContent=message||'Are you sure?';
-  var okBtn=document.getElementById('confirmOkBtn'),cancelBtn=document.getElementById('confirmCancelBtn');
-  okBtn.textContent=opts.okText||'Confirm';
-  okBtn.className='btn '+(opts.danger!==false?'btn-danger':'btn-primary');
+  var okBtn=document.getElementById('confirmOkBtn'),cancelBtn=document.getElementById('confirmCancelBtn'),extraBtn=document.getElementById('confirmExtraBtn');
+  // If okText is explicitly empty, hide the OK button entirely (e.g., extra-only choice)
+  if(opts.okText===''||opts.okText===null){
+    okBtn.style.display='none';
+  } else {
+    okBtn.style.display='';
+    okBtn.textContent=opts.okText||'Confirm';
+    okBtn.className='btn '+(opts.danger!==false?'btn-danger':'btn-primary');
+  }
+  cancelBtn.textContent=opts.cancelText||'Cancel';
+  // Optional third button (e.g., 'Send Anyway')
+  if(opts.extraText){
+    extraBtn.textContent=opts.extraText;
+    extraBtn.style.display='';
+    extraBtn.className='btn '+(opts.extraDanger?'btn-danger':'btn-secondary');
+  } else {
+    extraBtn.style.display='none';
+  }
   // Replace handlers freshly each time
-  var newOk=okBtn.cloneNode(true),newCancel=cancelBtn.cloneNode(true);
-  okBtn.parentNode.replaceChild(newOk,okBtn);cancelBtn.parentNode.replaceChild(newCancel,cancelBtn);
+  var newOk=okBtn.cloneNode(true),newCancel=cancelBtn.cloneNode(true),newExtra=extraBtn.cloneNode(true);
+  okBtn.parentNode.replaceChild(newOk,okBtn);
+  cancelBtn.parentNode.replaceChild(newCancel,cancelBtn);
+  extraBtn.parentNode.replaceChild(newExtra,extraBtn);
   newOk.addEventListener('click',function(){modal.classList.remove('open');if(typeof onConfirm==='function')onConfirm();});
-  newCancel.addEventListener('click',function(){modal.classList.remove('open');});
+  newCancel.addEventListener('click',function(){modal.classList.remove('open');if(typeof opts.onCancel==='function')opts.onCancel();});
+  newExtra.addEventListener('click',function(){modal.classList.remove('open');if(typeof opts.onExtra==='function')opts.onExtra();});
   modal.classList.add('open');
 }
 
@@ -6639,7 +6658,10 @@ function previewMonthlyInvoices(){
 }
 async function sendMonthlyEmail(email,workerName,clients,period){
   if(!spToken){
-    if(confirm('Sign in with your Microsoft account to send emails?\n\nClicking OK will redirect you to sign in.')){signIn();}
+    showConfirm('You need to sign in with your Microsoft account to send emails. Click Sign In to be redirected.',
+      function(){signIn();},
+      {title:'Sign In Required',okText:'Sign In',danger:false}
+    );
     return;
   }
   // Bucket clients by current status:
@@ -6655,32 +6677,52 @@ async function sendMonthlyEmail(email,workerName,clients,period){
     readyToSend.push(c);
   });
 
-  // Decide what to do based on the buckets
-  if(!readyToSend.length){
-    if(alreadySent.length===clients.length){
-      alert('All '+alreadySent.length+' invoice'+(alreadySent.length>1?'s':'')+' for '+period+' have already been submitted to '+workerName+'.');return;
-    }
-    var msg='No invoices ready to send.';
-    if(hasIssues.length)msg+='\n\n'+hasIssues.length+' invoice'+(hasIssues.length>1?'s have':' has')+' validation issues — fix them on the client page or click Preview to see what\'s missing.';
-    if(missingInvoice.length)msg+='\n\n'+missingInvoice.length+' client'+(missingInvoice.length>1?'s have':' has')+' no invoice for '+period+'.';
-    alert(msg);return;
-  }
+  // Always offer "Send Anyway" — combine readyToSend + hasIssues
+  var allWithInvoice=readyToSend.concat(hasIssues);
 
-  // If some have issues, ask the user whether to send partial
-  function proceedWithSend(){
+  function sendReadyOnly(){
     _doMonthlyEmailSend(email,workerName,period,readyToSend,alreadySent.length,hasIssues,missingInvoice);
   }
+  function sendEverythingAnyway(){
+    _doMonthlyEmailSend(email,workerName,period,allWithInvoice,alreadySent.length,[],missingInvoice);
+  }
+
+  // Case 1: nothing has an invoice for this period at all
+  if(!allWithInvoice.length){
+    if(alreadySent.length===clients.length){
+      showConfirm('All '+alreadySent.length+' invoice'+(alreadySent.length>1?'s':'')+' for '+period+' have already been submitted to '+workerName+'.\n\nNo new invoices to send.',function(){},{title:'Already Sent',okText:'OK',danger:false});
+      return;
+    }
+    showConfirm('No invoices exist for '+period+' yet. Fill out the invoices on each client page first.',function(){},{title:'Nothing to Send',okText:'OK',danger:false});
+    return;
+  }
+
+  // Case 2: at least one client has an invoice; check for validation issues
   if(hasIssues.length>0){
-    var problemNames=hasIssues.map(function(c){return c.name;}).join(', ');
-    showConfirm(
-      readyToSend.length+' of '+(readyToSend.length+hasIssues.length)+' invoices are ready. '+
-      hasIssues.length+' have issues:\n• '+problemNames+'\n\nSend the '+readyToSend.length+' ready one'+(readyToSend.length>1?'s':'')+' now? You can send the others later — they will be marked as a follow-up.',
-      proceedWithSend,
-      {title:'Send Partial Batch?',okText:'Send '+readyToSend.length+' Now',danger:false}
+    var problemNames=hasIssues.map(function(c){return c.name+(c.issues&&c.issues.length?' ('+c.issues[0]+')':'');}).join('\n• ');
+    var prompt;
+    if(readyToSend.length>0){
+      prompt=readyToSend.length+' of '+allWithInvoice.length+' invoices are ready to send.\n\n'+
+        hasIssues.length+' have issues:\n• '+problemNames+'\n\nWhat would you like to do?';
+    } else {
+      prompt='All '+hasIssues.length+' invoice'+(hasIssues.length>1?'s have':' has')+' validation issues:\n• '+problemNames+'\n\nYou can send anyway, or fix the issues first.';
+    }
+    showConfirm(prompt,
+      readyToSend.length>0?sendReadyOnly:function(){},
+      {
+        title:'Validation Issues',
+        okText:readyToSend.length>0?'Send '+readyToSend.length+' Ready':'',
+        danger:false,
+        extraText:'Send All '+allWithInvoice.length+' Anyway',
+        extraDanger:true,
+        onExtra:sendEverythingAnyway
+      }
     );
     return;
   }
-  proceedWithSend();
+
+  // Case 3: all ready, no issues — send straight through
+  sendReadyOnly();
 }
 
 async function _doMonthlyEmailSend(email,workerName,period,readyToSend,alreadySentCount,hasIssues,missingInvoice){
