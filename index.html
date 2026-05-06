@@ -796,6 +796,7 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
       <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Assignments</div>
       <div class="ff"><label>Assigned Caregiver</label><select id="nc-caregiver"><option value="">— None assigned —</option></select></div>
       <div class="ff"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="nc-live-in" style="width:14px;height:14px;cursor:pointer;"> Live-In Caregiver <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(caregiver lives with this client)</span></label></div>
+      <div class="ff"><label>Service Start Date <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(prevents "missing invoice" warnings for months before this date)</span></label><input id="nc-start-date" type="date"></div>
       <div class="ff" style="position:relative;">
         <label>Caseworker</label>
         <input id="nc-worker-search" placeholder="Click to browse, or type to search…" maxlength="80" autocomplete="off" oninput="cwSearch(this,'nc-worker-val','nc-worker-drop')" onfocus="cwSearch(this,'nc-worker-val','nc-worker-drop')" onblur="setTimeout(function(){var d=document.getElementById('nc-worker-drop');if(d)d.style.display='none';},200)">
@@ -1696,16 +1697,35 @@ function confirmNewInvoice(mode){
   try{localStorage.removeItem('lhca_draft_'+activeProfileName);}catch(e){}
   if(draftTimer)clearInterval(draftTimer);
   if(mode==='copy'&&prof.invoices&&prof.invoices.length){
-    // Copy tasks from last invoice but clear billing period
+    // Copy tasks AND total hours from last invoice; auto-advance to next month
     var last=prof.invoices[0];
     applyFullInvoice(last.data);
-    document.getElementById('billingPeriod').value='';
-    document.getElementById('billingPeriod2').value='';
+    // Compute next month's billing period from the last invoice's period
+    var nextBP='';
+    var lastBP=last.billingPeriod||'';
+    var bpParts=lastBP.split('/');
+    if(bpParts.length===2&&bpParts[1].length===4){
+      var lm=parseInt(bpParts[0]),ly=parseInt(bpParts[1]);
+      if(!isNaN(lm)&&!isNaN(ly)){
+        lm++;if(lm>12){lm=1;ly++;}
+        nextBP=String(lm).padStart(2,'0')+'/'+ly;
+      }
+    }
+    document.getElementById('billingPeriod').value=nextBP;
+    document.getElementById('billingPeriod2').value=nextBP;
     var T=today();
     document.getElementById('dateSubmitted').value=T;
     document.getElementById('sigDate1').value=T;
     document.getElementById('sigDate2').value=T;
-    ['svcHH','svcMM','cplxHH','cplxMM','p1HH','p1MM','grandHH','grandMM'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+    // Rebuild grid for the new month BEFORE applying states (so day count matches)
+    if(nextBP){
+      var partsNew=nextBP.split('/');
+      var savedStates=captureStates();
+      rebuild(daysIn(partsNew[0],partsNew[1]));
+      applyStates(savedStates);
+      checkDuplicatePeriod(nextBP);
+    }
+    // Keep hours fields populated from last invoice (do NOT clear them)
     document.getElementById('dupWarning').style.display='none';
   } else {
     loadProfileIntoForm(prof);
@@ -1773,12 +1793,24 @@ function updateStats(){
   if(sel){var cur=sel.value;sel.innerHTML='<option value="">All Caregivers</option>';var cgs=getCaregivers();Object.keys(cgs).forEach(function(id){var o=document.createElement('option');o.value=id;o.textContent=cgs[id].name;if(id===cur)o.selected=true;sel.appendChild(o);});}
   renderAttentionPanel();
 }
+// Returns true if the given billing period (MM/YYYY) is on or after the client's startDate
+function clientWasActiveInPeriod(prof,period){
+  if(!prof.startDate)return true; // no start date set — assume always active
+  if(!period||period.length<7)return true;
+  var pp=period.split('/');if(pp.length!==2)return true;
+  var pYear=parseInt(pp[1]),pMonth=parseInt(pp[0]);
+  // Period start = first day of that month
+  var periodEnd=new Date(pYear,pMonth,0); // last day of period month
+  var startD=new Date(prof.startDate);
+  return periodEnd>=startD;
+}
 function renderAttentionPanel(){
   var panel=document.getElementById('attentionPanel');if(!panel)return;
   var p=getProfiles(),items=[];
   var d=new Date(),curPeriod=String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
   var active=Object.keys(p).filter(function(k){return !p[k].clientStatus||p[k].clientStatus==='active';});
-  var missingThis=active.filter(function(k){return !((p[k].invoices)||[]).some(function(i){return i.billingPeriod===curPeriod;});});
+  // Skip clients whose startDate is after the current period
+  var missingThis=active.filter(function(k){return clientWasActiveInPeriod(p[k],curPeriod) && !((p[k].invoices)||[]).some(function(i){return i.billingPeriod===curPeriod;});});
   if(missingThis.length)items.push({cls:'attn-warn',count:missingThis.length,label:missingThis.length+' active client'+(missingThis.length>1?'s':'')+' missing invoice for '+curPeriod,fn:'openAllInvoicesModal("outstanding")'});
   var stale=[];Object.keys(p).forEach(function(k){(p[k].invoices||[]).forEach(function(inv){if(inv.status==='submitted'){var age=(new Date()-new Date(inv.savedAt))/(1000*60*60*24);if(age>30)stale.push(1);}});});
   if(stale.length)items.push({cls:'attn-danger',count:stale.length,label:stale.length+' submitted invoice'+(stale.length>1?'s':'')+' pending 30+ days — follow up on payment',fn:'openAllInvoicesModal("outstanding")'});
@@ -1935,7 +1967,9 @@ function renderOverviewPane(){
       '<div class="ov-row"><span class="ov-label">Phone</span><span class="ov-value">'+(prof.phone||'—')+'</span></div>'+
       (addrStr.trim()?'<div class="ov-row"><span class="ov-label">Address</span><span class="ov-value">'+esc(addrStr.trim())+'</span></div>':'')+
       '<div class="ov-row"><span class="ov-label">Caregiver</span>'+(cgName&&prof.caregiverId?'<span class="ov-value" style="color:#185FA5;cursor:pointer;text-decoration:underline;" onclick="navCaregivers();setTimeout(function(){openCgDetail(\''+esc(prof.caregiverId)+'\');},50)">'+esc(cgName)+'</span>':'<span class="ov-value">'+esc(cgName||'Unassigned')+'</span>')+'</div>'+
+      (prof.liveIn?'<div class="ov-row"><span class="ov-label">Live-In</span><span class="ov-value" style="display:inline-block;background:#fff3cd;color:#856404;font-size:11px;font-weight:600;padding:2px 10px;border-radius:10px;border:1px solid #ffeaa7;">YES</span></div>':'')+
       '<div class="ov-row"><span class="ov-label">Caseworker</span>'+(cwRec?'<span class="ov-value" style="color:#185FA5;cursor:pointer;text-decoration:underline;" onclick="navCaseworkers();setTimeout(function(){openCwDetail(\''+esc(cwRec.id)+'\');},50)">'+esc(cwName)+'</span>':'<span class="ov-value">'+esc(cwName||'—')+'</span>')+'</div>'+
+      (prof.startDate?'<div class="ov-row"><span class="ov-label">Service Start</span><span class="ov-value">'+esc(prof.startDate)+'</span></div>':'')+
     '</div>'+
     '<div class="ov-card"><h4>Invoice Summary</h4>'+
       '<div class="ov-row"><span class="ov-label">Total Saved</span><span class="ov-value">'+invoices.length+'</span></div>'+
@@ -2113,6 +2147,11 @@ function renderInfoPane(){
   var dLive=document.createElement('div');dLive.className='info-field full';
   dLive.innerHTML='<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:500;"><input type="checkbox" id="ei-live-in" '+(prof.liveIn?'checked':'')+' onchange="unsavedChanges=true;" style="width:14px;height:14px;cursor:pointer;"> Live-In Caregiver <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(caregiver lives with this client)</span></label>';
   g.appendChild(dLive);
+
+  // Service Start Date — prevents 'missing invoice' warnings for months before client started
+  var dStart=document.createElement('div');dStart.className='info-field full';
+  dStart.innerHTML='<label>Service Start Date <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(prevents missing-invoice warnings for months before this date)</span></label><input type="date" id="ei-start-date" value="'+esc(prof.startDate||'')+'" oninput="unsavedChanges=true;">';
+  g.appendChild(dStart);
 }
 function saveClientInfo(){
   if(!activeProfileName)return;
@@ -2135,6 +2174,7 @@ function saveClientInfo(){
   // Searchable autocomplete fields
   var cgValEl=document.getElementById('ei-caregiver-val');rec.caregiverId=cgValEl?cgValEl.value:'';
   var liveInEl=document.getElementById('ei-live-in');if(liveInEl)rec.liveIn=liveInEl.checked;
+  var startDateEl=document.getElementById('ei-start-date');if(startDateEl)rec.startDate=startDateEl.value||'';
   var cwValEl=document.getElementById('ei-worker-val');var cwSearchEl=document.getElementById('ei-worker-search');
   rec.caseworkerId=cwValEl?cwValEl.value:'';rec.worker=cwSearchEl?cwSearchEl.value:'';
   var statusEl=document.getElementById('ei-status');if(statusEl)rec.clientStatus=statusEl.value;
@@ -2187,9 +2227,9 @@ function renderInvHistory(){
           '<option value="submitted"'+(st==='submitted'?' selected':'')+'>Submitted</option>'+
           '<option value="paid"'+(st==='paid'?' selected':'')+'>Paid</option>'+
         '</select>'+
-        '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();promptInvNote('+idx+')" title="Edit note"></button>'+
-        '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();downloadInvoice('+idx+')" title="Print / Download">⬇</button>'+
-        '<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteInv('+idx+')" title="Delete">Delete</button>'+
+        '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();promptInvNote('+idx+')" title="Add or edit a note for this invoice">'+(inv.invoiceNote?'Edit Note':'+ Note')+'</button>'+
+        '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();downloadInvoice('+idx+')" title="Download as PDF">Download</button>'+
+        '<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteInv('+idx+')" title="Delete this invoice">Delete</button>'+
       '</div>';
     card.addEventListener('click',function(){loadInvFromHistory(idx);});
     c.appendChild(card);
@@ -2230,7 +2270,12 @@ function saveInvNote(input){
 }
 function deleteInv(idx){
   var p=getProfiles(),inv=p[activeProfileName].invoices[idx];
-  if(!confirm('Delete invoice for '+inv.billingPeriod+'?'))return;
+  if(!inv)return;
+  showConfirm('Permanently delete the '+inv.billingPeriod+' invoice for '+activeProfileName+'? This cannot be undone.',function(){doDeleteInv(idx);},{title:'Delete Invoice',okText:'Delete'});
+}
+function doDeleteInv(idx){
+  var p=getProfiles(),inv=p[activeProfileName].invoices[idx];
+  if(!inv)return;
   deleteInvoiceAPI(inv.dbId,activeProfileName,inv.billingPeriod);
   p[activeProfileName].invoices.splice(idx,1);saveProfilesLS(p);saveProfileSP(activeProfileName,p[activeProfileName]);renderInvHistory();
 }
@@ -2490,6 +2535,7 @@ function createClient(){
   p[name].caseworkerId=document.getElementById('nc-worker-val').value.trim();
   p[name].caregiverId=document.getElementById('nc-caregiver').value;
   p[name].liveIn=document.getElementById('nc-live-in').checked;
+  p[name].startDate=document.getElementById('nc-start-date').value||'';
   p[name].clientStatus=document.getElementById('nc-status').value||'active';
   p[name].hasComplex=false;if(!p[name].tasks)p[name].tasks=captureStates();
   saveProfilesLS(p);saveProfileSP(name,p[name]);logActivity('client','New client added: '+name);navDetail(name);
@@ -3438,10 +3484,20 @@ function toggleTodo(id){
   saveTodos(todos);if(t) saveTaskAPI(t);renderTodos();updateTaskBadge();
 }
 function deleteTodo(id){
-  showConfirm('Remove this task?',function(){
-    var toDelete = getTodos().find(function(x){return x.id===id;});
-    var todos=getTodos().filter(function(x){return x.id!==id;});
-    saveTodos(todos);if(toDelete) deleteTaskAPI(toDelete.dbId);renderTodos();updateTaskBadge();
+  var toDelete=getTodos().find(function(x){return x.id===id;});
+  if(!toDelete)return;
+  // Find any follow-ups attached to this task
+  var followUps=getTodos().filter(function(x){return x.parentId===id;});
+  var msg='Remove this task?';
+  if(followUps.length)msg='Remove this task AND its '+followUps.length+' follow-up'+(followUps.length>1?'s':'')+'?';
+  showConfirm(msg,function(){
+    var idsToRemove={};idsToRemove[id]=true;followUps.forEach(function(t){idsToRemove[t.id]=true;});
+    var remaining=getTodos().filter(function(x){return !idsToRemove[x.id];});
+    saveTodos(remaining);
+    // Delete from DB
+    if(toDelete.dbId)deleteTaskAPI(toDelete.dbId);
+    followUps.forEach(function(t){if(t.dbId)deleteTaskAPI(t.dbId);});
+    renderTodos();updateTaskBadge();
   },{title:'Remove Task',okText:'Remove'});
 }
 function clearDoneTasks(){
@@ -3482,18 +3538,32 @@ function renderTodos(filterClient){
   var oc=document.getElementById('openTaskCount');if(oc)oc.textContent='('+open.length+')';
   var dc=document.getElementById('doneTaskCount');if(dc)dc.textContent='('+done.length+')';
 
-  // OPEN TASKS — all visible as a flat list (no auto-queue)
+  // OPEN TASKS — render parents flat, with collapsible follow-ups under each
   var openC=document.getElementById('todoList');
   if(openC){
     openC.innerHTML='';
     if(!open.length){openC.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:8px 0;">No open tasks.</div>';}
     else {
-      open.forEach(function(t,idx){
+      // Group: parents (no parentId) + follow-ups attached to them
+      var parents=open.filter(function(t){return !t.parentId;});
+      var followUpsByParent={};
+      open.filter(function(t){return t.parentId;}).forEach(function(t){
+        if(!followUpsByParent[t.parentId])followUpsByParent[t.parentId]=[];
+        followUpsByParent[t.parentId].push(t);
+      });
+      // Orphaned follow-ups (parent already done/removed) — promote to top level
+      var allParentIds={};parents.forEach(function(t){allParentIds[t.id]=true;});
+      Object.keys(followUpsByParent).forEach(function(pid){
+        if(!allParentIds[pid]){followUpsByParent[pid].forEach(function(t){t.parentId=null;parents.push(t);});delete followUpsByParent[pid];}
+      });
+
+      function renderTaskRow(t,opts){
+        opts=opts||{};
         var overdue=t.due&&new Date(t.due)<now;
+        var isFollowUp=!!opts.followUp;
         var item=document.createElement('div');item.className='todo-item';
-        // First task highlighted; follow-up tasks (linked via parentId) indented
-        var isFollowUp=!!t.parentId;
-        item.style.cssText='background:'+(idx===0&&!isFollowUp?'#f5f8fc':'#fff')+';border-left:3px solid '+(isFollowUp?'#b0c8e8':'#185FA5')+';border:1px solid #e1e5ea;border-left-width:3px;border-radius:6px;padding:10px;margin-bottom:6px;'+(isFollowUp?'margin-left:24px;':'');
+        var indentStyle=isFollowUp?'margin-left:32px;':'';
+        item.style.cssText='background:'+(isFollowUp?'#fafbfc':'#f5f8fc')+';border:1px solid #e1e5ea;border-left:3px solid '+(isFollowUp?'#b0c8e8':'#185FA5')+';border-radius:6px;padding:10px;margin-bottom:6px;'+indentStyle;
         item.innerHTML=
           '<input type="checkbox" class="todo-cb" onchange="toggleTodo(\''+t.id+'\')" style="margin-top:3px;">'+
           '<div class="todo-body">'+
@@ -3505,10 +3575,39 @@ function renderTodos(filterClient){
               (!filterClient&&t.client?'<span class="todo-link" onclick="navDetail(\''+esc(t.client)+'\')">'+esc(t.client)+'</span>':'')+
             '</div>'+
           '</div>'+
-          '<button class="btn btn-secondary btn-sm" onclick="addFollowUpTask(\''+t.id+'\')" style="padding:3px 7px;font-size:11px;" title="Add a follow-up task that comes after this one">+ Follow-up</button>'+
+          '<button class="btn btn-secondary btn-sm" onclick="addFollowUpTask(\''+(isFollowUp?(t.parentId||t.id):t.id)+'\')" style="padding:3px 7px;font-size:11px;" title="Add a follow-up that comes after this one">+ Follow-up</button>'+
           '<button class="btn btn-secondary btn-sm" onclick="editTodoNote(\''+t.id+'\')" style="padding:3px 7px;font-size:11px;">Note</button>'+
           '<button class="btn btn-danger btn-sm" onclick="deleteTodo(\''+t.id+'\')" style="padding:3px 7px;font-size:11px;">Remove</button>';
-        openC.appendChild(item);
+        return item;
+      }
+
+      parents.forEach(function(parent){
+        var fups=followUpsByParent[parent.id]||[];
+        // Parent row
+        var parentRow=renderTaskRow(parent);
+        // If has follow-ups, append a small toggle bar inside the parent row
+        if(fups.length){
+          var toggleBar=document.createElement('div');
+          toggleBar.style.cssText='margin-top:8px;padding:6px 10px;background:#eef3fb;border:1px solid #d0dbe9;border-radius:5px;cursor:pointer;font-size:11px;color:#185FA5;font-weight:600;display:flex;justify-content:space-between;align-items:center;user-select:none;width:100%;';
+          var toggleLabel=document.createElement('span');toggleLabel.textContent='▶ '+fups.length+' follow-up'+(fups.length>1?'s':'');
+          var clearBtn=document.createElement('span');clearBtn.style.cssText='font-size:10px;color:#8ca0b4;';clearBtn.textContent='click to expand';
+          toggleBar.appendChild(toggleLabel);toggleBar.appendChild(clearBtn);
+          // Insert toggle bar at end of parentRow body
+          parentRow.querySelector('.todo-body').appendChild(toggleBar);
+          openC.appendChild(parentRow);
+          // Container for follow-ups (collapsed by default)
+          var fupContainer=document.createElement('div');fupContainer.style.cssText='display:none;';
+          fups.forEach(function(fu){fupContainer.appendChild(renderTaskRow(fu,{followUp:true}));});
+          openC.appendChild(fupContainer);
+          toggleBar.addEventListener('click',function(){
+            var isOpen=fupContainer.style.display!=='none';
+            fupContainer.style.display=isOpen?'none':'block';
+            toggleLabel.textContent=(isOpen?'▶ ':'▼ ')+fups.length+' follow-up'+(fups.length>1?'s':'');
+            clearBtn.textContent=isOpen?'click to expand':'click to collapse';
+          });
+        } else {
+          openC.appendChild(parentRow);
+        }
       });
     }
   }
@@ -6584,6 +6683,8 @@ function previewMonthlyInvoices(){
   Object.keys(profiles).forEach(function(name){
     var prof=profiles[name];
     if(prof.status==='inactive'||prof.status==='terminated'||prof.status==='lost')return;
+    // Skip clients whose service started AFTER this billing period
+    if(!clientWasActiveInPeriod(prof,period))return;
     var wname=(prof.worker||'').trim()||'(No Worker Assigned)';
     if(!groups[wname])groups[wname]={clients:[]};
     var cwRec=cws.find(function(c){return (c.id&&prof.caseworkerId&&c.id===prof.caseworkerId)||(c.name||'').toLowerCase()===wname.toLowerCase();})||{};
@@ -6600,9 +6701,24 @@ function previewMonthlyInvoices(){
     document.getElementById('monthlyInvResults').innerHTML='<div style="color:#8ca0b4;font-size:13px;text-align:center;padding:20px;">No active clients found.</div>';
     return;
   }
-  var html='<div style="font-size:12px;color:#6b8dae;margin-bottom:14px;">'+
-    '<b>'+workerNames.length+'</b> caseworker group'+(workerNames.length!==1?'s':'')+' found for billing period <b>'+esc(period)+'</b>. '+
-    'Click <b>Send Email</b> to open your mail app with all clients pre-listed.'+
+  // Pre-compute global "send all" eligibility
+  var totalReady=0,totalIssues=0,totalSent=0,totalEmpty=0,totalCaseworkersSendable=0;
+  workerNames.forEach(function(wname){
+    var g=groups[wname];if(!g.email)return;
+    var ready=g.clients.filter(function(c){return c.inv && c.inv.status!=='submitted' && c.inv.status!=='paid' && (!c.issues||c.issues.length===0);}).length;
+    var iss=g.clients.filter(function(c){return c.inv && c.inv.status!=='submitted' && c.inv.status!=='paid' && c.issues && c.issues.length;}).length;
+    var sent=g.clients.filter(function(c){return c.inv && (c.inv.status==='submitted'||c.inv.status==='paid');}).length;
+    var none=g.clients.filter(function(c){return !c.inv;}).length;
+    totalReady+=ready;totalIssues+=iss;totalSent+=sent;totalEmpty+=none;
+    if(ready>0)totalCaseworkersSendable++;
+  });
+  var html='<div style="font-size:12px;color:#6b8dae;margin-bottom:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">'+
+    '<span><b>'+workerNames.length+'</b> caseworker group'+(workerNames.length!==1?'s':'')+' for billing period <b>'+esc(period)+'</b></span>'+
+    '<span style="color:#1e7e34;">✓ '+totalReady+' ready</span>'+
+    (totalIssues?'<span style="color:#c07000;">⚠ '+totalIssues+' issues</span>':'')+
+    (totalSent?'<span style="color:#1565a0;">✓ '+totalSent+' already sent</span>':'')+
+    (totalEmpty?'<span style="color:#888;">— '+totalEmpty+' missing</span>':'')+
+    (totalCaseworkersSendable>1?'<button class="btn btn-primary btn-sm" id="sendAllCwBtn" onclick="sendAllCaseworkerEmails('+JSON.stringify(period)+')" style="margin-left:auto;white-space:nowrap;">Send All ('+totalCaseworkersSendable+' caseworkers)</button>':'')+
   '</div>';
   workerNames.forEach(function(wname){
     var g=groups[wname];
@@ -6664,6 +6780,58 @@ function previewMonthlyInvoices(){
   });
   document.getElementById('monthlyInvResults').innerHTML=html;
 }
+// Send to ALL caseworkers (one email per caseworker, sequentially) — for monthly batch day
+async function sendAllCaseworkerEmails(period){
+  if(!spToken){
+    showConfirm('You need to sign in with your Microsoft account to send emails. Click Sign In to be redirected.',function(){signIn();},{title:'Sign In Required',okText:'Sign In',danger:false});
+    return;
+  }
+  // Build the same groups previewMonthlyInvoices uses
+  var profiles=getProfiles();var cws=getCaseworkers();
+  var groups={};
+  Object.keys(profiles).forEach(function(name){
+    var prof=profiles[name];
+    if(prof.status==='inactive'||prof.status==='terminated'||prof.status==='lost')return;
+    if(!clientWasActiveInPeriod(prof,period))return;
+    var wname=(prof.worker||'').trim()||'(No Worker Assigned)';
+    var cwRec=cws.find(function(c){return (c.id&&prof.caseworkerId&&c.id===prof.caseworkerId)||(c.name||'').toLowerCase()===wname.toLowerCase();})||{};
+    if(!cwRec.email)return; // skip groups with no email
+    if(!groups[wname])groups[wname]={email:cwRec.email,cwName:wname,clients:[]};
+    var inv=(prof.invoices||[]).find(function(i){return i.billingPeriod===period;})||null;
+    var issues=validateInvoiceForSend(name,prof,inv,cwRec);
+    groups[wname].clients.push({name:name,medicaidId:prof.medicaidId||'',invStatus:inv?(inv.status||'draft'):'none',hasIssues:issues.length>0,issues:issues});
+  });
+  // Determine which groups have anything sendable
+  var sendable=[];
+  Object.keys(groups).forEach(function(wname){
+    var g=groups[wname];
+    var ready=g.clients.filter(function(c){return c.invStatus==='draft' && !c.hasIssues;});
+    if(ready.length)sendable.push({wname:wname,group:g,readyCount:ready.length});
+  });
+  if(!sendable.length){
+    showConfirm('No caseworkers have invoices ready to send for '+period+'. Use the per-caseworker Send Email button to see what\'s missing.',function(){},{title:'Nothing to Send',okText:'OK',danger:false});
+    return;
+  }
+  var totalInvoices=sendable.reduce(function(s,x){return s+x.readyCount;},0);
+  showConfirm(
+    'Ready to send '+totalInvoices+' invoice'+(totalInvoices>1?'s':'')+' to '+sendable.length+' caseworker'+(sendable.length>1?'s':'')+' for billing period '+period+'.\n\n'+
+    sendable.map(function(x){return '• '+x.wname+' — '+x.readyCount+' invoice'+(x.readyCount>1?'s':'');}).join('\n')+
+    '\n\nThis will send the emails one after another. Continue?',
+    async function(){
+      for(var i=0;i<sendable.length;i++){
+        var item=sendable[i];
+        try{
+          await sendMonthlyEmail(item.group.email,item.wname,item.group.clients,period);
+        }catch(e){console.error('Send to '+item.wname+' failed:',e);}
+      }
+      showToast('✓ Sent batches to '+sendable.length+' caseworker'+(sendable.length>1?'s':'')+'.',5000);
+      // Refresh preview
+      previewMonthlyInvoices();
+    },
+    {title:'Send All Caseworker Emails',okText:'Send All',danger:false}
+  );
+}
+
 async function sendMonthlyEmail(email,workerName,clients,period){
   if(!spToken){
     showConfirm('You need to sign in with your Microsoft account to send emails. Click Sign In to be redirected.',
