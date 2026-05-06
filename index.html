@@ -1013,7 +1013,7 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
         <button class="btn btn-danger" onclick="clearAllDrafts()">Clear All Drafts</button>
         <button class="btn btn-danger" onclick="clearAllData()">Clear Local Cache</button>
       </div>
-      <p style="font-size:11px;color:#8ca0b4;margin-top:8px;">Clears locally cached data (clients, caregivers, drafts) from this browser. Your Azure SQL database is not affected — data reloads automatically on next sign-in.</p>
+      <p style="font-size:11px;color:#8ca0b4;margin-top:8px;"><b>Local cache only.</b> Clears clients/caregivers/caseworkers/drafts/signatures from this browser. Your Azure SQL database is not affected — data automatically re-downloads on next sign-in. Use this only to force a fresh sync if local data looks stale.</p>
     </div>
   </div>
 
@@ -3289,16 +3289,27 @@ function updateSettingsAuth(){
   else{if(s){s.textContent='Authentication required';s.style.color='#c0392b';}if(b){b.textContent='Sign In';b.onclick=signIn;}}
 }
 function clearAllDrafts(){
-  if(!confirm('Clear all draft invoices?'))return;
-  Object.keys(localStorage).filter(function(k){return k.startsWith('lhca_draft_');}).forEach(function(k){localStorage.removeItem(k);});
-  alert('All drafts cleared.');
+  showConfirm('Clear all draft invoices? Saved invoices are not affected.',function(){
+    Object.keys(localStorage).filter(function(k){return k.startsWith('lhca_draft_');}).forEach(function(k){localStorage.removeItem(k);});
+    showConfirm('All drafts cleared.',function(){},{title:'Done',okText:'OK',danger:false});
+  },{title:'Clear Drafts',okText:'Clear All Drafts'});
 }
 function clearAllData(){
-  if(!confirm('This will delete ALL local data (clients, caregivers, drafts, signatures). Are you absolutely sure?'))return;
-  if(!confirm('Last chance — this cannot be undone.'))return;
-  ['lhca_profiles','lhca_caregivers','lhca_signatures','lhca_sig'].concat(Object.keys(localStorage).filter(function(k){return k.startsWith('lhca_draft_');}))
-  .forEach(function(k){try{localStorage.removeItem(k);}catch(e){}});
-  alert('All local data cleared. Reload the page.');
+  showConfirm(
+    'This clears the LOCAL browser cache (clients, caregivers, caseworkers, drafts, signatures, tasks, audit log).\n\n'+
+    'IMPORTANT: This does NOT delete data from the Azure SQL database. After you reload, the app will re-download everything from the cloud.\n\n'+
+    'Use this only when you want to force a fresh sync — for example, if local data looks out-of-date or corrupted.',
+    function(){
+      // Second confirmation
+      showConfirm('Last chance — clear local cache now?\n\n(Server data is safe; it will re-download on next reload.)',function(){
+        var keys=['lhca_profiles','lhca_caregivers','lhca_caseworkers','lhca_signatures','lhca_sig','lhca_todos','lhca_email_audit','lhca_activity','lhca_id_map','lhca_last_synced'];
+        keys=keys.concat(Object.keys(localStorage).filter(function(k){return k.startsWith('lhca_draft_');}));
+        keys.forEach(function(k){try{localStorage.removeItem(k);}catch(e){}});
+        showConfirm('Local cache cleared. Reload the page now to re-sync from the cloud.',function(){location.reload();},{title:'Cache Cleared',okText:'Reload Now',danger:false});
+      },{title:'Confirm Clear',okText:'Clear Local Cache'});
+    },
+    {title:'Clear Local Cache',okText:'Continue',danger:false}
+  );
 }
 
 // ============================================================
