@@ -6594,7 +6594,7 @@ function previewMonthlyInvoices(){
     html+='<div style="flex:1;"></div>';
     if(missingInv>0)html+='<span style="font-size:11px;color:#c07000;font-weight:600;margin-right:8px;">'+missingInv+' missing invoice'+(missingInv>1?'s':'')+'</span>';
     if(email){
-      var clientsJson=JSON.stringify(g.clients.map(function(c){return {name:c.name,medicaidId:c.prof.medicaidId||'',invStatus:c.inv?(c.inv.status||'draft'):'none'};}));
+      var clientsJson=JSON.stringify(g.clients.map(function(c){return {name:c.name,medicaidId:c.prof.medicaidId||'',invStatus:c.inv?(c.inv.status||'draft'):'none',hasIssues:(c.issues||[]).length>0,issues:c.issues||[]};}));
       html+='<button class="btn btn-primary btn-sm" style="white-space:nowrap;" onclick=\'sendMonthlyEmail('+JSON.stringify(email)+','+JSON.stringify(wname)+','+clientsJson+','+JSON.stringify(period)+')\'>Send Email</button>';
     } else {
       html+='<span style="font-size:11px;color:#b03030;font-style:italic;margin-right:8px;">No email on file</span>';
@@ -6642,10 +6642,50 @@ async function sendMonthlyEmail(email,workerName,clients,period){
     if(confirm('Sign in with your Microsoft account to send emails?\n\nClicking OK will redirect you to sign in.')){signIn();}
     return;
   }
-  // Filter to clients that have an invoice for this period
+  // Bucket clients by current status:
+  // - alreadySent: status submitted/paid (skip — they got the previous email)
+  // - readyToSend: status draft AND no issues
+  // - hasIssues: status draft AND validation issues
+  // - missingInvoice: no invoice for this period
+  var alreadySent=[],readyToSend=[],hasIssues=[],missingInvoice=[];
+  clients.forEach(function(c){
+    if(!c.invStatus||c.invStatus==='none'){missingInvoice.push(c);return;}
+    if(c.invStatus==='submitted'||c.invStatus==='paid'){alreadySent.push(c);return;}
+    if(c.hasIssues){hasIssues.push(c);return;}
+    readyToSend.push(c);
+  });
+
+  // Decide what to do based on the buckets
+  if(!readyToSend.length){
+    if(alreadySent.length===clients.length){
+      alert('All '+alreadySent.length+' invoice'+(alreadySent.length>1?'s':'')+' for '+period+' have already been submitted to '+workerName+'.');return;
+    }
+    var msg='No invoices ready to send.';
+    if(hasIssues.length)msg+='\n\n'+hasIssues.length+' invoice'+(hasIssues.length>1?'s have':' has')+' validation issues — fix them on the client page or click Preview to see what\'s missing.';
+    if(missingInvoice.length)msg+='\n\n'+missingInvoice.length+' client'+(missingInvoice.length>1?'s have':' has')+' no invoice for '+period+'.';
+    alert(msg);return;
+  }
+
+  // If some have issues, ask the user whether to send partial
+  function proceedWithSend(){
+    _doMonthlyEmailSend(email,workerName,period,readyToSend,alreadySent.length,hasIssues,missingInvoice);
+  }
+  if(hasIssues.length>0){
+    var problemNames=hasIssues.map(function(c){return c.name;}).join(', ');
+    showConfirm(
+      readyToSend.length+' of '+(readyToSend.length+hasIssues.length)+' invoices are ready. '+
+      hasIssues.length+' have issues:\n• '+problemNames+'\n\nSend the '+readyToSend.length+' ready one'+(readyToSend.length>1?'s':'')+' now? You can send the others later — they will be marked as a follow-up.',
+      proceedWithSend,
+      {title:'Send Partial Batch?',okText:'Send '+readyToSend.length+' Now',danger:false}
+    );
+    return;
+  }
+  proceedWithSend();
+}
+
+async function _doMonthlyEmailSend(email,workerName,period,readyToSend,alreadySentCount,hasIssues,missingInvoice){
   var profiles=getProfiles();
-  var withInv=clients.filter(function(c){return c.invStatus&&c.invStatus!=='none';});
-  if(!withInv.length){alert('No completed invoices found for '+workerName+' in '+period+'.\nFill out the invoices first, then send.');return;}
+  var withInv=readyToSend; // only the ready ones
 
   // Show progress
   var po=document.getElementById('monthlyProgressOverlay');
@@ -6694,13 +6734,25 @@ async function sendMonthlyEmail(email,workerName,clients,period){
   }
 
   var workerDisplay=workerName&&workerName!=='(No Worker Assigned)'?workerName:'Caseworker';
-  var subj='Home Help Agency Invoices — '+period;
-  var body='<p>Dear '+workerDisplay+',</p>'+
-    '<p>You will find invoice'+(attachments.length>1?'s':'')+' attached for our shared client'+(attachments.length>1?'s':'')+' for the billing period <b>'+period+'</b>. Please confirm receipt of these documents.</p>'+
-    '<p><b>Clients</b></p><ul>'+
-    attachments.map(function(a){return '<li>'+a.clientName+'</li>';}).join('')+
-    '</ul><p>Please review and process at your earliest convenience.</p>'+
-    '<p>Thank you,<br>Thomas Jaboro<br>Liberty Home Care Assistance<br>(248) 291-4106</p>';
+  // Follow-up vs first send wording
+  var isFollowUp=alreadySentCount>0;
+  var subj=(isFollowUp?'Additional Home Help Agency Invoices — ':'Home Help Agency Invoices — ')+period;
+  var body;
+  if(isFollowUp){
+    body='<p>Dear '+workerDisplay+',</p>'+
+      '<p>I apologize for the delay — please find attached '+(attachments.length>1?'some additional invoices':'an additional invoice')+' for the billing period <b>'+period+'</b> that '+(attachments.length>1?'were':'was')+' not included in my earlier email. Please confirm receipt.</p>'+
+      '<p><b>Additional Clients</b></p><ul>'+
+      attachments.map(function(a){return '<li>'+a.clientName+'</li>';}).join('')+
+      '</ul><p>Please review and process at your earliest convenience.</p>'+
+      '<p>Thank you,<br>Thomas Jaboro<br>Liberty Home Care Assistance<br>(248) 291-4106</p>';
+  } else {
+    body='<p>Dear '+workerDisplay+',</p>'+
+      '<p>You will find invoice'+(attachments.length>1?'s':'')+' attached for our shared client'+(attachments.length>1?'s':'')+' for the billing period <b>'+period+'</b>. Please confirm receipt of these documents.</p>'+
+      '<p><b>Clients</b></p><ul>'+
+      attachments.map(function(a){return '<li>'+a.clientName+'</li>';}).join('')+
+      '</ul><p>Please review and process at your earliest convenience.</p>'+
+      '<p>Thank you,<br>Thomas Jaboro<br>Liberty Home Care Assistance<br>(248) 291-4106</p>';
+  }
 
   var result=await sendMailWithPDF(email,subj,body,attachments,function(done,total,label){
     if(pb)pb.style.width=Math.round((done/Math.max(total,1))*100)+'%';
@@ -6725,7 +6777,11 @@ async function sendMonthlyEmail(email,workerName,clients,period){
     attachments.forEach(function(a){markInvoiceSubmitted(a.clientName,period);});
     closeMonthlyInvModal();
     updateStats();
-    showToast('✓ '+attachments.length+' invoice'+(attachments.length>1?'s':'')+' emailed to '+workerDisplay+' — status set to Submitted',5000);
+    var toastMsg='✓ '+attachments.length+(isFollowUp?' additional':'')+' invoice'+(attachments.length>1?'s':'')+' emailed to '+workerDisplay+' — status set to Submitted';
+    if(hasIssues&&hasIssues.length){
+      toastMsg+=' ('+hasIssues.length+' still need'+(hasIssues.length>1?'':'s')+' fixing)';
+    }
+    showToast(toastMsg,6000);
     // Refresh the modal results if re-opened
   }else{
     var msg2='Email failed to send.';
