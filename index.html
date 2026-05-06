@@ -4265,7 +4265,7 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
   y+=secH;
 
   // ── Day grid ──
-  var dayColW=44,headerH=100,dayRowH=13,nCols=cols.length;
+  var dayColW=44,headerH=92,dayRowH=13,nCols=cols.length;
   var colW=(W-dayColW)/nCols;
 
   // ── Grid weight: 0.5pt — visible but not heavy, matches reference ──
@@ -4328,7 +4328,7 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
   pdf.setLineWidth(GRID_W);
 
   // ── Bottom block — ONE outer rect, NO internal dividers, tight per March ──
-  var totH=15,certH=14,sigH=60;
+  var totH=15,certH=14,sigH=70;
   var blockH=totH+certH+sigH;
   pdf.setLineWidth(GRID_W);
   pdf.rect(x0,y,W,blockH);
@@ -4359,18 +4359,18 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
   pdf.text('I certify that Liberty Home Care Assistance has provided all the services as checked above.',x0+5,y+totH+10);
 
   // Signature row — NO vertical divider between sig and date.
-  // Underline at sigY+36 leaves generous room for a much larger signature image above.
+  // Underline at sigY+44 leaves generous room for a much larger signature image above.
   var sigY=y+totH+certH;
   var sigBoxW=W*0.62;
-  var sigUnderlineY=sigY+36;
+  var sigUnderlineY=sigY+44;
   // Place signature image — uses pre-cropped (tight) version with known dimensions
   var sigInfo=isPage2?data._sig2Cropped:data._sig1Cropped;
   if(sigInfo&&sigInfo.dataUrl){
     try{
       var aspectRatio=sigInfo.w/sigInfo.h;
-      // Generous height up to 32pt, width capped at 70% of sig box (leaves room left of underline)
-      var sigImgH=32,sigImgW=sigImgH*aspectRatio;
-      var maxW=sigBoxW*0.7;
+      // Generous height up to 40pt, width capped at 85% of sig box for wider rendering
+      var sigImgH=40,sigImgW=sigImgH*aspectRatio;
+      var maxW=sigBoxW*0.85;
       if(sigImgW>maxW){sigImgW=maxW;sigImgH=sigImgW/aspectRatio;}
       pdf.addImage(sigInfo.dataUrl,'PNG',x0+8,sigUnderlineY-sigImgH-1,sigImgW,sigImgH);
     }catch(e){console.warn('Signature embed failed:',e);}
