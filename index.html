@@ -781,7 +781,12 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
       </div>
       <div class="ff-row">
         <div class="ff"><label>Driver's License #</label><input id="nc-dl" placeholder="DL number" maxlength="40"></div>
-        <div class="ff"><label>Social Security #</label><input id="nc-ssn" placeholder="XXX-XX-XXXX" maxlength="20" autocomplete="off"></div>
+        <div class="ff"><label>Social Security #</label>
+          <div style="display:flex;gap:4px;align-items:center;">
+            <input id="nc-ssn" type="password" placeholder="XXX-XX-XXXX" maxlength="20" autocomplete="off" style="flex:1;">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="toggleMask('nc-ssn',this)" style="padding:4px 8px;font-size:11px;white-space:nowrap;">Show</button>
+          </div>
+        </div>
       </div>
       <div class="ff-row">
         <div class="ff"><label>Phone #</label><input id="nc-phone" placeholder="(555) 555-5555" maxlength="20"></div>
@@ -877,7 +882,12 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
           </div>
           <div class="ff-row">
             <div class="ff"><label>Driver's License #</label><input id="cg-dl" placeholder="DL number" maxlength="40"></div>
-            <div class="ff"><label>Social Security #</label><input id="cg-ssn" placeholder="XXX-XX-XXXX" maxlength="20" autocomplete="off"></div>
+            <div class="ff"><label>Social Security #</label>
+              <div style="display:flex;gap:4px;align-items:center;">
+                <input id="cg-ssn" type="password" placeholder="XXX-XX-XXXX" maxlength="20" autocomplete="off" style="flex:1;">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleMask('cg-ssn',this)" style="padding:4px 8px;font-size:11px;white-space:nowrap;">Show</button>
+              </div>
+            </div>
           </div>
           <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Address</div>
           <div class="ff"><label>Street</label><input id="cg-street" placeholder="Street address" maxlength="120"></div>
@@ -2110,7 +2120,14 @@ function renderInfoPane(){
   mkField('ei-medicaid','Medicaid ID',prof.medicaidId||'',false);
   mkField('ei-rate','Hourly Rate',prof.hourlyRate||'',false);
   mkField('ei-dl',"Driver's License #",prof.driversLicense||'',false);
-  mkField('ei-ssn','Social Security #',prof.ssn||'',false);
+  // SSN masked by default with Show/Hide toggle
+  var dSsn=document.createElement('div');dSsn.className='info-field';
+  dSsn.innerHTML='<label>Social Security #</label>'+
+    '<div style="display:flex;gap:4px;align-items:center;">'+
+      '<input id="ei-ssn" type="password" autocomplete="off" value="'+esc(prof.ssn||'')+'" style="flex:1;" oninput="unsavedChanges=true;">'+
+      '<button type="button" class="btn btn-secondary btn-sm" onclick="toggleMask(\'ei-ssn\',this)" style="padding:4px 8px;font-size:11px;white-space:nowrap;">Show</button>'+
+    '</div>';
+  g.appendChild(dSsn);
   mkField('ei-phone','Client Phone',prof.phone||'',false);
   mkField('ei-cemail','Client Email',prof.clientEmail||'',false);
   mkField('ei-street','Street',prof.street||'',true);
@@ -2947,7 +2964,14 @@ function renderCgInfoPane(){
   mkF('cgi-phone','Phone',cg.phone,false);
   mkF('cgi-email','Email',cg.email,false);
   mkF('cgi-dl',"Driver's License #",cg.driversLicense,false);
-  mkF('cgi-ssn','Social Security #',cg.ssn,false);
+  // SSN masked with Show/Hide toggle
+  var cgSsnDiv=document.createElement('div');cgSsnDiv.className='info-field';
+  cgSsnDiv.innerHTML='<label>Social Security #</label>'+
+    '<div style="display:flex;gap:4px;align-items:center;">'+
+      '<input id="cgi-ssn" type="password" autocomplete="off" value="'+esc(cg.ssn||'')+'" style="flex:1;">'+
+      '<button type="button" class="btn btn-secondary btn-sm" onclick="toggleMask(\'cgi-ssn\',this)" style="padding:4px 8px;font-size:11px;white-space:nowrap;">Show</button>'+
+    '</div>';
+  g.appendChild(cgSsnDiv);
   mkF('cgi-street','Street',cg.street||cg.address,true);
   mkRow('<div class="info-field"><label>City</label><input id="cgi-city" value="'+esc(cg.city||'')+'"></div>'+
     '<div class="info-field"><label>State</label><input id="cgi-state" value="'+esc(cg.state||'')+'"></div>');
@@ -3219,6 +3243,27 @@ function showPrompt(message,initialValue,onSave,opts){
   newCancel.addEventListener('click',function(){modal.classList.remove('open');});
   modal.classList.add('open');
   setTimeout(function(){inp.focus();inp.select();},50);
+}
+
+// Toggle masking on a sensitive input (SSN). Auto re-masks after 8 seconds.
+function toggleMask(inputId,btn){
+  var inp=document.getElementById(inputId);if(!inp)return;
+  if(inp.type==='password'){
+    inp.type='text';
+    if(btn){btn.textContent='Hide';btn.classList.remove('btn-secondary');btn.classList.add('btn-danger');}
+    // Auto re-mask after 8 seconds for safety
+    if(inp._maskTimeout)clearTimeout(inp._maskTimeout);
+    inp._maskTimeout=setTimeout(function(){
+      if(inp.type==='text'){
+        inp.type='password';
+        if(btn){btn.textContent='Show';btn.classList.remove('btn-danger');btn.classList.add('btn-secondary');}
+      }
+    },8000);
+  } else {
+    inp.type='password';
+    if(btn){btn.textContent='Show';btn.classList.remove('btn-danger');btn.classList.add('btn-secondary');}
+    if(inp._maskTimeout){clearTimeout(inp._maskTimeout);inp._maskTimeout=null;}
+  }
 }
 
 function deleteSig(idOrIdx){
