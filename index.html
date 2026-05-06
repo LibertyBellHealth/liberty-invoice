@@ -248,25 +248,6 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 .tt td.mc.on .box::after{transform:rotate(-45deg);}
 .tt tr.inactive td.mc{cursor:default;}
 .allrow{background:#ddeeff;}
-/* PROFILE READ-ONLY MODE — applied to detail panes by default; Edit button removes this */
-.profile-readonly input,.profile-readonly select,.profile-readonly textarea{
-  pointer-events:none!important;
-  background:transparent!important;
-  border:none!important;
-  border-bottom:1px dotted #d0d8e4!important;
-  border-radius:0!important;
-  cursor:default!important;
-  color:#1a2b45!important;
-}
-.profile-readonly input[type="checkbox"]{pointer-events:none!important;opacity:0.7;}
-.profile-readonly button[data-edit-action]{display:inline-flex!important;}
-.profile-readonly button.profile-save-btn,.profile-readonly button.profile-cancel-btn{display:none!important;}
-.profile-readonly .info-field-row .info-field>label::after,.profile-readonly .info-field>label::after{content:'';}
-/* Edit-mode Save/Cancel only shown when not in readonly */
-.profile-edit-row{display:flex;gap:8px;align-items:center;margin-bottom:14px;padding:8px 10px;background:#fff8e1;border:1px solid #ffeaa7;border-radius:6px;}
-.profile-readonly .profile-edit-row{background:transparent;border-color:transparent;padding:8px 0;}
-.profile-edit-row .profile-edit-msg{font-size:12px;color:#856404;flex:1;}
-.profile-readonly .profile-edit-row .profile-edit-msg{display:none;}
 /* DB sync-in-progress banner — top of page during initial DB load */
 .db-sync-banner{display:none;position:fixed;top:0;left:0;right:0;z-index:9998;background:linear-gradient(90deg,#fff8e1,#fff3cd);color:#856404;padding:8px 16px;font-family:Arial,sans-serif;font-size:13px;border-bottom:1px solid #ffeaa7;box-shadow:0 2px 6px rgba(0,0,0,0.08);text-align:center;}
 .db-sync-banner .spin{display:inline-block;animation:dbSpin 1s linear infinite;margin-right:6px;}
@@ -758,16 +739,11 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
       <button class="dtab" id="dtab-audit" onclick="switchTab('audit')">Audit Log</button>
     </div>
     <div class="detail-pane active" id="dpane-overview"></div>
-    <div class="detail-pane profile-readonly" id="dpane-info">
-      <div class="profile-edit-row">
-        <span class="profile-edit-msg">Edit mode — make your changes, then click Save.</span>
-        <button class="btn btn-secondary btn-sm" data-edit-action onclick="enableProfileEdit('dpane-info')">Edit</button>
-        <button class="btn btn-primary btn-sm profile-save-btn" onclick="saveClientInfo();disableProfileEdit('dpane-info')">Save Changes</button>
-        <button class="btn btn-secondary btn-sm profile-cancel-btn" onclick="cancelProfileEdit('dpane-info','renderInfoPane')">Cancel</button>
-      </div>
+    <div class="detail-pane" id="dpane-info">
       <div class="info-grid" id="infoGrid"></div>
       <div style="margin-top:15px;display:flex;gap:8px;">
-        <button class="btn btn-danger btn-sm profile-save-btn" onclick="deleteClient()" style="padding:6px 14px;">Delete Client</button>
+        <button class="btn btn-primary" id="saveInfoBtn" onclick="saveClientInfo()">Save Changes</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteClient()" style="padding:6px 14px;">Delete Client</button>
       </div>
     </div>
     <div class="detail-pane" id="dpane-history"><div id="invHistoryContent"></div></div>
@@ -946,15 +922,7 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
         <button class="dtab" id="cgtab-audit" onclick="switchCgTab('audit')">Audit Log</button>
       </div>
       <div class="detail-pane active" id="cgpane-overview"></div>
-      <div class="detail-pane profile-readonly" id="cgpane-info">
-        <div class="profile-edit-row">
-          <span class="profile-edit-msg">Edit mode — make your changes, then click Save.</span>
-          <button class="btn btn-secondary btn-sm" data-edit-action onclick="enableProfileEdit('cgpane-info')">Edit</button>
-          <button class="btn btn-primary btn-sm profile-save-btn" onclick="saveCgInfoPane();disableProfileEdit('cgpane-info')">Save Changes</button>
-          <button class="btn btn-secondary btn-sm profile-cancel-btn" onclick="cancelProfileEdit('cgpane-info','renderCgInfoPane')">Cancel</button>
-        </div>
-        <div id="cgInfoContent"></div>
-      </div>
+      <div class="detail-pane" id="cgpane-info"><div id="cgInfoContent"></div></div>
       <div class="detail-pane" id="cgpane-clients"><div id="cgClientsContent"></div></div>
       <div class="detail-pane" id="cgpane-notes"><div id="cgNotesContent"></div></div>
       <div class="detail-pane" id="cgpane-docs"><div id="cgDocsContent"></div></div>
@@ -1140,15 +1108,7 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
         <button class="dtab" id="cwtab-audit" onclick="switchCwTab('audit')">Audit Log</button>
       </div>
       <div class="detail-pane active" id="cwpane-overview"></div>
-      <div class="detail-pane profile-readonly" id="cwpane-info">
-        <div class="profile-edit-row">
-          <span class="profile-edit-msg">Edit mode — make your changes, then click Save.</span>
-          <button class="btn btn-secondary btn-sm" data-edit-action onclick="enableProfileEdit('cwpane-info')">Edit</button>
-          <button class="btn btn-primary btn-sm profile-save-btn" onclick="saveCwInfoPane();disableProfileEdit('cwpane-info')">Save Changes</button>
-          <button class="btn btn-secondary btn-sm profile-cancel-btn" onclick="cancelProfileEdit('cwpane-info','renderCwInfoPane')">Cancel</button>
-        </div>
-        <div id="cwInfoContent"></div>
-      </div>
+      <div class="detail-pane" id="cwpane-info"><div id="cwInfoContent"></div></div>
       <div class="detail-pane" id="cwpane-clients"><div id="cwClientsContent"></div></div>
       <div class="detail-pane" id="cwpane-notes"><div id="cwNotesContent"></div></div>
       <div class="detail-pane" id="cwpane-docs"><div id="cwDocsContent"></div></div>
@@ -1950,8 +1910,6 @@ function switchTab(tab){
     if(dtab)dtab.classList.toggle('active',t===tab);
     if(dpane)dpane.classList.toggle('active',t===tab);
   });
-  // Default profile pane to read-only on every tab change
-  var infoPane=document.getElementById('dpane-info');if(infoPane)infoPane.classList.add('profile-readonly');
   if(tab==='overview')renderOverviewPane();
   if(tab==='info')renderInfoPane();
   if(tab==='history')renderInvHistory();
@@ -2847,7 +2805,6 @@ function switchCgTab(tab){
     if(tb)tb.classList.toggle('active',t===tab);
     if(pn)pn.classList.toggle('active',t===tab);
   });
-  var cgInfoPane=document.getElementById('cgpane-info');if(cgInfoPane)cgInfoPane.classList.add('profile-readonly');
   if(tab==='overview')renderCgOverviewPane();
   if(tab==='info')renderCgInfoPane();
   if(tab==='clients')renderCgClientsPane();
@@ -3237,20 +3194,6 @@ function showPrompt(message,initialValue,onSave,opts){
   newCancel.addEventListener('click',function(){modal.classList.remove('open');});
   modal.classList.add('open');
   setTimeout(function(){inp.focus();inp.select();},50);
-}
-
-// Profile edit-mode toggle: Edit -> mutate; Save / Cancel -> re-lock
-function enableProfileEdit(paneId){
-  var pane=document.getElementById(paneId);if(pane)pane.classList.remove('profile-readonly');
-}
-function disableProfileEdit(paneId){
-  var pane=document.getElementById(paneId);if(pane)pane.classList.add('profile-readonly');
-}
-function cancelProfileEdit(paneId,renderFnName){
-  // Discard pending changes by re-running the render function (which reads from storage)
-  if(window[renderFnName]&&typeof window[renderFnName]==='function')window[renderFnName]();
-  unsavedChanges=false;
-  disableProfileEdit(paneId);
 }
 
 function deleteSig(idOrIdx){
@@ -6067,7 +6010,6 @@ function switchCwTab(tab){
     if(tb)tb.classList.toggle('active',t===tab);
     if(pn)pn.classList.toggle('active',t===tab);
   });
-  var cwInfoPane=document.getElementById('cwpane-info');if(cwInfoPane)cwInfoPane.classList.add('profile-readonly');
   if(tab==='overview')renderCwOverviewPane();
   if(tab==='info')renderCwInfoPane();
   if(tab==='clients')renderCwClientsPane();
