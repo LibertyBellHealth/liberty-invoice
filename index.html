@@ -990,7 +990,7 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed #e1e5ea;">
         <button class="btn btn-primary" onclick="backupToOneDrive()" id="oneDriveBackupBtn">☁ Backup to OneDrive Now</button>
-        <span style="font-size:11px;color:#8ca0b4;align-self:center;line-height:1.5;">Auto-backs up <b>weekly</b> on first sign-in. Keeps 26 most recent (~6 months). Saves to <b>OneDrive / Liberty Home Care Backups /</b></span>
+        <span style="font-size:11px;color:#8ca0b4;align-self:center;line-height:1.5;">Auto-backs up <b>weekly</b> on first sign-in (keeps 26 most recent ~6 months). <b>Manual backups (this button) are kept forever</b> — never auto-deleted. Saves to <b>OneDrive / Liberty Home Care Backups /</b></span>
       </div>
       <p style="font-size:11px;color:#8ca0b4;margin-top:10px;line-height:1.6;">
         <b>JSON</b>: backup for re-import. <span style="color:#1e7e34;">SSN masked by default</span> — opt in to "Include Full SSN" if you need to preserve them across a restore.<br>
@@ -4112,7 +4112,9 @@ async function retryOneDriveBackup(){
   await maybeAutoBackupOneDrive();
 }
 
-// Delete OneDrive backup files beyond the retention count (keeps newest N)
+// Delete OneDrive backup files beyond the retention count (keeps newest N).
+// ONLY prunes auto-backup files (date-only filename). Manual backups include
+// '_manual' in the name and are kept forever.
 async function pruneOldOneDriveBackups(){
   if(!spToken)return;
   try{
@@ -4120,15 +4122,18 @@ async function pruneOldOneDriveBackups(){
     var r=await fetch(url,{headers:{'Authorization':'Bearer '+spToken}});
     if(!r.ok)return;
     var data=await r.json();
-    var files=(data.value||[]).filter(function(f){return /^liberty_clients_.*\.json$/.test(f.name);});
-    if(files.length<=ONEDRIVE_BACKUP_RETENTION)return;
-    var toDelete=files.slice(ONEDRIVE_BACKUP_RETENTION);
+    // Only auto-backup files (no '_manual' in the name) are eligible for prune
+    var autoFiles=(data.value||[]).filter(function(f){
+      return /^liberty_clients_\d{4}-\d{2}-\d{2}_(masked|FULL)\.json$/.test(f.name);
+    });
+    if(autoFiles.length<=ONEDRIVE_BACKUP_RETENTION)return;
+    var toDelete=autoFiles.slice(ONEDRIVE_BACKUP_RETENTION);
     for(var i=0;i<toDelete.length;i++){
       try{
         await fetch('https://graph.microsoft.com/v1.0/me/drive/items/'+toDelete[i].id,{method:'DELETE',headers:{'Authorization':'Bearer '+spToken}});
       }catch(e){console.warn('Failed to prune',toDelete[i].name,e);}
     }
-    console.log('[OneDrive] Pruned '+toDelete.length+' old backup'+(toDelete.length>1?'s':'')+', keeping '+ONEDRIVE_BACKUP_RETENTION+' newest');
+    console.log('[OneDrive] Pruned '+toDelete.length+' old auto-backup'+(toDelete.length>1?'s':'')+', keeping '+ONEDRIVE_BACKUP_RETENTION+' newest. Manual backups are not affected.');
   }catch(e){console.warn('Prune failed:',e);}
 }
 
@@ -4186,8 +4191,17 @@ async function doBackupToOneDrive(includeFullSSN,silent){
     var bytes=new Blob([content]).size;
     if(bytes>4*1024*1024){throw new Error('Backup too large for direct upload ('+(bytes/1024/1024).toFixed(1)+' MB). Contact support to add chunked upload.');}
 
-    // Upload to OneDrive — auto-creates the folder if missing
-    var fname='liberty_clients_'+new Date().toISOString().slice(0,10)+(includeFullSSN?'_FULL':'_masked')+'.json';
+    // Filename: auto-backups use date-only (eligible for retention prune),
+    // manual backups include timestamp + 'manual' marker (kept forever).
+    var ts=new Date().toISOString();
+    var dateOnly=ts.slice(0,10);
+    var manualMarker='';
+    if(!silent){
+      // HH-MM-SS for uniqueness across multiple manual saves on the same day
+      var hms=ts.slice(11,19).replace(/:/g,'-');
+      manualMarker='_'+hms+'_manual';
+    }
+    var fname='liberty_clients_'+dateOnly+manualMarker+(includeFullSSN?'_FULL':'_masked')+'.json';
     var path='Liberty Home Care Backups/'+fname;
     var url='https://graph.microsoft.com/v1.0/me/drive/root:/'+encodeURIComponent(path).replace(/%2F/g,'/')+':/content';
     var resp=await fetch(url,{
@@ -4207,14 +4221,14 @@ async function doBackupToOneDrive(includeFullSSN,silent){
     if(!silent)pruneOldOneDriveBackups();
     if(!silent){
       showConfirm(
-        'Backup uploaded to OneDrive.\n\n'+
+        'Manual backup uploaded to OneDrive — this file is kept forever.\n\n'+
         'File: '+fname+'\n'+
         'Folder: Liberty Home Care Backups\n'+
         'Size: '+(bytes/1024).toFixed(1)+' KB\n'+
         (includeFullSSN?'\n⚠️ This backup contains full SSN — keep your OneDrive access controlled.':'')+
         '\n\nClick Open to view in OneDrive, or OK to dismiss.',
         function(){if(info.webUrl)window.open(info.webUrl,'_blank');},
-        {title:'Backup Complete',okText:'Open in OneDrive',danger:false,extraText:'OK',onExtra:function(){}}
+        {title:'Manual Backup Complete',okText:'Open in OneDrive',danger:false,extraText:'OK',onExtra:function(){}}
       );
     }
     return info;
