@@ -4141,6 +4141,14 @@ async function captureInvoicePDFVector(){
     'Eating or Feeding Assistance','Peritoneal Dialysis','Range of Motion Exercises',
     'Specialized Skin Care','Suctioning','Wound Care'];
 
+  // Pre-crop any signature images so legacy padded sigs render at full effective size
+  var sig1El=document.getElementById('sigArea1');
+  var sig2El=document.getElementById('sigArea2');
+  var sig1Cropped=(sig1El&&sig1El.tagName==='IMG'&&sig1El.src)?await cropDataURL(sig1El.src):null;
+  var sig2Cropped=(sig2El&&sig2El.tagName==='IMG'&&sig2El.src)?await cropDataURL(sig2El.src):null;
+  data._sig1Cropped=sig1Cropped;
+  data._sig2Cropped=sig2Cropped;
+
   drawInvoicePageVector(pdf,data,false,SVC_COLS);
   var hasCplx=data.hasComplex && (data.tasks.cplx||[]).some(function(r){return r.some(function(c){return c;});});
   if(hasCplx){pdf.addPage();drawInvoicePageVector(pdf,data,true,CPLX_COLS);}
@@ -4333,14 +4341,15 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
   var sigY=y+totH+certH;
   var sigBoxW=W*0.62;
   var sigUnderlineY=sigY+26;
-  // Place signature image directly above the underline — generous height to read clearly
-  var sigEl=document.getElementById('sigArea'+(isPage2?2:1));
-  if(sigEl&&sigEl.tagName==='IMG'&&sigEl.src){
+  // Place signature image — uses pre-cropped (tight) version with known dimensions
+  var sigInfo=isPage2?data._sig2Cropped:data._sig1Cropped;
+  if(sigInfo&&sigInfo.dataUrl){
     try{
-      var sigImgH=22,aspectRatio=390/80,sigImgW=sigImgH*aspectRatio;
+      var aspectRatio=sigInfo.w/sigInfo.h;
+      var sigImgH=22,sigImgW=sigImgH*aspectRatio;
       var maxW=sigBoxW*0.6;
       if(sigImgW>maxW){sigImgW=maxW;sigImgH=sigImgW/aspectRatio;}
-      pdf.addImage(sigEl.src,'PNG',x0+8,sigUnderlineY-sigImgH-1,sigImgW,sigImgH);
+      pdf.addImage(sigInfo.dataUrl,'PNG',x0+8,sigUnderlineY-sigImgH-1,sigImgW,sigImgH);
     }catch(e){console.warn('Signature embed failed:',e);}
   }
   // Underlines (the only lines inside the bottom block other than the outer rect)
@@ -4768,9 +4777,62 @@ function stampSignatureData(target,dataUrl){
   img.addEventListener('click',function(){resetSigArea(target);});area.parentNode.replaceChild(img,area);
 }
 function resetSigArea(t){var a=document.getElementById('sigArea'+t);if(!a)return;var ph=document.createElement('div');ph.id='sigArea'+t;ph.className='sig-placeholder';ph.textContent='Click to place signature';ph.addEventListener('click',function(){placeSignature(t);});a.parentNode.replaceChild(ph,a);}
+// Trim a canvas to its non-transparent content (tight bounding box + small padding).
+// Returns a data URL, or null if canvas is fully transparent.
+function trimCanvasToContent(canvas,padding){
+  padding=padding==null?4:padding;
+  var w=canvas.width,h=canvas.height;
+  var ctx=canvas.getContext('2d');
+  var imgData;try{imgData=ctx.getImageData(0,0,w,h).data;}catch(e){return null;}
+  var minX=w,minY=h,maxX=-1,maxY=-1;
+  for(var y=0;y<h;y++){
+    for(var x=0;x<w;x++){
+      var idx=(y*w+x)*4;
+      // alpha threshold OR non-white pixel (covers white-background canvases too)
+      if(imgData[idx+3]>10&&!(imgData[idx]>240&&imgData[idx+1]>240&&imgData[idx+2]>240)){
+        if(x<minX)minX=x;if(x>maxX)maxX=x;
+        if(y<minY)minY=y;if(y>maxY)maxY=y;
+      }
+    }
+  }
+  if(maxX<0)return null;
+  minX=Math.max(0,minX-padding);minY=Math.max(0,minY-padding);
+  maxX=Math.min(w-1,maxX+padding);maxY=Math.min(h-1,maxY+padding);
+  var nw=maxX-minX+1,nh=maxY-minY+1;
+  var crop=document.createElement('canvas');crop.width=nw;crop.height=nh;
+  // Fill white background so PDFs don't show transparency artifacts
+  var cctx=crop.getContext('2d');cctx.fillStyle='#fff';cctx.fillRect(0,0,nw,nh);
+  cctx.drawImage(canvas,minX,minY,nw,nh,0,0,nw,nh);
+  return crop.toDataURL('image/png');
+}
+
+// Async version for stored data URLs (used at PDF embed time for legacy padded sigs)
+// Returns { dataUrl, w, h } — natural dimensions of the cropped image
+function cropDataURL(dataUrl){
+  return new Promise(function(resolve){
+    if(!dataUrl){resolve(null);return;}
+    var img=new Image();
+    img.onload=function(){
+      var c=document.createElement('canvas');c.width=img.width;c.height=img.height;
+      c.getContext('2d').drawImage(img,0,0);
+      var trimmed=trimCanvasToContent(c,4);
+      if(!trimmed){resolve({dataUrl:dataUrl,w:img.width,h:img.height});return;}
+      // Load the trimmed image to get its dimensions
+      var t=new Image();
+      t.onload=function(){resolve({dataUrl:trimmed,w:t.width,h:t.height});};
+      t.onerror=function(){resolve({dataUrl:trimmed,w:img.width,h:img.height});};
+      t.src=trimmed;
+    };
+    img.onerror=function(){resolve(null);};
+    img.src=dataUrl;
+  });
+}
+
 function confirmSig(){
   var data=sigCanvas.toDataURL('image/png'),blank=document.createElement('canvas');blank.width=sigCanvas.width;blank.height=sigCanvas.height;
   if(blank.toDataURL()===data){alert('Please draw your signature first.');return;}
+  // Trim padding
+  var trimmed=trimCanvasToContent(sigCanvas,4);if(trimmed)data=trimmed;
   var label=document.getElementById('sigLabel').value.trim()||'Signature';
   var id=sigId();
   var sigs=getSigs();sigs.push({id:id,label:label,data:data});saveSigsLS(sigs);
@@ -4832,7 +4894,8 @@ function confirmTypedSig(){
   var tc=document.getElementById('sigTypeCanvas');
   var blank=document.createElement('canvas');blank.width=tc.width;blank.height=tc.height;
   if(blank.toDataURL()===tc.toDataURL()){alert('Please type your name first.');return;}
-  var data=tc.toDataURL('image/png');
+  // Trim padding around the typed text — keeps the signature tight when embedded in PDF
+  var data=trimCanvasToContent(tc,4)||tc.toDataURL('image/png');
   var label=document.getElementById('sigLabel').value.trim()||name;
   var id=sigId();
   var sigs=getSigs();sigs.push({id:id,label:label,data:data});saveSigsLS(sigs);
