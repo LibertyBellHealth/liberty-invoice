@@ -927,6 +927,18 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
     </div>
 
     <div class="settings-section">
+      <h3>Email Audit Log <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(HIPAA accounting of disclosures)</span></h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        <button class="btn btn-primary" onclick="downloadEmailAuditCSV()">Download CSV</button>
+        <button class="btn btn-secondary" onclick="renderEmailAuditTable()">Refresh</button>
+      </div>
+      <div id="emailAuditTableWrap" style="max-height:280px;overflow:auto;border:1px solid #e1e5ea;border-radius:6px;font-size:11px;">
+        <div style="padding:14px;color:#8ca0b4;text-align:center;">No log entries yet. Audit log will populate after you send an invoice email.</div>
+      </div>
+      <p style="font-size:11px;color:#8ca0b4;margin-top:10px;">Records every PHI-bearing email sent — recipient, caseworker, billing period, clients included, success/failure. Useful for resolving "did you send X?" disputes and HIPAA accounting requirements. Stored locally; download CSV for permanent records.</p>
+    </div>
+
+    <div class="settings-section">
       <h3>Client Data</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-secondary" onclick="exportProfiles()">Export All Clients (JSON)</button>
@@ -1675,7 +1687,7 @@ function navCaregivers(){
   activeCgId=null;
   renderCaregiverGrid();
 }
-function navSettings(){showPage('settings');bc([{l:'Settings'}]);document.getElementById('topbarActions').innerHTML='';renderSigSettings();updateSettingsAuth();}
+function navSettings(){showPage('settings');bc([{l:'Settings'}]);document.getElementById('topbarActions').innerHTML='';renderSigSettings();updateSettingsAuth();renderEmailAuditTable();}
 function navTasks(){showPage('tasks');bc([{l:'Tasks'}]);document.getElementById('topbarActions').innerHTML='';populateTodoClientSelect();renderTodos();}
 function navReports(){showPage('reports');bc([{l:'Reports'}]);document.getElementById('topbarActions').innerHTML='';renderReports();}
 
@@ -4523,6 +4535,88 @@ async function loadInvoiceForCapture(clientName,inv,period){
 }
 
 // ── Mark invoice submitted (local + DB) ───────────────────────
+// ──────────────────────────────────────────────────────────────────
+//  EMAIL AUDIT LOG — HIPAA "accounting of disclosures"
+//  Each PHI-bearing email send writes one log entry. Stored in
+//  localStorage and mirrored to App Insights. Downloadable as CSV
+//  from Settings > Email Audit Log.
+// ──────────────────────────────────────────────────────────────────
+function getEmailAuditLog(){try{return JSON.parse(localStorage.getItem('lhca_email_audit')||'[]');}catch(e){return[];}}
+function saveEmailAuditLog(arr){
+  // Cap at 1000 entries to avoid unbounded growth
+  if(arr.length>1000)arr=arr.slice(-1000);
+  try{localStorage.setItem('lhca_email_audit',JSON.stringify(arr));}catch(e){console.error('Audit log save failed:',e);}
+}
+function renderEmailAuditTable(){
+  var wrap=document.getElementById('emailAuditTableWrap');if(!wrap)return;
+  var arr=getEmailAuditLog();
+  if(!arr.length){wrap.innerHTML='<div style="padding:14px;color:#8ca0b4;text-align:center;">No log entries yet.</div>';return;}
+  // Newest first
+  var rows=arr.slice().reverse().map(function(r){
+    var dt=new Date(r.timestamp);var when=dt.toLocaleDateString()+' '+dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    var clientList=(r.clientNames||[]).join(', ');
+    var statusIcon=r.success?'<span style="color:#1a7740;">✓</span>':'<span style="color:#a00;">✗</span>';
+    var detail=r.success?'Sent':('Failed: '+esc((r.errorMsg||'').toString().slice(0,80)));
+    return '<tr>'+
+      '<td style="padding:6px 8px;">'+statusIcon+'</td>'+
+      '<td style="padding:6px 8px;white-space:nowrap;">'+when+'</td>'+
+      '<td style="padding:6px 8px;">'+esc(r.recipient||'')+'</td>'+
+      '<td style="padding:6px 8px;">'+esc(r.caseworkerName||'')+'</td>'+
+      '<td style="padding:6px 8px;white-space:nowrap;">'+esc(r.billingPeriod||'')+'</td>'+
+      '<td style="padding:6px 8px;text-align:center;">'+(r.attachmentCount||0)+'</td>'+
+      '<td style="padding:6px 8px;">'+esc(clientList)+'</td>'+
+      '<td style="padding:6px 8px;color:'+(r.success?'#1a7740':'#a00')+';">'+detail+'</td>'+
+    '</tr>';
+  }).join('');
+  wrap.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:11px;">'+
+    '<thead style="background:#f4f8fc;position:sticky;top:0;"><tr>'+
+      '<th style="padding:6px 8px;text-align:left;border-bottom:1px solid #d0d8e4;"></th>'+
+      '<th style="padding:6px 8px;text-align:left;border-bottom:1px solid #d0d8e4;">When</th>'+
+      '<th style="padding:6px 8px;text-align:left;border-bottom:1px solid #d0d8e4;">Recipient</th>'+
+      '<th style="padding:6px 8px;text-align:left;border-bottom:1px solid #d0d8e4;">Caseworker</th>'+
+      '<th style="padding:6px 8px;text-align:left;border-bottom:1px solid #d0d8e4;">Period</th>'+
+      '<th style="padding:6px 8px;text-align:center;border-bottom:1px solid #d0d8e4;">#</th>'+
+      '<th style="padding:6px 8px;text-align:left;border-bottom:1px solid #d0d8e4;">Clients</th>'+
+      '<th style="padding:6px 8px;text-align:left;border-bottom:1px solid #d0d8e4;">Status</th>'+
+    '</tr></thead><tbody>'+rows+'</tbody></table>';
+}
+
+function downloadEmailAuditCSV(){
+  var arr=getEmailAuditLog();
+  if(!arr.length){alert('No audit log entries to download.');return;}
+  function csvEscape(v){var s=String(v==null?'':v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
+  var header=['Timestamp','SentBy','Type','Recipient','CaseworkerName','BillingPeriod','AttachmentCount','ClientNames','Success','ErrorMsg'].join(',');
+  var lines=arr.map(function(r){return [
+    r.timestamp,r.sentBy,r.type,r.recipient,r.caseworkerName,r.billingPeriod,r.attachmentCount,(r.clientNames||[]).join('; '),r.success?'YES':'NO',r.errorMsg||''
+  ].map(csvEscape).join(',');});
+  var csv=header+'\n'+lines.join('\n');
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');a.href=url;
+  a.download='email_audit_log_'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(function(){URL.revokeObjectURL(url);},2000);
+}
+
+function logEmailSend(entry){
+  // entry: { recipient, caseworkerName, billingPeriod, clientNames[], attachmentCount, sentBy, success, errorMsg? }
+  var record=Object.assign({
+    timestamp:new Date().toISOString(),
+    sentBy:(window.signedInEmail||'unknown')
+  },entry);
+  var arr=getEmailAuditLog();arr.push(record);saveEmailAuditLog(arr);
+  // Mirror to App Insights for centralized tracking
+  try{aiTrack('PHIEmailSend',{
+    recipient:record.recipient,
+    caseworker:record.caseworkerName,
+    period:record.billingPeriod,
+    clientCount:(record.clientNames||[]).length,
+    success:String(record.success),
+    errorMsg:record.errorMsg||''
+  });}catch(e){}
+  return record;
+}
+
 function markInvoiceSubmitted(clientName,period){
   var p=getProfiles();
   if(!p[clientName])return;
@@ -4566,6 +4660,17 @@ async function sendEmail(){
       '<p>Thank you,<br><b>Thomas Jaboro</b><br>Liberty Home Care Assistance<br>(248) 291-4106</p>';
     if(btn)btn.textContent='Sending…';
     var result=await sendMailWithPDF(ae,subj,body,[{name:fname,base64:base64}]);
+    // HIPAA audit log entry
+    logEmailSend({
+      type:'single',
+      recipient:ae,
+      caseworkerName:w||'(none)',
+      billingPeriod:bp,
+      clientNames:[cn],
+      attachmentCount:1,
+      success:!!result.ok,
+      errorMsg:result.ok?null:(result.err||result.status||'unknown')
+    });
     if(result.ok){
       aiTrack('InvoiceEmailed',{clientName:cn,billingPeriod:bp,recipient:ae});
       markInvoiceSubmitted(cn,bp);
@@ -6070,6 +6175,18 @@ async function sendMonthlyEmail(email,workerName,clients,period){
     if(pl)pl.textContent=label||('Sending '+done+' of '+total+'…');
   });
   if(po)po.classList.remove('open');
+
+  // HIPAA audit: log every PHI email send (success OR failure)
+  logEmailSend({
+    type:'mass',
+    recipient:email,
+    caseworkerName:workerName||'(none)',
+    billingPeriod:period,
+    clientNames:attachments.map(function(a){return a.clientName;}),
+    attachmentCount:attachments.length,
+    success:!!result.ok,
+    errorMsg:result.ok?null:(result.err||result.status||'unknown')
+  });
 
   if(result.ok){
     // Mark all sent invoices as submitted
