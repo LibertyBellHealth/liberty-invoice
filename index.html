@@ -7248,7 +7248,7 @@ function validateInvoiceForSend(name,prof,inv,cwRec){
   if(!prof.medicaidId)issues.push('Missing Medicaid ID');
   if(!cwRec||!cwRec.agency)issues.push('Caseworker has no Agency set (Bill To will be empty)');
   if(!cwRec||!cwRec.email)issues.push('Caseworker has no email');
-  if(!prof.worker)issues.push('No caseworker assigned');
+  if(!prof.worker&&!prof.caseworkerId)issues.push('No caseworker assigned');
   // Total Time HH must be present
   if(!d.svcHH||String(d.svcHH).trim()===''){
     var hasTask=d.tasks&&d.tasks.svc&&d.tasks.svc.some(function(r){return r&&r.some(function(c){return c;});});
@@ -7751,9 +7751,16 @@ async function sendMonthlyEmail(email,workerName,clients,period){
   // Case 3: SOME ready + SOME with issues — push through the ready ones; the others stay queued for follow-up
   if(hasIssues.length>0){
     var problemNames=hasIssues.map(function(c){return c.name+(c.issues&&c.issues.length?' ('+c.issues[0]+')':'');}).join('\n• ');
+    var readyNames=readyToSend.map(function(c){return c.name;}).join('\n• ');
+    var extraInfo='';
+    if(alreadySent.length)extraInfo+='\n\nAlready submitted ('+alreadySent.length+' — will not re-send):\n• '+alreadySent.map(function(c){return c.name;}).join('\n• ');
+    if(missingInvoice.length)extraInfo+='\n\nNo invoice yet ('+missingInvoice.length+'):\n• '+missingInvoice.map(function(c){return c.name;}).join('\n• ');
     showConfirm(
-      readyToSend.length+' of '+allWithInvoice.length+' invoices are ready to send.\n\n'+
-      hasIssues.length+' will be skipped (must fix issues first):\n• '+problemNames+'\n\nSend the '+readyToSend.length+' ready one'+(readyToSend.length>1?'s':'')+' now? You can fix and send the rest later — they will be marked as a follow-up.',
+      readyToSend.length+' of '+allWithInvoice.length+' invoices are ready to send to '+workerName+'.\n\n'+
+      'Will send ('+readyToSend.length+'):\n• '+readyNames+'\n\n'+
+      'Skipping for issues ('+hasIssues.length+'):\n• '+problemNames+
+      extraInfo+
+      '\n\nSend the '+readyToSend.length+' ready one'+(readyToSend.length>1?'s':'')+' now?',
       sendReadyOnly,
       {title:'Send Ready Invoices?',okText:'Send '+readyToSend.length+' Now',danger:false}
     );
