@@ -7382,6 +7382,42 @@ function previewMonthlyInvoices(){
 //  doesn't look like an exact carbon-copy. Hospital column always
 //  starts empty since it's by-exception, not recurring.
 // ──────────────────────────────────────────────────────────────────
+// Monthly Emails period input — accept shorthand (0526, 052026, 5/26, etc.)
+function onMonthlyPeriodInput(el){
+  // Allow auto-format as user types digits
+  var raw=el.value.replace(/\D/g,'');
+  if(raw.length<=2){el.value=raw;return;}
+  // Insert / after MM
+  var formatted=raw.slice(0,2)+'/'+raw.slice(2,6);
+  el.value=formatted;
+}
+function onMonthlyPeriodBlur(el){
+  var v=el.value.trim();
+  // Already in correct MM/YYYY form
+  if(/^\d{2}\/\d{4}$/.test(v))return;
+  // Strip non-digits and try to interpret
+  var raw=v.replace(/\D/g,'');
+  var mm,yyyy;
+  if(raw.length===4){
+    // MMYY → MM/YYYY (assume 20YY for YY<50, else 19YY)
+    mm=raw.slice(0,2);
+    var yy=raw.slice(2);
+    yyyy=parseInt(yy)<50?'20'+yy:'19'+yy;
+  } else if(raw.length===6){
+    // MMYYYY
+    mm=raw.slice(0,2);yyyy=raw.slice(2,6);
+  } else if(raw.length===5){
+    // MYYYY (single-digit month) — not strictly valid but try
+    mm='0'+raw.slice(0,1);yyyy=raw.slice(1,5);
+  } else if(raw.length===3){
+    // MYY (single-digit month, 2-digit year)
+    mm='0'+raw.slice(0,1);
+    var yy3=raw.slice(1);
+    yyyy=parseInt(yy3)<50?'20'+yy3:'19'+yy3;
+  }
+  if(mm&&yyyy){el.value=mm+'/'+yyyy;}
+}
+
 function generateNextMonthInvoiceData(prevInv,newPeriod){
   if(!prevInv||!prevInv.data)return null;
   var prevPeriod=(prevInv.data&&prevInv.data.billingPeriod)||prevInv.billingPeriod;
@@ -7773,9 +7809,10 @@ async function _doMonthlyEmailSend(email,workerName,period,readyToSend,alreadySe
         <label style="font-size:13px;font-weight:600;color:#1a2b45;white-space:nowrap;">Billing Period:</label>
         <input id="monthlyInvPeriod" type="text" placeholder="MM/YYYY" maxlength="7"
           style="padding:6px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;width:110px;"
-          onkeydown="if(event.key==='Enter')previewMonthlyInvoices()">
+          oninput="onMonthlyPeriodInput(this)" onblur="onMonthlyPeriodBlur(this)"
+          onkeydown="if(event.key==='Enter'){onMonthlyPeriodBlur(this);previewMonthlyInvoices();}">
         <button class="btn btn-primary btn-sm" onclick="previewMonthlyInvoices()">Preview</button>
-        <span style="font-size:11px;color:#8ca0b4;">e.g. <b>04/2026</b> for April 2026 — sends on May 1st or 2nd</span>
+        <span style="font-size:11px;color:#8ca0b4;">e.g. <b>04/2026</b>, <b>0426</b>, or <b>042026</b> — sends on May 1st or 2nd</span>
       </div>
       <div id="monthlyInvResults"></div>
     </div>
