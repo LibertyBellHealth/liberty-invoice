@@ -659,26 +659,13 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
           <input id="globalSearch" class="global-search" placeholder="Search clients, invoices, tasks…" oninput="runGlobalSearch(this.value)" onkeydown="if(event.key==='Escape')closeGlobalSearch()">
           <div class="global-results" id="globalResults" style="display:none;"></div>
         </div>
+        <button class="btn btn-secondary" data-sync-disable="1" onclick="openGenerateInvoicesModal()">🔄 Generate Invoices</button>
         <button class="btn btn-primary" data-sync-disable="1" onclick="navNewClient()">+ New Client</button>
       </div>
     </div>
 
     <!-- ATTENTION PANEL -->
     <div class="attention-panel" id="attentionPanel"></div>
-
-    <!-- AUTO-GENERATE INVOICES TOOLBAR -->
-    <div id="autoGenToolbar" style="display:none;background:#fff;border:1px solid #e5ebf2;border-radius:8px;padding:14px 16px;margin-bottom:18px;">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <div style="font-size:14px;font-weight:600;color:#1a2b45;">Auto-Generate Invoices:</div>
-        <label style="font-size:12px;color:#6b8dae;">Billing Period</label>
-        <input id="homeAutoGenPeriod" type="text" placeholder="MM/YYYY" maxlength="7"
-          style="padding:6px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;width:110px;"
-          oninput="onMonthlyPeriodInput(this)" onblur="onMonthlyPeriodBlur(this);refreshHomeAutoGenButton();"
-          onkeydown="if(event.key==='Enter'){onMonthlyPeriodBlur(this);refreshHomeAutoGenButton();}">
-        <button id="homeAutoGenBtn" class="btn btn-primary btn-sm" onclick="homeAutoGenerate()">🔄 Auto-Generate</button>
-        <span id="homeAutoGenStatus" style="font-size:12px;color:#6b8dae;"></span>
-      </div>
-    </div>
 
     <!-- METRIC ROW -->
     <div class="metric-row">
@@ -1866,7 +1853,6 @@ function updateStats(){
   var sel=document.getElementById('filterCaregiver');
   if(sel){var cur=sel.value;sel.innerHTML='<option value="">All Caregivers</option>';var cgs=getCaregivers();Object.keys(cgs).forEach(function(id){var o=document.createElement('option');o.value=id;o.textContent=cgs[id].name;if(id===cur)o.selected=true;sel.appendChild(o);});}
   renderAttentionPanel();
-  initHomeAutoGenToolbar();
 }
 // Returns true if the given billing period (MM/YYYY) is on or after the client's startDate
 function clientWasActiveInPeriod(prof,period){
@@ -1882,12 +1868,14 @@ function clientWasActiveInPeriod(prof,period){
 function renderAttentionPanel(){
   var panel=document.getElementById('attentionPanel');if(!panel)return;
   var p=getProfiles(),items=[];
-  var d=new Date(),curPeriod=String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
+  var d=new Date();
+  // Flag PREVIOUS month — current month is generated on the 1st of next month, so it's not "missing" yet
+  var prev=new Date(d.getFullYear(),d.getMonth()-1,1);
+  var prevPeriod=String(prev.getMonth()+1).padStart(2,'0')+'/'+prev.getFullYear();
   var active=Object.keys(p).filter(function(k){return !p[k].clientStatus||p[k].clientStatus==='active';});
-  // Skip clients whose startDate is after the current period
-  var missingThis=active.filter(function(k){return clientWasActiveInPeriod(p[k],curPeriod) && !((p[k].invoices)||[]).some(function(i){return i.billingPeriod===curPeriod;});});
-  if(missingThis.length){
-    items.push({cls:'attn-warn',count:missingThis.length,label:missingThis.length+' active client'+(missingThis.length>1?'s':'')+' missing invoice for '+curPeriod,fn:'openAllInvoicesModal("outstanding")'});
+  var missingPrev=active.filter(function(k){return clientWasActiveInPeriod(p[k],prevPeriod) && !((p[k].invoices)||[]).some(function(i){return i.billingPeriod===prevPeriod;});});
+  if(missingPrev.length){
+    items.push({cls:'attn-warn',count:missingPrev.length,label:missingPrev.length+' active client'+(missingPrev.length>1?'s':'')+' missing invoice for '+prevPeriod+' — click 🔄 Generate Invoices to create',fn:'openGenerateInvoicesModal()'});
   }
   var stale=[];Object.keys(p).forEach(function(k){(p[k].invoices||[]).forEach(function(inv){if(inv.status==='submitted'){var age=(new Date()-new Date(inv.savedAt))/(1000*60*60*24);if(age>30)stale.push(1);}});});
   if(stale.length)items.push({cls:'attn-danger',count:stale.length,label:stale.length+' submitted invoice'+(stale.length>1?'s':'')+' pending 30+ days — follow up on payment',fn:'openAllInvoicesModal("outstanding")'});
@@ -7427,45 +7415,74 @@ function onMonthlyPeriodBlur(el){
   if(mm&&yyyy){el.value=mm+'/'+yyyy;}
 }
 
-function refreshHomeAutoGenButton(){
-  var inp=document.getElementById('homeAutoGenPeriod');
-  var bar=document.getElementById('autoGenToolbar');
-  var btn=document.getElementById('homeAutoGenBtn');
-  var stat=document.getElementById('homeAutoGenStatus');
-  if(!inp||!bar||!btn||!stat)return;
-  var period=(inp.value||'').trim();
-  if(!/^\d{2}\/\d{4}$/.test(period)){
-    btn.disabled=true;stat.textContent='Enter a billing period (e.g. '+defaultHomeAutoGenPeriod()+')';
-    return;
-  }
-  var eligible=(typeof findClientsEligibleForAutoGen==='function')?findClientsEligibleForAutoGen(period):[];
-  if(!eligible.length){
-    btn.disabled=true;
-    stat.textContent='No clients need auto-generation for '+period;
-  } else {
-    btn.disabled=false;
-    btn.textContent='🔄 Auto-Generate '+eligible.length+' invoice'+(eligible.length>1?'s':'');
-    stat.textContent='for '+period;
-  }
-}
-function defaultHomeAutoGenPeriod(){
-  var d=new Date();
+function defaultGenInvPeriod(){
+  // Default to the previous month — user typically generates last month's invoices
+  var d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);
   return String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
 }
-function initHomeAutoGenToolbar(){
-  var bar=document.getElementById('autoGenToolbar');var inp=document.getElementById('homeAutoGenPeriod');
-  if(!bar||!inp)return;
-  bar.style.display='block';
-  if(!inp.value)inp.value=defaultHomeAutoGenPeriod();
-  refreshHomeAutoGenButton();
+function openGenerateInvoicesModal(){
+  var existing=document.getElementById('genInvModal');if(existing)existing.remove();
+  var ov=document.createElement('div');
+  ov.id='genInvModal';ov.className='modal-overlay open';
+  ov.innerHTML='<div class="modal-box" style="max-width:480px;">'+
+    '<h3>🔄 Generate Invoices</h3>'+
+    '<div style="font-size:13px;color:#4a5d7a;margin:8px 0 14px;">Copies each active client\'s most recent invoice into the chosen billing period — weekly tasks shifted by one day, hospital column cleared, marked as draft.</div>'+
+    '<label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Billing Period</label>'+
+    '<input id="genInvPeriod" type="text" placeholder="MM/YYYY" maxlength="7" '+
+      'style="padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:14px;width:140px;outline:none;" '+
+      'oninput="onMonthlyPeriodInput(this)" onblur="onMonthlyPeriodBlur(this);refreshGenInvCount();" '+
+      'onkeydown="if(event.key===\'Enter\'){onMonthlyPeriodBlur(this);refreshGenInvCount();doGenerateInvoices();}">'+
+    '<div style="font-size:11px;color:#8ca0b4;margin-top:6px;">e.g. <b>04/2026</b>, <b>0426</b>, or <b>042026</b></div>'+
+    '<div id="genInvCount" style="margin-top:14px;font-size:13px;color:#4a5d7a;min-height:18px;"></div>'+
+    '<div class="modal-row" style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">'+
+      '<button class="btn btn-secondary" onclick="closeGenInvModal()">Cancel</button>'+
+      '<button id="genInvDoBtn" class="btn btn-primary" onclick="doGenerateInvoices()">Generate</button>'+
+    '</div>'+
+  '</div>';
+  document.body.appendChild(ov);
+  var inp=document.getElementById('genInvPeriod');
+  inp.value=defaultGenInvPeriod();
+  refreshGenInvCount();
+  setTimeout(function(){inp.focus();inp.select();},50);
 }
-function homeAutoGenerate(){
-  var inp=document.getElementById('homeAutoGenPeriod');
-  if(!inp)return;
+function closeGenInvModal(){var m=document.getElementById('genInvModal');if(m)m.remove();}
+function refreshGenInvCount(){
+  var inp=document.getElementById('genInvPeriod');var lbl=document.getElementById('genInvCount');var btn=document.getElementById('genInvDoBtn');
+  if(!inp||!lbl||!btn)return;
+  var period=(inp.value||'').trim();
+  if(!/^\d{2}\/\d{4}$/.test(period)){lbl.textContent='';btn.disabled=true;btn.textContent='Generate';return;}
+  var eligible=findClientsEligibleForAutoGen(period);
+  if(!eligible.length){lbl.innerHTML='<span style="color:#a05a00;">No clients need invoices for '+period+' (already generated, or no prior invoice to copy).</span>';btn.disabled=true;btn.textContent='Generate';}
+  else{lbl.innerHTML='<b>'+eligible.length+'</b> client'+(eligible.length>1?'s':'')+' will get a new draft invoice for <b>'+period+'</b>.';btn.disabled=false;btn.textContent='Generate '+eligible.length;}
+}
+function doGenerateInvoices(){
+  var inp=document.getElementById('genInvPeriod');if(!inp)return;
   onMonthlyPeriodBlur(inp);
   var period=(inp.value||'').trim();
   if(!/^\d{2}\/\d{4}$/.test(period)){showAlert('Enter a valid billing period (MM/YYYY).');return;}
-  if(typeof autoGenerateMonthlyInvoices==='function')autoGenerateMonthlyInvoices(period);
+  var eligible=findClientsEligibleForAutoGen(period);
+  if(!eligible.length){refreshGenInvCount();return;}
+  closeGenInvModal();
+  _doAutoGenerateInvoices(eligible,period);
+}
+// Stack of recent generation batches for undo
+var _autoGenUndoStack=[];
+function undoLastAutoGen(){
+  if(!_autoGenUndoStack.length){showAlert('Nothing to undo.');return;}
+  var batch=_autoGenUndoStack.pop();
+  var profiles=getProfiles();
+  var removed=0;
+  batch.invoices.forEach(function(rec){
+    var prof=profiles[rec.clientName];if(!prof||!prof.invoices)return;
+    var idx=prof.invoices.findIndex(function(inv){return inv.id===rec.invoiceId;});
+    if(idx>=0){prof.invoices.splice(idx,1);removed++;}
+  });
+  saveProfilesLS(profiles);
+  batch.invoices.forEach(function(rec){if(profiles[rec.clientName])saveProfileSP(rec.clientName,profiles[rec.clientName]);});
+  logActivity('invoice','Undid auto-generation: removed '+removed+' invoice'+(removed!==1?'s':'')+' for '+batch.period);
+  showAlert('✓ Removed '+removed+' auto-generated invoice'+(removed!==1?'s':'')+' for '+batch.period+'.',{title:'Undo Complete'});
+  if(typeof previewMonthlyInvoices==='function')previewMonthlyInvoices();
+  updateStats();
 }
 
 function generateNextMonthInvoiceData(prevInv,newPeriod){
@@ -7588,19 +7605,27 @@ function autoGenerateMonthlyInvoices(period){
 function _doAutoGenerateInvoices(eligible,period){
   var profiles=getProfiles();
   var generated=0,skipped=0;
+  var undoBatch={period:period,when:Date.now(),invoices:[]};
   eligible.forEach(function(e){
     var newInv=generateNextMonthInvoiceData(e.prevInv,period);
     if(!newInv){skipped++;return;}
+    // Tag with a stable id so undo can find it
+    if(!newInv.id)newInv.id='auto_'+Date.now()+'_'+Math.random().toString(36).slice(2,9);
     if(!profiles[e.name].invoices)profiles[e.name].invoices=[];
     profiles[e.name].invoices.unshift(newInv);
+    undoBatch.invoices.push({clientName:e.name,invoiceId:newInv.id});
     generated++;
   });
   saveProfilesLS(profiles);
   // Sync each new invoice to DB
   eligible.forEach(function(e){if(profiles[e.name])saveProfileSP(e.name,profiles[e.name]);});
+  if(undoBatch.invoices.length)_autoGenUndoStack.push(undoBatch);
   logActivity('invoice','Auto-generated '+generated+' invoice'+(generated!==1?'s':'')+' for '+period);
-  showAlert('✓ Auto-generated '+generated+' invoice'+(generated!==1?'s':'')+' for '+period+(skipped>0?' ('+skipped+' skipped — missing data)':'')+'.\n\nAll new invoices are marked Draft. Review them before sending.',{title:'Auto-Generation Complete'});
-  // Refresh preview if user is on monthly emails page
+  showConfirm(
+    '✓ Auto-generated '+generated+' invoice'+(generated!==1?'s':'')+' for '+period+(skipped>0?' ('+skipped+' skipped — missing data)':'')+'.\n\nAll new invoices are marked Draft. Review them before sending.\n\nIf this was a mistake, click Undo to remove them.',
+    null,
+    {title:'Auto-Generation Complete',okText:'Done',hideCancel:true,extraText:'↩ Undo',onExtra:function(){undoLastAutoGen();}}
+  );
   if(typeof previewMonthlyInvoices==='function')previewMonthlyInvoices();
   updateStats();
 }
