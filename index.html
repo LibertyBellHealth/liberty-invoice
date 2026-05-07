@@ -7272,26 +7272,28 @@ function previewMonthlyInvoices(){
     if(prof.status==='inactive'||prof.status==='terminated'||prof.status==='lost')return;
     // Skip clients whose service started AFTER this billing period
     if(!clientWasActiveInPeriod(prof,period))return;
-    var wname=(prof.worker||'').trim()||'(No Worker Assigned)';
-    if(!groups[wname])groups[wname]={clients:[]};
-    var cwRec=cws.find(function(c){return (c.id&&prof.caseworkerId&&c.id===prof.caseworkerId)||(c.name||'').toLowerCase()===wname.toLowerCase();})||{};
-    var email=cwRec.email||'';
-    groups[wname].email=groups[wname].email||email;
-    groups[wname].cwName=wname;
-    groups[wname].cwRec=cwRec;
+    // Resolve the caseworker identity. Prefer caseworkerId; fall back to fuzzy name match.
+    var rawWorker=(prof.worker||'').trim();
+    var cwRec=cws.find(function(c){return c.id&&prof.caseworkerId&&String(c.id)===String(prof.caseworkerId);})||
+              cws.find(function(c){return (c.name||'').trim().toLowerCase()===rawWorker.toLowerCase()&&rawWorker;})||
+              {};
+    // Group key: stable caseworker ID if known, else normalized name. Display name comes from the caseworker record so typo'd `prof.worker` strings still merge.
+    var groupKey=cwRec.id?'cw:'+cwRec.id:(rawWorker?'nm:'+rawWorker.toLowerCase():'(No Worker Assigned)');
+    var displayName=(cwRec.name||rawWorker||'(No Worker Assigned)').trim();
+    if(!groups[groupKey])groups[groupKey]={clients:[],cwName:displayName,cwRec:cwRec,email:cwRec.email||''};
     var inv=(prof.invoices||[]).find(function(i){return i.billingPeriod===period;})||null;
     var issues=validateInvoiceForSend(name,prof,inv,cwRec);
-    groups[wname].clients.push({name:name,prof:prof,inv:inv,issues:issues});
+    groups[groupKey].clients.push({name:name,prof:prof,inv:inv,issues:issues});
   });
-  var workerNames=Object.keys(groups).sort();
-  if(!workerNames.length){
+  var groupKeys=Object.keys(groups).sort(function(a,b){return (groups[a].cwName||'').localeCompare(groups[b].cwName||'');});
+  if(!groupKeys.length){
     document.getElementById('monthlyInvResults').innerHTML='<div style="color:#8ca0b4;font-size:13px;text-align:center;padding:20px;">No active clients found.</div>';
     return;
   }
   // Pre-compute global "send all" eligibility
   var totalReady=0,totalIssues=0,totalSent=0,totalEmpty=0,totalCaseworkersSendable=0;
-  workerNames.forEach(function(wname){
-    var g=groups[wname];if(!g.email)return;
+  groupKeys.forEach(function(gk){
+    var g=groups[gk];if(!g.email)return;
     var ready=g.clients.filter(function(c){return c.inv && c.inv.status!=='submitted' && c.inv.status!=='paid' && (!c.issues||c.issues.length===0);}).length;
     var iss=g.clients.filter(function(c){return c.inv && c.inv.status!=='submitted' && c.inv.status!=='paid' && c.issues && c.issues.length;}).length;
     var sent=g.clients.filter(function(c){return c.inv && (c.inv.status==='submitted'||c.inv.status==='paid');}).length;
@@ -7302,7 +7304,7 @@ function previewMonthlyInvoices(){
   // Count eligible auto-gen clients (active, missing invoice for period, have prior invoice)
   var eligibleAutoGen=findClientsEligibleForAutoGen(period).length;
   var html='<div style="font-size:12px;color:#6b8dae;margin-bottom:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">'+
-    '<span><b>'+workerNames.length+'</b> caseworker group'+(workerNames.length!==1?'s':'')+' for billing period <b>'+esc(period)+'</b></span>'+
+    '<span><b>'+groupKeys.length+'</b> caseworker group'+(groupKeys.length!==1?'s':'')+' for billing period <b>'+esc(period)+'</b></span>'+
     '<span style="color:#1e7e34;">✓ '+totalReady+' ready</span>'+
     (totalIssues?'<span style="color:#c07000;">⚠ '+totalIssues+' issues</span>':'')+
     (totalSent?'<span style="color:#1565a0;">✓ '+totalSent+' already sent</span>':'')+
@@ -7312,8 +7314,9 @@ function previewMonthlyInvoices(){
       (totalCaseworkersSendable>1?'<button class="btn btn-primary btn-sm" id="sendAllCwBtn" onclick="sendAllCaseworkerEmails(\''+esc(period)+'\')" style="white-space:nowrap;">Send All ('+totalCaseworkersSendable+' caseworkers)</button>':'')+
     '</div>'+
   '</div>';
-  workerNames.forEach(function(wname){
-    var g=groups[wname];
+  groupKeys.forEach(function(gk){
+    var g=groups[gk];
+    var wname=g.cwName||gk;
     var email=g.email||'';
     var hasInv=g.clients.filter(function(c){return c.inv;}).length;
     var missingInv=g.clients.length-hasInv;
@@ -7643,20 +7646,24 @@ async function sendAllCaseworkerEmails(period){
     var prof=profiles[name];
     if(prof.status==='inactive'||prof.status==='terminated'||prof.status==='lost')return;
     if(!clientWasActiveInPeriod(prof,period))return;
-    var wname=(prof.worker||'').trim()||'(No Worker Assigned)';
-    var cwRec=cws.find(function(c){return (c.id&&prof.caseworkerId&&c.id===prof.caseworkerId)||(c.name||'').toLowerCase()===wname.toLowerCase();})||{};
+    var rawWorker=(prof.worker||'').trim();
+    var cwRec=cws.find(function(c){return c.id&&prof.caseworkerId&&String(c.id)===String(prof.caseworkerId);})||
+              cws.find(function(c){return (c.name||'').trim().toLowerCase()===rawWorker.toLowerCase()&&rawWorker;})||
+              {};
     if(!cwRec.email)return; // skip groups with no email
-    if(!groups[wname])groups[wname]={email:cwRec.email,cwName:wname,clients:[]};
+    var groupKey=cwRec.id?'cw:'+cwRec.id:(rawWorker?'nm:'+rawWorker.toLowerCase():'(No Worker Assigned)');
+    var displayName=(cwRec.name||rawWorker||'(No Worker Assigned)').trim();
+    if(!groups[groupKey])groups[groupKey]={email:cwRec.email,cwName:displayName,clients:[]};
     var inv=(prof.invoices||[]).find(function(i){return i.billingPeriod===period;})||null;
     var issues=validateInvoiceForSend(name,prof,inv,cwRec);
-    groups[wname].clients.push({name:name,medicaidId:prof.medicaidId||'',invStatus:inv?(inv.status||'draft'):'none',hasIssues:issues.length>0,issues:issues});
+    groups[groupKey].clients.push({name:name,medicaidId:prof.medicaidId||'',invStatus:inv?(inv.status||'draft'):'none',hasIssues:issues.length>0,issues:issues});
   });
   // Determine which groups have anything sendable
   var sendable=[];
-  Object.keys(groups).forEach(function(wname){
-    var g=groups[wname];
+  Object.keys(groups).forEach(function(gk){
+    var g=groups[gk];
     var ready=g.clients.filter(function(c){return c.invStatus==='draft' && !c.hasIssues;});
-    if(ready.length)sendable.push({wname:wname,group:g,readyCount:ready.length});
+    if(ready.length)sendable.push({wname:g.cwName,group:g,readyCount:ready.length});
   });
   if(!sendable.length){
     showConfirm('No caseworkers have invoices ready to send for '+period+'. Use the per-caseworker Send Email button to see what\'s missing.',function(){},{title:'Nothing to Send',okText:'OK',danger:false});
