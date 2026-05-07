@@ -238,6 +238,15 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 .bi td{border:0.5px solid #000;padding:3px 5px;vertical-align:top;font-size:11pt;font-family:Arial,Helvetica,sans-serif;}
 .bi .lbl{font-size:10pt;display:block;font-family:Arial,Helvetica,sans-serif;color:#222;}
 .bi input{border:none;width:100%;font-size:12pt;font-family:Arial,Helvetica,sans-serif;background:transparent;outline:none;color:#000;}
+/* Inline label+value rows (Client Name, Medicaid, Bill To, Attention) — matches PDF layout */
+.bi td.bi-inline{padding:5px 5px;vertical-align:middle;}
+.bi td.bi-inline .lbl{display:inline-block;font-size:11pt;font-weight:normal;color:#000;margin:0;padding:0;vertical-align:middle;}
+.bi td.bi-inline input{display:inline-block;width:auto;font-size:12pt;vertical-align:middle;margin-left:8px;flex:1;}
+.bi td.bi-inline-flex{padding:0;}
+.bi td.bi-inline-flex>div{display:flex;align-items:center;height:100%;}
+.bi td.bi-inline-flex .lbl-cell{padding:5px 8px;font-size:11pt;color:#000;border-right:0.5px solid #000;flex-shrink:0;background:#fff;}
+.bi td.bi-inline-flex .val-cell{padding:5px 5px;flex:1;}
+.bi td.bi-inline-flex input{font-size:12pt;width:100%;}
 .sec-hdr{border:0.5px solid #000;border-top:none;background:#fff;text-align:center;font-weight:bold;font-size:12pt;padding:5px 4px;font-family:Arial,Helvetica,sans-serif;}
 .tt{width:100%;border-collapse:collapse;border-left:0.5px solid #000;border-right:0.5px solid #000;border-bottom:0.5px solid #000;table-layout:fixed;}
 .tt th,.tt td{border:0.5px solid #000;text-align:center;vertical-align:middle;padding:0;}
@@ -270,9 +279,9 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
 .bottom-block .label-row{display:flex;justify-content:space-between;padding:8px 6px 5px;align-items:flex-end;}
 .sig-label{display:flex;flex-direction:column;gap:0;width:60%;}
 .sig-label span{font-size:12pt;font-family:Arial,Helvetica,sans-serif;}
-.pg-footer{display:flex;justify-content:space-between;font-size:10pt;margin-top:6px;font-family:Arial,Helvetica,sans-serif;}
-.pg-footer>span:first-child{}
-.pg-footer>span:last-child{position:absolute;left:50%;transform:translateX(-50%);}
+.pg-footer{display:grid;grid-template-columns:1fr 1fr 1fr;align-items:center;font-size:10pt;margin-top:6px;font-family:Arial,Helvetica,sans-serif;}
+.pg-footer>span:first-child{text-align:left;}
+.pg-footer>span:last-child{text-align:center;grid-column:2;}
 .p2info{width:100%;border-collapse:collapse;}
 .p2info td{border:0.5px solid #000;padding:3px 5px;font-size:11pt;vertical-align:top;font-family:Arial,Helvetica,sans-serif;}
 .p2info .lbl{font-size:10pt;display:block;font-family:Arial,Helvetica,sans-serif;}
@@ -1238,19 +1247,19 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
       <td style="width:16%"><span class="lbl">Billing Period</span>
         <input type="text" id="billingPeriod" placeholder="MM/YYYY" maxlength="7"
           oninput="onBillingTextInput(this)" onblur="onBillingBlur(this)"
-          style="width:100%;border:none;font-size:9pt;font-family:'Times New Roman',Times,serif;background:transparent;outline:none;color:#000;">
+          style="width:100%;border:none;font-size:12pt;font-family:Arial,Helvetica,sans-serif;background:transparent;outline:none;color:#000;">
         <input type="hidden" id="billingPeriodPicker">
       </td>
       <td colspan="2" style="width:28%"><span class="lbl">Date Submitted</span><input id="dateSubmitted"></td>
       <td colspan="2" style="width:24%"><span class="lbl">Hourly Rate</span><input id="hourlyRate" placeholder="0.00"></td>
     </tr>
     <tr>
-      <td colspan="3"><span class="lbl">Client Name:</span><input id="clientName" oninput="syncFields()"></td>
-      <td colspan="4"><span class="lbl">Client Medicaid ID Number:</span><input id="medicaidId"></td>
+      <td colspan="3" class="bi-inline"><span class="lbl">Client Name:</span><input id="clientName" oninput="syncFields()" style="display:inline-block;width:calc(100% - 100px);margin-left:8px;"></td>
+      <td colspan="4" class="bi-inline"><span class="lbl">Client Medicaid ID Number:</span><input id="medicaidId" style="display:inline-block;width:calc(100% - 200px);margin-left:8px;"></td>
     </tr>
     <tr>
-      <td colspan="3"><span class="lbl">Bill To:</span><input id="billTo"></td>
-      <td colspan="4"><span class="lbl">Attention:</span><input id="worker" oninput="syncFields()"></td>
+      <td colspan="3" class="bi-inline-flex" style="padding:0;"><div><span class="lbl-cell">Bill To:</span><span class="val-cell"><input id="billTo"></span></div></td>
+      <td colspan="4" class="bi-inline"><span class="lbl">Attention:</span><input id="worker" oninput="syncFields()" style="display:inline-block;width:calc(100% - 80px);margin-left:8px;"></td>
     </tr>
   </table>
   <div class="sec-hdr">VERIFICATION OF SERVICES AND HOSPITAL/NURSING FACILITY STAYS</div>
@@ -1275,7 +1284,7 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
     <div class="cert-row">I certify that Liberty Home Care Assistance has provided all the services as checked above.</div>
     <div class="label-row">
       <div class="sig-label" style="width:62%;"><div id="sigArea1" class="sig-placeholder" onclick="placeSignature(1)">Click to place signature</div><span>Signature of Authorized Representative</span></div>
-      <div class="sig-label" style="width:30%;"><input id="sigDate1" type="text" style="width:100%;border:none;border-bottom:1px solid #000;font-size:9pt;font-family:'Times New Roman',Times,serif;background:transparent;outline:none;"><span>Date</span></div>
+      <div class="sig-label" style="width:30%;"><input id="sigDate1" type="text" style="width:100%;border:none;border-bottom:1px solid #000;font-size:12pt;font-family:Arial,Helvetica,sans-serif;background:transparent;outline:none;"><span>Date</span></div>
     </div>
   </div>
   <div class="pg-footer"><span>MSA-1904 (1/2022)</span><span>1</span></div>
@@ -1315,7 +1324,7 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
     <div class="cert-row">I certify that Liberty Home Care Assistance has provided all the services as checked above.</div>
     <div class="label-row">
       <div class="sig-label" style="width:62%;"><div id="sigArea2" class="sig-placeholder" onclick="placeSignature(2)">Click to place signature</div><span>Signature of Authorized Representative</span></div>
-      <div class="sig-label" style="width:30%;"><input id="sigDate2" type="text" style="width:100%;border:none;border-bottom:1px solid #000;font-size:9pt;font-family:'Times New Roman',Times,serif;background:transparent;outline:none;"><span>Date</span></div>
+      <div class="sig-label" style="width:30%;"><input id="sigDate2" type="text" style="width:100%;border:none;border-bottom:1px solid #000;font-size:12pt;font-family:Arial,Helvetica,sans-serif;background:transparent;outline:none;"><span>Date</span></div>
     </div>
   </div>
   <div class="pg-footer"><span>MSA-1904 (1/2022)</span><span>2</span></div>
