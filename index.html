@@ -7244,6 +7244,8 @@ async function previewClientInvoice(clientName,period){
 function validateInvoiceForSend(name,prof,inv,cwRec){
   var issues=[];
   if(!inv)return ['No invoice for this period — fill out the invoice first'];
+  // Submitted/paid invoices are already done — no point flagging issues on them
+  if(inv.status==='submitted'||inv.status==='paid')return [];
   var d=inv.data||{};
   if(!prof.medicaidId)issues.push('Missing Medicaid ID');
   if(!cwRec||!cwRec.agency)issues.push('Caseworker has no Agency set (Bill To will be empty)');
