@@ -666,6 +666,20 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
     <!-- ATTENTION PANEL -->
     <div class="attention-panel" id="attentionPanel"></div>
 
+    <!-- AUTO-GENERATE INVOICES TOOLBAR -->
+    <div id="autoGenToolbar" style="display:none;background:#fff;border:1px solid #e5ebf2;border-radius:8px;padding:14px 16px;margin-bottom:18px;">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div style="font-size:14px;font-weight:600;color:#1a2b45;">Auto-Generate Invoices:</div>
+        <label style="font-size:12px;color:#6b8dae;">Billing Period</label>
+        <input id="homeAutoGenPeriod" type="text" placeholder="MM/YYYY" maxlength="7"
+          style="padding:6px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;width:110px;"
+          oninput="onMonthlyPeriodInput(this)" onblur="onMonthlyPeriodBlur(this);refreshHomeAutoGenButton();"
+          onkeydown="if(event.key==='Enter'){onMonthlyPeriodBlur(this);refreshHomeAutoGenButton();}">
+        <button id="homeAutoGenBtn" class="btn btn-primary btn-sm" onclick="homeAutoGenerate()">🔄 Auto-Generate</button>
+        <span id="homeAutoGenStatus" style="font-size:12px;color:#6b8dae;"></span>
+      </div>
+    </div>
+
     <!-- METRIC ROW -->
     <div class="metric-row">
       <div class="metric clickable-stat" onclick="renderClientTable('all')">
@@ -1852,6 +1866,7 @@ function updateStats(){
   var sel=document.getElementById('filterCaregiver');
   if(sel){var cur=sel.value;sel.innerHTML='<option value="">All Caregivers</option>';var cgs=getCaregivers();Object.keys(cgs).forEach(function(id){var o=document.createElement('option');o.value=id;o.textContent=cgs[id].name;if(id===cur)o.selected=true;sel.appendChild(o);});}
   renderAttentionPanel();
+  initHomeAutoGenToolbar();
 }
 // Returns true if the given billing period (MM/YYYY) is on or after the client's startDate
 function clientWasActiveInPeriod(prof,period){
@@ -1872,13 +1887,7 @@ function renderAttentionPanel(){
   // Skip clients whose startDate is after the current period
   var missingThis=active.filter(function(k){return clientWasActiveInPeriod(p[k],curPeriod) && !((p[k].invoices)||[]).some(function(i){return i.billingPeriod===curPeriod;});});
   if(missingThis.length){
-    // How many of the missing have a previous invoice we can copy from?
-    var eligibleAutoGenCount=missingThis.filter(function(k){return ((p[k].invoices)||[]).length>0;}).length;
-    if(eligibleAutoGenCount>0){
-      items.push({cls:'attn-warn',count:eligibleAutoGenCount,label:eligibleAutoGenCount+' active client'+(eligibleAutoGenCount>1?'s':'')+' missing invoice for '+curPeriod+' — click to auto-generate from last month',fn:"autoGenerateMonthlyInvoices('"+curPeriod+"')"});
-    } else {
-      items.push({cls:'attn-warn',count:missingThis.length,label:missingThis.length+' active client'+(missingThis.length>1?'s':'')+' missing invoice for '+curPeriod,fn:'openAllInvoicesModal("outstanding")'});
-    }
+    items.push({cls:'attn-warn',count:missingThis.length,label:missingThis.length+' active client'+(missingThis.length>1?'s':'')+' missing invoice for '+curPeriod,fn:'openAllInvoicesModal("outstanding")'});
   }
   var stale=[];Object.keys(p).forEach(function(k){(p[k].invoices||[]).forEach(function(inv){if(inv.status==='submitted'){var age=(new Date()-new Date(inv.savedAt))/(1000*60*60*24);if(age>30)stale.push(1);}});});
   if(stale.length)items.push({cls:'attn-danger',count:stale.length,label:stale.length+' submitted invoice'+(stale.length>1?'s':'')+' pending 30+ days — follow up on payment',fn:'openAllInvoicesModal("outstanding")'});
@@ -7416,6 +7425,47 @@ function onMonthlyPeriodBlur(el){
     yyyy=parseInt(yy3)<50?'20'+yy3:'19'+yy3;
   }
   if(mm&&yyyy){el.value=mm+'/'+yyyy;}
+}
+
+function refreshHomeAutoGenButton(){
+  var inp=document.getElementById('homeAutoGenPeriod');
+  var bar=document.getElementById('autoGenToolbar');
+  var btn=document.getElementById('homeAutoGenBtn');
+  var stat=document.getElementById('homeAutoGenStatus');
+  if(!inp||!bar||!btn||!stat)return;
+  var period=(inp.value||'').trim();
+  if(!/^\d{2}\/\d{4}$/.test(period)){
+    btn.disabled=true;stat.textContent='Enter a billing period (e.g. '+defaultHomeAutoGenPeriod()+')';
+    return;
+  }
+  var eligible=(typeof findClientsEligibleForAutoGen==='function')?findClientsEligibleForAutoGen(period):[];
+  if(!eligible.length){
+    btn.disabled=true;
+    stat.textContent='No clients need auto-generation for '+period;
+  } else {
+    btn.disabled=false;
+    btn.textContent='🔄 Auto-Generate '+eligible.length+' invoice'+(eligible.length>1?'s':'');
+    stat.textContent='for '+period;
+  }
+}
+function defaultHomeAutoGenPeriod(){
+  var d=new Date();
+  return String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
+}
+function initHomeAutoGenToolbar(){
+  var bar=document.getElementById('autoGenToolbar');var inp=document.getElementById('homeAutoGenPeriod');
+  if(!bar||!inp)return;
+  bar.style.display='block';
+  if(!inp.value)inp.value=defaultHomeAutoGenPeriod();
+  refreshHomeAutoGenButton();
+}
+function homeAutoGenerate(){
+  var inp=document.getElementById('homeAutoGenPeriod');
+  if(!inp)return;
+  onMonthlyPeriodBlur(inp);
+  var period=(inp.value||'').trim();
+  if(!/^\d{2}\/\d{4}$/.test(period)){showAlert('Enter a valid billing period (MM/YYYY).');return;}
+  if(typeof autoGenerateMonthlyInvoices==='function')autoGenerateMonthlyInvoices(period);
 }
 
 function generateNextMonthInvoiceData(prevInv,newPeriod){
