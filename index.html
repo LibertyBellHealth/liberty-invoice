@@ -597,6 +597,8 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- pdf-lib: load official state PDFs and overlay typed text on them -->
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
@@ -1215,7 +1217,8 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
       <button class="btn btn-secondary btn-sm" onclick="navForms()">&#8592; Back to Forms</button>
       <span id="formFillTitle" style="font-weight:600;font-size:13px;color:#1a2b45;"></span>
       <div style="flex:1;"></div>
-      <button class="btn btn-primary" onclick="window.print()">Print / PDF</button>
+      <button class="btn btn-secondary btn-sm" onclick="window.print()">Print HTML preview</button>
+      <button class="btn btn-primary" onclick="generateStateFormPdf()">📄 Generate Official PDF</button>
     </div>
     <div id="formFillContent" style="padding:28px 24px;background:#f4f5f7;min-height:calc(100vh - 52px);"></div>
   </div>
@@ -6968,6 +6971,126 @@ function openStateForm(type){
   else if(type==='mdhhs6200')html=buildMDHHS6200(prof,cw);
   else if(type==='msa4676')html=buildMSA4676(prof,cw);
   document.getElementById('formFillContent').innerHTML=html;
+}
+
+/* ──────────────────────────────────────────────────────────────────
+ *  STATE-FORM PDF OVERLAY
+ *  Loads the official state PDF (kept in /forms/) and overlays typed
+ *  text from the on-screen inputs at calibrated coordinates. Output
+ *  is byte-for-byte the state's layout with our data on top — no
+ *  HTML approximation, no risk of margin/font rejection.
+ *
+ *  Coordinate space: pdf-lib uses bottom-left origin in PDF points
+ *  (1 pt = 1/72 inch). Letter page = 612 × 792 pts.
+ *
+ *  STATE_FORM_OVERLAYS[type] = {
+ *    file:'/forms/X.pdf',
+ *    fields: [{ inputId:'dhs4771_x', page:0, x:.., y:.., size:10, maxWidth?:.. }, ...],
+ *    signature?: { inputId:'dhs4771_sig_present', page, x, y, w, h }  // optional, draws stored sig PNG
+ *  }
+ * ────────────────────────────────────────────────────────────────── */
+var STATE_FORM_OVERLAYS={
+  dhs4771:{
+    file:'/forms/DHS-4771.pdf',
+    title:'DHS-4771_FICA_Authorization',
+    // NOTE: coordinates are an initial pass — calibrate with user.
+    // Letter page is 612 × 792 pts. Y=0 is bottom.
+    fields:[
+      // County office block (top-left, multi-line). The form has 4 lines:
+      // "MDHHS COUNTY OFFICE" is preprinted; below it: addr line 1, line 2, city/state/zip.
+      {inputId:'dhs4771_off1',    page:0, x:60, y:646, size:10, maxWidth:300},
+      {inputId:'dhs4771_off2',    page:0, x:60, y:632, size:10, maxWidth:300},
+      {inputId:'dhs4771_offcity', page:0, x:60, y:618, size:10, maxWidth:300},
+      // Client info row (Client Name | Case Number | Client ID | County)
+      {inputId:'dhs4771_cn',      page:0, x:60,  y:498, size:10, maxWidth:160},
+      {inputId:'dhs4771_case',    page:0, x:230, y:498, size:10, maxWidth:90},
+      {inputId:'dhs4771_cid',     page:0, x:330, y:498, size:10, maxWidth:90},
+      {inputId:'dhs4771_county',  page:0, x:430, y:498, size:10, maxWidth:120},
+      // Worker row
+      {inputId:'dhs4771_asw',     page:0, x:60,  y:470, size:10, maxWidth:280},
+      {inputId:'dhs4771_aswph',   page:0, x:350, y:470, size:10, maxWidth:200},
+      // Signature row (Signature handled by image; Printed Name + Date here)
+      {inputId:'dhs4771_pname',   page:0, x:230, y:262, size:10, maxWidth:170},
+      {inputId:'dhs4771_date',    page:0, x:430, y:262, size:10, maxWidth:120},
+      // Address row
+      {inputId:'dhs4771_addr',    page:0, x:60,  y:230, size:10, maxWidth:280},
+      {inputId:'dhs4771_city',    page:0, x:350, y:230, size:10, maxWidth:120},
+      {inputId:'dhs4771_st',      page:0, x:480, y:230, size:10, maxWidth:30},
+      {inputId:'dhs4771_zip',     page:0, x:520, y:230, size:10, maxWidth:60}
+    ],
+    signature:{page:0, x:60, y:255, w:160, h:30}
+  }
+  // dhs390 / mdhhs6200 / msa4676: TODO — same pattern, more fields
+};
+
+async function generateStateFormPdf(){
+  if(!window.PDFLib){showAlert('PDF library still loading. Please try again in a moment.');return;}
+  var def=STATE_FORM_OVERLAYS[activeFormType];
+  if(!def){
+    showAlert('Official PDF overlay for this form is not configured yet. Use "Print HTML preview" for now — overlay coming soon.');
+    return;
+  }
+  try{
+    showToast('Loading '+def.title+'…',2000);
+    var resp=await fetch(def.file);
+    if(!resp.ok)throw new Error('HTTP '+resp.status+' fetching '+def.file);
+    var bytes=new Uint8Array(await resp.arrayBuffer());
+    var pdfDoc=await PDFLib.PDFDocument.load(bytes);
+    var helv=await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+    var pages=pdfDoc.getPages();
+    (def.fields||[]).forEach(function(f){
+      var el=document.getElementById(f.inputId);
+      if(!el)return;
+      var v=(el.value||'').trim();
+      if(!v)return;
+      var page=pages[f.page||0];if(!page)return;
+      // Auto-shrink size if value would overflow maxWidth
+      var size=f.size||10;
+      if(f.maxWidth){
+        while(size>6&&helv.widthOfTextAtSize(v,size)>f.maxWidth)size-=0.5;
+      }
+      page.drawText(v,{x:f.x,y:f.y,size:size,font:helv,color:PDFLib.rgb(0,0,0)});
+    });
+    // Signature placement (if a sig is saved and the user opted to include)
+    if(def.signature){
+      var sigOptIn=true;
+      if(def.signature.checkboxId){
+        var cb=document.getElementById(def.signature.checkboxId);
+        sigOptIn=cb?cb.checked:true;
+      }
+      if(sigOptIn){
+        var sigs=(typeof getSigs==='function')?getSigs():[];
+        if(sigs.length){
+          var sigBytes=_dataUrlToUint8(sigs[0].data);
+          if(sigBytes){
+            var img=sigs[0].data.indexOf('image/png')>=0?
+              await pdfDoc.embedPng(sigBytes):
+              await pdfDoc.embedJpg(sigBytes);
+            var p=pages[def.signature.page||0];
+            p.drawImage(img,{x:def.signature.x,y:def.signature.y,width:def.signature.w,height:def.signature.h});
+          }
+        }
+      }
+    }
+    var out=await pdfDoc.save();
+    var blob=new Blob([out],{type:'application/pdf'});
+    var url=URL.createObjectURL(blob);
+    var clientTag=(activeFormClientName||'client').replace(/[^a-z0-9]/gi,'_');
+    var fname=def.title+'_'+clientTag+'_'+today().replace(/\//g,'-')+'.pdf';
+    // Open in a new tab so user can print or save
+    var w=window.open(url,'_blank');
+    // Also offer download
+    var a=document.createElement('a');a.href=url;a.download=fname;a.style.display='none';document.body.appendChild(a);a.click();setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},2000);
+    showToast('✓ Generated '+fname,5000);
+  }catch(e){
+    console.error('[StateForm] Generate failed:',e);
+    showAlert('Could not generate the PDF: '+(e.message||e));
+  }
+}
+function _dataUrlToUint8(dataUrl){
+  if(!dataUrl||dataUrl.indexOf(',')<0)return null;
+  var b64=dataUrl.split(',')[1];
+  try{var bin=atob(b64);var arr=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);return arr;}catch(e){return null;}
 }
 
 /* Helpers */
