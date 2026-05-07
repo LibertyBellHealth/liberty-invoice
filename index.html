@@ -919,10 +919,14 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
           </div>
           <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Employment</div>
           <div class="ff-row">
+            <div class="ff"><label>Date of Birth</label><input id="cg-dob" type="date"></div>
             <div class="ff"><label>Hire Date</label><input id="cg-hire" type="date"></div>
+          </div>
+          <div class="ff-row">
             <div class="ff"><label>Employment Type</label>
               <select id="cg-emptype"><option value="full-time">Full-Time</option><option value="part-time">Part-Time</option><option value="per-diem">Per Diem</option></select>
             </div>
+            <div class="ff"></div>
           </div>
           <div class="ff-row">
             <div class="ff"><label>Pay Rate ($/hr)</label><input id="cg-pay" placeholder="0.00" maxlength="10"></div>
@@ -2771,7 +2775,7 @@ function showNewCaregiverForm(){
   document.getElementById('cgFormWrap').style.display='block';
   document.getElementById('cgFormTitle').textContent='New Caregiver';
   document.getElementById('cg-editing-id').value='';
-  ['cg-first','cg-middle','cg-last','cg-nickname','cg-phone','cg-email','cg-dl','cg-ssn','cg-street','cg-city','cg-state','cg-zip','cg-county','cg-hire','cg-pay','cg-hours','cg-certs','cg-ec-name','cg-ec-phone','cg-notes'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  ['cg-first','cg-middle','cg-last','cg-nickname','cg-phone','cg-email','cg-dl','cg-ssn','cg-street','cg-city','cg-state','cg-zip','cg-county','cg-dob','cg-hire','cg-pay','cg-hours','cg-certs','cg-ec-name','cg-ec-phone','cg-notes'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('cg-status').value='active';document.getElementById('cg-emptype').value='full-time';
   document.getElementById('cgDeleteBtn').style.display='none';
   var cgDocSec=document.getElementById('cgDocsSection');if(cgDocSec)cgDocSec.style.display='none';
@@ -2798,6 +2802,7 @@ function editCaregiver(id){
   document.getElementById('cg-state').value=cg.state||'';
   document.getElementById('cg-zip').value=cg.zip||'';
   document.getElementById('cg-county').value=cg.county||'';
+  var cgDobEl=document.getElementById('cg-dob');if(cgDobEl)cgDobEl.value=cg.dob||cg.dateOfBirth||'';
   document.getElementById('cg-hire').value=cg.hireDate||'';document.getElementById('cg-pay').value=cg.payRate||'';
   document.getElementById('cg-hours').value=cg.maxHours||'';document.getElementById('cg-certs').value=cg.certs||'';
   document.getElementById('cg-ec-name').value=cg.ecName||'';document.getElementById('cg-ec-phone').value=cg.ecPhone||'';
@@ -2828,6 +2833,7 @@ function saveCaregiver(){
     zip:document.getElementById('cg-zip').value,
     county:document.getElementById('cg-county').value,
     address:[document.getElementById('cg-street').value,document.getElementById('cg-city').value,document.getElementById('cg-state').value,document.getElementById('cg-zip').value].filter(Boolean).join(', '),
+    dob:(document.getElementById('cg-dob')||{}).value||'',
     hireDate:document.getElementById('cg-hire').value,emptype:document.getElementById('cg-emptype').value,
     payRate:document.getElementById('cg-pay').value,maxHours:document.getElementById('cg-hours').value,
     certs:document.getElementById('cg-certs').value,ecName:document.getElementById('cg-ec-name').value,
@@ -3320,8 +3326,9 @@ function renderCgInfoPane(){
     '<div class="info-field"><label>County</label><input id="cgi-county" value="'+esc(cg.county||'')+'"></div>');
 
   mkDiv('Employment');
-  mkRow('<div class="info-field"><label>Hire Date</label><input id="cgi-hire" type="date" value="'+esc(cg.hireDate||'')+'"></div>'+
-    '<div class="info-field"><label>Employment Type</label><select id="cgi-emptype"><option value="full-time"'+(cg.emptype==='full-time'?' selected':'')+'>Full-Time</option><option value="part-time"'+(cg.emptype==='part-time'?' selected':'')+'>Part-Time</option><option value="per-diem"'+(cg.emptype==='per-diem'?' selected':'')+'>Per Diem</option></select></div>');
+  mkRow('<div class="info-field"><label>Date of Birth</label><input id="cgi-dob" type="date" value="'+esc(cg.dob||cg.dateOfBirth||'')+'"></div>'+
+    '<div class="info-field"><label>Hire Date</label><input id="cgi-hire" type="date" value="'+esc(cg.hireDate||'')+'"></div>');
+  mkRow('<div class="info-field"><label>Employment Type</label><select id="cgi-emptype"><option value="full-time"'+(cg.emptype==='full-time'?' selected':'')+'>Full-Time</option><option value="part-time"'+(cg.emptype==='part-time'?' selected':'')+'>Part-Time</option><option value="per-diem"'+(cg.emptype==='per-diem'?' selected':'')+'>Per Diem</option></select></div>');
   mkRow('<div class="info-field"><label>Pay Rate ($/hr)</label><input id="cgi-pay" value="'+esc(cg.payRate||'')+'"></div>'+
     '<div class="info-field"><label>Max Hours/Week</label><input id="cgi-hours" value="'+esc(cg.maxHours||'')+'"></div>');
 
@@ -3354,6 +3361,7 @@ function saveCgInfoPane(){
   var cgiSsn=document.getElementById('cgi-ssn');if(cgiSsn)cg.ssn=cgiSsn.value;
   cg.street=document.getElementById('cgi-street').value;cg.city=document.getElementById('cgi-city').value;
   cg.state=document.getElementById('cgi-state').value;cg.zip=document.getElementById('cgi-zip').value;cg.county=document.getElementById('cgi-county').value;
+  var cgiDob=document.getElementById('cgi-dob');if(cgiDob)cg.dob=cgiDob.value;
   cg.hireDate=document.getElementById('cgi-hire').value;cg.emptype=document.getElementById('cgi-emptype').value;
   cg.payRate=document.getElementById('cgi-pay').value;cg.maxHours=document.getElementById('cgi-hours').value;
   cg.certifications=document.getElementById('cgi-certs').value;
