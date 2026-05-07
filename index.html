@@ -951,6 +951,7 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
         <div><div class="detail-name" id="cgDetailName"></div><div class="detail-meta" id="cgDetailMeta"></div></div>
         <div class="detail-actions">
           <button class="btn btn-secondary" onclick="showCgGrid()">← Back</button>
+          <button class="btn btn-primary" onclick="openSendForSignatureModal()">📝 Send for Signature</button>
         </div>
       </div>
       <div class="detail-tabs">
@@ -2894,6 +2895,104 @@ function showCgGrid(){
   document.getElementById('cgDetailView').style.display='none';
   document.getElementById('cgGridView').style.display='';
   renderCaregiverGrid();
+}
+
+// ── SEND FOR SIGNATURE ──────────────────────────────────────────
+// Picks a template, creates a SigningRequest server-side, then uses
+// Graph (existing spToken) to email the recipient the secure link.
+async function openSendForSignatureModal(){
+  if(!activeCgId){showAlert('Open a caregiver first.');return;}
+  var cg=getCaregivers()[activeCgId];if(!cg){showAlert('Caregiver not found.');return;}
+  if(!cg.email){showAlert('This caregiver has no email on file. Add one in their Profile tab first.',{title:'Email Required'});return;}
+
+  // Fetch active templates
+  var templates=[];
+  try{
+    var resp=await fetch(API_BASE+'/signing/templates',{headers:apiHeaders()});
+    if(resp.ok)templates=await resp.json();
+  }catch(e){console.error('Templates fetch failed:',e);}
+  templates=templates.filter(function(t){return t.is_active!==false;});
+
+  var existing=document.getElementById('sendSigModal');if(existing)existing.remove();
+  var ov=document.createElement('div');
+  ov.id='sendSigModal';ov.className='modal-overlay open';
+  var tplOptions=templates.length
+    ? templates.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+(t.version?' ('+esc(t.version)+')':'')+'</option>';}).join('')
+    : '<option value="">No templates yet — use Settings → Signing Templates to upload one</option>';
+  ov.innerHTML='<div class="modal-box" style="max-width:520px;">'+
+    '<h3>📝 Send for Signature</h3>'+
+    '<div style="font-size:13px;color:#4a5d7a;margin:8px 0 14px;">Sends <b>'+esc(cg.name||'')+'</b> a secure link to '+esc(cg.email)+'. They sign without logging into the CRM.</div>'+
+    '<label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Document</label>'+
+    '<select id="sendSigTemplate" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;outline:none;background:#fff;margin-bottom:12px;">'+tplOptions+'</select>'+
+    '<label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Link expires after</label>'+
+    '<select id="sendSigExpiry" style="width:160px;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;outline:none;background:#fff;margin-bottom:14px;">'+
+      '<option value="7">7 days</option><option value="14" selected>14 days</option><option value="30">30 days</option><option value="60">60 days</option>'+
+    '</select>'+
+    '<div id="sendSigError" style="display:none;background:#fdeaea;border:1px solid #e7a8a8;border-radius:5px;padding:10px;font-size:12px;color:#7a1f1f;margin-bottom:12px;"></div>'+
+    '<div class="modal-row" style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">'+
+      '<button class="btn btn-secondary" onclick="closeSendSigModal()">Cancel</button>'+
+      '<button id="sendSigBtn" class="btn btn-primary"'+(templates.length?'':' disabled')+' onclick="doSendForSignature()">Send Link</button>'+
+    '</div>'+
+  '</div>';
+  document.body.appendChild(ov);
+}
+function closeSendSigModal(){var m=document.getElementById('sendSigModal');if(m)m.remove();}
+
+async function doSendForSignature(){
+  var btn=document.getElementById('sendSigBtn');var errEl=document.getElementById('sendSigError');
+  errEl.style.display='none';
+  var cg=getCaregivers()[activeCgId];
+  var tplId=parseInt(document.getElementById('sendSigTemplate').value,10);
+  var days=parseInt(document.getElementById('sendSigExpiry').value,10)||14;
+  if(!tplId){errEl.textContent='Pick a document template.';errEl.style.display='block';return;}
+  btn.disabled=true;btn.textContent='Creating link…';
+  try{
+    // 1. Backend creates the request and returns the sign URL
+    var resp=await fetch(API_BASE+'/signing/send',{
+      method:'POST',
+      headers:apiHeaders(),
+      body:JSON.stringify({
+        templateId:tplId,
+        caregiverId:activeCgId,
+        recipientName:cg.name||'',
+        recipientEmail:cg.email,
+        expiresInDays:days
+      })
+    });
+    var data=await resp.json();
+    if(!resp.ok){throw new Error(data.error||'HTTP '+resp.status);}
+    // 2. Frontend uses existing Graph email infra to deliver it
+    btn.textContent='Sending email…';
+    var subject='Please sign: '+(document.getElementById('sendSigTemplate').selectedOptions[0].textContent||'Document');
+    var body='<p>Hi '+esc(cg.name||'')+',</p>'+
+      '<p>Liberty Home Care needs your signature on a document. Please click the secure link below to review and sign.</p>'+
+      '<p><a href="'+data.signUrl+'" style="background:#185FA5;color:#fff;padding:10px 16px;border-radius:5px;text-decoration:none;display:inline-block;">Open &amp; Sign</a></p>'+
+      '<p style="font-size:12px;color:#666;">Or paste this URL into your browser:<br><span style="word-break:break-all;">'+data.signUrl+'</span></p>'+
+      '<p style="font-size:12px;color:#666;">This link expires '+new Date(data.expiresAt).toLocaleDateString()+' and can only be used once.</p>'+
+      '<p style="font-size:12px;color:#999;">— Liberty Home Care Assistance</p>';
+    if(spToken){
+      var emailResp=await sendMailWithPDF(cg.email,subject,body,[]);
+      if(!emailResp.ok){
+        // Backend already created the request — show the URL so admin can copy/paste
+        errEl.innerHTML='Created the request, but email failed to send: '+esc(emailResp.err||emailResp.status||'unknown')+'<br><br>You can manually share this link:<br><a href="'+data.signUrl+'" target="_blank">'+esc(data.signUrl)+'</a>';
+        errEl.style.display='block';
+        btn.textContent='Send Link';btn.disabled=false;
+        return;
+      }
+    } else {
+      errEl.innerHTML='Sign in with Microsoft first to email the link automatically.<br><br>For now, you can manually share this link:<br><a href="'+data.signUrl+'" target="_blank">'+esc(data.signUrl)+'</a>';
+      errEl.style.display='block';
+      btn.textContent='Send Link';btn.disabled=false;
+      return;
+    }
+    closeSendSigModal();
+    showAlert('✓ Signing link emailed to '+cg.email+'.\n\nThey have '+days+' days to sign. You can track status from the caregiver detail page.',{title:'Sent'});
+    logActivity('signing','Sent signing request to '+cg.name+' for template #'+tplId);
+  } catch(e){
+    errEl.textContent='Error: '+(e.message||e);
+    errEl.style.display='block';
+    btn.textContent='Send Link';btn.disabled=false;
+  }
 }
 function editCaregiverFromDetail(){
   if(!activeCgId)return;

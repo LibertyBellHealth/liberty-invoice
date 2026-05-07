@@ -1,6 +1,19 @@
 {
   "routes": [
     {
+      "route": "/sign.html",
+      "allowedRoles": ["anonymous"]
+    },
+    {
+      "route": "/sign",
+      "rewrite": "/sign.html",
+      "allowedRoles": ["anonymous"]
+    },
+    {
+      "route": "/api/signing/*",
+      "allowedRoles": ["anonymous"]
+    },
+    {
       "route": "/*",
       "allowedRoles": ["authenticated"]
     }

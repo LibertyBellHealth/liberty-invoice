@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Liberty Home Care — Sign Document</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#1a2b45;background:#f4f5f7}
+  header{background:#1a2b45;color:#fff;padding:14px 22px;display:flex;align-items:center;gap:12px}
+  header .logo{font-weight:700;font-size:15px;letter-spacing:.3px}
+  header .badge{font-size:11px;background:rgba(255,255,255,.15);padding:3px 8px;border-radius:4px}
+  main{max-width:920px;margin:24px auto;padding:0 18px}
+  .card{background:#fff;border:1px solid #e1e5ea;border-radius:8px;padding:22px;margin-bottom:18px}
+  .card h1{margin:0 0 6px;font-size:20px}
+  .card h2{margin:0 0 6px;font-size:16px}
+  .meta{font-size:13px;color:#5a7296;margin-bottom:16px}
+  .doc-frame{width:100%;height:72vh;border:1px solid #d0d8e4;border-radius:6px;background:#f9fafb}
+  .row{display:flex;gap:14px;flex-wrap:wrap}
+  label{display:block;font-size:12px;font-weight:600;color:#1a2b45;margin-bottom:4px}
+  input[type=text]{width:100%;padding:9px 11px;border:1px solid #d0d8e4;border-radius:5px;font-size:14px;outline:none;font-family:inherit}
+  input[type=text]:focus{border-color:#185FA5}
+  .check-row{display:flex;gap:10px;align-items:flex-start;margin:14px 0;padding:12px;background:#f4f7fb;border-radius:6px;font-size:13px;line-height:1.5}
+  .check-row input{margin-top:3px;width:16px;height:16px;flex-shrink:0;cursor:pointer}
+  .sig-pad-wrap{border:1px solid #d0d8e4;border-radius:6px;background:#fff;position:relative;margin-top:6px}
+  .sig-pad{display:block;width:100%;height:140px;cursor:crosshair;touch-action:none}
+  .sig-pad-actions{padding:6px 8px;border-top:1px solid #eef0f4;display:flex;gap:8px;justify-content:space-between;align-items:center;font-size:11px;color:#5a7296}
+  .typed-sig-preview{font-family:'Caveat',cursive;font-size:46px;color:#1a2b45;text-align:center;border:1px solid #d0d8e4;border-radius:6px;padding:8px 12px;background:#fff;margin-top:6px;min-height:80px;display:flex;align-items:center;justify-content:center}
+  .toggle-row{display:flex;gap:6px;margin-bottom:6px}
+  .toggle-row button{flex:1;padding:6px 10px;border:1px solid #d0d8e4;background:#fff;font-size:12px;cursor:pointer;border-radius:5px}
+  .toggle-row button.active{background:#185FA5;color:#fff;border-color:#185FA5}
+  .btn{display:inline-block;padding:10px 18px;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;border:none;font-family:inherit}
+  .btn-primary{background:#185FA5;color:#fff}
+  .btn-primary:disabled{background:#a0aec0;cursor:not-allowed}
+  .btn-secondary{background:#fff;color:#1a2b45;border:1px solid #d0d8e4}
+  .ftr{padding:14px 22px;text-align:center;font-size:11px;color:#8ca0b4}
+  .alert{padding:14px;border-radius:6px;background:#fff8e6;border:1px solid #f0d18a;color:#5a4a1a;font-size:13px}
+  .alert.err{background:#fdeaea;border-color:#e7a8a8;color:#7a1f1f}
+  .alert.ok{background:#e6f5ec;border-color:#a8d9b8;color:#1a4d2c}
+  .hidden{display:none!important}
+  @media (max-width:560px){.doc-frame{height:60vh}.card{padding:16px}}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500&display=swap" rel="stylesheet">
+</head>
+<body>
+<header>
+  <span class="logo">Liberty Home Care</span>
+  <span class="badge">Document Signing</span>
+</header>
+<main id="root">
+  <div class="card" id="loadingCard">
+    <h1>Loading your document…</h1>
+    <p class="meta" id="loadingMsg">If this takes more than a minute, the secure connection is being prepared. Please wait — do not close this page.</p>
+    <div style="height:6px;background:#e1e5ea;border-radius:3px;overflow:hidden"><div id="loadingBar" style="height:100%;width:5%;background:#185FA5;transition:width .3s"></div></div>
+  </div>
+
+  <div id="signCard" class="hidden">
+    <div class="card">
+      <h1 id="docTitle">Document</h1>
+      <div class="meta" id="docMeta"></div>
+      <iframe id="docFrame" class="doc-frame" title="Document to sign"></iframe>
+    </div>
+
+    <div class="card">
+      <h2>Sign &amp; Acknowledge</h2>
+      <div class="meta">By signing below, you acknowledge that you have read and agree to the document above.</div>
+
+      <div class="row" style="margin-bottom:14px">
+        <div style="flex:1;min-width:220px">
+          <label for="typedName">Print your full legal name</label>
+          <input type="text" id="typedName" autocomplete="name" placeholder="e.g. Sarah J. Caregiver">
+        </div>
+      </div>
+
+      <label>Signature</label>
+      <div class="toggle-row">
+        <button type="button" id="modeDraw" class="active" onclick="setSigMode('draw')">Draw</button>
+        <button type="button" id="modeType" onclick="setSigMode('type')">Type</button>
+      </div>
+
+      <div id="drawWrap" class="sig-pad-wrap">
+        <canvas id="sigPad" class="sig-pad"></canvas>
+        <div class="sig-pad-actions">
+          <span>Sign with your finger or mouse</span>
+          <button type="button" class="btn btn-secondary" style="padding:4px 10px;font-size:11px" onclick="clearSig()">Clear</button>
+        </div>
+      </div>
+      <div id="typeWrap" class="hidden">
+        <div class="typed-sig-preview" id="typedPreview">&nbsp;</div>
+      </div>
+
+      <div class="check-row">
+        <input type="checkbox" id="agreeBox">
+        <label for="agreeBox" style="font-weight:400;margin:0">
+          <b>I have read and agree</b> to the document shown above. I understand that my electronic signature is the legal equivalent of a handwritten signature, and that this signing event will be recorded with my IP address, the date and time, and a tamper-evident hash of the signed document.
+        </label>
+      </div>
+
+      <div id="signError" class="alert err hidden" style="margin-bottom:12px"></div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-primary" id="signBtn" onclick="submitSignature()" disabled>Sign Document</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="successCard" class="hidden">
+    <div class="card">
+      <div class="alert ok">
+        <b>✓ Signed successfully.</b>
+        A copy has been emailed to <span id="successEmail"></span>.
+      </div>
+      <div style="margin-top:14px;text-align:center">
+        <a id="dlLink" class="btn btn-primary" href="#" target="_blank" rel="noopener">Download Your Copy</a>
+      </div>
+      <p class="meta" style="margin-top:18px;text-align:center">You may now close this window.</p>
+    </div>
+  </div>
+
+  <div id="errorCard" class="hidden">
+    <div class="card">
+      <h1>Cannot sign right now</h1>
+      <div class="alert err" id="errorMsg"></div>
+      <p class="meta" style="margin-top:12px">If you believe this is a mistake, contact the sender of this email.</p>
+    </div>
+  </div>
+</main>
+<div class="ftr">© Liberty Home Care · This is a secure signing portal · Do not share your link with anyone.</div>
+
+<script>
+// ── Config ───────────────────────────────────────────────────
+var API_BASE = (window.location.host.indexOf('localhost') >= 0)
+  ? 'http://localhost:7071/api'
+  : 'https://liberty-crm-api-cyb3dkhnd2e7a3cy.centralus-01.azurewebsites.net/api';
+
+var token = (new URLSearchParams(window.location.search)).get('t') || '';
+var requestData = null;
+var sigMode = 'draw';
+
+// ── Helpers ──────────────────────────────────────────────────
+function $(id){ return document.getElementById(id); }
+function show(id){ $(id).classList.remove('hidden'); }
+function hide(id){ $(id).classList.add('hidden'); }
+function showError(msg){
+  hide('loadingCard'); hide('signCard');
+  $('errorMsg').textContent = msg || 'Something went wrong.';
+  show('errorCard');
+}
+
+// ── Initial load ─────────────────────────────────────────────
+async function init(){
+  if (!token){ showError('No signing token found in this URL. Please open the link from your email.'); return; }
+  // Fake progress bar so cold-start feels intentional
+  var pct = 5;
+  var progressTimer = setInterval(function(){
+    if (pct < 90) { pct += 3; $('loadingBar').style.width = pct + '%'; }
+    if (pct > 30) $('loadingMsg').textContent = 'Almost ready — preparing your secure document…';
+  }, 800);
+  try {
+    var resp = await fetch(API_BASE + '/signing/request?token=' + encodeURIComponent(token));
+    clearInterval(progressTimer);
+    $('loadingBar').style.width = '100%';
+    if (!resp.ok){
+      var errBody = await resp.json().catch(function(){return{error:'Unable to load document.'};});
+      showError(errBody.error || 'Unable to load document.');
+      return;
+    }
+    requestData = await resp.json();
+    setTimeout(showSignPage, 250);
+  } catch (e) {
+    clearInterval(progressTimer);
+    showError('Network error. Please check your connection and try again.');
+  }
+}
+
+function showSignPage(){
+  hide('loadingCard');
+  if (requestData.alreadySigned){
+    showError('This document has already been signed on ' + new Date(requestData.signedAt).toLocaleString() + '. If you need another copy, contact the sender.');
+    return;
+  }
+  $('docTitle').textContent = requestData.template.name + (requestData.template.version ? '  (' + requestData.template.version + ')' : '');
+  $('docMeta').textContent = 'For: ' + requestData.recipientName + ' · Expires: ' + new Date(requestData.expiresAt).toLocaleDateString();
+  $('docFrame').src = requestData.template.url + '#toolbar=1&navpanes=0';
+  $('typedName').value = requestData.recipientName || '';
+  show('signCard');
+  initSigPad();
+  hookValidators();
+  updateSignButton();
+}
+
+// ── Signature pad ────────────────────────────────────────────
+var sigCanvas, sigCtx, sigDrawing = false, sigDirty = false, sigLast = null;
+function initSigPad(){
+  sigCanvas = $('sigPad');
+  // Match canvas pixels to display size for crisp lines
+  function size(){
+    var r = sigCanvas.parentElement.getBoundingClientRect();
+    sigCanvas.width = Math.max(300, Math.floor(r.width));
+    sigCanvas.height = 140;
+    sigCtx = sigCanvas.getContext('2d');
+    sigCtx.lineCap = 'round'; sigCtx.lineJoin = 'round';
+    sigCtx.strokeStyle = '#1a2b45'; sigCtx.lineWidth = 2;
+  }
+  size();
+  window.addEventListener('resize', size);
+  sigCanvas.addEventListener('pointerdown', sigStart);
+  sigCanvas.addEventListener('pointermove', sigMove);
+  sigCanvas.addEventListener('pointerup', sigEnd);
+  sigCanvas.addEventListener('pointercancel', sigEnd);
+  sigCanvas.addEventListener('pointerleave', sigEnd);
+}
+function relPt(e){
+  var r = sigCanvas.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+function sigStart(e){ sigDrawing = true; sigLast = relPt(e); sigCanvas.setPointerCapture(e.pointerId); }
+function sigMove(e){
+  if (!sigDrawing) return;
+  var p = relPt(e);
+  sigCtx.beginPath(); sigCtx.moveTo(sigLast.x, sigLast.y); sigCtx.lineTo(p.x, p.y); sigCtx.stroke();
+  sigLast = p; sigDirty = true; updateSignButton();
+}
+function sigEnd(){ sigDrawing = false; }
+function clearSig(){ sigCtx.clearRect(0,0,sigCanvas.width,sigCanvas.height); sigDirty = false; updateSignButton(); }
+
+function setSigMode(mode){
+  sigMode = mode;
+  $('modeDraw').classList.toggle('active', mode === 'draw');
+  $('modeType').classList.toggle('active', mode === 'type');
+  $('drawWrap').classList.toggle('hidden', mode !== 'draw');
+  $('typeWrap').classList.toggle('hidden', mode !== 'type');
+  updateTypedPreview();
+  updateSignButton();
+}
+function updateTypedPreview(){
+  $('typedPreview').textContent = $('typedName').value || ' ';
+}
+function hookValidators(){
+  ['typedName','agreeBox'].forEach(function(id){ $(id).addEventListener('input', updateSignButton); $(id).addEventListener('change', updateSignButton); });
+  $('typedName').addEventListener('input', updateTypedPreview);
+}
+
+function hasSignature(){
+  if (sigMode === 'draw') return sigDirty;
+  if (sigMode === 'type') return ($('typedName').value || '').trim().length > 1;
+  return false;
+}
+function updateSignButton(){
+  var ok = $('agreeBox').checked && ($('typedName').value || '').trim().length > 1 && hasSignature();
+  $('signBtn').disabled = !ok;
+}
+
+function buildSignatureDataUrl(){
+  if (sigMode === 'draw') return sigCanvas.toDataURL('image/png');
+  // Render typed signature to canvas
+  var c = document.createElement('canvas');
+  c.width = 600; c.height = 180;
+  var ctx = c.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,c.width,c.height);
+  ctx.fillStyle = '#1a2b45';
+  ctx.font = "92px 'Caveat', cursive";
+  ctx.textBaseline = 'middle';
+  var name = ($('typedName').value || '').trim();
+  ctx.fillText(name, 20, c.height/2);
+  return c.toDataURL('image/png');
+}
+
+async function submitSignature(){
+  $('signBtn').disabled = true;
+  $('signBtn').textContent = 'Signing…';
+  hide('signError');
+  try {
+    var resp = await fetch(API_BASE + '/signing/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: token,
+        typedName: ($('typedName').value || '').trim(),
+        signatureDataUrl: buildSignatureDataUrl(),
+        agreed: $('agreeBox').checked,
+      }),
+    });
+    var data = await resp.json();
+    if (!resp.ok || !data.ok){
+      $('signError').textContent = data.error || 'Could not complete signing. Please try again.';
+      show('signError');
+      $('signBtn').disabled = false;
+      $('signBtn').textContent = 'Sign Document';
+      return;
+    }
+    hide('signCard');
+    $('successEmail').textContent = data.recipientEmail || '';
+    $('dlLink').href = data.signedUrl;
+    show('successCard');
+    window.scrollTo({top:0,behavior:'smooth'});
+  } catch (e){
+    $('signError').textContent = 'Network error. Please try again.';
+    show('signError');
+    $('signBtn').disabled = false;
+    $('signBtn').textContent = 'Sign Document';
+  }
+}
+
+init();
+</script>
+</body>
+</html>
