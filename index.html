@@ -5623,6 +5623,26 @@ async function sendEmail(){
   var btn=document.getElementById('sendEmailInvBtn');
   if(btn){btn.disabled=true;btn.textContent='Generating PDF…';}
   try{
+    // Persist whatever's currently in the form BEFORE sending — so the saved record matches
+    // what the caseworker received. Otherwise the PDF can be emailed with values the user
+    // typed but never clicked Save on, and the stored invoice ends up out of sync.
+    if(activeProfileName&&bp){
+      var pSE=getProfiles();
+      if(pSE[activeProfileName]){
+        if(!pSE[activeProfileName].invoices)pSE[activeProfileName].invoices=[];
+        var idxSE=pSE[activeProfileName].invoices.findIndex(function(i){return i.billingPeriod===bp;});
+        var snapshot=captureFullInvoice();
+        if(idxSE>=0){
+          var existing=pSE[activeProfileName].invoices[idxSE];
+          if(existing.status!=='paid'){
+            pSE[activeProfileName].invoices[idxSE]=Object.assign({},existing,{savedAt:new Date().toLocaleString(),data:snapshot});
+          }
+        } else {
+          pSE[activeProfileName].invoices.unshift({billingPeriod:bp,savedAt:new Date().toLocaleString(),status:'draft',invoiceNote:'',data:snapshot});
+        }
+        saveProfilesLS(pSE);saveProfileSP(activeProfileName,pSE[activeProfileName]);
+      }
+    }
     var base64=await captureInvoicePDF();
     var fname=(cn||'Invoice').replace(/[^a-z0-9]/gi,'_')+'_'+(bp||'').replace('/','_')+'.pdf';
     var subj='Home Help Agency Invoice'+(cn?' – '+cn:'')+(bp?' – '+bp:'');
