@@ -7668,13 +7668,24 @@ async function sendAllCaseworkerEmails(period){
     sendable.map(function(x){return '• '+x.wname+' — '+x.readyCount+' invoice'+(x.readyCount>1?'s':'');}).join('\n')+
     '\n\nThis will send the emails one after another. Continue?',
     async function(){
+      var sentCount=0;
       for(var i=0;i<sendable.length;i++){
         var item=sendable[i];
+        // CRITICAL: only send the READY clients. Bucket the same way sendMonthlyEmail does.
+        var allClients=item.group.clients;
+        var alreadySent=allClients.filter(function(c){return c.invStatus==='submitted'||c.invStatus==='paid';});
+        var hasIssues=allClients.filter(function(c){return c.invStatus==='draft'&&c.hasIssues;});
+        var missingInvoice=allClients.filter(function(c){return !c.invStatus||c.invStatus==='none';});
+        var readyToSend=allClients.filter(function(c){return c.invStatus==='draft'&&!c.hasIssues;});
+        if(!readyToSend.length)continue;
         try{
-          await sendMonthlyEmail(item.group.email,item.wname,item.group.clients,period);
+          // Await DIRECTLY so each caseworker's PDF capture finishes before the next worker starts.
+          // (Earlier bug: sendMonthlyEmail did fire-and-forget, causing parallel page-invoice usage and PDFs going to wrong worker.)
+          await _doMonthlyEmailSend(item.group.email,item.wname,period,readyToSend,alreadySent.length,hasIssues,missingInvoice);
+          sentCount++;
         }catch(e){console.error('Send to '+item.wname+' failed:',e);}
       }
-      showToast('✓ Sent batches to '+sendable.length+' caseworker'+(sendable.length>1?'s':'')+'.',5000);
+      showToast('✓ Sent batches to '+sentCount+' caseworker'+(sentCount===1?'':'s')+'.',5000);
       // Refresh preview
       previewMonthlyInvoices();
     },
@@ -7706,7 +7717,7 @@ async function sendMonthlyEmail(email,workerName,clients,period){
   var allWithInvoice=readyToSend.concat(hasIssues);
 
   function sendReadyOnly(){
-    _doMonthlyEmailSend(email,workerName,period,readyToSend,alreadySent.length,hasIssues,missingInvoice);
+    return _doMonthlyEmailSend(email,workerName,period,readyToSend,alreadySent.length,hasIssues,missingInvoice);
   }
 
   // Case 1: nothing has an invoice for this period at all
@@ -7746,7 +7757,21 @@ async function sendMonthlyEmail(email,workerName,clients,period){
   sendReadyOnly();
 }
 
+var _monthlyEmailSendInProgress=false;
 async function _doMonthlyEmailSend(email,workerName,period,readyToSend,alreadySentCount,hasIssues,missingInvoice){
+  if(_monthlyEmailSendInProgress){
+    console.warn('Monthly email send already in progress — refusing to start a parallel send to '+workerName);
+    showAlert('Another email send is already running. Please wait for it to finish before sending again.');
+    return {ok:false,err:'concurrent_send_blocked'};
+  }
+  _monthlyEmailSendInProgress=true;
+  try{
+    return await _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alreadySentCount,hasIssues,missingInvoice);
+  } finally {
+    _monthlyEmailSendInProgress=false;
+  }
+}
+async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alreadySentCount,hasIssues,missingInvoice){
   var profiles=getProfiles();
   var withInv=readyToSend; // only the ready ones
 
