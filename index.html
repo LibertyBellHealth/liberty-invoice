@@ -667,6 +667,9 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
     <!-- ATTENTION PANEL -->
     <div class="attention-panel" id="attentionPanel"></div>
 
+    <!-- AUTO-GENERATE UNDO BANNER (24h) -->
+    <div id="autogenUndoBanner" style="display:none;"></div>
+
     <!-- METRIC ROW -->
     <div class="metric-row">
       <div class="metric clickable-stat" onclick="renderClientTable('all')">
@@ -1494,6 +1497,10 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
     <p id="taskEditSubtitle" style="font-size:12px;color:#5a7296;margin:6px 0 12px;"></p>
     <label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Task name</label>
     <input id="taskEditName" type="text" placeholder="What needs to be done?" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:14px;font-family:Arial,sans-serif;outline:none;box-sizing:border-box;margin-bottom:12px;">
+    <label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Client <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#8ca0b4;">(optional)</span></label>
+    <select id="taskEditClient" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:12px;background:#fff;">
+      <option value="">— No client —</option>
+    </select>
     <label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Due date <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#8ca0b4;">(optional)</span></label>
     <input id="taskEditDue" type="date" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:12px;">
     <label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Note <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#8ca0b4;">(optional)</span></label>
@@ -1853,6 +1860,7 @@ function updateStats(){
   var sel=document.getElementById('filterCaregiver');
   if(sel){var cur=sel.value;sel.innerHTML='<option value="">All Caregivers</option>';var cgs=getCaregivers();Object.keys(cgs).forEach(function(id){var o=document.createElement('option');o.value=id;o.textContent=cgs[id].name;if(id===cur)o.selected=true;sel.appendChild(o);});}
   renderAttentionPanel();
+  if(typeof renderUndoBanner==='function')renderUndoBanner();
 }
 // Returns true if the given billing period (MM/YYYY) is on or after the client's startDate
 function clientWasActiveInPeriod(prof,period){
@@ -3527,7 +3535,7 @@ function cgSearch(input, hiddenId, dropId) {
     var cg = cgs[id];
     var item = document.createElement('div');
     item.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f3f7;';
-    item.textContent = cg.name + (cg.emptype ? ' — ' + cg.emptype : '') + (cg.status !== 'active' ? ' (' + cg.status + ')' : '');
+    item.textContent = cg.name + (cg.status !== 'active' ? ' (' + cg.status + ')' : '');
     item.addEventListener('mousedown', function(e){ e.preventDefault(); input.value = cg.name; if(hidden)hidden.value = id; drop.style.display = 'none'; });
     item.addEventListener('mouseover', function(){ this.style.background='#f0f5fb'; });
     item.addEventListener('mouseout', function(){ this.style.background=''; });
@@ -3677,9 +3685,16 @@ function showTaskEditModal(opts){
   var nameInp=document.getElementById('taskEditName');
   var dueInp=document.getElementById('taskEditDue');
   var noteInp=document.getElementById('taskEditNote');
+  var clientSel=document.getElementById('taskEditClient');
   nameInp.value=opts.name||'';
   dueInp.value=opts.due||'';
   noteInp.value=opts.note||'';
+  // Populate client picker
+  if(clientSel){
+    var profs=getProfiles();
+    var names=Object.keys(profs).filter(function(n){return !profs[n].clientStatus||profs[n].clientStatus==='active';}).sort(function(a,b){return a.localeCompare(b);});
+    clientSel.innerHTML='<option value="">— No client —</option>'+names.map(function(n){return '<option value="'+esc(n)+'"'+(n===(opts.client||'')?' selected':'')+'>'+esc(n)+'</option>';}).join('');
+  }
   var saveBtn=document.getElementById('taskEditSaveBtn');
   var cancelBtn=document.getElementById('taskEditCancelBtn');
   saveBtn.textContent=opts.okText||'Save';
@@ -3690,7 +3705,7 @@ function showTaskEditModal(opts){
   newSave.addEventListener('click',function(){
     var name=(nameInp.value||'').trim();if(!name){nameInp.focus();return;}
     modal.classList.remove('open');
-    if(typeof opts.onSave==='function')opts.onSave({name:name,due:dueInp.value||'',note:(noteInp.value||'').trim()});
+    if(typeof opts.onSave==='function')opts.onSave({name:name,due:dueInp.value||'',note:(noteInp.value||'').trim(),client:clientSel?clientSel.value:''});
   });
   newCancel.addEventListener('click',function(){modal.classList.remove('open');});
   modal.classList.add('open');
@@ -3706,10 +3721,11 @@ function editTodoTask(id){
     name:t.text||'',
     due:t.due||'',
     note:t.note||'',
+    client:t.client||'',
     okText:'Save Changes',
     onSave:function(vals){
       var todos2=getTodos();var t2=todos2.find(function(x){return String(x.id)===String(id);});if(!t2)return;
-      t2.text=vals.name;t2.due=vals.due||'';t2.note=vals.note||'';
+      t2.text=vals.name;t2.due=vals.due||'';t2.note=vals.note||'';t2.client=vals.client||'';
       saveTodos(todos2);saveTaskAPI(t2);renderTodos();updateTaskBadge();
     }
   });
@@ -7508,24 +7524,122 @@ function doGenerateInvoices(){
   closeGenInvModal();
   _doAutoGenerateInvoices(eligible,period);
 }
-// Stack of recent generation batches for undo
-var _autoGenUndoStack=[];
-function undoLastAutoGen(){
-  if(!_autoGenUndoStack.length){showAlert('Nothing to undo.');return;}
-  var batch=_autoGenUndoStack.pop();
+// ── Persistent undo for auto-generated invoices ──────────────────
+// Stored in localStorage so it survives reloads. Each batch tracks the
+// invoice IDs created + a snapshot of their data (so we can detect manual
+// edits). Batches expire after 24 hours.
+var AUTOGEN_UNDO_TTL_MS=24*60*60*1000;
+function _getAutoGenUndoStack(){
+  try{
+    var arr=JSON.parse(localStorage.getItem('lhca_autogen_undo')||'[]');
+    if(!Array.isArray(arr))return [];
+    // Drop expired
+    var now=Date.now();
+    arr=arr.filter(function(b){return b&&b.when&&(now-b.when)<AUTOGEN_UNDO_TTL_MS;});
+    return arr;
+  }catch(e){return [];}
+}
+function _setAutoGenUndoStack(arr){
+  try{localStorage.setItem('lhca_autogen_undo',JSON.stringify(arr||[]));}catch(e){}
+}
+function _pushAutoGenUndoBatch(batch){
+  var arr=_getAutoGenUndoStack();arr.push(batch);_setAutoGenUndoStack(arr);renderUndoBanner();
+}
+// Per-batch eligibility — must still be pristine draft, otherwise refuse
+function _autoGenBatchStatus(batch){
   var profiles=getProfiles();
-  var removed=0;
-  batch.invoices.forEach(function(rec){
-    var prof=profiles[rec.clientName];if(!prof||!prof.invoices)return;
-    var idx=prof.invoices.findIndex(function(inv){return inv.id===rec.invoiceId;});
-    if(idx>=0){prof.invoices.splice(idx,1);removed++;}
+  var ok=0,sent=0,edited=0,missing=0;
+  (batch.invoices||[]).forEach(function(rec){
+    var prof=profiles[rec.clientName];if(!prof||!prof.invoices){missing++;return;}
+    var inv=prof.invoices.find(function(i){return i.id===rec.invoiceId;});
+    if(!inv){missing++;return;}
+    if(inv.status&&inv.status!=='draft'){sent++;return;}
+    // Compare data hash with snapshot — if user edited the invoice, refuse undo
+    if(rec.dataHash&&rec.dataHash!==_quickInvoiceHash(inv.data)){edited++;return;}
+    ok++;
   });
-  saveProfilesLS(profiles);
-  batch.invoices.forEach(function(rec){if(profiles[rec.clientName])saveProfileSP(rec.clientName,profiles[rec.clientName]);});
-  logActivity('invoice','Undid auto-generation: removed '+removed+' invoice'+(removed!==1?'s':'')+' for '+batch.period);
-  showAlert('✓ Removed '+removed+' auto-generated invoice'+(removed!==1?'s':'')+' for '+batch.period+'.',{title:'Undo Complete'});
-  if(typeof previewMonthlyInvoices==='function')previewMonthlyInvoices();
-  updateStats();
+  return {ok:ok,sent:sent,edited:edited,missing:missing};
+}
+function _quickInvoiceHash(data){
+  if(!data)return '';
+  // Lightweight hash of fields most likely to change with edits
+  var s=[data.svcHH||'',data.svcMM||'',data.cplxHH||'',data.cplxMM||'',
+         JSON.stringify((data.tasks&&data.tasks.svc)||[]),
+         JSON.stringify((data.tasks&&data.tasks.cplx)||[])].join('|');
+  // Fast 32-bit hash
+  var h=0;for(var i=0;i<s.length;i++){h=((h<<5)-h+s.charCodeAt(i))|0;}
+  return String(h);
+}
+function undoAutoGenBatch(batchId){
+  var arr=_getAutoGenUndoStack();
+  var idx=arr.findIndex(function(b){return b.id===batchId;});
+  if(idx<0){showAlert('That undo entry has expired or already been used.');renderUndoBanner();return;}
+  var batch=arr[idx];
+  var status=_autoGenBatchStatus(batch);
+  if(status.ok===0){
+    showAlert('Cannot undo — none of the invoices are still in their original draft state. They may have been sent, edited, or deleted.');
+    return;
+  }
+  var warnExtras='';
+  if(status.sent)warnExtras+='\n• '+status.sent+' already sent (will skip)';
+  if(status.edited)warnExtras+='\n• '+status.edited+' edited since generation (will skip)';
+  if(status.missing)warnExtras+='\n• '+status.missing+' already removed (will skip)';
+  showConfirm(
+    'Remove '+status.ok+' auto-generated invoice'+(status.ok!==1?'s':'')+' for '+batch.period+'?'+
+    (warnExtras?'\n\nNote — the following will not be undone:'+warnExtras:''),
+    function(){
+      var profiles=getProfiles();
+      var removed=0;
+      batch.invoices.forEach(function(rec){
+        var prof=profiles[rec.clientName];if(!prof||!prof.invoices)return;
+        var i=prof.invoices.findIndex(function(inv){return inv.id===rec.invoiceId;});
+        if(i<0)return;
+        var inv=prof.invoices[i];
+        if(inv.status&&inv.status!=='draft')return;
+        if(rec.dataHash&&rec.dataHash!==_quickInvoiceHash(inv.data))return;
+        prof.invoices.splice(i,1);removed++;
+      });
+      saveProfilesLS(profiles);
+      batch.invoices.forEach(function(rec){if(profiles[rec.clientName])saveProfileSP(rec.clientName,profiles[rec.clientName]);});
+      // Remove this batch from the stack
+      var arr2=_getAutoGenUndoStack();
+      arr2=arr2.filter(function(b){return b.id!==batchId;});
+      _setAutoGenUndoStack(arr2);
+      logActivity('invoice','Undid auto-generation: removed '+removed+' invoice'+(removed!==1?'s':'')+' for '+batch.period);
+      showAlert('✓ Removed '+removed+' auto-generated invoice'+(removed!==1?'s':'')+' for '+batch.period+'.',{title:'Undo Complete'});
+      if(typeof previewMonthlyInvoices==='function')previewMonthlyInvoices();
+      updateStats();renderUndoBanner();
+    },
+    {title:'Undo Auto-Generation',okText:'Remove '+status.ok,danger:true}
+  );
+}
+function dismissAutoGenUndoBatch(batchId){
+  var arr=_getAutoGenUndoStack().filter(function(b){return b.id!==batchId;});
+  _setAutoGenUndoStack(arr);renderUndoBanner();
+}
+function renderUndoBanner(){
+  var host=document.getElementById('autogenUndoBanner');if(!host)return;
+  var arr=_getAutoGenUndoStack();
+  if(!arr.length){host.innerHTML='';host.style.display='none';return;}
+  host.style.display='';
+  host.innerHTML=arr.slice().reverse().map(function(b){
+    var status=_autoGenBatchStatus(b);
+    var minsAgo=Math.max(0,Math.floor((Date.now()-b.when)/60000));
+    var ageLabel=minsAgo<60?(minsAgo+'m ago'):(Math.floor(minsAgo/60)+'h '+(minsAgo%60)+'m ago');
+    var canUndo=status.ok>0;
+    var tooltip=canUndo
+      ?(status.ok+' still pristine'+(status.sent||status.edited?' — '+(status.sent?status.sent+' sent, ':'')+(status.edited?status.edited+' edited':'')+' will be skipped':''))
+      :'Cannot undo — '+(status.sent?status.sent+' already sent':'')+(status.edited?(status.sent?', ':'')+status.edited+' edited':'');
+    return '<div style="background:#fff8e6;border:1px solid #f0d18a;border-radius:6px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;gap:10px;">'+
+      '<span style="font-size:18px;">↩</span>'+
+      '<div style="flex:1;font-size:13px;color:#5a4a1a;">'+
+        '<b>'+(b.invoices||[]).length+' invoice'+((b.invoices||[]).length!==1?'s':'')+'</b> auto-generated for <b>'+esc(b.period)+'</b> · '+ageLabel+
+        (canUndo?'':'<div style="font-size:11px;color:#8a6f1a;margin-top:2px;">'+esc(tooltip)+'</div>')+
+      '</div>'+
+      (canUndo?'<button class="btn btn-secondary btn-sm" title="'+esc(tooltip)+'" onclick="undoAutoGenBatch(\''+esc(b.id)+'\')">Undo</button>':'')+
+      '<button class="btn btn-secondary btn-sm" onclick="dismissAutoGenUndoBatch(\''+esc(b.id)+'\')" title="Dismiss this undo entry">&times;</button>'+
+    '</div>';
+  }).join('');
 }
 
 function generateNextMonthInvoiceData(prevInv,newPeriod){
@@ -7648,26 +7762,24 @@ function autoGenerateMonthlyInvoices(period){
 function _doAutoGenerateInvoices(eligible,period){
   var profiles=getProfiles();
   var generated=0,skipped=0;
-  var undoBatch={period:period,when:Date.now(),invoices:[]};
+  var undoBatch={id:'b_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),period:period,when:Date.now(),invoices:[]};
   eligible.forEach(function(e){
     var newInv=generateNextMonthInvoiceData(e.prevInv,period);
     if(!newInv){skipped++;return;}
-    // Tag with a stable id so undo can find it
     if(!newInv.id)newInv.id='auto_'+Date.now()+'_'+Math.random().toString(36).slice(2,9);
     if(!profiles[e.name].invoices)profiles[e.name].invoices=[];
     profiles[e.name].invoices.unshift(newInv);
-    undoBatch.invoices.push({clientName:e.name,invoiceId:newInv.id});
+    undoBatch.invoices.push({clientName:e.name,invoiceId:newInv.id,dataHash:_quickInvoiceHash(newInv.data)});
     generated++;
   });
   saveProfilesLS(profiles);
-  // Sync each new invoice to DB
   eligible.forEach(function(e){if(profiles[e.name])saveProfileSP(e.name,profiles[e.name]);});
-  if(undoBatch.invoices.length)_autoGenUndoStack.push(undoBatch);
+  if(undoBatch.invoices.length)_pushAutoGenUndoBatch(undoBatch);
   logActivity('invoice','Auto-generated '+generated+' invoice'+(generated!==1?'s':'')+' for '+period);
-  showConfirm(
-    '✓ Auto-generated '+generated+' invoice'+(generated!==1?'s':'')+' for '+period+(skipped>0?' ('+skipped+' skipped — missing data)':'')+'.\n\nAll new invoices are marked Draft. Review them before sending.\n\nIf this was a mistake, click Undo to remove them.',
-    null,
-    {title:'Auto-Generation Complete',okText:'Done',hideCancel:true,extraText:'↩ Undo',onExtra:function(){undoLastAutoGen();}}
+  showAlert(
+    '✓ Auto-generated '+generated+' invoice'+(generated!==1?'s':'')+' for '+period+(skipped>0?' ('+skipped+' skipped — missing data)':'')+'.\n\n'+
+    'All new invoices are marked Draft. An Undo banner will stay on the Clients page for 24 hours — use it if you change your mind.',
+    {title:'Auto-Generation Complete'}
   );
   if(typeof previewMonthlyInvoices==='function')previewMonthlyInvoices();
   updateStats();
