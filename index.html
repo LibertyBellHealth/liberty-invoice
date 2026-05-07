@@ -5590,6 +5590,24 @@ async function sendEmail(){
   var bp=document.getElementById('billingPeriod').value.trim();
   var ae=document.getElementById('activeAgentEmail').value.trim();
   var w=document.getElementById('worker').value.trim();
+  // Validate before sending so we don't email blank/incomplete invoices
+  if(cn&&bp){
+    var profSE=getProfiles()[cn]||{};
+    var invSE=(profSE.invoices||[]).find(function(i){return i.billingPeriod===bp;});
+    var cwRecSE=getCaseworkers().find(function(c){return c.id===profSE.caseworkerId||c.name===profSE.worker;})||{};
+    var issuesSE=validateInvoiceForSend(cn,profSE,invSE,cwRecSE);
+    if(issuesSE.length){
+      var proceed=false;
+      await new Promise(function(res){
+        showConfirm(
+          'This invoice has issues:\n\n• '+issuesSE.join('\n• ')+'\n\nSend anyway?',
+          function(){proceed=true;res();},
+          {title:'Invoice Has Issues',okText:'Send Anyway',danger:true,onCancel:function(){res();}}
+        );
+      });
+      if(!proceed)return;
+    }
+  }
   // If no email cached, try to look up from caseworker record
   if(!ae&&activeProfileName){
     var prof2=getProfiles()[activeProfileName]||{};
