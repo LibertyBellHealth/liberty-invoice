@@ -7294,13 +7294,18 @@ function previewMonthlyInvoices(){
     totalReady+=ready;totalIssues+=iss;totalSent+=sent;totalEmpty+=none;
     if(ready>0)totalCaseworkersSendable++;
   });
+  // Count eligible auto-gen clients (active, missing invoice for period, have prior invoice)
+  var eligibleAutoGen=findClientsEligibleForAutoGen(period).length;
   var html='<div style="font-size:12px;color:#6b8dae;margin-bottom:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">'+
     '<span><b>'+workerNames.length+'</b> caseworker group'+(workerNames.length!==1?'s':'')+' for billing period <b>'+esc(period)+'</b></span>'+
     '<span style="color:#1e7e34;">✓ '+totalReady+' ready</span>'+
     (totalIssues?'<span style="color:#c07000;">⚠ '+totalIssues+' issues</span>':'')+
     (totalSent?'<span style="color:#1565a0;">✓ '+totalSent+' already sent</span>':'')+
     (totalEmpty?'<span style="color:#888;">— '+totalEmpty+' missing</span>':'')+
-    (totalCaseworkersSendable>1?'<button class="btn btn-primary btn-sm" id="sendAllCwBtn" onclick="sendAllCaseworkerEmails('+JSON.stringify(period)+')" style="margin-left:auto;white-space:nowrap;">Send All ('+totalCaseworkersSendable+' caseworkers)</button>':'')+
+    '<div style="margin-left:auto;display:flex;gap:8px;">'+
+      (eligibleAutoGen>0?'<button class="btn btn-secondary btn-sm" onclick="autoGenerateMonthlyInvoices('+JSON.stringify(period)+')" style="white-space:nowrap;" title="Copy each missing client\'s last invoice into '+esc(period)+' with day-shifted patterns">🔄 Auto-Generate '+eligibleAutoGen+'</button>':'')+
+      (totalCaseworkersSendable>1?'<button class="btn btn-primary btn-sm" id="sendAllCwBtn" onclick="sendAllCaseworkerEmails('+JSON.stringify(period)+')" style="white-space:nowrap;">Send All ('+totalCaseworkersSendable+' caseworkers)</button>':'')+
+    '</div>'+
   '</div>';
   workerNames.forEach(function(wname){
     var g=groups[wname];
@@ -7362,6 +7367,152 @@ function previewMonthlyInvoices(){
   });
   document.getElementById('monthlyInvResults').innerHTML=html;
 }
+// ──────────────────────────────────────────────────────────────────
+//  AUTO-GENERATE NEXT MONTH INVOICE
+//  Copies a previous invoice into a new period, shifting day patterns
+//  for sub-daily columns (Laundry, Shopping, etc.) so the new invoice
+//  doesn't look like an exact carbon-copy. Hospital column always
+//  starts empty since it's by-exception, not recurring.
+// ──────────────────────────────────────────────────────────────────
+function generateNextMonthInvoiceData(prevInv,newPeriod){
+  if(!prevInv||!prevInv.data)return null;
+  var prevPeriod=(prevInv.data&&prevInv.data.billingPeriod)||prevInv.billingPeriod;
+  if(!prevPeriod)return null;
+  var prevParts=prevPeriod.split('/'),newParts=newPeriod.split('/');
+  if(prevParts.length!==2||newParts.length!==2)return null;
+  var prevDays=daysIn(prevParts[0],prevParts[1]);
+  var newDays=daysIn(newParts[0],newParts[1]);
+
+  var prevSvc=(prevInv.data.tasks&&prevInv.data.tasks.svc)||[];
+  var prevCplx=(prevInv.data.tasks&&prevInv.data.tasks.cplx)||[];
+
+  // Service columns: 15 total (Bathing through Hospital). Hospital is the LAST column.
+  var SVC_COLS=15, HOSP_IDX=SVC_COLS-1;
+
+  // Decide per-column action based on check count in previous month:
+  //  - Hospital column → always clear (by-exception entry)
+  //  - 0 checks → keep at 0
+  //  - 1-3 checks → keep as-is (rare/once-monthly tasks, don't shift)
+  //  - 4-15 checks → SHIFT by +1 day (~once-a-week to ~3x/week patterns)
+  //  - 16+ checks (typically 27-31) → daily — keep all checked
+  var colAction=[];
+  for(var c=0;c<SVC_COLS;c++){
+    if(c===HOSP_IDX){colAction.push('clear');continue;}
+    var count=0;
+    for(var d=0;d<prevDays;d++){if(prevSvc[d]&&prevSvc[d][c])count++;}
+    if(count===0)colAction.push('clear');
+    else if(count<=3)colAction.push('keep');
+    else if(count<=15)colAction.push('shift');
+    else colAction.push('daily');
+  }
+
+  // Build new svc[] for newDays — shift by +1 day means take prev[d-1] for shifted columns
+  var newSvc=[];
+  for(var d=0;d<newDays;d++){
+    var row=[];
+    for(var c=0;c<SVC_COLS;c++){
+      var act=colAction[c];
+      if(act==='clear'){row.push(false);}
+      else if(act==='daily'){row.push(true);}
+      else if(act==='shift'){
+        var srcDay=d-1;
+        if(srcDay<0)row.push(!!(prevSvc[prevDays-1]&&prevSvc[prevDays-1][c])); // wrap last day to first
+        else if(srcDay>=prevDays)row.push(false);
+        else row.push(!!(prevSvc[srcDay]&&prevSvc[srcDay][c]));
+      }
+      else { // 'keep' — copy same day
+        if(d<prevDays)row.push(!!(prevSvc[d]&&prevSvc[d][c]));
+        else row.push(false);
+      }
+    }
+    newSvc.push(row);
+  }
+
+  // Complex tasks: copy as-is, truncated/extended to newDays
+  var newCplx=[];
+  var cplxCols=(prevCplx[0]&&prevCplx[0].length)||9;
+  for(var d=0;d<newDays;d++){
+    if(d<prevDays&&prevCplx[d])newCplx.push(prevCplx[d].slice());
+    else { var blank=[];for(var k=0;k<cplxCols;k++)blank.push(false);newCplx.push(blank); }
+  }
+
+  // Build new invoice data — preserve hours/totals/etc from prev, update dates
+  var T=today();
+  var newData=Object.assign({},prevInv.data,{
+    billingPeriod:newPeriod,
+    dateSubmitted:T,
+    sigDate1:T,
+    sigDate2:T,
+    tasks:{svc:newSvc,cplx:newCplx}
+  });
+  return {
+    billingPeriod:newPeriod,
+    savedAt:new Date().toLocaleString(),
+    status:'draft',
+    invoiceNote:'',
+    data:newData
+  };
+}
+
+// Returns list of clients eligible for auto-gen (active, missing invoice for period, has a prior)
+function findClientsEligibleForAutoGen(period){
+  var profiles=getProfiles();var out=[];
+  Object.keys(profiles).forEach(function(name){
+    var p=profiles[name];
+    if(p.status==='inactive'||p.status==='terminated'||p.status==='lost')return;
+    if(p.clientStatus==='inactive'||p.clientStatus==='terminated'||p.clientStatus==='lost')return;
+    if(!clientWasActiveInPeriod(p,period))return;
+    var hasCurrent=(p.invoices||[]).some(function(i){return i.billingPeriod===period;});
+    if(hasCurrent)return;
+    // Find most recent prior invoice (highest savedAt)
+    var prior=(p.invoices||[]).slice().sort(function(a,b){return new Date(b.savedAt||0)-new Date(a.savedAt||0);})[0];
+    if(!prior)return;
+    out.push({name:name,prevInv:prior});
+  });
+  return out;
+}
+
+// Bulk auto-generate: confirm, then create new draft invoices for all eligible clients
+function autoGenerateMonthlyInvoices(period){
+  var eligible=findClientsEligibleForAutoGen(period);
+  if(!eligible.length){
+    showAlert('No clients need auto-generation. Either everyone has an invoice for '+period+', or no one has a prior invoice to copy from.',{title:'Nothing to Generate'});
+    return;
+  }
+  var names=eligible.map(function(e){return '• '+e.name;}).join('\n');
+  showConfirm(
+    'Auto-generate '+eligible.length+' invoice'+(eligible.length>1?'s':'')+' for '+period+'?\n\n'+
+    names+'\n\n'+
+    'For each client, this copies their most recent invoice and:\n'+
+    '• Keeps daily tasks (Bathing, Dressing, etc.) checked every day\n'+
+    '• Shifts weekly tasks (Laundry, Shopping, Travel) by 1 day so it varies from last month\n'+
+    '• Leaves Hospital column empty (must be added manually if needed)\n'+
+    '• Sets Date Submitted to today\n\n'+
+    'All generated invoices are marked Draft — review before sending.',
+    function(){_doAutoGenerateInvoices(eligible,period);},
+    {title:'Auto-Generate Invoices',okText:'Generate '+eligible.length}
+  );
+}
+function _doAutoGenerateInvoices(eligible,period){
+  var profiles=getProfiles();
+  var generated=0,skipped=0;
+  eligible.forEach(function(e){
+    var newInv=generateNextMonthInvoiceData(e.prevInv,period);
+    if(!newInv){skipped++;return;}
+    if(!profiles[e.name].invoices)profiles[e.name].invoices=[];
+    profiles[e.name].invoices.unshift(newInv);
+    generated++;
+  });
+  saveProfilesLS(profiles);
+  // Sync each new invoice to DB
+  eligible.forEach(function(e){if(profiles[e.name])saveProfileSP(e.name,profiles[e.name]);});
+  logActivity('invoice','Auto-generated '+generated+' invoice'+(generated!==1?'s':'')+' for '+period);
+  showAlert('✓ Auto-generated '+generated+' invoice'+(generated!==1?'s':'')+' for '+period+(skipped>0?' ('+skipped+' skipped — missing data)':'')+'.\n\nAll new invoices are marked Draft. Review them before sending.',{title:'Auto-Generation Complete'});
+  // Refresh preview if user is on monthly emails page
+  if(typeof previewMonthlyInvoices==='function')previewMonthlyInvoices();
+  updateStats();
+}
+
 // Send to ALL caseworkers (one email per caseworker, sequentially) — for monthly batch day
 async function sendAllCaseworkerEmails(period){
   if(!spToken){
