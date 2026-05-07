@@ -960,6 +960,7 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
         <button class="dtab" id="cgtab-clients" onclick="switchCgTab('clients')">Clients</button>
         <button class="dtab" id="cgtab-notes" onclick="switchCgTab('notes')">Notes</button>
         <button class="dtab" id="cgtab-docs" onclick="switchCgTab('docs')">Documents</button>
+        <button class="dtab" id="cgtab-signatures" onclick="switchCgTab('signatures')">Signatures</button>
         <button class="dtab" id="cgtab-audit" onclick="switchCgTab('audit')">Audit Log</button>
       </div>
       <div class="detail-pane active" id="cgpane-overview"></div>
@@ -967,6 +968,7 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
       <div class="detail-pane" id="cgpane-clients"><div id="cgClientsContent"></div></div>
       <div class="detail-pane" id="cgpane-notes"><div id="cgNotesContent"></div></div>
       <div class="detail-pane" id="cgpane-docs"><div id="cgDocsContent"></div></div>
+      <div class="detail-pane" id="cgpane-signatures"><div style="border:1px solid #e1e5ea;border-radius:6px;background:#fff;" id="cgSigList"><div style="padding:14px;color:#8ca0b4;text-align:center;font-size:12px;">Loading…</div></div></div>
       <div class="detail-pane" id="cgpane-audit"></div>
     </div>
   </div>
@@ -981,6 +983,20 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
       <div class="sig-stored-list" id="sigStoredList"></div>
       <button class="btn btn-secondary" onclick="openAddSigModal()">+ Add Signature</button>
       <p style="font-size:11px;color:#8ca0b4;margin-top:10px;">Signatures are stored locally in this browser. When placing a signature on an invoice, you'll choose from saved signatures here.</p>
+    </div>
+
+    <div class="settings-section">
+      <h3>Signing Templates <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(documents you send caregivers for e-signature)</span></h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">
+        <input type="file" id="signTplFile" accept="application/pdf" style="flex:1;min-width:200px;font-size:12px;">
+        <input type="text" id="signTplName" placeholder="Display name (e.g. Employee Handbook)" maxlength="100" style="flex:1;min-width:200px;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:12px;outline:none;">
+        <input type="text" id="signTplVersion" placeholder="Version (e.g. v1.0)" maxlength="40" style="width:140px;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:12px;outline:none;">
+        <button class="btn btn-primary" onclick="uploadSigningTemplate()">Upload</button>
+      </div>
+      <div id="signTplList" style="max-height:260px;overflow:auto;border:1px solid #e1e5ea;border-radius:6px;font-size:12px;">
+        <div style="padding:14px;color:#8ca0b4;text-align:center;">Loading templates…</div>
+      </div>
+      <p style="font-size:11px;color:#8ca0b4;margin-top:10px;">Upload the PDF version of each onboarding document. Caregivers receive a link via email and sign on a separate page (no CRM login). Drafts are in <code>~/Documents/Claude/onboarding-drafts/</code>.</p>
     </div>
 
     <div class="settings-section">
@@ -1827,7 +1843,7 @@ function navCaregivers(){
   activeCgId=null;
   renderCaregiverGrid();
 }
-function navSettings(){showPage('settings');bc([{l:'Settings'}]);document.getElementById('topbarActions').innerHTML='';renderSigSettings();updateSettingsAuth();renderEmailAuditTable();}
+function navSettings(){showPage('settings');bc([{l:'Settings'}]);document.getElementById('topbarActions').innerHTML='';renderSigSettings();updateSettingsAuth();renderEmailAuditTable();if(typeof loadSigningTemplates==='function')loadSigningTemplates();}
 function navTasks(){showPage('tasks');bc([{l:'Tasks'}]);document.getElementById('topbarActions').innerHTML='';populateTodoClientSelect();renderTodos();}
 function navReports(){showPage('reports');bc([{l:'Reports'}]);document.getElementById('topbarActions').innerHTML='';renderReports();}
 
@@ -2897,6 +2913,148 @@ function showCgGrid(){
   renderCaregiverGrid();
 }
 
+// ── SIGNING TEMPLATES (admin uploader in Settings) ──────────────
+async function loadSigningTemplates(){
+  var host=document.getElementById('signTplList');if(!host)return;
+  try{
+    var resp=await fetch(API_BASE+'/signing/templates',{headers:apiHeaders()});
+    if(!resp.ok)throw new Error('HTTP '+resp.status);
+    var arr=await resp.json();
+    if(!arr.length){host.innerHTML='<div style="padding:14px;color:#8ca0b4;text-align:center;">No templates uploaded yet. Pick a PDF above to add your first one.</div>';return;}
+    host.innerHTML=arr.map(function(t){
+      var when=new Date(t.created_at).toLocaleDateString();
+      return '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #f0f3f7;">'+
+        '<div style="flex:1;min-width:0;">'+
+          '<div style="font-weight:600;color:#1a2b45;">'+esc(t.name)+(t.version?' <span style="color:#8ca0b4;font-weight:400;font-size:11px;">('+esc(t.version)+')</span>':'')+'</div>'+
+          '<div style="font-size:11px;color:#8ca0b4;">Uploaded '+when+(t.is_active?'':' · Inactive')+'</div>'+
+        '</div>'+
+      '</div>';
+    }).join('');
+  }catch(e){
+    host.innerHTML='<div style="padding:14px;color:#a05a00;font-size:12px;">Could not load templates: '+esc(e.message||'unknown')+'</div>';
+  }
+}
+async function uploadSigningTemplate(){
+  var fileInp=document.getElementById('signTplFile');var nameInp=document.getElementById('signTplName');var verInp=document.getElementById('signTplVersion');
+  if(!fileInp.files||!fileInp.files[0]){showAlert('Pick a PDF file first.');return;}
+  var file=fileInp.files[0];
+  if(file.type!=='application/pdf'&&!/\.pdf$/i.test(file.name)){showAlert('Only PDF files are accepted as signing templates.');return;}
+  var name=(nameInp.value||'').trim()||file.name.replace(/\.pdf$/i,'');
+  var version=(verInp.value||'').trim()||'v1';
+  try{
+    showToast('Uploading '+file.name+'…',2000);
+    // Step 1: upload PDF bytes
+    var upResp=await fetch(API_BASE+'/signing/templates/upload?name='+encodeURIComponent(name.replace(/\s+/g,'_'))+'&version='+encodeURIComponent(version),{
+      method:'POST',headers:Object.assign({},apiHeaders(),{'Content-Type':'application/pdf'}),body:file
+    });
+    var upData=await upResp.json();
+    if(!upResp.ok)throw new Error(upData.error||'Upload failed ('+upResp.status+')');
+    // Step 2: register the template
+    var regResp=await fetch(API_BASE+'/signing/templates',{
+      method:'POST',headers:apiHeaders(),body:JSON.stringify({name:name,version:version,blobPath:upData.blobPath})
+    });
+    var regData=await regResp.json();
+    if(!regResp.ok)throw new Error(regData.error||'Register failed ('+regResp.status+')');
+    showToast('✓ Template uploaded',3000);
+    fileInp.value='';nameInp.value='';verInp.value='';
+    loadSigningTemplates();
+  }catch(e){
+    showAlert('Upload failed: '+(e.message||e));
+  }
+}
+
+// ── SIGNING REQUESTS (per-caregiver panel) ──────────────────────
+async function loadCgSigningRequests(){
+  var host=document.getElementById('cgSigList');if(!host||!activeCgId)return;
+  host.innerHTML='<div style="padding:14px;color:#8ca0b4;text-align:center;font-size:12px;">Loading…</div>';
+  try{
+    var resp=await fetch(API_BASE+'/signing/list?caregiverId='+encodeURIComponent(activeCgId),{headers:apiHeaders()});
+    if(!resp.ok)throw new Error('HTTP '+resp.status);
+    var arr=await resp.json();
+    if(!arr.length){host.innerHTML='<div style="padding:14px;color:#8ca0b4;text-align:center;font-size:12px;">No signing requests yet. Use the Send for Signature button above to create one.</div>';return;}
+    var now=Date.now();
+    host.innerHTML=arr.map(function(r){
+      var status=r.status||'sent';
+      var locked=!!r.locked_at;
+      var color=status==='signed'?'#1a7740':status==='revoked'?'#888':locked?'#a72e2e':status==='expired'?'#888':'#185FA5';
+      var label=locked?'LOCKED':status.toUpperCase();
+      var expDate=new Date(r.expires_at);
+      var expDays=Math.round((expDate-now)/86400000);
+      var expText=status==='signed'?'Signed '+new Date(r.signed_at).toLocaleDateString()
+                 :status==='revoked'?'Revoked'
+                 :status==='expired'||now>expDate?'Expired '+expDate.toLocaleDateString()
+                 :locked?'Locked — needs resend'
+                 :('Expires in '+expDays+'d ('+expDate.toLocaleDateString()+')');
+      var actions='';
+      if(status==='signed')actions+='<button class="btn btn-secondary btn-sm" style="font-size:11px;padding:3px 8px;" onclick="downloadSignedDoc('+r.id+')">Download</button>';
+      if(status!=='signed'&&status!=='revoked')actions+='<button class="btn btn-secondary btn-sm" style="font-size:11px;padding:3px 8px;" onclick="revokeSigningRequest('+r.id+')">Revoke</button>';
+      if(locked||status==='expired'||status==='revoked'||(now>expDate&&status!=='signed'))actions+='<button class="btn btn-primary btn-sm" style="font-size:11px;padding:3px 8px;" onclick="resendSigningRequest('+r.id+')">Resend</button>';
+      actions+='<button class="btn btn-secondary btn-sm" style="font-size:11px;padding:3px 8px;" onclick="viewSigningAudit('+r.id+')">Audit</button>';
+      return '<div style="padding:10px 14px;border-bottom:1px solid #f0f3f7;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'+
+        '<div style="flex:1;min-width:200px;">'+
+          '<div style="font-weight:600;font-size:12px;color:#1a2b45;">'+esc(r.template_name||'Document')+(r.template_version?' <span style="color:#8ca0b4;font-weight:400;">('+esc(r.template_version)+')</span>':'')+'</div>'+
+          '<div style="font-size:11px;color:#5a7296;">'+esc(expText)+(locked?' · '+(r.verification_attempts||0)+' failed DOB attempts':'')+'</div>'+
+        '</div>'+
+        '<span style="font-size:10px;font-weight:700;color:#fff;background:'+color+';padding:2px 7px;border-radius:3px;">'+label+'</span>'+
+        '<div style="display:flex;gap:5px;">'+actions+'</div>'+
+      '</div>';
+    }).join('');
+  }catch(e){
+    host.innerHTML='<div style="padding:14px;color:#a05a00;font-size:12px;">Could not load requests: '+esc(e.message||'unknown')+'</div>';
+  }
+}
+async function downloadSignedDoc(id){
+  try{
+    var resp=await fetch(API_BASE+'/signing/'+id+'/signed-url',{headers:apiHeaders()});
+    var data=await resp.json();
+    if(!resp.ok)throw new Error(data.error||'HTTP '+resp.status);
+    window.open(data.url,'_blank');
+  }catch(e){showAlert('Could not open signed copy: '+(e.message||e));}
+}
+function revokeSigningRequest(id){
+  showConfirm('Revoke this signing request? The recipient\'s link will stop working immediately. They can be sent a new one with the Resend button.',async function(){
+    try{
+      var resp=await fetch(API_BASE+'/signing/'+id+'/revoke',{method:'POST',headers:apiHeaders()});
+      if(!resp.ok)throw new Error('HTTP '+resp.status);
+      showToast('Request revoked',3000);
+      loadCgSigningRequests();
+    }catch(e){showAlert('Failed: '+(e.message||e));}
+  },{title:'Revoke',okText:'Revoke',danger:true});
+}
+async function resendSigningRequest(id){
+  if(!spToken){showAlert('Sign in with Microsoft first to send the email.');return;}
+  try{
+    var cg=getCaregivers()[activeCgId]||{};
+    var resp=await fetch(API_BASE+'/signing/'+id+'/resend',{method:'POST',headers:apiHeaders()});
+    var data=await resp.json();
+    if(!resp.ok)throw new Error(data.error||'HTTP '+resp.status);
+    var subject='Reminder: please sign your document';
+    var body='<p>Hi '+esc(data.recipientName||cg.name||'')+',</p>'+
+      '<p>Here\'s a fresh link to sign your document. The previous link is no longer valid.</p>'+
+      '<p><a href="'+data.signUrl+'" style="background:#185FA5;color:#fff;padding:10px 16px;border-radius:5px;text-decoration:none;display:inline-block;">Open &amp; Sign</a></p>'+
+      '<p style="font-size:13px;color:#444;">When you open the link, you\'ll be asked to verify your date of birth.</p>'+
+      '<p style="font-size:12px;color:#666;">Or paste:<br><span style="word-break:break-all;">'+data.signUrl+'</span></p>'+
+      '<p style="font-size:12px;color:#666;">Expires '+new Date(data.expiresAt).toLocaleDateString()+'.</p>';
+    var emailResp=await sendMailWithPDF(data.recipientEmail,subject,body,[]);
+    if(!emailResp.ok){showAlert('Created the new link but email send failed: '+(emailResp.err||emailResp.status||'unknown')+'\n\nManual link:\n'+data.signUrl);loadCgSigningRequests();return;}
+    showToast('✓ New link emailed',4000);
+    logActivity('signing','Resent signing request to '+data.recipientName);
+    loadCgSigningRequests();
+  }catch(e){showAlert('Resend failed: '+(e.message||e));}
+}
+async function viewSigningAudit(id){
+  try{
+    var resp=await fetch(API_BASE+'/signing/'+id+'/audit',{headers:apiHeaders()});
+    if(!resp.ok)throw new Error('HTTP '+resp.status);
+    var arr=await resp.json();
+    var rows=arr.map(function(e){
+      var when=new Date(e.logged_at).toLocaleString();
+      return when+'  ·  '+e.event_type+(e.ip?'  ·  '+e.ip:'')+(e.detail_json?'\n   '+e.detail_json:'');
+    }).join('\n\n');
+    showAlert(rows||'No audit events yet.',{title:'Audit Trail — Request #'+id});
+  }catch(e){showAlert('Could not load audit log: '+(e.message||e));}
+}
+
 // ── SEND FOR SIGNATURE ──────────────────────────────────────────
 // Picks a template, creates a SigningRequest server-side, then uses
 // Graph (existing spToken) to email the recipient the secure link.
@@ -2919,15 +3077,16 @@ async function openSendForSignatureModal(){
   var tplOptions=templates.length
     ? templates.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+(t.version?' ('+esc(t.version)+')':'')+'</option>';}).join('')
     : '<option value="">No templates yet — use Settings → Signing Templates to upload one</option>';
-  ov.innerHTML='<div class="modal-box" style="max-width:520px;">'+
+  // Pre-fill DOB if we have it on the caregiver record (multiple possible field names)
+  var prefillDob=(cg.dob||cg.dateOfBirth||cg.birthDate||'').trim();
+  ov.innerHTML='<div class="modal-box" style="max-width:540px;">'+
     '<h3>📝 Send for Signature</h3>'+
-    '<div style="font-size:13px;color:#4a5d7a;margin:8px 0 14px;">Sends <b>'+esc(cg.name||'')+'</b> a secure link to '+esc(cg.email)+'. They sign without logging into the CRM.</div>'+
+    '<div style="font-size:13px;color:#4a5d7a;margin:8px 0 14px;">Sends <b>'+esc(cg.name||'')+'</b> a secure link to '+esc(cg.email)+'. They verify their DOB, then sign — no CRM login needed.</div>'+
     '<label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Document</label>'+
     '<select id="sendSigTemplate" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;outline:none;background:#fff;margin-bottom:12px;">'+tplOptions+'</select>'+
-    '<label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Link expires after</label>'+
-    '<select id="sendSigExpiry" style="width:160px;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;outline:none;background:#fff;margin-bottom:14px;">'+
-      '<option value="7">7 days</option><option value="14" selected>14 days</option><option value="30">30 days</option><option value="60">60 days</option>'+
-    '</select>'+
+    '<label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Recipient Date of Birth <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#a05a00;">(used to verify identity at signing — 3 wrong attempts locks the link)</span></label>'+
+    '<input id="sendSigDob" type="date" value="'+esc(prefillDob)+'" style="width:200px;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;outline:none;margin-bottom:14px;">'+
+    '<div style="font-size:11px;color:#8ca0b4;margin-bottom:14px;">Link expires in 14 days. A copy of every signed document is auto-CC\'d to <b>tommy@mybellcare.com</b>.</div>'+
     '<div id="sendSigError" style="display:none;background:#fdeaea;border:1px solid #e7a8a8;border-radius:5px;padding:10px;font-size:12px;color:#7a1f1f;margin-bottom:12px;"></div>'+
     '<div class="modal-row" style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">'+
       '<button class="btn btn-secondary" onclick="closeSendSigModal()">Cancel</button>'+
@@ -2943,8 +3102,9 @@ async function doSendForSignature(){
   errEl.style.display='none';
   var cg=getCaregivers()[activeCgId];
   var tplId=parseInt(document.getElementById('sendSigTemplate').value,10);
-  var days=parseInt(document.getElementById('sendSigExpiry').value,10)||14;
+  var dob=(document.getElementById('sendSigDob').value||'').trim();
   if(!tplId){errEl.textContent='Pick a document template.';errEl.style.display='block';return;}
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(dob)){errEl.textContent='Enter the recipient\'s date of birth (used for identity verification).';errEl.style.display='block';return;}
   btn.disabled=true;btn.textContent='Creating link…';
   try{
     // 1. Backend creates the request and returns the sign URL
@@ -2956,7 +3116,8 @@ async function doSendForSignature(){
         caregiverId:activeCgId,
         recipientName:cg.name||'',
         recipientEmail:cg.email,
-        expiresInDays:days
+        recipientDob:dob,
+        ccEmails:'tommy@mybellcare.com'
       })
     });
     var data=await resp.json();
@@ -2967,6 +3128,7 @@ async function doSendForSignature(){
     var body='<p>Hi '+esc(cg.name||'')+',</p>'+
       '<p>Liberty Home Care needs your signature on a document. Please click the secure link below to review and sign.</p>'+
       '<p><a href="'+data.signUrl+'" style="background:#185FA5;color:#fff;padding:10px 16px;border-radius:5px;text-decoration:none;display:inline-block;">Open &amp; Sign</a></p>'+
+      '<p style="font-size:13px;color:#444;">When you open the link, you\'ll be asked to verify your date of birth before viewing the document. This protects you in case the email is forwarded or intercepted.</p>'+
       '<p style="font-size:12px;color:#666;">Or paste this URL into your browser:<br><span style="word-break:break-all;">'+data.signUrl+'</span></p>'+
       '<p style="font-size:12px;color:#666;">This link expires '+new Date(data.expiresAt).toLocaleDateString()+' and can only be used once.</p>'+
       '<p style="font-size:12px;color:#999;">— Liberty Home Care Assistance</p>';
@@ -3015,7 +3177,7 @@ function _doDeleteCaregiverFromDetail(){
   showCgGrid();
 }
 function switchCgTab(tab){
-  ['overview','info','clients','notes','docs','audit'].forEach(function(t){
+  ['overview','info','clients','notes','docs','signatures','audit'].forEach(function(t){
     var tb=document.getElementById('cgtab-'+t);
     var pn=document.getElementById('cgpane-'+t);
     if(tb)tb.classList.toggle('active',t===tab);
@@ -3026,6 +3188,7 @@ function switchCgTab(tab){
   if(tab==='clients')renderCgClientsPane();
   if(tab==='notes')renderCgNotesPane();
   if(tab==='docs')renderCgDocsPane();
+  if(tab==='signatures'&&typeof loadCgSigningRequests==='function')loadCgSigningRequests();
   if(tab==='audit')renderCgAuditPane();
 }
 function renderCgOverviewPane(){

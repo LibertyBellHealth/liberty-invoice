@@ -15,11 +15,14 @@
   .card h1{margin:0 0 6px;font-size:20px}
   .card h2{margin:0 0 6px;font-size:16px}
   .meta{font-size:13px;color:#5a7296;margin-bottom:16px}
+  .doc-frame-wrap{position:relative}
   .doc-frame{width:100%;height:72vh;border:1px solid #d0d8e4;border-radius:6px;background:#f9fafb}
+  .scroll-hint{font-size:12px;color:#a05a00;background:#fff8e6;border:1px solid #f0d18a;padding:8px 12px;border-radius:5px;margin-top:10px;display:flex;align-items:center;gap:8px}
+  .scroll-hint.done{color:#1a4d2c;background:#e6f5ec;border-color:#a8d9b8}
   .row{display:flex;gap:14px;flex-wrap:wrap}
   label{display:block;font-size:12px;font-weight:600;color:#1a2b45;margin-bottom:4px}
-  input[type=text]{width:100%;padding:9px 11px;border:1px solid #d0d8e4;border-radius:5px;font-size:14px;outline:none;font-family:inherit}
-  input[type=text]:focus{border-color:#185FA5}
+  input[type=text],input[type=date]{width:100%;padding:9px 11px;border:1px solid #d0d8e4;border-radius:5px;font-size:14px;outline:none;font-family:inherit}
+  input[type=text]:focus,input[type=date]:focus{border-color:#185FA5}
   .check-row{display:flex;gap:10px;align-items:flex-start;margin:14px 0;padding:12px;background:#f4f7fb;border-radius:6px;font-size:13px;line-height:1.5}
   .check-row input{margin-top:3px;width:16px;height:16px;flex-shrink:0;cursor:pointer}
   .sig-pad-wrap{border:1px solid #d0d8e4;border-radius:6px;background:#fff;position:relative;margin-top:6px}
@@ -48,17 +51,37 @@
   <span class="badge">Document Signing</span>
 </header>
 <main id="root">
+  <!-- Loading -->
   <div class="card" id="loadingCard">
     <h1>Loading your document…</h1>
     <p class="meta" id="loadingMsg">If this takes more than a minute, the secure connection is being prepared. Please wait — do not close this page.</p>
     <div style="height:6px;background:#e1e5ea;border-radius:3px;overflow:hidden"><div id="loadingBar" style="height:100%;width:5%;background:#185FA5;transition:width .3s"></div></div>
   </div>
 
+  <!-- Step 1: DOB verification gate -->
+  <div id="dobCard" class="hidden">
+    <div class="card">
+      <h1>Verify your identity</h1>
+      <div class="meta">Hi <span id="dobRecipient"></span> — to view <b id="dobDocName"></b>, please confirm your date of birth on file.</div>
+      <label for="dobInput">Date of Birth</label>
+      <input type="date" id="dobInput" max="2025-12-31">
+      <div id="dobError" class="alert err hidden" style="margin:12px 0"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+        <button class="btn btn-primary" id="dobBtn" onclick="submitDob()">Continue</button>
+      </div>
+      <p class="meta" style="margin-top:14px;font-size:11px">For your security, you have <span id="dobAttempts">3</span> attempts. After that, a new link must be sent.</p>
+    </div>
+  </div>
+
+  <!-- Step 2: Sign -->
   <div id="signCard" class="hidden">
     <div class="card">
       <h1 id="docTitle">Document</h1>
       <div class="meta" id="docMeta"></div>
-      <iframe id="docFrame" class="doc-frame" title="Document to sign"></iframe>
+      <div class="doc-frame-wrap">
+        <iframe id="docFrame" class="doc-frame" title="Document to sign"></iframe>
+        <div class="scroll-hint" id="scrollHint">📜 Please scroll through the entire document — the Sign button will activate once you reach the end.</div>
+      </div>
     </div>
 
     <div class="card">
@@ -135,22 +158,22 @@ var API_BASE = (window.location.host.indexOf('localhost') >= 0)
 
 var token = (new URLSearchParams(window.location.search)).get('t') || '';
 var requestData = null;
+var documentData = null; // populated after DOB verification
 var sigMode = 'draw';
+var scrollComplete = false;
 
-// ── Helpers ──────────────────────────────────────────────────
 function $(id){ return document.getElementById(id); }
 function show(id){ $(id).classList.remove('hidden'); }
 function hide(id){ $(id).classList.add('hidden'); }
 function showError(msg){
-  hide('loadingCard'); hide('signCard');
+  ['loadingCard','dobCard','signCard'].forEach(hide);
   $('errorMsg').textContent = msg || 'Something went wrong.';
   show('errorCard');
 }
 
-// ── Initial load ─────────────────────────────────────────────
+// ── Step 1: Initial load — fetch request metadata ────────────
 async function init(){
   if (!token){ showError('No signing token found in this URL. Please open the link from your email.'); return; }
-  // Fake progress bar so cold-start feels intentional
   var pct = 5;
   var progressTimer = setInterval(function(){
     if (pct < 90) { pct += 3; $('loadingBar').style.width = pct + '%'; }
@@ -166,34 +189,111 @@ async function init(){
       return;
     }
     requestData = await resp.json();
-    setTimeout(showSignPage, 250);
+    setTimeout(showDobGate, 250);
   } catch (e) {
     clearInterval(progressTimer);
     showError('Network error. Please check your connection and try again.');
   }
 }
 
-function showSignPage(){
+// ── Step 2: DOB gate ─────────────────────────────────────────
+function showDobGate(){
   hide('loadingCard');
   if (requestData.alreadySigned){
     showError('This document has already been signed on ' + new Date(requestData.signedAt).toLocaleString() + '. If you need another copy, contact the sender.');
     return;
   }
-  $('docTitle').textContent = requestData.template.name + (requestData.template.version ? '  (' + requestData.template.version + ')' : '');
-  $('docMeta').textContent = 'For: ' + requestData.recipientName + ' · Expires: ' + new Date(requestData.expiresAt).toLocaleDateString();
-  $('docFrame').src = requestData.template.url + '#toolbar=1&navpanes=0';
+  $('dobRecipient').textContent = requestData.recipientName || '';
+  $('dobDocName').textContent = (requestData.template && requestData.template.name) || 'this document';
+  $('dobAttempts').textContent = (requestData.attemptsRemaining != null ? requestData.attemptsRemaining : 3);
+  show('dobCard');
+  $('dobInput').focus();
+}
+
+async function submitDob(){
+  var dob = $('dobInput').value;
+  $('dobError').classList.add('hidden');
+  if (!dob){ $('dobError').textContent = 'Please enter your date of birth.'; show('dobError'); return; }
+  $('dobBtn').disabled = true;
+  $('dobBtn').textContent = 'Checking…';
+  try{
+    var resp = await fetch(API_BASE + '/signing/verify', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ token: token, dob: dob }),
+    });
+    var data = await resp.json();
+    if (!resp.ok || !data.ok){
+      if (data.locked){ showError(data.error || 'Locked due to too many attempts.'); return; }
+      $('dobError').textContent = (data.error || 'Verification failed.') + (data.attemptsRemaining != null ? ' ('+data.attemptsRemaining+' attempt'+(data.attemptsRemaining===1?'':'s')+' remaining.)' : '');
+      show('dobError');
+      $('dobAttempts').textContent = data.attemptsRemaining || 0;
+      $('dobBtn').disabled = false;
+      $('dobBtn').textContent = 'Continue';
+      return;
+    }
+    // Success
+    documentData = data.document;
+    hide('dobCard');
+    showSignPage();
+  }catch(e){
+    $('dobError').textContent = 'Network error. Please try again.';
+    show('dobError');
+    $('dobBtn').disabled = false;
+    $('dobBtn').textContent = 'Continue';
+  }
+}
+
+// ── Step 3: Sign page ────────────────────────────────────────
+function showSignPage(){
+  $('docTitle').textContent = documentData.name + (documentData.version ? '  ('+documentData.version+')' : '');
+  $('docMeta').textContent = 'For: '+requestData.recipientName + ' · Expires: '+new Date(requestData.expiresAt).toLocaleDateString();
+  $('docFrame').src = documentData.url + '#toolbar=1&navpanes=0&view=FitH';
   $('typedName').value = requestData.recipientName || '';
   show('signCard');
   initSigPad();
   hookValidators();
+  hookScrollEnforcement();
   updateSignButton();
+}
+
+// Scroll-to-end enforcement: PDF.js viewers don't expose scroll cross-origin,
+// so we rely on the user scrolling the OUTER page past the iframe + a 12-second
+// minimum dwell time. They can also tick "I scrolled to end" if reading on a
+// device that doesn't fire scroll events on the iframe.
+function hookScrollEnforcement(){
+  var minSeconds = 12;
+  var dwellStart = Date.now();
+  var iframeEl = $('docFrame');
+  var hint = $('scrollHint');
+  function check(){
+    var dwell = (Date.now() - dwellStart) / 1000;
+    var ifrRect = iframeEl.getBoundingClientRect();
+    var viewport = window.innerHeight;
+    // If iframe bottom is in viewport (within 100px), they've reached its bottom
+    var reachedBottom = ifrRect.bottom <= viewport + 100;
+    if (dwell >= minSeconds && reachedBottom){
+      scrollComplete = true;
+      hint.classList.add('done');
+      hint.innerHTML = '✓ Document reviewed — you may now sign below.';
+      window.removeEventListener('scroll', check);
+      updateSignButton();
+    } else if (dwell < minSeconds){
+      hint.innerHTML = '📜 Please scroll through the entire document. ('+Math.max(0, minSeconds - Math.floor(dwell))+'s minimum)';
+    } else {
+      hint.innerHTML = '📜 Almost there — scroll until the document is fully visible.';
+    }
+  }
+  window.addEventListener('scroll', check, { passive: true });
+  // Also re-check every second so the timer counts down even without scrolling
+  var timer = setInterval(function(){ if (scrollComplete) clearInterval(timer); else check(); }, 1000);
+  check();
 }
 
 // ── Signature pad ────────────────────────────────────────────
 var sigCanvas, sigCtx, sigDrawing = false, sigDirty = false, sigLast = null;
 function initSigPad(){
   sigCanvas = $('sigPad');
-  // Match canvas pixels to display size for crisp lines
   function size(){
     var r = sigCanvas.parentElement.getBoundingClientRect();
     sigCanvas.width = Math.max(300, Math.floor(r.width));
@@ -234,7 +334,7 @@ function setSigMode(mode){
   updateSignButton();
 }
 function updateTypedPreview(){
-  $('typedPreview').textContent = $('typedName').value || ' ';
+  $('typedPreview').textContent = $('typedName').value || ' ';
 }
 function hookValidators(){
   ['typedName','agreeBox'].forEach(function(id){ $(id).addEventListener('input', updateSignButton); $(id).addEventListener('change', updateSignButton); });
@@ -247,13 +347,15 @@ function hasSignature(){
   return false;
 }
 function updateSignButton(){
-  var ok = $('agreeBox').checked && ($('typedName').value || '').trim().length > 1 && hasSignature();
+  var ok = scrollComplete && $('agreeBox').checked && ($('typedName').value || '').trim().length > 1 && hasSignature();
   $('signBtn').disabled = !ok;
+  if (!scrollComplete) $('signBtn').title = 'Please scroll to the end of the document first.';
+  else if (!$('agreeBox').checked) $('signBtn').title = 'Check the agreement box first.';
+  else $('signBtn').title = '';
 }
 
 function buildSignatureDataUrl(){
   if (sigMode === 'draw') return sigCanvas.toDataURL('image/png');
-  // Render typed signature to canvas
   var c = document.createElement('canvas');
   c.width = 600; c.height = 180;
   var ctx = c.getContext('2d');
@@ -261,8 +363,7 @@ function buildSignatureDataUrl(){
   ctx.fillStyle = '#1a2b45';
   ctx.font = "92px 'Caveat', cursive";
   ctx.textBaseline = 'middle';
-  var name = ($('typedName').value || '').trim();
-  ctx.fillText(name, 20, c.height/2);
+  ctx.fillText(($('typedName').value || '').trim(), 20, c.height/2);
   return c.toDataURL('image/png');
 }
 
