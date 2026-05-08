@@ -7310,6 +7310,82 @@ function scheduleSfPreview(delay){
   if(s){s.classList.remove('idle');}if(t)t.textContent='Updating preview…';
   _sfPreviewTimer=setTimeout(renderSfPreview,ms);
 }
+// Build the data dictionary the renderer fills AcroForm fields from.
+// Handles all fuzzy variations of field names Adobe auto-detects (e.g. "9 Date of Birth MMDDYYYY").
+function _buildFormDataDict(){
+  var prof=activeFormClientName?(getProfiles()[activeFormClientName]||{}):{};
+  var cw=getCaseworkers().find(function(c){return (c.name||'').toLowerCase()===(prof.worker||'').toLowerCase();})||{};
+  var cgs=getCaregivers();
+  var assignedCg=(prof.caregiverId&&cgs[prof.caregiverId])||{};
+  var td=today();
+  var fullName=activeFormClientName||'';
+  var fParts=fullName.split(' ');
+  var firstN=fParts[0]||'',lastN=fParts.slice(1).join(' ')||'';
+  var cgFull=assignedCg.name||'';
+  var cgParts=cgFull.split(' ');
+  var cgFirst=assignedCg.firstName||cgParts[0]||'';
+  var cgLast=assignedCg.lastName||cgParts.slice(1).join(' ')||'';
+  return {
+    // Client
+    client_name:fullName, client_first_name:firstN, client_last_name:lastN,
+    client_dob:prof.dob||'', medicaid_id:prof.medicaidId||'', case_number:'', recipient_id:prof.medicaidId||'',
+    client_address:prof.street||prof.address||'', client_city:prof.city||'', client_state:prof.state||'MI', client_zip:prof.zip||'',
+    client_phone:prof.phone||'', client_email:prof.cemail||'', client_county:prof.county||'',
+    // Caseworker
+    worker_name:cw.name||prof.worker||'', worker_phone:cw.phone||'', worker_email:cw.email||'', worker_fax:'',
+    // Caregiver
+    caregiver_first_name:cgFirst, caregiver_last_name:cgLast, caregiver_full_name:cgFull,
+    caregiver_dob:assignedCg.dob||'', caregiver_address:assignedCg.street||assignedCg.address||'',
+    caregiver_city:assignedCg.city||'', caregiver_state:assignedCg.state||'MI', caregiver_zip:assignedCg.zip||'',
+    caregiver_phone:assignedCg.phone||'', caregiver_email:assignedCg.email||'', caregiver_champs_id:'',
+    // Common
+    today_date:td, signature_date:td, log_number:'',
+  };
+}
+// Match Adobe's auto-detected field names (which use the form's printed labels)
+// to a key in our data dict. Returns the matching value, or '' if no match.
+function _matchAcroFormField(fieldName,dict){
+  var n=(fieldName||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  // direct exact match by our convention
+  var exactKey=fieldName.toLowerCase().replace(/[^a-z0-9_]/g,'');
+  if(dict.hasOwnProperty(exactKey))return dict[exactKey];
+  // fuzzy match by keywords
+  var rules=[
+    [/case name/, 'client_name'],
+    [/log number/, 'log_number'],
+    [/recipient id/, 'recipient_id'],
+    [/medicaid.*id/, 'medicaid_id'],
+    [/patient.*name/, 'client_name'],
+    [/full name/, 'client_name'],
+    [/client.*name/, 'client_name'],
+    [/beneficiary.*name/, 'client_name'],
+    [/(date of birth|dob|birth date)/, 'client_dob'],
+    [/(street|address)(?!.*city)/, 'client_address'],
+    [/^city$/, 'client_city'],
+    [/^state$/, 'client_state'],
+    [/(zip|postal)/, 'client_zip'],
+    [/(phone number|telephone)/, 'client_phone'],
+    [/email/, 'client_email'],
+    [/county/, 'client_county'],
+    [/tty/, 'client_tty'],
+    [/worker name/, 'worker_name'],
+    [/worker phone/, 'worker_phone'],
+    [/worker email/, 'worker_email'],
+    [/(return fax|fax number|fax$)/, 'worker_fax'],
+    [/champs/, 'caregiver_champs_id'],
+    [/(caregiver|provider).*first/, 'caregiver_first_name'],
+    [/(caregiver|provider).*last/, 'caregiver_last_name'],
+    [/(caregiver|provider).*name/, 'caregiver_full_name'],
+    [/^date$/, 'today_date'],
+    [/today/, 'today_date'],
+    [/sig.*date|date.*sig/, 'signature_date'],
+  ];
+  for(var i=0;i<rules.length;i++){
+    if(rules[i][0].test(n)){var k=rules[i][1];if(dict[k])return dict[k];}
+  }
+  return '';
+}
+
 async function renderSfPreview(){
   try{
     var def=STATE_FORM_OVERLAYS[activeFormType];
@@ -7322,7 +7398,31 @@ async function renderSfPreview(){
     var pdfDoc=await PDFLib.PDFDocument.load(bytes);
     var helv=await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
     var pages=pdfDoc.getPages();
-    (def.fields||[]).forEach(function(f){
+    // ── AcroForm path: if the PDF has form fields, fill them by name ──
+    var acroForm=pdfDoc.getForm();
+    var acroFields=acroForm.getFields();
+    var usedAcroForm=false;
+    if(acroFields.length>0){
+      usedAcroForm=true;
+      var dict=_buildFormDataDict();
+      acroFields.forEach(function(field){
+        var fname=field.getName();
+        var typeName=field.constructor.name;
+        try{
+          if(typeName==='PDFTextField'){
+            var v=_matchAcroFormField(fname,dict);
+            if(v)field.setText(String(v));
+          } else if(typeName==='PDFDropdown'){
+            var v2=_matchAcroFormField(fname,dict);
+            if(v2){try{field.select(String(v2));}catch(e){}}
+          }
+          // PDFCheckBox / PDFRadioGroup left untouched — user ticks visually
+        }catch(e){console.warn('[StateForm] field "'+fname+'" set failed:',e.message);}
+      });
+    }
+    // ── Coordinate fallback: only for FLAT PDFs (no AcroForm). If this PDF has
+    //   form fields, skip coord stamping to avoid duplicate text overlap. ──
+    if(!usedAcroForm)(def.fields||[]).forEach(function(f){
       var el=document.getElementById(f.inputId);if(!el)return;
       var v=(el.type==='checkbox')?(el.checked?(f.checkedText||'X'):''):((el.value||'').trim());
       if(!v)return;
