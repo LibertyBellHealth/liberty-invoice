@@ -7290,7 +7290,7 @@ function openStateForm(type){
     topbar.appendChild(back);
     if(titleSpan)topbar.appendChild(titleSpan);
     var spacer=document.createElement('div');spacer.style.flex='1';topbar.appendChild(spacer);
-    var dl=document.createElement('button');dl.className='btn btn-secondary';dl.textContent='⬇ Download PDF';dl.onclick=function(){generateStateFormPdf({download:true});};
+    var dl=document.createElement('button');dl.className='btn btn-secondary';dl.textContent='⬇ Download PDF';dl.onclick=downloadStateFormPdf;
     topbar.appendChild(dl);
     var save=document.createElement('button');save.className='btn btn-primary';save.textContent='💾 Save to Client Documents';save.onclick=saveStateFormToClientDocs;
     topbar.appendChild(save);
@@ -7526,98 +7526,73 @@ function _matchAcroFormField(fieldName,dict,formType){
   return '';
 }
 
+// Shared render path. Used by live preview (flatten:false) and exports (flatten:true).
+async function _renderStateFormBytes(opts){
+  opts=opts||{};
+  var def=STATE_FORM_OVERLAYS[activeFormType];
+  if(!def)throw new Error('Form not configured: '+activeFormType);
+  if(!window.PDFLib)throw new Error('PDF library still loading');
+  var resp=await fetch(def.file);
+  if(!resp.ok)throw new Error('Cannot load template ('+resp.status+')');
+  var bytes=new Uint8Array(await resp.arrayBuffer());
+  var pdfDoc=await PDFLib.PDFDocument.load(bytes);
+  var helv=await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+  var pages=pdfDoc.getPages();
+  var acroForm=pdfDoc.getForm();
+  var acroFields=acroForm.getFields();
+  var usedAcroForm=false;
+  if(acroFields.length>0){
+    usedAcroForm=true;
+    var dict=_buildFormDataDict();
+    acroFields.forEach(function(field){
+      var fname=field.getName();
+      try{
+        if(typeof field.setText==='function'){
+          var v=_matchAcroFormField(fname,dict,activeFormType);
+          if(v)field.setText(String(v));
+          // Force black text on every text field
+          try{
+            var da='0 0 0 rg /Helv 10 Tf';
+            field.acroField.dict.set(PDFLib.PDFName.of('DA'),PDFLib.PDFString.of(da));
+          }catch(e){}
+        } else if(typeof field.select==='function'&&typeof field.check!=='function'){
+          var v2=_matchAcroFormField(fname,dict,activeFormType);
+          if(v2){try{field.select(String(v2));}catch(e){}}
+        }
+      }catch(e){console.warn('[StateForm] field "'+fname+'" set failed:',e.message);}
+    });
+    try{acroForm.updateFieldAppearances(helv);}
+    catch(e){
+      try{acroForm.acroForm.dict.set(PDFLib.PDFName.of('NeedAppearances'),PDFLib.PDFBool.True);}catch(e2){}
+    }
+    // Flatten on export — bakes field values into the page so recipient can't edit
+    if(opts.flatten){try{acroForm.flatten();}catch(e){console.warn('[StateForm] flatten failed:',e.message);}}
+  }
+  // Coord-stamping fallback for flat PDFs
+  if(!usedAcroForm)(def.fields||[]).forEach(function(f){
+    var el=document.getElementById(f.inputId);if(!el)return;
+    var v=(el.type==='checkbox')?(el.checked?(f.checkedText||'X'):''):((el.value||'').trim());
+    if(!v)return;
+    var page=pages[f.page||0];if(!page)return;
+    if(f.coverRect){
+      page.drawRectangle({x:f.coverRect.x,y:f.coverRect.y,width:f.coverRect.w,height:f.coverRect.h,color:PDFLib.rgb(1,1,1),borderColor:PDFLib.rgb(1,1,1),borderWidth:0});
+    }
+    var size=f.size||10;
+    if(f.maxWidth){while(size>6&&helv.widthOfTextAtSize(v,size)>f.maxWidth)size-=0.5;}
+    page.drawText(v,{x:f.x,y:f.y,size:size,font:helv,color:PDFLib.rgb(0,0,0)});
+  });
+  return await pdfDoc.save();
+}
+
 async function renderSfPreview(){
   try{
     var def=STATE_FORM_OVERLAYS[activeFormType];
     var iframe=document.getElementById('sfPreviewFrame');
     if(!def||!iframe)return;
     if(!window.PDFLib){setTimeout(renderSfPreview,400);return;}
-    var resp=await fetch(def.file);
-    if(!resp.ok)throw new Error('Cannot load template ('+resp.status+')');
-    var bytes=new Uint8Array(await resp.arrayBuffer());
-    var pdfDoc=await PDFLib.PDFDocument.load(bytes);
-    var helv=await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
-    var pages=pdfDoc.getPages();
-    // ── AcroForm path: if the PDF has form fields, fill them by name ──
-    var acroForm=pdfDoc.getForm();
-    var acroFields=acroForm.getFields();
-    var usedAcroForm=false;
-    if(acroFields.length>0){
-      usedAcroForm=true;
-      var dict=_buildFormDataDict();
-      console.log('[StateForm] activeFormType:',activeFormType,'client:',activeFormClientName,'fields:',acroFields.length);
-      console.log('[StateForm] dict:',dict);
-      var matchedCount=0,unmatchedNames=[];
-      acroFields.forEach(function(field){
-        var fname=field.getName();
-        try{
-          // Duck-type: text fields have setText, dropdowns/radios have select, checkboxes have check.
-          // (constructor.name is unreliable because pdf-lib is minified in the browser bundle.)
-          if(typeof field.setText==='function'){
-            var v=_matchAcroFormField(fname,dict,activeFormType);
-            if(v){field.setText(String(v));matchedCount++;}
-            else{unmatchedNames.push(fname);}
-          } else if(typeof field.select==='function'&&typeof field.check!=='function'){
-            // PDFDropdown (not radio group, which also has select but adds check on individual options)
-            var v2=_matchAcroFormField(fname,dict,activeFormType);
-            if(v2){try{field.select(String(v2));}catch(e){}}
-          }
-          // PDFCheckBox / PDFRadioGroup left untouched — user ticks visually
-        }catch(e){console.warn('[StateForm] field "'+fname+'" set failed:',e.message);}
-      });
-      console.log('[StateForm] matched',matchedCount,'fields. Unmatched:',unmatchedNames);
-      // Force BLACK text on every text field (Adobe sometimes defaults to blue, which
-      // looks unprofessional on state submissions). Then regenerate appearance streams
-      // so browser PDF viewers actually render the values.
-      acroFields.forEach(function(field){
-        if(typeof field.setText==='function'){
-          try{field.defaultUpdateAppearances=undefined;}catch(e){}
-          // Set the field's default appearance to black, size 10, Helvetica
-          try{
-            var da='0 0 0 rg /Helv 10 Tf';
-            field.acroField.dict.set(PDFLib.PDFName.of('DA'),PDFLib.PDFString.of(da));
-          }catch(e){}
-        }
-      });
-      try{
-        acroForm.updateFieldAppearances(helv);
-      }catch(e){
-        try{acroForm.acroForm.dict.set(PDFLib.PDFName.of('NeedAppearances'),PDFLib.PDFBool.True);}catch(e2){}
-        console.warn('[StateForm] updateFieldAppearances failed; using NeedAppearances flag:',e.message);
-      }
-    }
-    // ── Coordinate fallback: only for FLAT PDFs (no AcroForm). If this PDF has
-    //   form fields, skip coord stamping to avoid duplicate text overlap. ──
-    if(!usedAcroForm)(def.fields||[]).forEach(function(f){
-      var el=document.getElementById(f.inputId);if(!el)return;
-      var v=(el.type==='checkbox')?(el.checked?(f.checkedText||'X'):''):((el.value||'').trim());
-      if(!v)return;
-      var page=pages[f.page||0];if(!page)return;
-      // Optional white-out rectangle to cover preprinted placeholder text
-      if(f.coverRect){
-        page.drawRectangle({x:f.coverRect.x,y:f.coverRect.y,width:f.coverRect.w,height:f.coverRect.h,color:PDFLib.rgb(1,1,1),borderColor:PDFLib.rgb(1,1,1),borderWidth:0});
-      }
-      var size=f.size||10;
-      if(f.maxWidth){while(size>6&&helv.widthOfTextAtSize(v,size)>f.maxWidth)size-=0.5;}
-      page.drawText(v,{x:f.x,y:f.y,size:size,font:helv,color:PDFLib.rgb(0,0,0)});
-    });
-    if(def.signature){
-      var optIn=true;
-      if(def.signature.checkboxId){var cb=document.getElementById(def.signature.checkboxId);optIn=cb?cb.checked:true;}
-      if(optIn){
-        var sigs=(typeof getSigs==='function')?getSigs():[];
-        if(sigs.length){
-          var sigBytes=_dataUrlToUint8(sigs[0].data);
-          if(sigBytes){
-            var img=sigs[0].data.indexOf('image/png')>=0?await pdfDoc.embedPng(sigBytes):await pdfDoc.embedJpg(sigBytes);
-            var p=pages[def.signature.page||0];
-            p.drawImage(img,{x:def.signature.x,y:def.signature.y,width:def.signature.w,height:def.signature.h});
-          }
-        }
-      }
-    }
-    var out=await pdfDoc.save();
-    _sfPreviewBytes=out;  // keep raw bytes so save-to-docs doesn't have to refetch the blob URL
+    // Live preview keeps fields editable so user can also tweak in the iframe
+    var out=await _renderStateFormBytes({flatten:false});
+    _sfPreviewBytes=out;
     var blob=new Blob([out],{type:'application/pdf'});
     if(_sfPreviewBlobUrl)URL.revokeObjectURL(_sfPreviewBlobUrl);
     _sfPreviewBlobUrl=URL.createObjectURL(blob);
@@ -7631,15 +7606,33 @@ async function renderSfPreview(){
   }
 }
 
+async function downloadStateFormPdf(){
+  try{
+    showToast('Generating final (flattened) PDF…',2000);
+    var bytes=await _renderStateFormBytes({flatten:true});
+    var def=STATE_FORM_OVERLAYS[activeFormType]||{};
+    var clientTag=(activeFormClientName||'client').replace(/[^a-z0-9]/gi,'_');
+    var fname=(def.title||activeFormType)+'_'+clientTag+'_'+today().replace(/\//g,'-')+'.pdf';
+    var blob=new Blob([bytes],{type:'application/pdf'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');a.href=url;a.download=fname;a.style.display='none';document.body.appendChild(a);a.click();
+    setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},2000);
+    showToast('✓ Downloaded '+fname,4000);
+  }catch(e){
+    console.error('[StateForm] download failed',e);
+    showAlert('Could not generate the PDF: '+(e.message||e));
+  }
+}
+
 async function saveStateFormToClientDocs(){
   if(!activeFormClientName){showAlert('Pick a client first.');return;}
-  if(!_sfPreviewBytes){showAlert('Wait for the preview to finish rendering, then try again.');return;}
   try{
-    showToast('Saving to client documents…',2000);
+    showToast('Generating final (flattened) PDF…',2000);
+    // Re-render with flatten=true so the saved copy is non-editable
+    var flatBytes=await _renderStateFormBytes({flatten:true});
     var def=STATE_FORM_OVERLAYS[activeFormType]||{};
     var fname=(def.title||activeFormType)+'_'+today().replace(/\//g,'-')+'.pdf';
-    // Build blob directly from the in-memory bytes (avoids CSP-blocked blob: fetch)
-    var blob=new Blob([_sfPreviewBytes],{type:'application/pdf'});
+    var blob=new Blob([flatBytes],{type:'application/pdf'});
     var profiles=getProfiles();
     var prof=profiles[activeFormClientName]||{};
     var clientId=prof._dbId||prof.id;
