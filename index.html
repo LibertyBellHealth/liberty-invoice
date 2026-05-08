@@ -6509,6 +6509,9 @@ function loadProfilesAPI() {
             street: c.street || '', city: c.city || '', state: c.state || '',
             zip: c.zip || '', county: c.county || '',
             phone: c.phone || '', clientEmail: c.client_email || '', caregiverId: c.caregiver_id || '',
+            // Newly persisted fields
+            dob: c.dob || '', driversLicense: c.drivers_license || '', ssn: c.ssn || '',
+            startDate: c.start_date || '', liveIn: !!c.live_in,
             clientStatus: c.client_status || 'active', hasComplex: !!c.has_complex,
             clientNotes: c.client_notes || '', auditLog: [], _dbId: c.id, invoices: r3.invoices,
           });
@@ -6544,6 +6547,9 @@ function saveProfileSP(name, data) {
     zip: data.zip || '', county: data.county || '',
     phone: data.phone || '', client_email: data.clientEmail || '', caregiver_id: data.caregiverId || '',
     client_status: data.clientStatus || 'active', has_complex: data.hasComplex ? 1 : 0,
+    // Newly persisted fields
+    dob: data.dob || '', drivers_license: data.driversLicense || '', ssn: data.ssn || '',
+    start_date: data.startDate || '', live_in: data.liveIn ? 1 : 0,
     client_notes: data.clientNotes || '', audit_json: JSON.stringify(data.auditLog || []),
   };
   fetch(API_BASE + '/homecare-clients', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(body) })
@@ -6622,8 +6628,15 @@ function loadCaregiversAPI() {
           name: cg.name, firstName: cg.first_name || '', lastName: cg.last_name || '',
           middleName: cg.middle_name || '', nickname: cg.nickname || '',
           status: cg.status, phone: cg.phone, email: cg.email,
-          hireDate: cg.start_date || '', emptype: cg.role || '', payRate: '',
-          notes: cg.notes || '',
+          hireDate: cg.hire_date || cg.start_date || '',
+          emptype: cg.emptype || cg.role || '',
+          payRate: cg.pay_rate || '', maxHours: cg.max_hours || '',
+          certs: cg.certifications || '',
+          ecName: cg.ec_name || '', ecPhone: cg.ec_phone || '',
+          street: cg.street || '', city: cg.city || '',
+          state: cg.state || '', zip: cg.zip || '', county: cg.county || '',
+          dob: cg.dob || '', driversLicense: cg.drivers_license || '', ssn: cg.ssn || '',
+          notes: cg.notes || ''
         };
       });
       if (Object.keys(obj).length) saveCaregiversLS(obj);
@@ -6634,10 +6647,22 @@ function saveCaregiverAPI(id, cg) {
   fetch(API_BASE + '/caregivers', {
     method: 'POST', headers: apiHeaders(),
     body: JSON.stringify({
-      id: id, name: cg.name || '', first_name: cg.firstName || '',
-      last_name: cg.lastName || '', middle_name: cg.middleName || '', nickname: cg.nickname || '',
-      role: cg.emptype || '', phone: cg.phone || '',
-      email: cg.email || '', start_date: cg.hireDate || '', status: cg.status || 'active', notes: cg.notes || '',
+      id: id, name: cg.name || '',
+      first_name: cg.firstName || '', last_name: cg.lastName || '',
+      middle_name: cg.middleName || '', nickname: cg.nickname || '',
+      role: cg.emptype || '', emptype: cg.emptype || '',
+      phone: cg.phone || '', email: cg.email || '',
+      start_date: cg.hireDate || '', hire_date: cg.hireDate || '',
+      status: cg.status || 'active', notes: cg.notes || '',
+      // Address
+      street: cg.street || cg.address || '', city: cg.city || '',
+      state: cg.state || '', zip: cg.zip || '', county: cg.county || '',
+      // Employment
+      pay_rate: cg.payRate || '', max_hours: cg.maxHours || '',
+      certifications: cg.certs || cg.certifications || '',
+      ec_name: cg.ecName || '', ec_phone: cg.ecPhone || '',
+      // Identity (sensitive — these fields are masked in exports too)
+      dob: cg.dob || '', drivers_license: cg.driversLicense || '', ssn: cg.ssn || ''
     }),
   }).catch(function (e) { console.error('Save caregiver error:', e); });
 }
@@ -6675,6 +6700,7 @@ function saveTaskAPI(todo) {
     body: JSON.stringify({
       id: todo.dbId || undefined, text: todo.text, done: todo.done ? 1 : 0,
       due: todo.due || null, client: todo.client || '', priority: todo.priority || 'normal', source: 'homecare',
+      parent_id: todo.parentId || null, note: todo.note || null,
     }),
   }).then(function (r) { return r.json(); })
     .then(function (result) { if (!todo.dbId && result.id) { todo.dbId = result.id; } })
