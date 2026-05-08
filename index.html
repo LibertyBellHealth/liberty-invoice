@@ -7534,13 +7534,15 @@ async function renderSfPreview(){
       var matchedCount=0,unmatchedNames=[];
       acroFields.forEach(function(field){
         var fname=field.getName();
-        var typeName=field.constructor.name;
         try{
-          if(typeName==='PDFTextField'){
+          // Duck-type: text fields have setText, dropdowns/radios have select, checkboxes have check.
+          // (constructor.name is unreliable because pdf-lib is minified in the browser bundle.)
+          if(typeof field.setText==='function'){
             var v=_matchAcroFormField(fname,dict,activeFormType);
             if(v){field.setText(String(v));matchedCount++;}
             else{unmatchedNames.push(fname);}
-          } else if(typeName==='PDFDropdown'){
+          } else if(typeof field.select==='function'&&typeof field.check!=='function'){
+            // PDFDropdown (not radio group, which also has select but adds check on individual options)
             var v2=_matchAcroFormField(fname,dict,activeFormType);
             if(v2){try{field.select(String(v2));}catch(e){}}
           }
