@@ -7433,7 +7433,8 @@ var STATE_FORM_OVERLAYS={
       {inputId:'dhs4771_st',      page:0, x:480, y:230, size:10, maxWidth:30},
       {inputId:'dhs4771_zip',     page:0, x:520, y:230, size:10, maxWidth:60}
     ],
-    signature:{page:0, x:60, y:255, w:160, h:30}
+    // No auto-signature: client/beneficiary signs DHS-4771, not the agency
+    signature:null
   },
   // ── DHS-390: Adult Services Application ──────────────────
   // Field positions are an initial pass; calibrate with user.
@@ -7463,7 +7464,8 @@ var STATE_FORM_OVERLAYS={
       // Signature line at bottom
       {inputId:'dhs390_sigdate',  page:1, x:430, y:160, size:10, maxWidth:120}
     ],
-    signature:{page:1, x:60, y:140, w:200, h:30}
+    // No auto-signature: applicant/client signs DHS-390
+    signature:null
   },
   // ── MDHHS-6200: Adult Services Medical Needs Certification ─
   mdhhs6200:{
@@ -7486,7 +7488,8 @@ var STATE_FORM_OVERLAYS={
       {inputId:'m62_sigpname',    page:1, x:60,  y:200, size:10, maxWidth:200},
       {inputId:'m62_sigdate',     page:1, x:300, y:200, size:10, maxWidth:120}
     ],
-    signature:{page:1, x:60, y:160, w:200, h:30}
+    // No auto-signature: medical provider signs MDHHS-6200
+    signature:null
   },
   // ── MSA-4676: Home Help Services Agreement ────────────────
   msa4676:{
@@ -7506,7 +7509,8 @@ var STATE_FORM_OVERLAYS={
       {inputId:'msa_county',      page:0, x:240, y:530, size:10, maxWidth:140},
       {inputId:'msa_date',        page:0, x:430, y:160, size:10, maxWidth:120}
     ],
-    signature:{page:0, x:60, y:140, w:200, h:30}
+    // No auto-signature: beneficiary + caregiver sign MSA-4676
+    signature:null
   },
   // ── BPHASA-2421: Live-In Caregiver Attestation ────────────
   bphasa2421:{
@@ -7541,7 +7545,8 @@ var STATE_FORM_OVERLAYS={
       // Section 3 — caregiver signature/date
       {inputId:'bp_sig_date',        page:1, x:300, y:340, size:10, maxWidth:120}
     ],
-    signature:{page:1, x:60, y:325, w:200, h:30}
+    // No auto-signature: caregiver signs BPHASA-2421, then MDHHS countersigns
+    signature:null
   }
 };
 
