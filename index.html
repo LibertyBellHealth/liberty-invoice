@@ -7347,25 +7347,31 @@ function _buildFormDataDict(){
 // caused by the PDF's custom font encoding).
 var STATE_FORM_FIELD_MAPS={
   msa4676:{
-    'Beneficiary Name':'client_name',
-    '0HGLFDLG1XPEHU':'medicaid_id',                                                 // Medicaid Number
-    'HQHILFLDUGGUHVVQXPEHU DSDUWPHQWORWQXPEHU':'client_address',                    // Beneficiary Address
-    'DWHRILUWK':'client_dob',                                                       // Date of Birth
-    'LW':'client_city',                                                             // City
-    '6WDWH':'client_state',                                                         // State
-    '3RGH':'client_zip',                                                            // Zip Code
-    'GXOW6HUYLFHVRUNHU':'worker_name',                                              // Adult Services Worker
-    'GXOW6HUYLFHVRUNHU 3KRQH1XPEHU':'worker_phone',                                 // ASW Phone Number
-    'RFDO062IILFH':'agency_office_csz',                                             // Local MDHHS Office
-    'DVHRJ1XPEHU ÐÐÐÐÐ':'log_number',                                              // Case Log Number
-    'QGLYLGXDODUHJLYHURUJHQF3URYLGHU1DPH':'caregiver_full_name',                    // Caregiver / Provider Name
-    '3URYLGHU1XPEHU':'caregiver_champs_id',                                         // Provider Number
-    'GGUHVVQXPEHUDQGVWUHHWDSDUWPHQWORWQXPEHU':'caregiver_address',                  // Caregiver Address
-    'LW_2':'caregiver_city',
-    '6WDWH_2':'caregiver_state',
-    '3RGH_2':'caregiver_zip',
-    'Phone #':'caregiver_phone',
-    'Medicaid #':'medicaid_id'
+    // Caseworker / MDHHS office block (top of form)
+    'Caseworker Name':'worker_name',
+    'Caseworker County':'client_county',
+    'GXOW6HUYLFHVRUNHU 3KRQH1XPEHU':'worker_phone',  // garbled one user didn't rename
+    // Client / Beneficiary block
+    'Client Name':'client_name',
+    'Medicaid #':'medicaid_id',
+    'Client Street':'client_address',
+    'Client Date of Birth':'client_dob',
+    'Client City':'client_city',
+    'Client State':'client_state',
+    'Client Zip Code':'client_zip',
+    'Client Phone # with area code':'client_phone',
+    // Caregiver / Agency Provider block
+    'Agnecy Provider Name':'caregiver_full_name',  // user's typo: "Agnecy"
+    'Agency Provider Name':'caregiver_full_name',  // also accept correct spelling
+    'Provider ID #':'caregiver_champs_id',
+    'Agency Street':'caregiver_address',
+    'Agency City':'caregiver_city',
+    'Agency State':'caregiver_state',
+    'Agency Zip':'caregiver_zip',
+    'Phone #':'caregiver_phone',  // generic — in agency section, maps to caregiver phone
+    // Manual-fill fields (admin types in)
+    'RelationShip':'',  // not auto-filled; admin types if applicable
+    'Start Date':''     // not auto-filled
   }
 };
 // Match Adobe's auto-detected field names (which use the form's printed labels)
