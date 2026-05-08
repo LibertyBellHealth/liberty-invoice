@@ -7356,6 +7356,16 @@ var STATE_FORM_INPUT_MAPS={
     bp_sig_date:'signature_date'
   }
 };
+// Convert YYYY-MM-DD (HTML date-input format) → MM/DD/YYYY (state-form format)
+function _normalizeDate(v){
+  if(!v)return '';
+  var m=String(v).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(m)return m[2]+'/'+m[3]+'/'+m[1];
+  return v;
+}
+// Set of dict keys that hold dates and should be normalized to MM/DD/YYYY
+var _DATE_DICT_KEYS={client_dob:1,caregiver_dob:1,signature_date:1,today_date:1,last_seen:1,resolved_date:1,start_date:1};
+
 // Build the data dictionary the renderer fills AcroForm fields from.
 // CRM data is the default; any non-empty value typed into the left-pane form
 // overrides it (so live edits flow into the PDF preview).
@@ -7375,27 +7385,33 @@ function _buildFormDataDict(){
   var dict={
     // Client
     client_name:fullName, client_first_name:firstN, client_last_name:lastN,
-    client_dob:prof.dob||'', medicaid_id:prof.medicaidId||'', case_number:'', recipient_id:prof.medicaidId||'',
+    client_dob:_normalizeDate(prof.dob||''), medicaid_id:prof.medicaidId||'', case_number:'', recipient_id:prof.medicaidId||'',
     client_address:prof.street||prof.address||'', client_city:prof.city||'', client_state:prof.state||'MI', client_zip:prof.zip||'',
     client_phone:prof.phone||'', client_email:prof.cemail||'', client_county:prof.county||'',
     // Caseworker
     worker_name:cw.name||prof.worker||'', worker_phone:cw.phone||'', worker_email:cw.email||'', worker_fax:'',
     // Caregiver
     caregiver_first_name:cgFirst, caregiver_last_name:cgLast, caregiver_full_name:cgFull,
-    caregiver_dob:assignedCg.dob||'', caregiver_address:assignedCg.street||assignedCg.address||'',
+    caregiver_dob:_normalizeDate(assignedCg.dob||''), caregiver_address:assignedCg.street||assignedCg.address||'',
     caregiver_city:assignedCg.city||'', caregiver_state:assignedCg.state||'MI', caregiver_zip:assignedCg.zip||'',
     caregiver_phone:assignedCg.phone||'', caregiver_email:assignedCg.email||'', caregiver_champs_id:'',
     // Common
     today_date:td, signature_date:td, log_number:''
   };
-  // Overlay any non-empty values from the left-pane inputs (live edits)
+  // Overlay any non-empty values from the left-pane inputs (live edits).
+  // Date inputs return YYYY-MM-DD natively — normalize to MM/DD/YYYY before storing.
   var inputMap=STATE_FORM_INPUT_MAPS[activeFormType]||{};
   Object.keys(inputMap).forEach(function(inputId){
     var el=document.getElementById(inputId);
     if(!el)return;
-    var v=el.type==='checkbox'?(el.checked?'X':''):((el.value||'').trim());
+    var v;
+    if(el.type==='checkbox')v=el.checked?'X':'';
+    else if(el.type==='date')v=_normalizeDate(el.value);
+    else v=(el.value||'').trim();
     if(v)dict[inputMap[inputId]]=v;
   });
+  // Final pass: normalize any date-key in the dict that's still YYYY-MM-DD (defensive)
+  Object.keys(_DATE_DICT_KEYS).forEach(function(k){if(dict[k])dict[k]=_normalizeDate(dict[k]);});
   return dict;
 }
 // Per-form override maps — exact field-name → data-key. Used when the
