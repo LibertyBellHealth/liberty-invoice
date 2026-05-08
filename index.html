@@ -7346,6 +7346,29 @@ function _buildFormDataDict(){
 // fuzzy matcher can't read the field name (e.g. MSA-4676's garbled names
 // caused by the PDF's custom font encoding).
 var STATE_FORM_FIELD_MAPS={
+  // ── BPHASA-2421 ───────────────────────────────────────────
+  // Adobe used "Row1" suffix on Section 1 (Caregiver) fields and
+  // "_2" on Section 2 (Beneficiary) fields. Disambiguating explicitly.
+  bphasa2421:{
+    // Section 1: CAREGIVER (top of form, y≈633-538)
+    'First NameRow1':'caregiver_first_name',
+    'Last NameRow1':'caregiver_last_name',
+    'Street AddressRow1':'caregiver_address',
+    'CityRow1':'caregiver_city',
+    'StateRow1':'caregiver_state',
+    'Zip CodeRow1':'caregiver_zip',
+    'Email AddressRow1':'caregiver_email',
+    'Phone NumberRow1':'caregiver_phone',
+    'CHAMPS Provider ID NumberRow1':'caregiver_champs_id',
+    // Section 2: BENEFICIARY / CLIENT (lower, y≈468-420)
+    'First NameRow1_2':'client_first_name',
+    'Last NameRow1_2':'client_last_name',
+    'Medicaid ID NumberRow1':'medicaid_id',
+    'Street AddressRow1_2':'client_address',
+    'CityRow1_2':'client_city',
+    'StateRow1_2':'client_state',
+    'Zip CodeRow1_2':'client_zip'
+  },
   msa4676:{
     // Caseworker / MDHHS office block (top of form)
     'Caseworker Name':'worker_name',
