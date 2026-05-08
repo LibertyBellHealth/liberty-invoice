@@ -6610,8 +6610,12 @@ function deleteInvoiceAPI(dbId, clientName, billingPeriod) {
 function loadCaregiversAPI() {
   syncStart();
   fetch(API_BASE + '/caregivers', { headers: apiHeaders() })
-    .then(function (r) { return r.json(); })
+    .then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
     .then(function (cgs) {
+      if (!Array.isArray(cgs)) { console.warn('Caregivers API returned non-array:', cgs); syncEnd(); return; }
       var obj = {};
       cgs.forEach(function (cg) {
         obj[cg.id] = {
@@ -7459,36 +7463,46 @@ function _matchAcroFormField(fieldName,dict,formType){
   // direct exact match by our convention
   var exactKey=fieldName.toLowerCase().replace(/[^a-z0-9_]/g,'');
   if(dict.hasOwnProperty(exactKey))return dict[exactKey];
-  // fuzzy match by keywords
+  // Fuzzy match by keywords. ORDER MATTERS — more specific rules come first
+  // so "Email Address" doesn't get caught by the generic /address/ rule.
   var rules=[
+    // Email FIRST (before address) so "Email Address" doesn't trip the address rule
+    [/email/, 'client_email'],
+    // Phone variants
+    [/(phone number|telephone|^phone$|phone\s*#|cell)/, 'client_phone'],
+    [/tty/, 'client_tty'],
+    // ID-like
     [/case name/, 'client_name'],
     [/log number/, 'log_number'],
     [/recipient id/, 'recipient_id'],
-    [/medicaid.*id/, 'medicaid_id'],
+    [/medicaid/, 'medicaid_id'],
+    [/(date of birth|dob|birth date)/, 'client_dob'],
+    // Names
     [/patient.*name/, 'client_name'],
     [/full name/, 'client_name'],
     [/client.*name/, 'client_name'],
     [/beneficiary.*name/, 'client_name'],
-    [/(date of birth|dob|birth date)/, 'client_dob'],
-    [/(street|address)(?!.*city)/, 'client_address'],
-    [/^city$/, 'client_city'],
-    [/^state$/, 'client_state'],
-    [/(zip|postal)/, 'client_zip'],
-    [/(phone number|telephone)/, 'client_phone'],
-    [/email/, 'client_email'],
-    [/county/, 'client_county'],
-    [/tty/, 'client_tty'],
+    // Caregiver / provider fields BEFORE generic address (so "Caregiver Address" doesn't grab client)
+    [/(caregiver|provider).*first/, 'caregiver_first_name'],
+    [/(caregiver|provider).*last/, 'caregiver_last_name'],
+    [/champs/, 'caregiver_champs_id'],
+    // Worker
     [/worker name/, 'worker_name'],
     [/worker phone/, 'worker_phone'],
     [/worker email/, 'worker_email'],
     [/(return fax|fax number|fax$)/, 'worker_fax'],
-    [/champs/, 'caregiver_champs_id'],
-    [/(caregiver|provider).*first/, 'caregiver_first_name'],
-    [/(caregiver|provider).*last/, 'caregiver_last_name'],
+    // Address (after email/name catches)
+    [/(street|^address)/, 'client_address'],
+    [/^city$/, 'client_city'],
+    [/^state$/, 'client_state'],
+    [/(zip|postal)/, 'client_zip'],
+    [/county/, 'client_county'],
+    // Caregiver name (broad — last because it catches anything with "caregiver/provider")
     [/(caregiver|provider).*name/, 'caregiver_full_name'],
-    [/^date$/, 'today_date'],
-    [/today/, 'today_date'],
+    // Generic dates
     [/sig.*date|date.*sig/, 'signature_date'],
+    [/^date$/, 'today_date'],
+    [/today/, 'today_date']
   ];
   for(var i=0;i<rules.length;i++){
     if(rules[i][0].test(n)){var k=rules[i][1];if(dict[k])return dict[k];}
