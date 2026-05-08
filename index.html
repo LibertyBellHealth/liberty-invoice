@@ -7529,13 +7529,17 @@ async function renderSfPreview(){
     if(acroFields.length>0){
       usedAcroForm=true;
       var dict=_buildFormDataDict();
+      console.log('[StateForm] activeFormType:',activeFormType,'client:',activeFormClientName,'fields:',acroFields.length);
+      console.log('[StateForm] dict:',dict);
+      var matchedCount=0,unmatchedNames=[];
       acroFields.forEach(function(field){
         var fname=field.getName();
         var typeName=field.constructor.name;
         try{
           if(typeName==='PDFTextField'){
             var v=_matchAcroFormField(fname,dict,activeFormType);
-            if(v)field.setText(String(v));
+            if(v){field.setText(String(v));matchedCount++;}
+            else{unmatchedNames.push(fname);}
           } else if(typeName==='PDFDropdown'){
             var v2=_matchAcroFormField(fname,dict,activeFormType);
             if(v2){try{field.select(String(v2));}catch(e){}}
@@ -7543,6 +7547,7 @@ async function renderSfPreview(){
           // PDFCheckBox / PDFRadioGroup left untouched — user ticks visually
         }catch(e){console.warn('[StateForm] field "'+fname+'" set failed:',e.message);}
       });
+      console.log('[StateForm] matched',matchedCount,'fields. Unmatched:',unmatchedNames);
     }
     // ── Coordinate fallback: only for FLAT PDFs (no AcroForm). If this PDF has
     //   form fields, skip coord stamping to avoid duplicate text overlap. ──
