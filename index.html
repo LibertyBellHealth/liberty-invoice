@@ -7550,14 +7550,22 @@ async function renderSfPreview(){
         }catch(e){console.warn('[StateForm] field "'+fname+'" set failed:',e.message);}
       });
       console.log('[StateForm] matched',matchedCount,'fields. Unmatched:',unmatchedNames);
-      // CRITICAL: pdf-lib only stores the field VALUES until you regenerate the visual
-      // "appearance streams". Without this, browser PDF viewers show the form blank
-      // even though the data is in the file. Setting NeedAppearances tells the viewer
-      // to render values from current field values.
+      // Force BLACK text on every text field (Adobe sometimes defaults to blue, which
+      // looks unprofessional on state submissions). Then regenerate appearance streams
+      // so browser PDF viewers actually render the values.
+      acroFields.forEach(function(field){
+        if(typeof field.setText==='function'){
+          try{field.defaultUpdateAppearances=undefined;}catch(e){}
+          // Set the field's default appearance to black, size 10, Helvetica
+          try{
+            var da='0 0 0 rg /Helv 10 Tf';
+            field.acroField.dict.set(PDFLib.PDFName.of('DA'),PDFLib.PDFString.of(da));
+          }catch(e){}
+        }
+      });
       try{
         acroForm.updateFieldAppearances(helv);
       }catch(e){
-        // Some PDFs choke on full appearance update — fall back to flagging NeedAppearances
         try{acroForm.acroForm.dict.set(PDFLib.PDFName.of('NeedAppearances'),PDFLib.PDFBool.True);}catch(e2){}
         console.warn('[StateForm] updateFieldAppearances failed; using NeedAppearances flag:',e.message);
       }
