@@ -7550,6 +7550,17 @@ async function renderSfPreview(){
         }catch(e){console.warn('[StateForm] field "'+fname+'" set failed:',e.message);}
       });
       console.log('[StateForm] matched',matchedCount,'fields. Unmatched:',unmatchedNames);
+      // CRITICAL: pdf-lib only stores the field VALUES until you regenerate the visual
+      // "appearance streams". Without this, browser PDF viewers show the form blank
+      // even though the data is in the file. Setting NeedAppearances tells the viewer
+      // to render values from current field values.
+      try{
+        acroForm.updateFieldAppearances(helv);
+      }catch(e){
+        // Some PDFs choke on full appearance update — fall back to flagging NeedAppearances
+        try{acroForm.acroForm.dict.set(PDFLib.PDFName.of('NeedAppearances'),PDFLib.PDFBool.True);}catch(e2){}
+        console.warn('[StateForm] updateFieldAppearances failed; using NeedAppearances flag:',e.message);
+      }
     }
     // ── Coordinate fallback: only for FLAT PDFs (no AcroForm). If this PDF has
     //   form fields, skip coord stamping to avoid duplicate text overlap. ──
