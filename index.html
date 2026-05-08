@@ -7310,8 +7310,51 @@ function scheduleSfPreview(delay){
   if(s){s.classList.remove('idle');}if(t)t.textContent='Updating preview…';
   _sfPreviewTimer=setTimeout(renderSfPreview,ms);
 }
+// Each state form's left-pane input IDs → dict keys. Lets us read live-edited
+// values from the form on the left and flow them into the PDF preview/save.
+var STATE_FORM_INPUT_MAPS={
+  dhs390:{
+    dhs390_cname:'client_name', dhs390_county:'client_county', dhs390_date:'today_date',
+    dhs390_wname:'worker_name', dhs390_wphone:'worker_phone',
+    dhs390_fname:'client_name', dhs390_dob:'client_dob', dhs390_mid:'medicaid_id',
+    dhs390_addr:'client_address', dhs390_city:'client_city', dhs390_st:'client_state', dhs390_zip:'client_zip',
+    dhs390_phone:'client_phone', dhs390_tty:'client_tty', dhs390_email:'client_email',
+    dhs390_sigdate:'signature_date'
+  },
+  dhs4771:{
+    dhs4771_off1:'agency_office_addr1', dhs4771_off2:'agency_office_addr2', dhs4771_offcity:'agency_office_csz',
+    dhs4771_cn:'client_name', dhs4771_case:'case_number', dhs4771_cid:'medicaid_id', dhs4771_county:'client_county',
+    dhs4771_asw:'worker_name', dhs4771_aswph:'worker_phone',
+    dhs4771_pname:'client_name', dhs4771_date:'today_date',
+    dhs4771_addr:'client_address', dhs4771_city:'client_city', dhs4771_st:'client_state', dhs4771_zip:'client_zip'
+  },
+  mdhhs6200:{
+    m62_pname:'client_name', m62_dob:'client_dob',
+    m62_cname:'client_name', m62_log:'log_number', m62_rid:'medicaid_id',
+    m62_wname:'worker_name', m62_wemail:'worker_email', m62_wphone:'worker_phone',
+    m62_county:'client_county', m62_fax:'worker_fax',
+    m62_lastseen:'last_seen', m62_diag:'diagnosis', m62_equdet:'equipment_details', m62_resolved:'resolved_date',
+    m62_sigpname:'provider_name', m62_sigdate:'signature_date'
+  },
+  msa4676:{
+    msa_cname:'client_name', msa_mid:'medicaid_id',
+    msa_addr:'client_address', msa_city:'client_city', msa_st:'client_state', msa_zip:'client_zip',
+    msa_phone:'client_phone', msa_county:'client_county',
+    msa_cgname:'caregiver_full_name', msa_cgphone:'caregiver_phone',
+    msa_start:'start_date', msa_date:'today_date'
+  },
+  bphasa2421:{
+    bp_cg_first:'caregiver_first_name', bp_cg_last:'caregiver_last_name',
+    bp_cg_addr:'caregiver_address', bp_cg_city:'caregiver_city', bp_cg_st:'caregiver_state', bp_cg_zip:'caregiver_zip',
+    bp_cg_email:'caregiver_email', bp_cg_phone:'caregiver_phone', bp_cg_champs:'caregiver_champs_id',
+    bp_b_first:'client_first_name', bp_b_last:'client_last_name', bp_b_mid:'medicaid_id',
+    bp_b_addr:'client_address', bp_b_city:'client_city', bp_b_st:'client_state', bp_b_zip:'client_zip',
+    bp_sig_date:'signature_date'
+  }
+};
 // Build the data dictionary the renderer fills AcroForm fields from.
-// Handles all fuzzy variations of field names Adobe auto-detects (e.g. "9 Date of Birth MMDDYYYY").
+// CRM data is the default; any non-empty value typed into the left-pane form
+// overrides it (so live edits flow into the PDF preview).
 function _buildFormDataDict(){
   var prof=activeFormClientName?(getProfiles()[activeFormClientName]||{}):{};
   var cw=getCaseworkers().find(function(c){return (c.name||'').toLowerCase()===(prof.worker||'').toLowerCase();})||{};
@@ -7325,7 +7368,7 @@ function _buildFormDataDict(){
   var cgParts=cgFull.split(' ');
   var cgFirst=assignedCg.firstName||cgParts[0]||'';
   var cgLast=assignedCg.lastName||cgParts.slice(1).join(' ')||'';
-  return {
+  var dict={
     // Client
     client_name:fullName, client_first_name:firstN, client_last_name:lastN,
     client_dob:prof.dob||'', medicaid_id:prof.medicaidId||'', case_number:'', recipient_id:prof.medicaidId||'',
@@ -7339,8 +7382,17 @@ function _buildFormDataDict(){
     caregiver_city:assignedCg.city||'', caregiver_state:assignedCg.state||'MI', caregiver_zip:assignedCg.zip||'',
     caregiver_phone:assignedCg.phone||'', caregiver_email:assignedCg.email||'', caregiver_champs_id:'',
     // Common
-    today_date:td, signature_date:td, log_number:'',
+    today_date:td, signature_date:td, log_number:''
   };
+  // Overlay any non-empty values from the left-pane inputs (live edits)
+  var inputMap=STATE_FORM_INPUT_MAPS[activeFormType]||{};
+  Object.keys(inputMap).forEach(function(inputId){
+    var el=document.getElementById(inputId);
+    if(!el)return;
+    var v=el.type==='checkbox'?(el.checked?'X':''):((el.value||'').trim());
+    if(v)dict[inputMap[inputId]]=v;
+  });
+  return dict;
 }
 // Per-form override maps — exact field-name → data-key. Used when the
 // fuzzy matcher can't read the field name (e.g. MSA-4676's garbled names
