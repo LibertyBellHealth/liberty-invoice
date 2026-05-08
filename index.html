@@ -7342,9 +7342,38 @@ function _buildFormDataDict(){
     today_date:td, signature_date:td, log_number:'',
   };
 }
+// Per-form override maps — exact field-name → data-key. Used when the
+// fuzzy matcher can't read the field name (e.g. MSA-4676's garbled names
+// caused by the PDF's custom font encoding).
+var STATE_FORM_FIELD_MAPS={
+  msa4676:{
+    'Beneficiary Name':'client_name',
+    '0HGLFDLG1XPEHU':'medicaid_id',                                                 // Medicaid Number
+    'HQHILFLDUGGUHVVQXPEHU DSDUWPHQWORWQXPEHU':'client_address',                    // Beneficiary Address
+    'DWHRILUWK':'client_dob',                                                       // Date of Birth
+    'LW':'client_city',                                                             // City
+    '6WDWH':'client_state',                                                         // State
+    '3RGH':'client_zip',                                                            // Zip Code
+    'GXOW6HUYLFHVRUNHU':'worker_name',                                              // Adult Services Worker
+    'GXOW6HUYLFHVRUNHU 3KRQH1XPEHU':'worker_phone',                                 // ASW Phone Number
+    'RFDO062IILFH':'agency_office_csz',                                             // Local MDHHS Office
+    'DVHRJ1XPEHU ÐÐÐÐÐ':'log_number',                                              // Case Log Number
+    'QGLYLGXDODUHJLYHURUJHQF3URYLGHU1DPH':'caregiver_full_name',                    // Caregiver / Provider Name
+    '3URYLGHU1XPEHU':'caregiver_champs_id',                                         // Provider Number
+    'GGUHVVQXPEHUDQGVWUHHWDSDUWPHQWORWQXPEHU':'caregiver_address',                  // Caregiver Address
+    'LW_2':'caregiver_city',
+    '6WDWH_2':'caregiver_state',
+    '3RGH_2':'caregiver_zip',
+    'Phone #':'caregiver_phone',
+    'Medicaid #':'medicaid_id'
+  }
+};
 // Match Adobe's auto-detected field names (which use the form's printed labels)
 // to a key in our data dict. Returns the matching value, or '' if no match.
-function _matchAcroFormField(fieldName,dict){
+function _matchAcroFormField(fieldName,dict,formType){
+  // 1. Per-form explicit map wins
+  var explicit=(STATE_FORM_FIELD_MAPS[formType]||{})[fieldName];
+  if(explicit&&dict[explicit])return dict[explicit];
   var n=(fieldName||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
   // direct exact match by our convention
   var exactKey=fieldName.toLowerCase().replace(/[^a-z0-9_]/g,'');
@@ -7410,10 +7439,10 @@ async function renderSfPreview(){
         var typeName=field.constructor.name;
         try{
           if(typeName==='PDFTextField'){
-            var v=_matchAcroFormField(fname,dict);
+            var v=_matchAcroFormField(fname,dict,activeFormType);
             if(v)field.setText(String(v));
           } else if(typeName==='PDFDropdown'){
-            var v2=_matchAcroFormField(fname,dict);
+            var v2=_matchAcroFormField(fname,dict,activeFormType);
             if(v2){try{field.select(String(v2));}catch(e){}}
           }
           // PDFCheckBox / PDFRadioGroup left untouched — user ticks visually
