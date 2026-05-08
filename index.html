@@ -7267,8 +7267,7 @@ function openStateForm(type){
   document.getElementById('formFillContent').innerHTML=
     '<div class="sf-split">'+
       '<div class="sf-form">'+
-        '<h2 class="sf-h">'+esc(titles[type]||type)+'</h2>'+
-        '<div class="sf-sub">'+(activeFormClientName?'Pre-filling from <b>'+esc(activeFormClientName)+'</b> · edit any field below — preview updates live.':'<span style="color:#a05a00;">⚠ No client selected. Use the Forms page to pick one before opening a form.</span>')+'</div>'+
+        '<div class="sf-sub" style="margin-bottom:14px;">'+(activeFormClientName?'Pre-filling from <b>'+esc(activeFormClientName)+'</b> · edit any field below — preview updates live.':'<span style="color:#a05a00;">⚠ No client selected. Use the Forms page to pick one before opening a form.</span>')+'</div>'+
         formHtml+
       '</div>'+
       '<div class="sf-preview">'+
@@ -7295,7 +7294,7 @@ function openStateForm(type){
 }
 
 // Re-render the PDF in the iframe whenever an input changes (debounced)
-var _sfPreviewTimer=null,_sfPreviewBlobUrl=null;
+var _sfPreviewTimer=null,_sfPreviewBlobUrl=null,_sfPreviewBytes=null;
 function hookStateFormLivePreview(){
   var formEl=document.querySelector('.sf-form');
   if(!formEl)return;
@@ -7348,6 +7347,7 @@ async function renderSfPreview(){
       }
     }
     var out=await pdfDoc.save();
+    _sfPreviewBytes=out;  // keep raw bytes so save-to-docs doesn't have to refetch the blob URL
     var blob=new Blob([out],{type:'application/pdf'});
     if(_sfPreviewBlobUrl)URL.revokeObjectURL(_sfPreviewBlobUrl);
     _sfPreviewBlobUrl=URL.createObjectURL(blob);
@@ -7363,21 +7363,19 @@ async function renderSfPreview(){
 
 async function saveStateFormToClientDocs(){
   if(!activeFormClientName){showAlert('Pick a client first.');return;}
-  if(!_sfPreviewBlobUrl){showAlert('Wait for the preview to render, then try again.');return;}
+  if(!_sfPreviewBytes){showAlert('Wait for the preview to finish rendering, then try again.');return;}
   try{
     showToast('Saving to client documents…',2000);
-    // Get the bytes from the current preview blob
-    var resp=await fetch(_sfPreviewBlobUrl);
-    var blob=await resp.blob();
-    var fd=new FormData();
     var def=STATE_FORM_OVERLAYS[activeFormType]||{};
     var fname=(def.title||activeFormType)+'_'+today().replace(/\//g,'-')+'.pdf';
-    fd.append('clientType','homecare');
-    // We need the client's DB ID — the documents endpoint expects a numeric clientId.
+    // Build blob directly from the in-memory bytes (avoids CSP-blocked blob: fetch)
+    var blob=new Blob([_sfPreviewBytes],{type:'application/pdf'});
     var profiles=getProfiles();
     var prof=profiles[activeFormClientName]||{};
     var clientId=prof._dbId||prof.id;
-    if(!clientId){showAlert('Cannot save — client has not been synced to the database yet. Save the client profile first, then try again.');return;}
+    if(!clientId){showAlert('Cannot save — this client has not been synced to the database yet. Open the client, click Save, and try again.');return;}
+    var fd=new FormData();
+    fd.append('clientType','homecare');
     fd.append('clientId',String(clientId));
     fd.append('file',blob,fname);
     var up=await fetch(API_BASE+'/documents',{method:'POST',headers:authUploadHeaders(),body:fd});
