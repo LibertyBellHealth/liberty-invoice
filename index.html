@@ -912,7 +912,13 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
           </div>
           <div class="ff-row">
             <div class="ff"><label>Date of Birth</label><input id="cg-dob" type="date"></div>
-            <div class="ff"></div>
+            <div class="ff"><label>Gender</label>
+              <select id="cg-gender">
+                <option value="">—</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+              </select>
+            </div>
           </div>
           <div class="ff-row">
             <div class="ff"><label>Phone</label><input id="cg-phone" placeholder="(555) 555-5555" maxlength="20"></div>
@@ -2230,6 +2236,14 @@ function renderInfoPane(){
   var dDob=document.createElement('div');dDob.className='info-field';
   dDob.innerHTML='<label>Date of Birth</label><input id="ei-dob" type="date" value="'+esc(prof.dob||'')+'" oninput="unsavedChanges=true;">';
   g.appendChild(dDob);
+  var dGender=document.createElement('div');dGender.className='info-field';
+  var gv=prof.gender||'';
+  dGender.innerHTML='<label>Gender</label><select id="ei-gender" onchange="unsavedChanges=true;">'+
+    '<option value=""'+(gv===''?' selected':'')+'>—</option>'+
+    '<option value="Male"'+(gv==='Male'?' selected':'')+'>Male</option>'+
+    '<option value="Female"'+(gv==='Female'?' selected':'')+'>Female</option>'+
+  '</select>';
+  g.appendChild(dGender);
   mkField('ei-rate','Hourly Rate',prof.hourlyRate||'',false);
   mkField('ei-dl',"Driver's License #",prof.driversLicense||'',false);
   // SSN masked by default with Show/Hide toggle
@@ -2307,6 +2321,7 @@ function saveClientInfo(){
   rec.firstName=first;rec.middleName=middle;rec.lastName=last;rec.nickname=nickname;
   rec.clientName=newName;rec.medicaidId=document.getElementById('ei-medicaid').value;
   var dobEl=document.getElementById('ei-dob');if(dobEl)rec.dob=dobEl.value||'';
+  var genderEl=document.getElementById('ei-gender');if(genderEl)rec.gender=genderEl.value||'';
   rec.hourlyRate=document.getElementById('ei-rate').value;
   var dlEl=document.getElementById('ei-dl');if(dlEl)rec.driversLicense=dlEl.value;
   var ssnEl=document.getElementById('ei-ssn');if(ssnEl)rec.ssn=ssnEl.value;
@@ -2807,7 +2822,7 @@ function showNewCaregiverForm(){
   document.getElementById('cgFormWrap').style.display='block';
   document.getElementById('cgFormTitle').textContent='New Caregiver';
   document.getElementById('cg-editing-id').value='';
-  ['cg-first','cg-middle','cg-last','cg-nickname','cg-phone','cg-email','cg-dl','cg-ssn','cg-street','cg-city','cg-state','cg-zip','cg-county','cg-dob','cg-hire','cg-pay','cg-hours','cg-certs','cg-ec-name','cg-ec-phone','cg-champs','cg-notes'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  ['cg-first','cg-middle','cg-last','cg-nickname','cg-phone','cg-email','cg-dl','cg-ssn','cg-street','cg-city','cg-state','cg-zip','cg-county','cg-dob','cg-gender','cg-hire','cg-pay','cg-hours','cg-certs','cg-ec-name','cg-ec-phone','cg-champs','cg-notes'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('cg-status').value='active';document.getElementById('cg-emptype').value='full-time';
   document.getElementById('cgDeleteBtn').style.display='none';
   var cgDocSec=document.getElementById('cgDocsSection');if(cgDocSec)cgDocSec.style.display='none';
@@ -2836,6 +2851,7 @@ function editCaregiver(id){
   document.getElementById('cg-county').value=cg.county||'';
   var cgDobEl=document.getElementById('cg-dob');if(cgDobEl)cgDobEl.value=cg.dob||cg.dateOfBirth||'';
   var cgChampsEl=document.getElementById('cg-champs');if(cgChampsEl)cgChampsEl.value=cg.champsId||cg.champs_id||'';
+  var cgGenderEl=document.getElementById('cg-gender');if(cgGenderEl)cgGenderEl.value=cg.gender||'';
   document.getElementById('cg-hire').value=cg.hireDate||'';document.getElementById('cg-pay').value=cg.payRate||'';
   document.getElementById('cg-hours').value=cg.maxHours||'';document.getElementById('cg-certs').value=cg.certs||'';
   document.getElementById('cg-ec-name').value=cg.ecName||'';document.getElementById('cg-ec-phone').value=cg.ecPhone||'';
@@ -2872,6 +2888,7 @@ function saveCaregiver(){
     certs:document.getElementById('cg-certs').value,ecName:document.getElementById('cg-ec-name').value,
     ecPhone:document.getElementById('cg-ec-phone').value,
     champsId:(document.getElementById('cg-champs')||{}).value||'',
+    gender:(document.getElementById('cg-gender')||{}).value||'',
     notes:document.getElementById('cg-notes').value};
   saveCaregiversLS(cgs);saveCaregiverAPI(id, cgs[id]);hideCgForm();updateStats();
   // Return to detail view if we were editing an existing caregiver
@@ -6522,7 +6539,8 @@ function loadProfilesAPI() {
             zip: c.zip || '', county: c.county || '',
             phone: c.phone || '', clientEmail: c.client_email || '', caregiverId: c.caregiver_id || '',
             // Newly persisted fields
-            dob: c.dob || '', driversLicense: c.drivers_license || '', ssn: c.ssn || '',
+            dob: c.dob || '', gender: c.gender || '',
+            driversLicense: c.drivers_license || '', ssn: c.ssn || '',
             startDate: c.start_date || '', liveIn: !!c.live_in,
             clientStatus: c.client_status || 'active', hasComplex: !!c.has_complex,
             clientNotes: c.client_notes || '', auditLog: [], _dbId: c.id, invoices: r3.invoices,
@@ -6560,7 +6578,8 @@ function saveProfileSP(name, data) {
     phone: data.phone || '', client_email: data.clientEmail || '', caregiver_id: data.caregiverId || '',
     client_status: data.clientStatus || 'active', has_complex: data.hasComplex ? 1 : 0,
     // Newly persisted fields
-    dob: data.dob || '', drivers_license: data.driversLicense || '', ssn: data.ssn || '',
+    dob: data.dob || '', gender: data.gender || '',
+    drivers_license: data.driversLicense || '', ssn: data.ssn || '',
     start_date: data.startDate || '', live_in: data.liveIn ? 1 : 0,
     client_notes: data.clientNotes || '', audit_json: JSON.stringify(data.auditLog || []),
   };
@@ -6645,7 +6664,7 @@ function loadCaregiversAPI() {
           payRate: cg.pay_rate || '', maxHours: cg.max_hours || '',
           certs: cg.certifications || '',
           ecName: cg.ec_name || '', ecPhone: cg.ec_phone || '',
-          champsId: cg.champs_id || '',
+          champsId: cg.champs_id || '', gender: cg.gender || '',
           street: cg.street || '', city: cg.city || '',
           state: cg.state || '', zip: cg.zip || '', county: cg.county || '',
           dob: cg.dob || '', driversLicense: cg.drivers_license || '', ssn: cg.ssn || '',
@@ -6674,7 +6693,7 @@ function saveCaregiverAPI(id, cg) {
       pay_rate: cg.payRate || '', max_hours: cg.maxHours || '',
       certifications: cg.certs || cg.certifications || '',
       ec_name: cg.ecName || '', ec_phone: cg.ecPhone || '',
-      champs_id: cg.champsId || '',
+      champs_id: cg.champsId || '', gender: cg.gender || '',
       // Identity (sensitive — these fields are masked in exports too)
       dob: cg.dob || '', drivers_license: cg.driversLicense || '', ssn: cg.ssn || ''
     }),
