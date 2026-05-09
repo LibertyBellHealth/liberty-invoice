@@ -7318,29 +7318,17 @@ function openStateForm(type){
   ['sb-home','sb-caregivers','sb-settings','sb-tasks','sb-reports','sb-caseworkers','sb-forms'].forEach(function(id){var el=document.getElementById(id);if(el)el.classList.remove('active');});
   var fb=document.getElementById('sb-forms');if(fb)fb.classList.add('active');
   document.getElementById('formFillTitle').textContent=titles[type]||'';
-  var prof=activeFormClientName?(getProfiles()[activeFormClientName]||{}):{};
-  var cw=getCaseworkers().find(function(c){return (c.name||'').toLowerCase()===(prof.worker||'').toLowerCase();})||{};
-  var formHtml='';
-  if(type==='dhs390')formHtml=buildDHS390(prof,cw);
-  else if(type==='dhs4771')formHtml=buildDHS4771(prof,cw);
-  else if(type==='mdhhs6200')formHtml=buildMDHHS6200(prof,cw);
-  else if(type==='msa4676')formHtml=buildMSA4676(prof,cw);
-  else if(type==='bphasa2421')formHtml=buildBPHASA2421(prof,cw);
-  // Split view: form on left, live PDF preview on right
+  // Single-pane PDF view — auto-fill from CRM on load, then user edits directly in the iframe
   document.getElementById('formFillContent').innerHTML=
-    '<div class="sf-split">'+
-      '<div class="sf-form">'+
-        '<div class="sf-sub" style="margin-bottom:14px;">'+(activeFormClientName?'Pre-filling from <b>'+esc(activeFormClientName)+'</b> · edit any field below — preview updates live.':'<span style="color:#a05a00;">⚠ No client selected. Use the Forms page to pick one before opening a form.</span>')+'</div>'+
-        formHtml+
+    '<div style="max-width:1100px;margin:0 auto;">'+
+      '<div style="font-size:12px;color:#5a7296;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'+
+        '<span>'+(activeFormClientName?'Pre-filled from <b>'+esc(activeFormClientName)+'</b> · type directly in the form — your edits stay until you reload.':'<span style="color:#a05a00;">⚠ No client selected. Use the Forms page to pick one before opening a form.</span>')+'</span>'+
+        '<span id="sfPreviewStatusText" style="font-size:11px;color:#6b8dae;">Loading…</span>'+
       '</div>'+
-      '<div class="sf-preview">'+
-        '<div class="sf-preview-status idle"><span class="sf-dot"></span><span id="sfPreviewStatusText">Preview ready</span></div>'+
-        '<iframe id="sfPreviewFrame" class="sf-preview-frame" title="Filled PDF preview"></iframe>'+
-      '</div>'+
+      '<iframe id="sfPreviewFrame" style="width:100%;height:calc(100vh - 130px);border:1px solid #d0d8e4;border-radius:8px;background:#f0f3f7;" title="Form"></iframe>'+
     '</div>';
-  // Wire up debounced live preview + initial render
-  hookStateFormLivePreview();
-  // Replace the old 'Generate Official PDF' button with Save+Download
+  scheduleSfPreview(0);
+  // Topbar buttons
   var topbar=document.querySelector('.form-topbar');
   if(topbar){
     var titleSpan=document.getElementById('formFillTitle');
@@ -7349,9 +7337,9 @@ function openStateForm(type){
     topbar.appendChild(back);
     if(titleSpan)topbar.appendChild(titleSpan);
     var spacer=document.createElement('div');spacer.style.flex='1';topbar.appendChild(spacer);
-    var dl=document.createElement('button');dl.className='btn btn-secondary';dl.textContent='⬇ Download PDF';dl.onclick=downloadStateFormPdf;
+    var dl=document.createElement('button');dl.className='btn btn-secondary';dl.textContent='⬇ Download (auto-fill only)';dl.title='Downloads the PDF with CRM auto-fill data. To keep edits you typed in the preview, use the download icon in the PDF toolbar instead.';dl.onclick=downloadStateFormPdf;
     topbar.appendChild(dl);
-    var save=document.createElement('button');save.className='btn btn-primary';save.textContent='💾 Save to Client Documents';save.onclick=saveStateFormToClientDocs;
+    var save=document.createElement('button');save.className='btn btn-primary';save.textContent='💾 Save to Client Documents';save.title='Saves the auto-filled PDF (CRM data only) to this client\'s documents.';save.onclick=saveStateFormToClientDocs;
     topbar.appendChild(save);
   }
 }
@@ -7480,18 +7468,6 @@ function _buildFormDataDict(){
     // Common
     today_date:td, signature_date:td, log_number:''
   };
-  // Overlay any non-empty values from the left-pane inputs (live edits).
-  // Date inputs return YYYY-MM-DD natively — normalize to MM/DD/YYYY before storing.
-  var inputMap=STATE_FORM_INPUT_MAPS[activeFormType]||{};
-  Object.keys(inputMap).forEach(function(inputId){
-    var el=document.getElementById(inputId);
-    if(!el)return;
-    var v;
-    if(el.type==='checkbox')v=el.checked?'X':'';
-    else if(el.type==='date')v=_normalizeDate(el.value);
-    else v=(el.value||'').trim();
-    if(v)dict[inputMap[inputId]]=v;
-  });
   // Final pass: normalize any date-key in the dict that's still YYYY-MM-DD (defensive)
   Object.keys(_DATE_DICT_KEYS).forEach(function(k){if(dict[k])dict[k]=_normalizeDate(dict[k]);});
   return dict;
