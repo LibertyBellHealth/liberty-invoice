@@ -7337,10 +7337,8 @@ function openStateForm(type){
     topbar.appendChild(back);
     if(titleSpan)topbar.appendChild(titleSpan);
     var spacer=document.createElement('div');spacer.style.flex='1';topbar.appendChild(spacer);
-    var dl=document.createElement('button');dl.className='btn btn-secondary';dl.textContent='⬇ Download (auto-fill only)';dl.title='Downloads the PDF with CRM auto-fill data. To keep edits you typed in the preview, use the download icon in the PDF toolbar instead.';dl.onclick=downloadStateFormPdf;
+    var dl=document.createElement('button');dl.className='btn btn-primary';dl.textContent='⬇ Download PDF';dl.title='Download the auto-filled PDF for printing and signature. Upload the signed scan via the Documents tab.';dl.onclick=downloadStateFormPdf;
     topbar.appendChild(dl);
-    var save=document.createElement('button');save.className='btn btn-primary';save.textContent='💾 Save to Client Documents';save.title='Saves the auto-filled PDF (CRM data only) to this client\'s documents.';save.onclick=saveStateFormToClientDocs;
-    topbar.appendChild(save);
   }
 }
 
@@ -7697,33 +7695,6 @@ async function downloadStateFormPdf(){
   }catch(e){
     console.error('[StateForm] download failed',e);
     showAlert('Could not generate the PDF: '+(e.message||e));
-  }
-}
-
-async function saveStateFormToClientDocs(){
-  if(!activeFormClientName){showAlert('Pick a client first.');return;}
-  try{
-    showToast('Generating final (flattened) PDF…',2000);
-    // Re-render with flatten=true so the saved copy is non-editable
-    var flatBytes=await _renderStateFormBytes({flatten:true});
-    var def=STATE_FORM_OVERLAYS[activeFormType]||{};
-    var fname=(def.title||activeFormType)+'_'+today().replace(/\//g,'-')+'.pdf';
-    var blob=new Blob([flatBytes],{type:'application/pdf'});
-    var profiles=getProfiles();
-    var prof=profiles[activeFormClientName]||{};
-    var clientId=prof._dbId||prof.id;
-    if(!clientId){showAlert('Cannot save — this client has not been synced to the database yet. Open the client, click Save, and try again.');return;}
-    var fd=new FormData();
-    fd.append('clientType','homecare');
-    fd.append('clientId',String(clientId));
-    fd.append('file',blob,fname);
-    var up=await fetch(API_BASE+'/documents',{method:'POST',headers:authUploadHeaders(),body:fd});
-    if(!up.ok){var et=await up.text();throw new Error('Upload failed ('+up.status+'): '+et.slice(0,200));}
-    showToast('✓ Saved '+fname+' to client documents',5000);
-    logActivity('document','Saved state form '+fname+' for '+activeFormClientName);
-  }catch(e){
-    console.error('[StateForm] save failed',e);
-    showAlert('Could not save: '+(e.message||e));
   }
 }
 
