@@ -948,6 +948,10 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
             <div class="ff"><label>Pay Rate ($/hr)</label><input id="cg-pay" placeholder="0.00" maxlength="10"></div>
             <div class="ff"><label>Max Hours/Week</label><input id="cg-hours" placeholder="40" maxlength="5"></div>
           </div>
+          <div class="ff-row">
+            <div class="ff"><label>CHAMPS Provider ID <span style="font-weight:400;font-size:10px;color:#8ca0b4;">(individual caregiver — used on BPHASA-2421 Live-In form)</span></label><input id="cg-champs" placeholder="Caregiver's CHAMPS ID" maxlength="40"></div>
+            <div class="ff"></div>
+          </div>
           <div class="ff"><label>Certifications &amp; Training</label><textarea id="cg-certs" rows="2" placeholder="CPR, First Aid, HHA, CNA…"></textarea></div>
           <div class="ff-row">
             <div class="ff"><label>Emergency Contact Name</label><input id="cg-ec-name" placeholder="Contact name" maxlength="60"></div>
@@ -2222,6 +2226,10 @@ function renderInfoPane(){
   g.appendChild(dNickSt);
 
   mkField('ei-medicaid','Medicaid ID',prof.medicaidId||'',false);
+  // Date of Birth — needed on DHS-390 / MDHHS-6200 / MSA-4676 state forms
+  var dDob=document.createElement('div');dDob.className='info-field';
+  dDob.innerHTML='<label>Date of Birth</label><input id="ei-dob" type="date" value="'+esc(prof.dob||'')+'" oninput="unsavedChanges=true;">';
+  g.appendChild(dDob);
   mkField('ei-rate','Hourly Rate',prof.hourlyRate||'',false);
   mkField('ei-dl',"Driver's License #",prof.driversLicense||'',false);
   // SSN masked by default with Show/Hide toggle
@@ -2298,6 +2306,7 @@ function saveClientInfo(){
   var newName=((first+' '+last).trim())||activeProfileName;
   rec.firstName=first;rec.middleName=middle;rec.lastName=last;rec.nickname=nickname;
   rec.clientName=newName;rec.medicaidId=document.getElementById('ei-medicaid').value;
+  var dobEl=document.getElementById('ei-dob');if(dobEl)rec.dob=dobEl.value||'';
   rec.hourlyRate=document.getElementById('ei-rate').value;
   var dlEl=document.getElementById('ei-dl');if(dlEl)rec.driversLicense=dlEl.value;
   var ssnEl=document.getElementById('ei-ssn');if(ssnEl)rec.ssn=ssnEl.value;
@@ -2798,7 +2807,7 @@ function showNewCaregiverForm(){
   document.getElementById('cgFormWrap').style.display='block';
   document.getElementById('cgFormTitle').textContent='New Caregiver';
   document.getElementById('cg-editing-id').value='';
-  ['cg-first','cg-middle','cg-last','cg-nickname','cg-phone','cg-email','cg-dl','cg-ssn','cg-street','cg-city','cg-state','cg-zip','cg-county','cg-dob','cg-hire','cg-pay','cg-hours','cg-certs','cg-ec-name','cg-ec-phone','cg-notes'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  ['cg-first','cg-middle','cg-last','cg-nickname','cg-phone','cg-email','cg-dl','cg-ssn','cg-street','cg-city','cg-state','cg-zip','cg-county','cg-dob','cg-hire','cg-pay','cg-hours','cg-certs','cg-ec-name','cg-ec-phone','cg-champs','cg-notes'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('cg-status').value='active';document.getElementById('cg-emptype').value='full-time';
   document.getElementById('cgDeleteBtn').style.display='none';
   var cgDocSec=document.getElementById('cgDocsSection');if(cgDocSec)cgDocSec.style.display='none';
@@ -2826,6 +2835,7 @@ function editCaregiver(id){
   document.getElementById('cg-zip').value=cg.zip||'';
   document.getElementById('cg-county').value=cg.county||'';
   var cgDobEl=document.getElementById('cg-dob');if(cgDobEl)cgDobEl.value=cg.dob||cg.dateOfBirth||'';
+  var cgChampsEl=document.getElementById('cg-champs');if(cgChampsEl)cgChampsEl.value=cg.champsId||cg.champs_id||'';
   document.getElementById('cg-hire').value=cg.hireDate||'';document.getElementById('cg-pay').value=cg.payRate||'';
   document.getElementById('cg-hours').value=cg.maxHours||'';document.getElementById('cg-certs').value=cg.certs||'';
   document.getElementById('cg-ec-name').value=cg.ecName||'';document.getElementById('cg-ec-phone').value=cg.ecPhone||'';
@@ -2860,7 +2870,9 @@ function saveCaregiver(){
     hireDate:document.getElementById('cg-hire').value,emptype:document.getElementById('cg-emptype').value,
     payRate:document.getElementById('cg-pay').value,maxHours:document.getElementById('cg-hours').value,
     certs:document.getElementById('cg-certs').value,ecName:document.getElementById('cg-ec-name').value,
-    ecPhone:document.getElementById('cg-ec-phone').value,notes:document.getElementById('cg-notes').value};
+    ecPhone:document.getElementById('cg-ec-phone').value,
+    champsId:(document.getElementById('cg-champs')||{}).value||'',
+    notes:document.getElementById('cg-notes').value};
   saveCaregiversLS(cgs);saveCaregiverAPI(id, cgs[id]);hideCgForm();updateStats();
   // Return to detail view if we were editing an existing caregiver
   if(id&&document.getElementById('cg-editing-id').value){
@@ -6633,6 +6645,7 @@ function loadCaregiversAPI() {
           payRate: cg.pay_rate || '', maxHours: cg.max_hours || '',
           certs: cg.certifications || '',
           ecName: cg.ec_name || '', ecPhone: cg.ec_phone || '',
+          champsId: cg.champs_id || '',
           street: cg.street || '', city: cg.city || '',
           state: cg.state || '', zip: cg.zip || '', county: cg.county || '',
           dob: cg.dob || '', driversLicense: cg.drivers_license || '', ssn: cg.ssn || '',
@@ -6661,6 +6674,7 @@ function saveCaregiverAPI(id, cg) {
       pay_rate: cg.payRate || '', max_hours: cg.maxHours || '',
       certifications: cg.certs || cg.certifications || '',
       ec_name: cg.ecName || '', ec_phone: cg.ecPhone || '',
+      champs_id: cg.champsId || '',
       // Identity (sensitive — these fields are masked in exports too)
       dob: cg.dob || '', drivers_license: cg.driversLicense || '', ssn: cg.ssn || ''
     }),
@@ -7389,6 +7403,19 @@ function _normalizeDate(v){
   if(m)return m[2]+'/'+m[3]+'/'+m[1];
   return v;
 }
+
+// Hard-coded agency info — appears as Section 2 (provider info) on MSA-4676.
+// If anything here changes (new owner / address / CHAMPS ID), update this block.
+var AGENCY_INFO={
+  agency_provider_name:'Thomas Jaboro',
+  agency_provider_id:'6221933',
+  agency_address:'2741 Balsam Way Dr',
+  agency_city:'Sterling Heights',
+  agency_state:'MI',
+  agency_zip:'48314',
+  agency_phone:'(248) 291-4106',
+  agency_relationship:'N/A - Agency'
+};
 // Set of dict keys that hold dates and should be normalized to MM/DD/YYYY
 var _DATE_DICT_KEYS={client_dob:1,caregiver_dob:1,signature_date:1,today_date:1,last_seen:1,resolved_date:1,start_date:1};
 
@@ -7413,14 +7440,24 @@ function _buildFormDataDict(){
     client_name:fullName, client_first_name:firstN, client_last_name:lastN,
     client_dob:_normalizeDate(prof.dob||''), medicaid_id:prof.medicaidId||'', case_number:'', recipient_id:prof.medicaidId||'',
     client_address:prof.street||prof.address||'', client_city:prof.city||'', client_state:prof.state||'MI', client_zip:prof.zip||'',
-    client_phone:prof.phone||'', client_email:prof.cemail||'', client_county:prof.county||'',
+    client_phone:prof.phone||'', client_email:prof.clientEmail||prof.cemail||'', client_county:prof.county||'',
     // Caseworker
     worker_name:cw.name||prof.worker||'', worker_phone:cw.phone||'', worker_email:cw.email||'', worker_fax:'',
     // Caregiver
     caregiver_first_name:cgFirst, caregiver_last_name:cgLast, caregiver_full_name:cgFull,
     caregiver_dob:_normalizeDate(assignedCg.dob||''), caregiver_address:assignedCg.street||assignedCg.address||'',
     caregiver_city:assignedCg.city||'', caregiver_state:assignedCg.state||'MI', caregiver_zip:assignedCg.zip||'',
-    caregiver_phone:assignedCg.phone||'', caregiver_email:assignedCg.email||'', caregiver_champs_id:'',
+    caregiver_phone:assignedCg.phone||'', caregiver_email:assignedCg.email||'',
+    caregiver_champs_id:assignedCg.champsId||assignedCg.champs_id||'',
+    // Agency (hardcoded — used as Section 2 on MSA-4676)
+    agency_provider_name:AGENCY_INFO.agency_provider_name,
+    agency_provider_id:AGENCY_INFO.agency_provider_id,
+    agency_address:AGENCY_INFO.agency_address,
+    agency_city:AGENCY_INFO.agency_city,
+    agency_state:AGENCY_INFO.agency_state,
+    agency_zip:AGENCY_INFO.agency_zip,
+    agency_phone:AGENCY_INFO.agency_phone,
+    agency_relationship:AGENCY_INFO.agency_relationship,
     // Common
     today_date:td, signature_date:td, log_number:''
   };
@@ -7444,6 +7481,24 @@ function _buildFormDataDict(){
 // fuzzy matcher can't read the field name (e.g. MSA-4676's garbled names
 // caused by the PDF's custom font encoding).
 var STATE_FORM_FIELD_MAPS={
+  // ── DHS-4771: FICA Tax Authorization ──────────────────────
+  // Adobe-detected names match the printed labels; explicit map
+  // because fuzzy rules misclassify "Client ID" as nothing and
+  // "ASW Telephone Number" as client phone.
+  dhs4771:{
+    'Client Name':'client_name',
+    'Case Number':'case_number',
+    'Client ID':'medicaid_id',
+    'County':'client_county',
+    'Adult Services Worker ASW':'worker_name',
+    'ASW Telephone Number':'worker_phone',
+    'Printed Name':'client_name',
+    'Date':'today_date',
+    'Address':'client_address',
+    'City':'client_city',
+    'State':'client_state',
+    'Zip Code':'client_zip'
+  },
   // ── BPHASA-2421 ───────────────────────────────────────────
   // Adobe used "Row1" suffix on Section 1 (Caregiver) fields and
   // "_2" on Section 2 (Beneficiary) fields. Disambiguating explicitly.
@@ -7481,18 +7536,18 @@ var STATE_FORM_FIELD_MAPS={
     'Client State':'client_state',
     'Client Zip Code':'client_zip',
     'Client Phone # with area code':'client_phone',
-    // Caregiver / Agency Provider block
-    'Agnecy Provider Name':'caregiver_full_name',  // user's typo: "Agnecy"
-    'Agency Provider Name':'caregiver_full_name',  // also accept correct spelling
-    'Provider ID #':'caregiver_champs_id',
-    'Agency Street':'caregiver_address',
-    'Agency City':'caregiver_city',
-    'Agency State':'caregiver_state',
-    'Agency Zip':'caregiver_zip',
-    'Phone #':'caregiver_phone',  // generic — in agency section, maps to caregiver phone
-    // Manual-fill fields (admin types in)
-    'RelationShip':'',  // not auto-filled; admin types if applicable
-    'Start Date':''     // not auto-filled
+    // Section 2 — AGENCY PROVIDER (hardcoded — Liberty Home Care, Thomas Jaboro)
+    'Agnecy Provider Name':'agency_provider_name',
+    'Agency Provider Name':'agency_provider_name',
+    'Provider ID #':'agency_provider_id',
+    'Agency Street':'agency_address',
+    'Agency City':'agency_city',
+    'Agency State':'agency_state',
+    'Agency Zip':'agency_zip',
+    'Phone #':'agency_phone',
+    'RelationShip':'agency_relationship',
+    // Manual-fill: per-case start date
+    'Start Date':''
   }
 };
 // Match Adobe's auto-detected field names (which use the form's printed labels)
@@ -7972,7 +8027,7 @@ function buildDHS390(prof,cw){
     sfr(sff('Street Address','dhs390_addr',prof.street||prof.address||''))+
     sfr(sff('City','dhs390_city',prof.city||''),sff('State','dhs390_st',prof.state||'MI'),sff('Zip','dhs390_zip',prof.zip||''))+
     sfr(sff('Phone','dhs390_phone',prof.phone||''),sff('TTY','dhs390_tty',''))+
-    sfr(sff('Email','dhs390_email',prof.cemail||''))+
+    sfr(sff('Email','dhs390_email',prof.clientEmail||prof.cemail||''))+
     sfh('Section 3 — Programs Requested')+
     '<div class="sf-checks">'+
       sff('Home Help','dhs390_hh',false,{type:'checkbox'})+
