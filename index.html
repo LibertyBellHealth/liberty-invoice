@@ -7318,11 +7318,19 @@ function openStateForm(type){
   ['sb-home','sb-caregivers','sb-settings','sb-tasks','sb-reports','sb-caseworkers','sb-forms'].forEach(function(id){var el=document.getElementById(id);if(el)el.classList.remove('active');});
   var fb=document.getElementById('sb-forms');if(fb)fb.classList.add('active');
   document.getElementById('formFillTitle').textContent=titles[type]||'';
-  // Single-pane PDF view — auto-fill from CRM on load, then user edits directly in the iframe
+  // Single-pane PDF view — auto-fill from CRM on load, user can switch clients here
+  var profsForPicker=getProfiles();
+  var clientNames=Object.keys(profsForPicker).filter(function(n){var p=profsForPicker[n];return !p.clientStatus||p.clientStatus==='active';}).sort();
+  var clientOpts='<option value=""'+(!activeFormClientName?' selected':'')+'>— Pick a client —</option>'+
+    clientNames.map(function(n){return '<option value="'+esc(n)+'"'+(n===activeFormClientName?' selected':'')+'>'+esc(n)+'</option>';}).join('');
   document.getElementById('formFillContent').innerHTML=
     '<div style="max-width:1100px;margin:0 auto;">'+
       '<div style="font-size:12px;color:#5a7296;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'+
-        '<span>'+(activeFormClientName?'Pre-filled from <b>'+esc(activeFormClientName)+'</b> · type directly in the form — your edits stay until you reload.':'<span style="color:#a05a00;">⚠ No client selected. Use the Forms page to pick one before opening a form.</span>')+'</span>'+
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'+
+          '<label style="font-size:12px;font-weight:600;color:#1a2b45;white-space:nowrap;">Pre-fill for:</label>'+
+          '<select id="sfClientPicker" onchange="changeStateFormClient(this.value)" style="padding:5px 8px;border:1px solid #d0d8e4;border-radius:5px;font-size:12px;background:#fff;min-width:220px;">'+clientOpts+'</select>'+
+          (activeFormClientName?'<span style="color:#1a7740;font-size:11px;">✓ pre-filled</span>':'<span style="color:#a05a00;font-size:11px;">type directly, or pick a client to auto-fill</span>')+
+        '</div>'+
         '<span id="sfPreviewStatusText" style="font-size:11px;color:#6b8dae;">Loading…</span>'+
       '</div>'+
       '<iframe id="sfPreviewFrame" style="width:100%;height:calc(100vh - 130px);border:1px solid #d0d8e4;border-radius:8px;background:#f0f3f7;" title="Form"></iframe>'+
@@ -7340,6 +7348,21 @@ function openStateForm(type){
     var dl=document.createElement('button');dl.className='btn btn-primary';dl.textContent='⬇ Download PDF';dl.title='Download the auto-filled PDF for printing and signature. Upload the signed scan via the Documents tab.';dl.onclick=downloadStateFormPdf;
     topbar.appendChild(dl);
   }
+}
+
+// Re-render with a different client without leaving the form view
+function changeStateFormClient(name){
+  activeFormClientName=name||'';
+  var statusEl=document.querySelector('#sfClientPicker').nextElementSibling;
+  if(statusEl){
+    statusEl.style.color=name?'#1a7740':'#a05a00';
+    statusEl.style.fontSize='11px';
+    statusEl.textContent=name?'✓ pre-filled':'type directly, or pick a client to auto-fill';
+  }
+  // Keep the Forms-page picker in sync
+  var formsPagePicker=document.getElementById('formClientSelect');
+  if(formsPagePicker)formsPagePicker.value=name||'';
+  scheduleSfPreview(0);
 }
 
 // Re-render the PDF in the iframe whenever an input changes (debounced)
