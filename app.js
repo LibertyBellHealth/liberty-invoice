@@ -94,6 +94,41 @@ function bc(crumbs){
 function navHome(){showPage('home');bc([{l:'Clients'}]);document.getElementById('topbarActions').innerHTML='';unsavedChanges=false;renderClientTable();updateStats();renderSidebarClients();}
 
 // ============================================================
+//  HASH ROUTER — enables right-click "Open in new tab" for records
+//  URL format: #/client/<name>, #/caregiver/<id>, #/caseworker/<id>,
+//              #/forms, #/tasks, #/caregivers, #/caseworkers, #/settings
+// ============================================================
+function buildClientUrl(name){return '#/client/'+encodeURIComponent(name);}
+function buildCaregiverUrl(id){return '#/caregiver/'+encodeURIComponent(id);}
+function buildCaseworkerUrl(id){return '#/caseworker/'+encodeURIComponent(id);}
+
+function routeFromHash(){
+  var hash=(window.location.hash||'').replace(/^#\/?/, '');
+  if(!hash){if(typeof navHome==='function')navHome();return;}
+  var parts=hash.split('/').map(decodeURIComponent);
+  var route=parts[0];
+  try{
+    if(route==='client'&&parts[1]){
+      activeProfileName=parts[1];
+      if(typeof navDetail==='function')navDetail(parts[1],parts[2]||null);
+    } else if(route==='caregiver'&&parts[1]){
+      if(typeof navCaregivers==='function')navCaregivers();
+      setTimeout(function(){if(typeof openCgDetail==='function')openCgDetail(parts[1]);},80);
+    } else if(route==='caseworker'&&parts[1]){
+      if(typeof navCaseworkers==='function')navCaseworkers();
+      setTimeout(function(){if(typeof openCwDetail==='function')openCwDetail(parts[1]);},80);
+    } else if(route==='caregivers'){if(typeof navCaregivers==='function')navCaregivers();}
+    else if(route==='caseworkers'){if(typeof navCaseworkers==='function')navCaseworkers();}
+    else if(route==='forms'){if(typeof navForms==='function')navForms();}
+    else if(route==='tasks'){if(typeof navTasks==='function')navTasks();}
+    else if(route==='reports'){if(typeof navReports==='function')navReports();}
+    else if(route==='settings'){if(typeof navSettings==='function')navSettings();}
+    else if(typeof navHome==='function')navHome();
+  }catch(e){console.warn('Route error:',e);}
+}
+window.addEventListener('hashchange',routeFromHash);
+
+// ============================================================
 //  GLOBAL SEARCH
 // ============================================================
 function runGlobalSearch(q){
@@ -296,12 +331,22 @@ function renderSidebarClients(){
   if(!keys.length){list.innerHTML='<div style="padding:8px 14px;font-size:11px;color:#435f7a;">No clients yet.</div>';return;}
   keys.slice(0,15).forEach(function(name){
     var ini=name.split(' ').map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase();
-    var row=document.createElement('div');row.className='sb-client-row'+(name===activeProfileName?' active':'');
+    // Use <a href> so right-click → "Open in new tab" works natively
+    var row=document.createElement('a');
+    row.className='sb-client-row'+(name===activeProfileName?' active':'');
+    row.href=buildClientUrl(name);
+    row.style.textDecoration='none';
     var sbDisplay=name+(profiles[name].nickname?' ('+profiles[name].nickname+')':'');
     row.innerHTML='<div class="sb-avatar">'+ini+'</div><div class="sb-client-info"><div class="sb-client-name">'+esc(sbDisplay)+'</div><div class="sb-client-meta">'+(profiles[name].medicaidId||'No ID')+'</div></div>';
-    row.addEventListener('click',function(){navDetail(name);});list.appendChild(row);
+    list.appendChild(row);
   });
-  if(keys.length>15){var m=document.createElement('div');m.style.cssText='padding:5px 14px;font-size:10px;color:#435f7a;cursor:pointer;';m.textContent='+'+(keys.length-15)+' more — view all';m.onclick=navHome;list.appendChild(m);}
+  if(keys.length>15){
+    var m=document.createElement('a');
+    m.href='#/';
+    m.style.cssText='padding:5px 14px;font-size:10px;color:#435f7a;cursor:pointer;display:block;text-decoration:none;';
+    m.textContent='+'+(keys.length-15)+' more — view all';
+    list.appendChild(m);
+  }
 }
 
 // ============================================================
@@ -393,16 +438,20 @@ function renderClientTable(forceStatus){
     var rate=prof.hourlyRate?'$'+prof.hourlyRate+'/hr':'—';
     var checked=bulkSelected[name]?'checked':'';
     var tr=document.createElement('tr');
+    var hrefCl=buildClientUrl(name);
     tr.innerHTML=
       '<td style="width:32px;" onclick="event.stopPropagation()"><input type="checkbox" '+checked+' onchange="toggleBulkClient(\''+esc(name)+'\',this)" style="width:13px;height:13px;cursor:pointer;"></td>'+
-      '<td><div class="ct-name">'+esc(name)+(prof.nickname?'<span style="font-weight:normal;color:#8ca0b4;"> ('+esc(prof.nickname)+')</span>':'')+'</div><div class="ct-id">'+(prof.medicaidId||'No Medicaid ID')+'</div></td>'+
+      '<td><a href="'+hrefCl+'" style="text-decoration:none;color:inherit;display:block;"><div class="ct-name">'+esc(name)+(prof.nickname?'<span style="font-weight:normal;color:#8ca0b4;"> ('+esc(prof.nickname)+')</span>':'')+'</div><div class="ct-id">'+(prof.medicaidId||'No Medicaid ID')+'</div></a></td>'+
       '<td><span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span></td>'+
       '<td style="color:#4a6a8a;font-size:12px;">'+esc(cgName)+'</td>'+
       '<td style="font-size:12px;color:#4a6a8a;">'+esc(lastInv)+'</td>'+
       '<td>'+(open?'<span style="color:#c47800;font-weight:700;">'+open+'</span>':'<span style="color:#ccc;">0</span>')+'</td>'+
       '<td style="font-size:12px;color:#4a6a8a;">'+esc(rate)+'</td>'+
       '<td onclick="event.stopPropagation()"><button class="ct-action-btn" onclick="activeProfileName=\''+esc(name)+'\';navInvoice()">+ Invoice</button></td>';
-    tr.addEventListener('click',function(){navDetail(name);});
+    tr.addEventListener('click',function(e){
+      if(e.target.closest('a')||e.target.tagName==='BUTTON'||e.target.tagName==='INPUT')return;
+      navDetail(name);
+    });
     tbody.appendChild(tr);
   });
 }
@@ -1191,16 +1240,21 @@ function renderCaregiverGrid(){
     var clientCount=Object.keys(profiles).filter(function(k){return profiles[k].caregiverId===id;}).length;
     var displayName=(cg.firstName&&cg.lastName)?(cg.firstName+(cg.middleName?' '+cg.middleName:'')+' '+cg.lastName).trim():(cg.name||id);
     var tr=document.createElement('tr');
+    var hrefCg=buildCaregiverUrl(id);
     tr.innerHTML=
-      '<td><div class="ct-name">'+esc(displayName)+(cg.nickname?'<span style="font-weight:normal;color:#8ca0b4;"> ('+esc(cg.nickname)+')</span>':'')+'</div>'+
-        '<div class="ct-id">'+(cg.email||'No email')+'</div></td>'+
+      '<td><a href="'+hrefCg+'" style="text-decoration:none;color:inherit;display:block;"><div class="ct-name">'+esc(displayName)+(cg.nickname?'<span style="font-weight:normal;color:#8ca0b4;"> ('+esc(cg.nickname)+')</span>':'')+'</div>'+
+        '<div class="ct-id">'+(cg.email||'No email')+'</div></a></td>'+
       '<td><span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span></td>'+
       '<td style="color:#4a6a8a;font-size:12px;">'+esc(cg.emptype||'—')+'</td>'+
       '<td style="color:#4a6a8a;font-size:12px;">'+esc(cg.phone||'—')+'</td>'+
       '<td style="font-size:12px;color:#4a6a8a;">'+esc(cg.hireDate||'—')+'</td>'+
       '<td style="font-size:12px;">'+clientCount+'</td>'+
       '<td onclick="event.stopPropagation()"><button class="ct-action-btn" onclick="event.stopPropagation();editCaregiver(\''+id+'\')">Edit</button></td>';
-    tr.addEventListener('click',function(){openCgDetail(id);});
+    tr.addEventListener('click',function(e){
+      // Don't double-fire if user clicked the <a> (which the browser navigates via hashchange)
+      if(e.target.closest('a')||e.target.tagName==='BUTTON')return;
+      openCgDetail(id);
+    });
     tbody.appendChild(tr);
   });
 }
@@ -5306,15 +5360,19 @@ function renderCaseworkerList(){
   if(empty)empty.style.display='none';
   filtered.forEach(function(cw){
     var clientCount=Object.keys(profiles).filter(function(k){return profiles[k].caseworkerId===cw.id||profiles[k].worker===cw.name;}).length;
+    var hrefCw=buildCaseworkerUrl(cw.id);
     var tr=document.createElement('tr');
     tr.innerHTML=
-      '<td><div class="ct-name">'+esc(cw.name||'')+'</div><div class="ct-id">'+esc(cw.agency||'No agency')+'</div></td>'+
+      '<td><a href="'+hrefCw+'" style="text-decoration:none;color:inherit;display:block;"><div class="ct-name">'+esc(cw.name||'')+'</div><div class="ct-id">'+esc(cw.agency||'No agency')+'</div></a></td>'+
       '<td style="color:#4a6a8a;font-size:12px;">'+esc(cw.phone||'—')+'</td>'+
       '<td style="color:#4a6a8a;font-size:12px;">'+esc(cw.email||'—')+'</td>'+
       '<td style="color:#4a6a8a;font-size:12px;">'+esc(cw.county||'—')+'</td>'+
       '<td style="font-size:12px;">'+clientCount+'</td>'+
       '<td onclick="event.stopPropagation()"><button class="ct-action-btn" onclick="event.stopPropagation();showCaseworkerForm(\''+cw.id+'\')">Edit</button></td>';
-    tr.addEventListener('click',function(){openCwDetail(cw.id);});
+    tr.addEventListener('click',function(e){
+      if(e.target.closest('a')||e.target.closest('button')||e.target.closest('input'))return;
+      openCwDetail(cw.id);
+    });
     tbody.appendChild(tr);
   });
 }
@@ -5679,7 +5737,8 @@ try{
 try{initMSAL();}catch(e){console.log('MSAL init:',e);}
 renderActivityFeed();
 updateTaskBadge();
-navHome();
+// If the URL has a hash route (e.g. #/client/Adnan), navigate there; else default to home.
+if(window.location.hash){routeFromHash();}else{navHome();}
 
 // ============================================================
 //  SESSION 2 — FORMS TAB
