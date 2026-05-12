@@ -7180,6 +7180,7 @@ async function sendAllCaseworkerEmails(period){
     '\n\nThis will send the emails one after another. Continue?',
     async function(){
       var sentCount=0;
+      var BULK_THROTTLE_MS=3000; // 3-sec delay between caseworker sends — avoids burst-send pattern that trips spam filters
       for(var i=0;i<sendable.length;i++){
         var item=sendable[i];
         // CRITICAL: only send the READY clients. Bucket the same way sendMonthlyEmail does.
@@ -7194,6 +7195,10 @@ async function sendAllCaseworkerEmails(period){
           // (Earlier bug: sendMonthlyEmail did fire-and-forget, causing parallel page-invoice usage and PDFs going to wrong worker.)
           await _doMonthlyEmailSend(item.group.email,item.wname,period,readyToSend,alreadySent.length,hasIssues,missingInvoice);
           sentCount++;
+          // Throttle between sends (skip after the last one)
+          if(i<sendable.length-1){
+            await new Promise(function(r){setTimeout(r,BULK_THROTTLE_MS);});
+          }
         }catch(e){console.error('Send to '+item.wname+' failed:',e);}
       }
       showToast('✓ Sent batches to '+sentCount+' caseworker'+(sentCount===1?'':'s')+'.',5000);
@@ -7340,24 +7345,37 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
   }
 
   var workerDisplay=workerName&&workerName!=='(No Worker Assigned)'?workerName:'Caseworker';
-  // Follow-up vs first send wording
+  // First name only for friendly subject/greeting
+  var workerFirst=(workerDisplay.split(/\s+/)[0]||'').replace(/[^a-zA-Z\-']/g,'')||workerDisplay;
+  // Period "05/2026" → "May 2026" for readability
+  var _months=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var _pParts=(period||'').split('/');
+  var periodLabel=(_pParts.length===2 && parseInt(_pParts[0],10)>=1 && parseInt(_pParts[0],10)<=12)
+    ? _months[parseInt(_pParts[0],10)-1]+' '+_pParts[1]
+    : period;
+  // Lead client first name (used in subject for the personal touch)
+  var leadFirst=((attachments[0]&&attachments[0].clientName)||'').split(/\s+/)[0]||'';
+  var extraCount=Math.max(0,attachments.length-1);
+  // Follow-up vs first send wording — conversational, avoids spam-trigger phrases
+  // ("invoice", "please confirm receipt", "at your earliest convenience", "find attached")
   var isFollowUp=alreadySentCount>0;
-  var subj=(isFollowUp?'Additional Home Help Agency Invoices — ':'Home Help Agency Invoices — ')+period;
+  var subj;
+  if(isFollowUp){
+    subj='Hi '+workerFirst+' — one more for '+periodLabel+(leadFirst?' ('+leadFirst+(extraCount>0?' + '+extraCount+' more':'')+')':'');
+  } else {
+    subj='Hi '+workerFirst+' — '+periodLabel+' paperwork'+(leadFirst?' for '+leadFirst+(extraCount>0?' + '+extraCount+' more':''):'');
+  }
   var body;
   if(isFollowUp){
-    body='<p>Dear '+workerDisplay+',</p>'+
-      '<p>I apologize for the delay — please find attached '+(attachments.length>1?'some additional invoices':'an additional invoice')+' for the billing period <b>'+period+'</b> that '+(attachments.length>1?'were':'was')+' not included in my earlier email. Please confirm receipt.</p>'+
-      '<p><b>Additional Clients</b></p><ul>'+
-      attachments.map(function(a){return '<li>'+a.clientName+'</li>';}).join('')+
-      '</ul><p>Please review and process at your earliest convenience.</p>'+
-      '<p>Thank you,<br>Thomas Jaboro<br>Liberty Home Care Assistance<br>(248) 291-4106</p>';
+    body='<p>Hi '+workerFirst+',</p>'+
+      '<p>Quick follow-up — '+(attachments.length>1?'a couple more files':'one more file')+' for '+periodLabel+' that I missed in my earlier note. Let me know if anything looks off.</p>'+
+      '<ul>'+attachments.map(function(a){return '<li>'+a.clientName+'</li>';}).join('')+'</ul>'+
+      '<p>Thanks,<br>Tommy<br>Liberty Home Care Assistance<br>(248) 291-4106</p>';
   } else {
-    body='<p>Dear '+workerDisplay+',</p>'+
-      '<p>You will find invoice'+(attachments.length>1?'s':'')+' attached for our shared client'+(attachments.length>1?'s':'')+' for the billing period <b>'+period+'</b>. Please confirm receipt of these documents.</p>'+
-      '<p><b>Clients</b></p><ul>'+
-      attachments.map(function(a){return '<li>'+a.clientName+'</li>';}).join('')+
-      '</ul><p>Please review and process at your earliest convenience.</p>'+
-      '<p>Thank you,<br>Thomas Jaboro<br>Liberty Home Care Assistance<br>(248) 291-4106</p>';
+    body='<p>Hi '+workerFirst+',</p>'+
+      '<p>Sending over '+periodLabel+' paperwork for our shared client'+(attachments.length>1?'s':'')+' below. Let me know if anything needs to be adjusted on my end.</p>'+
+      '<ul>'+attachments.map(function(a){return '<li>'+a.clientName+'</li>';}).join('')+'</ul>'+
+      '<p>Thanks,<br>Tommy<br>Liberty Home Care Assistance<br>(248) 291-4106</p>';
   }
 
   var result=await sendMailWithPDF(email,subj,body,attachments,function(done,total,label){
