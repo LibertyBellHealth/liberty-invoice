@@ -355,7 +355,13 @@ function renderSidebarClients(){
 function updateStats(){
   var p=getProfiles(),keys=Object.keys(p),ti=0,outstanding=0;
   var activeKeys=keys.filter(function(k){return !p[k].clientStatus||p[k].clientStatus==='active';});
-  keys.forEach(function(k){var invs=(p[k].invoices)||[];ti+=invs.length;invs.forEach(function(inv){if(!inv.status||inv.status==='draft'||inv.status==='submitted')outstanding++;});});
+  // Only count outstanding invoices for ACTIVE clients (terminated/inactive/lost shouldn't appear in dashboard alerts)
+  keys.forEach(function(k){
+    var invs=(p[k].invoices)||[];ti+=invs.length;
+    var st=p[k].clientStatus||'active';
+    if(st!=='active')return;
+    invs.forEach(function(inv){if(!inv.status||inv.status==='draft'||inv.status==='submitted')outstanding++;});
+  });
   var s=document.getElementById('statTotal');if(s)s.textContent=activeKeys.length;
   var si=document.getElementById('statInvoices');if(si)si.textContent=ti;
   var sc=document.getElementById('statCaregivers');if(sc)sc.textContent=Object.keys(getCaregivers()).length;
@@ -1270,7 +1276,8 @@ function renderCaregiverGrid(){
   ids.forEach(function(id){
     var cg=cgs[id];
     var st=cg.status||'active';
-    var clientCount=Object.keys(profiles).filter(function(k){return profiles[k].caregiverId===id;}).length;
+    // Active assignments only — terminated/inactive/lost clients don't count toward caregiver workload
+    var clientCount=Object.keys(profiles).filter(function(k){return profiles[k].caregiverId===id && (profiles[k].clientStatus||'active')==='active';}).length;
     var displayName=(cg.firstName&&cg.lastName)?(cg.firstName+(cg.middleName?' '+cg.middleName:'')+' '+cg.lastName).trim():(cg.name||id);
     var tr=document.createElement('tr');
     var hrefCg=buildCaregiverUrl(id);
@@ -1775,7 +1782,8 @@ function renderCgOverviewPane(){
   var pane=document.getElementById('cgpane-overview');
   if(!cg||!pane)return;
   var profiles=getProfiles();
-  var assigned=Object.keys(profiles).filter(function(k){return profiles[k].caregiverId===activeCgId;});
+  // Active assignments only — terminated clients shouldn't count toward caregiver's current workload
+  var assigned=Object.keys(profiles).filter(function(k){return profiles[k].caregiverId===activeCgId && (profiles[k].clientStatus||'active')==='active';});
   var addrStr=(cg.street||cg.address||'').trim();
   var certsStr=cg.certifications||cg.certs||'';
   pane.innerHTML='<div class="overview-grid">'+
@@ -1958,7 +1966,8 @@ function renderCgClientsPane(){
   if(!activeCgId)return;
   var c=document.getElementById('cgClientsContent');
   var profiles=getProfiles();
-  var assigned=Object.keys(profiles).filter(function(k){return profiles[k].caregiverId===activeCgId;});
+  // Active clients only — keeps the caregiver's current workload view clean
+  var assigned=Object.keys(profiles).filter(function(k){return profiles[k].caregiverId===activeCgId && (profiles[k].clientStatus||'active')==='active';});
   if(!assigned.length){c.innerHTML='<div class="empty-state"><h3>No clients assigned</h3><p style="font-size:13px;">Assign this caregiver from the client\'s Profile tab.</p></div>';return;}
   c.innerHTML='';
   assigned.forEach(function(name){
@@ -5431,7 +5440,7 @@ function renderCaseworkerList(){
   var totalCw=cws.length;
   var activeCw=0,unassigned=0;
   cws.forEach(function(cw){
-    var clientCount=Object.keys(profiles).filter(function(k){return profiles[k].caseworkerId===cw.id||profiles[k].worker===cw.name;}).length;
+    var clientCount=Object.keys(profiles).filter(function(k){return (profiles[k].caseworkerId===cw.id||profiles[k].worker===cw.name) && (profiles[k].clientStatus||'active')==='active';}).length;
     if(clientCount>0)activeCw++;else unassigned++;
   });
   var setMetric=function(id,v){var el=document.getElementById(id);if(el)el.textContent=v;};
@@ -5446,7 +5455,7 @@ function renderCaseworkerList(){
   if(!filtered.length){if(empty)empty.style.display='block';return;}
   if(empty)empty.style.display='none';
   filtered.forEach(function(cw){
-    var clientCount=Object.keys(profiles).filter(function(k){return profiles[k].caseworkerId===cw.id||profiles[k].worker===cw.name;}).length;
+    var clientCount=Object.keys(profiles).filter(function(k){return (profiles[k].caseworkerId===cw.id||profiles[k].worker===cw.name) && (profiles[k].clientStatus||'active')==='active';}).length;
     var hrefCw=buildCaseworkerUrl(cw.id);
     var tr=document.createElement('tr');
     var checked=cwBulkSelected[cw.id]?'checked':'';
@@ -6797,7 +6806,7 @@ function previewMonthlyInvoices(){
   var groups={};
   Object.keys(profiles).forEach(function(name){
     var prof=profiles[name];
-    if(prof.status==='inactive'||prof.status==='terminated'||prof.status==='lost')return;
+    if(prof.clientStatus==='inactive'||prof.clientStatus==='terminated'||prof.clientStatus==='lost')return;
     // Skip clients whose service started AFTER this billing period
     if(!clientWasActiveInPeriod(prof,period))return;
     // Resolve the caseworker identity. Prefer caseworkerId; fall back to fuzzy name match.
@@ -7197,7 +7206,6 @@ function findClientsEligibleForAutoGen(period){
   var profiles=getProfiles();var out=[];
   Object.keys(profiles).forEach(function(name){
     var p=profiles[name];
-    if(p.status==='inactive'||p.status==='terminated'||p.status==='lost')return;
     if(p.clientStatus==='inactive'||p.clientStatus==='terminated'||p.clientStatus==='lost')return;
     if(!clientWasActiveInPeriod(p,period))return;
     var hasCurrent=(p.invoices||[]).some(function(i){return i.billingPeriod===period;});
@@ -7268,7 +7276,7 @@ async function sendAllCaseworkerEmails(period){
   var groups={};
   Object.keys(profiles).forEach(function(name){
     var prof=profiles[name];
-    if(prof.status==='inactive'||prof.status==='terminated'||prof.status==='lost')return;
+    if(prof.clientStatus==='inactive'||prof.clientStatus==='terminated'||prof.clientStatus==='lost')return;
     if(!clientWasActiveInPeriod(prof,period))return;
     var rawWorker=(prof.worker||'').trim();
     var cwRec=cws.find(function(c){return c.id&&prof.caseworkerId&&String(c.id)===String(prof.caseworkerId);})||
