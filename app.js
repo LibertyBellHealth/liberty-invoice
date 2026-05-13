@@ -326,7 +326,9 @@ function navReports(){showPage('reports');bc([{l:'Reports'}]);document.getElemen
 // ============================================================
 function toggleSidebar(){document.getElementById('sidebar').classList.toggle('collapsed');}
 function renderSidebarClients(){
-  var list=document.getElementById('sbClientList'),profiles=getProfiles(),keys=Object.keys(profiles);
+  var list=document.getElementById('sbClientList'),profiles=getProfiles();
+  // Active clients only in sidebar — terminated/inactive/lost stay accessible via main Clients page filter
+  var keys=Object.keys(profiles).filter(function(k){return (profiles[k].clientStatus||'active')==='active';});
   list.innerHTML='';
   if(!keys.length){list.innerHTML='<div style="padding:8px 14px;font-size:11px;color:#435f7a;">No clients yet.</div>';return;}
   keys.slice(0,15).forEach(function(name){
