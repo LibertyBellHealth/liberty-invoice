@@ -54,15 +54,15 @@ function aiTrack(name, props){
     <button class="sb-collapse" onclick="toggleSidebar()">&#9776;</button>
   </div>
   <div class="sb-section">Navigation</div>
-  <button class="sb-btn active" id="sb-home" onclick="navHome()">Clients</button>
-  <button class="sb-btn" id="sb-caregivers" onclick="navCaregivers()">Caregivers</button>
-  <button class="sb-btn" id="sb-caseworkers" onclick="navCaseworkers()">Caseworkers</button>
-  <button class="sb-btn" id="sb-forms" onclick="navForms()">Forms</button>
-  <button class="sb-btn" id="sb-tasks" onclick="navTasks()">Tasks <span id="taskBadge" style="display:none;background:#c0392b;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:4px;font-weight:700;vertical-align:middle;"></span></button>
-  <button class="sb-btn" id="sb-reports" onclick="navReports()">Reports</button>
+  <a class="sb-btn active" id="sb-home" href="#/" style="text-decoration:none;">Clients</a>
+  <a class="sb-btn" id="sb-caregivers" href="#/caregivers" style="text-decoration:none;">Caregivers</a>
+  <a class="sb-btn" id="sb-caseworkers" href="#/caseworkers" style="text-decoration:none;">Caseworkers</a>
+  <a class="sb-btn" id="sb-forms" href="#/forms" style="text-decoration:none;">Forms</a>
+  <a class="sb-btn" id="sb-tasks" href="#/tasks" style="text-decoration:none;">Tasks <span id="taskBadge" style="display:none;background:#c0392b;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:4px;font-weight:700;vertical-align:middle;"></span></a>
+  <a class="sb-btn" id="sb-reports" href="#/reports" style="text-decoration:none;">Reports</a>
   <hr class="sb-divider">
   <button class="sb-btn" id="sb-monthly" onclick="openMonthlyInvModal()">Monthly Emails</button>
-  <button class="sb-btn" id="sb-settings" onclick="navSettings()">Settings</button>
+  <a class="sb-btn" id="sb-settings" href="#/settings" style="text-decoration:none;">Settings</a>
   <hr class="sb-divider">
   <div class="sb-section">Clients</div>
   <div class="sb-clients" id="sbClientList"></div>
