@@ -518,22 +518,90 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
 .cw-client-list{display:flex;flex-direction:column;gap:0;}
 .cw-client-row{display:flex;align-items:center;gap:8px;font-size:12px;color:#4a6a8a;padding:5px 4px;border-bottom:1px solid #f0f3f7;}
 .cw-client-row:last-child{border-bottom:none;}
-/* MOBILE RESPONSIVE */
+/* MOBILE RESPONSIVE — phones + small tablets */
 @media (max-width: 768px) {
+  /* Sidebar — hidden by default, opens as overlay via hamburger */
   #sidebar { display: none; }
-  #sidebar.mobile-open { display: flex; position: fixed; z-index: 1000; height: 100vh; }
+  #sidebar.mobile-open { display: flex; position: fixed; z-index: 1000; height: 100vh; width: 260px; box-shadow: 4px 0 16px rgba(0,0,0,0.3); }
+  #mobileMenuBtn { display: block !important; }
   #main { width: 100%; }
+
+  /* Dashboard header — wrap so "+ New Client" button stays visible */
+  .dashboard-header { flex-wrap: wrap; padding: 14px 16px 0; gap: 10px; }
+  .dashboard-title { font-size: 18px; }
+  .dashboard-actions { flex-wrap: wrap; width: 100%; gap: 8px; }
+  .dashboard-actions .btn { flex: 1; min-width: 130px; }
+  .global-search-wrap { width: 100%; order: -1; }
+  .global-search { width: 100%; }
+
+  /* Metric tiles — 2 across on phone */
+  .metric-row { flex-wrap: wrap; margin: 12px 16px 0; }
+  .metric { flex: 1 1 50%; min-width: 50%; border-right: none; border-bottom: 1px solid #e1e5ea; padding: 12px 14px; }
+  .metric:nth-child(2n) { border-right: none; }
+  .metric-val { font-size: 18px; }
+
+  /* Form rows stack */
   .stats-row { flex-direction: column; }
   .client-grid { grid-template-columns: 1fr; }
   .overview-grid { grid-template-columns: 1fr; }
-  .ff-row { flex-direction: column; }
+  .ff-row { grid-template-columns: 1fr !important; gap: 8px; }
+  .info-field-row { grid-template-columns: 1fr !important; gap: 8px; }
+
+  /* Tables — horizontal scroll, larger touch targets */
   .page { padding: 14px 16px; }
   #topbar { padding: 0 12px; }
-  .client-table-wrap { overflow-x: auto; }
-  .form-card { padding: 14px 16px; }
+  .client-table-wrap { margin: 12px 16px; overflow-x: auto; }
+  .client-table { min-width: 500px; }
+  .client-table td, .client-table thead th { padding: 12px 10px; font-size: 12px; }
+
+  /* Toolbar — search + filter stacks */
+  .ct-toolbar { padding: 10px 12px; gap: 6px; }
+  .ct-search { width: 100%; min-width: 100%; }
+  .ct-filter { width: 100%; }
+
+  /* Bulk action bar — wraps cleanly */
+  .ct-bulk-bar { flex-wrap: wrap; padding: 10px 12px; gap: 6px; }
+  .ct-bulk-bar button { flex: 1 1 auto; padding: 8px 12px; min-height: 36px; }
+
+  /* Modals — fit phone width */
+  .modal-box { max-width: 95vw; padding: 16px; }
+  .modal-row { flex-wrap: wrap; }
+  .modal-row .btn { flex: 1 1 auto; min-width: 100px; }
+
+  /* Form cards */
+  .form-card { padding: 14px 16px; max-width: 100%; }
   .ov-card { padding: 14px; }
+
+  /* Bigger touch targets for inputs/buttons (Apple guideline: 44px) */
+  .btn { min-height: 40px; padding: 10px 16px; }
+  .btn-sm { min-height: 32px; padding: 6px 12px; }
+  input[type="text"], input[type="date"], input[type="email"], input[type="tel"],
+  input[type="number"], input[type="password"], select, textarea {
+    min-height: 40px; font-size: 16px; /* 16px prevents iOS zoom-on-focus */
+  }
+
+  /* State forms — PDF preview iframe gets full width but smaller height to avoid touch-scroll battles */
+  .sf-split { padding: 0 4px; }
+  .sf-preview { position: static; }
+  .sf-preview-frame { height: 70vh; }
+
+  /* Settings, activity, attention panels — full width */
+  .settings-section { max-width: 100%; }
+  .attention-panel { margin: 12px 16px; }
 }
-@media (max-width: 768px) { #mobileMenuBtn { display: block !important; } }
+
+/* NARROW PHONES — extra compact */
+@media (max-width: 480px) {
+  /* Metric tiles — single column for the tightest screens */
+  .metric { flex: 1 1 100%; min-width: 100%; }
+
+  /* Dashboard title smaller */
+  .dashboard-title { font-size: 16px; }
+  .dashboard-sub { font-size: 11px; }
+
+  /* Buttons — full-width when standalone */
+  .dashboard-actions .btn { flex: 1 1 100%; }
+}
 
 /* PRINT */
 @media print{
