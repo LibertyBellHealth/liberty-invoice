@@ -129,6 +129,44 @@ function routeFromHash(){
 window.addEventListener('hashchange',routeFromHash);
 
 // ============================================================
+//  MOBILE SIDEBAR — open via hamburger, close via backdrop tap or nav
+// ============================================================
+function toggleMobileSidebar(){
+  var sb=document.getElementById('sidebar');
+  if(!sb)return;
+  var opening=!sb.classList.contains('mobile-open');
+  sb.classList.toggle('mobile-open');
+  var existing=document.getElementById('sbBackdrop');
+  if(opening){
+    if(!existing){
+      var bd=document.createElement('div');
+      bd.id='sbBackdrop';
+      bd.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:999;cursor:pointer;';
+      bd.addEventListener('click',closeMobileSidebar);
+      document.body.appendChild(bd);
+    }
+  } else if(existing){
+    existing.remove();
+  }
+}
+function closeMobileSidebar(){
+  var sb=document.getElementById('sidebar');
+  if(sb)sb.classList.remove('mobile-open');
+  var bd=document.getElementById('sbBackdrop');
+  if(bd)bd.remove();
+}
+// Auto-close when any sidebar nav link or client row is tapped
+document.addEventListener('click',function(e){
+  var sb=document.getElementById('sidebar');
+  if(!sb||!sb.classList.contains('mobile-open'))return;
+  // If the tap landed inside the sidebar and on an <a> or .sb-btn, close it after navigation
+  if(sb.contains(e.target)){
+    var link=e.target.closest('a,.sb-btn');
+    if(link)closeMobileSidebar();
+  }
+});
+
+// ============================================================
 //  GLOBAL SEARCH
 // ============================================================
 function runGlobalSearch(q){
