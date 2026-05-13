@@ -4898,7 +4898,12 @@ function initMSAL() {
       authority: 'https://login.microsoftonline.com/' + SP_TENANT_ID,
       redirectUri: REDIRECT_URI,
     },
-    cache: { cacheLocation: 'localStorage' },
+    cache: {
+      cacheLocation: 'localStorage',
+      // iOS Safari Intelligent Tracking Prevention wipes sessionStorage mid-redirect
+      // during the OAuth dance. Storing auth state in a cookie survives the trip.
+      storeAuthStateInCookie: true,
+    },
   };
   msalInstance = new msal.PublicClientApplication(cfg);
   msalInstance.initialize().then(function () {
