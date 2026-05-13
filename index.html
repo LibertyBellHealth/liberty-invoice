@@ -150,8 +150,9 @@ function aiTrack(name, props){
       </div>
       <div class="ct-bulk-bar" id="ctBulkBar">
         <span id="ctBulkCount">0 selected</span>
-        <button onclick="bulkSetStatus('paid')">Mark Selected Paid</button>
-        <button onclick="bulkSetStatus('submitted')">Mark Submitted</button>
+        <button onclick="bulkSetClientStatus('active')">Mark Active</button>
+        <button onclick="bulkSetClientStatus('inactive')">Mark Inactive</button>
+        <button onclick="bulkSetClientStatus('lost')">Mark Lost</button>
         <button onclick="bulkDelete()" style="background:#c0392b;color:#fff;">Delete Selected</button>
         <button onclick="clearBulkSelect()">Cancel</button>
       </div>

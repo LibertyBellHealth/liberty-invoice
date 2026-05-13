@@ -463,18 +463,20 @@ function toggleBulkClient(name,cb){
   if(bar){bar.classList.toggle('visible',count>0);var lbl=document.getElementById('ctBulkCount');if(lbl)lbl.textContent=count+' selected';}
 }
 function clearBulkSelect(){bulkSelected={};var bar=document.getElementById('ctBulkBar');if(bar)bar.classList.remove('visible');renderClientTable();}
-function bulkSetStatus(status){
+function bulkSetClientStatus(status){
   var names=Object.keys(bulkSelected);if(!names.length)return;
   var p=getProfiles(),changed=0;
   names.forEach(function(name){
     if(!p[name])return;
-    (p[name].invoices||[]).forEach(function(inv){if((inv.status||'draft')!=='paid'){inv.status=status;changed++;}});
-    saveProfilesLS(p);saveProfileSP(name,p[name]);
-    addAuditEntry(name,'Bulk status update: open invoices set to '+status);
+    p[name].clientStatus=status;
+    saveProfileSP(name,p[name]);
+    addAuditEntry(name,'Client status changed to '+status+' (bulk action)');
+    changed++;
   });
-  logActivity('status','Bulk update: '+changed+' invoices set to '+status);
-  clearBulkSelect();updateStats();
-  showAlert(changed+' invoice'+(changed!==1?'s':'')+' updated to '+status+'.');
+  saveProfilesLS(p);
+  logActivity('status','Bulk client status update: '+changed+' set to '+status);
+  clearBulkSelect();updateStats();renderClientTable();renderSidebarClients();
+  showAlert(changed+' client'+(changed!==1?'s':'')+' set to '+status+'.');
 }
 function bulkDelete(){
   var names=Object.keys(bulkSelected);if(!names.length)return;
