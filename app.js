@@ -1240,13 +1240,21 @@ function getCaregivers(){try{return JSON.parse(localStorage.getItem('lhca_caregi
 function saveCaregiversLS(cg){localStorage.setItem('lhca_caregivers',JSON.stringify(cg));}
 function cgId(){return 'cg_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);}
 
+var cgBulkSelected={};
 function renderCaregiverGrid(){
   var cgs=getCaregivers();
   var q=(document.getElementById('cgSearch')?document.getElementById('cgSearch').value:'').toLowerCase();
   var filterStatus=(document.getElementById('cgFilterStatus')&&document.getElementById('cgFilterStatus').value)||'active';
   var profiles=getProfiles();
+  // Refresh metric tiles
+  var allIds=Object.keys(cgs);
+  var nActive=0,nInactive=0,nTerm=0;
+  allIds.forEach(function(id){var st=cgs[id].status||'active';if(st==='active')nActive++;else if(st==='inactive')nInactive++;else if(st==='terminated')nTerm++;});
+  var setMetric=function(id,v){var el=document.getElementById(id);if(el)el.textContent=v;};
+  setMetric('cgStatActive',nActive);setMetric('cgStatInactive',nInactive);setMetric('cgStatTerminated',nTerm);setMetric('cgStatTotal',allIds.length);
+
   var tbody=document.getElementById('cgTableBody');if(!tbody)return;tbody.innerHTML='';
-  var ids=Object.keys(cgs).filter(function(id){
+  var ids=allIds.filter(function(id){
     var cg=cgs[id];
     var st=cg.status||'active';
     var matchStatus=filterStatus==='all'||st===filterStatus;
@@ -1264,7 +1272,9 @@ function renderCaregiverGrid(){
     var displayName=(cg.firstName&&cg.lastName)?(cg.firstName+(cg.middleName?' '+cg.middleName:'')+' '+cg.lastName).trim():(cg.name||id);
     var tr=document.createElement('tr');
     var hrefCg=buildCaregiverUrl(id);
+    var checked=cgBulkSelected[id]?'checked':'';
     tr.innerHTML=
+      '<td style="width:32px;" onclick="event.stopPropagation()"><input type="checkbox" class="cg-select" data-id="'+esc(id)+'" '+checked+' onchange="toggleBulkCaregiver(\''+esc(id)+'\',this)" style="width:13px;height:13px;cursor:pointer;"></td>'+
       '<td><a href="'+hrefCg+'" style="text-decoration:none;color:inherit;display:block;"><div class="ct-name">'+esc(displayName)+(cg.nickname?'<span style="font-weight:normal;color:#8ca0b4;"> ('+esc(cg.nickname)+')</span>':'')+'</div>'+
         '<div class="ct-id">'+(cg.email||'No email')+'</div></a></td>'+
       '<td><span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span></td>'+
@@ -1274,28 +1284,57 @@ function renderCaregiverGrid(){
       '<td style="font-size:12px;">'+clientCount+'</td>'+
       '<td onclick="event.stopPropagation()"><button class="ct-action-btn" onclick="event.stopPropagation();editCaregiver(\''+id+'\')">Edit</button></td>';
     tr.addEventListener('click',function(e){
-      // Don't double-fire if user clicked the <a> (which the browser navigates via hashchange)
-      if(e.target.closest('a')||e.target.tagName==='BUTTON')return;
+      // Don't double-fire if user clicked the <a>/checkbox/button (browser handles those)
+      if(e.target.closest('a')||e.target.tagName==='BUTTON'||e.target.tagName==='INPUT')return;
       openCgDetail(id);
     });
     tbody.appendChild(tr);
   });
 }
-function bulkDeleteCaregivers(){
-  var checked=Array.from(document.querySelectorAll('.cg-select:checked'));
-  if(!checked.length){showAlert('No caregivers selected.');return;}
-  showConfirm('Delete '+checked.length+' caregiver'+(checked.length>1?'s':'')+'? This cannot be undone.',function(){
-    var cgs=getCaregivers();
-    checked.forEach(function(cb){
-      var id=cb.dataset.id;
-      delete cgs[id];
-      deleteCaregiverAPI(id);
-    });
-    saveCaregiversLS(cgs);renderCaregiverGrid();updateStats();
-  },{title:'Bulk Delete Caregivers',okText:'Delete All'});
+function toggleBulkCaregiver(id,cb){
+  if(cb.checked)cgBulkSelected[id]=true;else delete cgBulkSelected[id];
+  var count=Object.keys(cgBulkSelected).length;
+  var bar=document.getElementById('cgBulkBar');
+  if(bar){bar.classList.toggle('visible',count>0);var lbl=document.getElementById('cgBulkCount');if(lbl)lbl.textContent=count+' selected';}
 }
+function clearCgBulkSelect(){cgBulkSelected={};var bar=document.getElementById('cgBulkBar');if(bar)bar.classList.remove('visible');var sa=document.getElementById('cgSelectAll');if(sa)sa.checked=false;renderCaregiverGrid();}
 function toggleAllCaregivers(cb){
-  document.querySelectorAll('.cg-select').forEach(function(c){c.checked=cb.checked;});
+  document.querySelectorAll('.cg-select').forEach(function(c){
+    c.checked=cb.checked;
+    var id=c.dataset.id;
+    if(cb.checked)cgBulkSelected[id]=true;else delete cgBulkSelected[id];
+  });
+  var count=Object.keys(cgBulkSelected).length;
+  var bar=document.getElementById('cgBulkBar');
+  if(bar){bar.classList.toggle('visible',count>0);var lbl=document.getElementById('cgBulkCount');if(lbl)lbl.textContent=count+' selected';}
+}
+function bulkSetCaregiverStatus(status){
+  var ids=Object.keys(cgBulkSelected);if(!ids.length)return;
+  var cgs=getCaregivers(),changed=0;
+  ids.forEach(function(id){if(cgs[id]){cgs[id].status=status;changed++;}});
+  saveCaregiversLS(cgs);
+  // Persist to backend
+  ids.forEach(function(id){if(cgs[id]&&typeof saveCaregiverAPI==='function'){try{saveCaregiverAPI(id,cgs[id]);}catch(e){}}});
+  logActivity('status','Bulk caregiver update: '+changed+' set to '+status);
+  clearCgBulkSelect();updateStats();
+  showAlert(changed+' caregiver'+(changed!==1?'s':'')+' updated to '+status+'.');
+}
+function bulkDeleteCaregivers(){
+  var ids=Object.keys(cgBulkSelected);if(!ids.length){showAlert('No caregivers selected.');return;}
+  var cgs=getCaregivers();
+  var preview=ids.slice(0,5).map(function(id){return '• '+(cgs[id]?cgs[id].name||id:id);}).join('\n')+(ids.length>5?'\n• …and '+(ids.length-5)+' more':'');
+  showConfirm(
+    'Delete '+ids.length+' caregiver'+(ids.length>1?'s':'')+'?\n\n'+preview+'\n\nThis cannot be undone.',
+    function(){
+      var deleted=0;
+      ids.forEach(function(id){if(cgs[id]){delete cgs[id];try{deleteCaregiverAPI(id);}catch(e){}deleted++;}});
+      saveCaregiversLS(cgs);
+      logActivity('delete','Bulk caregiver delete: '+deleted+' removed');
+      clearCgBulkSelect();updateStats();
+      showAlert(deleted+' caregiver'+(deleted!==1?'s':'')+' deleted.');
+    },
+    {title:'Delete '+ids.length+' Caregivers?',okText:'Delete '+ids.length+(ids.length>1?' Caregivers':' Caregiver'),danger:true}
+  );
 }
 function showNewCaregiverForm(){
   document.getElementById('cgFormWrap').style.display='block';
@@ -5373,10 +5412,21 @@ function deleteCaseworkerFromDetail(){
     showCwGrid();
   },{title:'Delete Caseworker',okText:'Delete'});
 }
+var cwBulkSelected={};
 function renderCaseworkerList(){
   var cws=getCaseworkers();
   var q=(document.getElementById('cwSearch')?document.getElementById('cwSearch').value:'').toLowerCase();
   var profiles=getProfiles();
+  // Refresh metric tiles
+  var totalCw=cws.length;
+  var activeCw=0,unassigned=0;
+  cws.forEach(function(cw){
+    var clientCount=Object.keys(profiles).filter(function(k){return profiles[k].caseworkerId===cw.id||profiles[k].worker===cw.name;}).length;
+    if(clientCount>0)activeCw++;else unassigned++;
+  });
+  var setMetric=function(id,v){var el=document.getElementById(id);if(el)el.textContent=v;};
+  setMetric('cwStatActive',activeCw);setMetric('cwStatNoClients',unassigned);setMetric('cwStatTotal',totalCw);
+
   var tbody=document.getElementById('cwTableBody');if(!tbody)return;tbody.innerHTML='';
   var filtered=cws.filter(function(cw){
     return !q||(cw.name||'').toLowerCase().includes(q)||(cw.agency||'').toLowerCase().includes(q);
@@ -5389,7 +5439,9 @@ function renderCaseworkerList(){
     var clientCount=Object.keys(profiles).filter(function(k){return profiles[k].caseworkerId===cw.id||profiles[k].worker===cw.name;}).length;
     var hrefCw=buildCaseworkerUrl(cw.id);
     var tr=document.createElement('tr');
+    var checked=cwBulkSelected[cw.id]?'checked':'';
     tr.innerHTML=
+      '<td style="width:32px;" onclick="event.stopPropagation()"><input type="checkbox" class="cw-select" data-id="'+esc(cw.id)+'" '+checked+' onchange="toggleBulkCaseworker(\''+esc(cw.id)+'\',this)" style="width:13px;height:13px;cursor:pointer;"></td>'+
       '<td><a href="'+hrefCw+'" style="text-decoration:none;color:inherit;display:block;"><div class="ct-name">'+esc(cw.name||'')+'</div><div class="ct-id">'+esc(cw.agency||'No agency')+'</div></a></td>'+
       '<td style="color:#4a6a8a;font-size:12px;">'+esc(cw.phone||'—')+'</td>'+
       '<td style="color:#4a6a8a;font-size:12px;">'+esc(cw.email||'—')+'</td>'+
@@ -5402,6 +5454,41 @@ function renderCaseworkerList(){
     });
     tbody.appendChild(tr);
   });
+}
+function toggleBulkCaseworker(id,cb){
+  if(cb.checked)cwBulkSelected[id]=true;else delete cwBulkSelected[id];
+  var count=Object.keys(cwBulkSelected).length;
+  var bar=document.getElementById('cwBulkBar');
+  if(bar){bar.classList.toggle('visible',count>0);var lbl=document.getElementById('cwBulkCount');if(lbl)lbl.textContent=count+' selected';}
+}
+function clearCwBulkSelect(){cwBulkSelected={};var bar=document.getElementById('cwBulkBar');if(bar)bar.classList.remove('visible');var sa=document.getElementById('cwSelectAll');if(sa)sa.checked=false;renderCaseworkerList();}
+function toggleAllCaseworkers(cb){
+  document.querySelectorAll('.cw-select').forEach(function(c){
+    c.checked=cb.checked;
+    var id=c.dataset.id;
+    if(cb.checked)cwBulkSelected[id]=true;else delete cwBulkSelected[id];
+  });
+  var count=Object.keys(cwBulkSelected).length;
+  var bar=document.getElementById('cwBulkBar');
+  if(bar){bar.classList.toggle('visible',count>0);var lbl=document.getElementById('cwBulkCount');if(lbl)lbl.textContent=count+' selected';}
+}
+function bulkDeleteCaseworkers(){
+  var ids=Object.keys(cwBulkSelected);if(!ids.length){showAlert('No caseworkers selected.');return;}
+  var cws=getCaseworkers();
+  var byId={};cws.forEach(function(c){byId[c.id]=c;});
+  var preview=ids.slice(0,5).map(function(id){return '• '+(byId[id]?byId[id].name||id:id);}).join('\n')+(ids.length>5?'\n• …and '+(ids.length-5)+' more':'');
+  showConfirm(
+    'Delete '+ids.length+' caseworker'+(ids.length>1?'s':'')+'?\n\n'+preview+'\n\nClients assigned to these caseworkers will be left without a caseworker. This cannot be undone.',
+    function(){
+      var keep=cws.filter(function(c){return ids.indexOf(c.id)===-1;});
+      saveCaseworkersLS(keep);
+      ids.forEach(function(id){try{deleteCaseworkerAPI(id);}catch(e){}});
+      logActivity('delete','Bulk caseworker delete: '+ids.length+' removed');
+      clearCwBulkSelect();
+      showAlert(ids.length+' caseworker'+(ids.length!==1?'s':'')+' deleted.');
+    },
+    {title:'Delete '+ids.length+' Caseworkers?',okText:'Delete '+ids.length+(ids.length>1?' Caseworkers':' Caseworker'),danger:true}
+  );
 }
 
 // ============================================================

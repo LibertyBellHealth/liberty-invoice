@@ -288,6 +288,25 @@ function aiTrack(name, props){
           <button class="btn btn-primary" data-sync-disable="1" onclick="showNewCaregiverForm()">+ New Caregiver</button>
         </div>
       </div>
+      <!-- METRIC ROW -->
+      <div class="metric-row">
+        <div class="metric clickable-stat" onclick="document.getElementById('cgFilterStatus').value='active';renderCaregiverGrid();">
+          <div class="metric-val" id="cgStatActive">0</div>
+          <div class="metric-lbl">Active Caregivers</div>
+        </div>
+        <div class="metric clickable-stat" onclick="document.getElementById('cgFilterStatus').value='inactive';renderCaregiverGrid();">
+          <div class="metric-val" id="cgStatInactive">0</div>
+          <div class="metric-lbl">Inactive</div>
+        </div>
+        <div class="metric clickable-stat" onclick="document.getElementById('cgFilterStatus').value='terminated';renderCaregiverGrid();">
+          <div class="metric-val" id="cgStatTerminated">0</div>
+          <div class="metric-lbl">Terminated</div>
+        </div>
+        <div class="metric clickable-stat" onclick="document.getElementById('cgFilterStatus').value='all';renderCaregiverGrid();">
+          <div class="metric-val" id="cgStatTotal">0</div>
+          <div class="metric-lbl">Total</div>
+        </div>
+      </div>
       <div class="client-table-wrap" style="margin-top:16px;">
         <div class="ct-toolbar">
           <input id="cgSearch" class="ct-search" placeholder="Filter caregivers…" oninput="renderCaregiverGrid()">
@@ -298,9 +317,18 @@ function aiTrack(name, props){
             <option value="terminated">Terminated</option>
           </select>
         </div>
+        <div class="ct-bulk-bar" id="cgBulkBar">
+          <span id="cgBulkCount">0 selected</span>
+          <button onclick="bulkSetCaregiverStatus('active')">Mark Active</button>
+          <button onclick="bulkSetCaregiverStatus('inactive')">Mark Inactive</button>
+          <button onclick="bulkSetCaregiverStatus('terminated')">Mark Terminated</button>
+          <button onclick="bulkDeleteCaregivers()" style="background:#c0392b;color:#fff;">Delete Selected</button>
+          <button onclick="clearCgBulkSelect()">Cancel</button>
+        </div>
         <table class="client-table">
           <thead>
             <tr>
+              <th style="width:32px;"><input type="checkbox" id="cgSelectAll" onchange="toggleAllCaregivers(this)" style="width:13px;height:13px;cursor:pointer;"></th>
               <th>Caregiver</th>
               <th>Status</th>
               <th>Role</th>
@@ -547,13 +575,34 @@ function aiTrack(name, props){
           <button class="btn btn-primary" data-sync-disable="1" onclick="showCaseworkerForm()">+ Add Caseworker</button>
         </div>
       </div>
+      <!-- METRIC ROW -->
+      <div class="metric-row">
+        <div class="metric">
+          <div class="metric-val" id="cwStatActive">0</div>
+          <div class="metric-lbl">Active Caseworkers</div>
+        </div>
+        <div class="metric">
+          <div class="metric-val" id="cwStatNoClients">0</div>
+          <div class="metric-lbl">Unassigned</div>
+        </div>
+        <div class="metric">
+          <div class="metric-val" id="cwStatTotal">0</div>
+          <div class="metric-lbl">Total</div>
+        </div>
+      </div>
       <div class="client-table-wrap" style="margin-top:16px;">
         <div class="ct-toolbar">
           <input id="cwSearch" class="ct-search" placeholder="Search by name or agency…" oninput="renderCaseworkerList()">
         </div>
+        <div class="ct-bulk-bar" id="cwBulkBar">
+          <span id="cwBulkCount">0 selected</span>
+          <button onclick="bulkDeleteCaseworkers()" style="background:#c0392b;color:#fff;">Delete Selected</button>
+          <button onclick="clearCwBulkSelect()">Cancel</button>
+        </div>
         <table class="client-table">
           <thead>
             <tr>
+              <th style="width:32px;"><input type="checkbox" id="cwSelectAll" onchange="toggleAllCaseworkers(this)" style="width:13px;height:13px;cursor:pointer;"></th>
               <th>Caseworker</th>
               <th>Phone</th>
               <th>Email</th>
