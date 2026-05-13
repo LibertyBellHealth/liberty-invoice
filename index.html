@@ -153,7 +153,8 @@ function aiTrack(name, props){
         <button onclick="bulkSetClientStatus('active')">Mark Active</button>
         <button onclick="bulkSetClientStatus('inactive')">Mark Inactive</button>
         <button onclick="bulkSetClientStatus('lost')">Mark Lost</button>
-        <button onclick="bulkDelete()" style="background:#c0392b;color:#fff;">Delete Selected</button>
+        <button onclick="bulkSetClientStatus('terminated')">Mark Terminated</button>
+        <button onclick="bulkDelete()" title="Permanently removes client and all their invoices/history. Use Terminated for routine offboarding instead." style="background:#c0392b;color:#fff;">Delete (Permanent)</button>
         <button onclick="clearBulkSelect()">Cancel</button>
       </div>
       <table class="client-table" id="clientTable">
@@ -323,7 +324,7 @@ function aiTrack(name, props){
           <button onclick="bulkSetCaregiverStatus('active')">Mark Active</button>
           <button onclick="bulkSetCaregiverStatus('inactive')">Mark Inactive</button>
           <button onclick="bulkSetCaregiverStatus('terminated')">Mark Terminated</button>
-          <button onclick="bulkDeleteCaregivers()" style="background:#c0392b;color:#fff;">Delete Selected</button>
+          <button onclick="bulkDeleteCaregivers()" title="Permanently removes caregiver and all their records. Use Terminated for routine offboarding instead." style="background:#c0392b;color:#fff;">Delete (Permanent)</button>
           <button onclick="clearCgBulkSelect()">Cancel</button>
         </div>
         <table class="client-table">
