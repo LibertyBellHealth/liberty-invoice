@@ -1906,6 +1906,7 @@ function renderCgInfoPane(){
     '<div class="info-field"><label>Employment Type</label><select id="cgi-emptype"><option value="full-time"'+(cg.emptype==='full-time'?' selected':'')+'>Full-Time</option><option value="part-time"'+(cg.emptype==='part-time'?' selected':'')+'>Part-Time</option><option value="per-diem"'+(cg.emptype==='per-diem'?' selected':'')+'>Per Diem</option></select></div>');
   mkRow('<div class="info-field"><label>Pay Rate ($/hr)</label><input id="cgi-pay" value="'+esc(cg.payRate||'')+'"></div>'+
     '<div class="info-field"><label>Max Hours/Week</label><input id="cgi-hours" value="'+esc(cg.maxHours||'')+'"></div>');
+  mkRow('<div class="info-field full"><label>CHAMPS Provider ID <span style="font-weight:400;color:#8ca0b4;">(used on BPHASA-2421)</span></label><input id="cgi-champs" value="'+esc(cg.champsId||cg.champs_id||'')+'" placeholder="e.g. 6221933"></div>');
 
   var certDiv=document.createElement('div');certDiv.className='info-field full';
   certDiv.innerHTML='<label>Certifications &amp; Training</label><textarea id="cgi-certs" rows="2" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;resize:vertical;">'+esc(cg.certs||cg.certifications||'')+'</textarea>';
@@ -1940,6 +1941,7 @@ function saveCgInfoPane(){
   var cgiGender=document.getElementById('cgi-gender');if(cgiGender)cg.gender=cgiGender.value;
   cg.hireDate=document.getElementById('cgi-hire').value;cg.emptype=document.getElementById('cgi-emptype').value;
   cg.payRate=document.getElementById('cgi-pay').value;cg.maxHours=document.getElementById('cgi-hours').value;
+  var cgiChamps=document.getElementById('cgi-champs');if(cgiChamps)cg.champsId=cgiChamps.value;
   cg.certifications=document.getElementById('cgi-certs').value;
   cg.ecName=document.getElementById('cgi-ecname').value;cg.ecPhone=document.getElementById('cgi-ecphone').value;
   saveCaregiversLS(cgs);saveCaregiverAPI(activeCgId,cg);
