@@ -476,6 +476,29 @@ function bulkSetStatus(status){
   clearBulkSelect();updateStats();
   showAlert(changed+' invoice'+(changed!==1?'s':'')+' updated to '+status+'.');
 }
+function bulkDelete(){
+  var names=Object.keys(bulkSelected);if(!names.length)return;
+  var preview=names.slice(0,5).map(function(n){return '• '+n;}).join('\n')+(names.length>5?'\n• …and '+(names.length-5)+' more':'');
+  showConfirm(
+    'Delete '+names.length+' client'+(names.length>1?'s':'')+' and ALL their data (invoices, notes, audit log)?\n\n'+preview+'\n\nThis cannot be undone.',
+    function(){
+      var p=getProfiles(),deleted=0;
+      names.forEach(function(name){
+        if(!p[name])return;
+        try{deleteProfileSP(name);}catch(e){console.error('Backend delete failed for '+name,e);}
+        delete p[name];
+        try{localStorage.removeItem('lhca_draft_'+name);}catch(e){}
+        deleted++;
+      });
+      saveProfilesLS(p);
+      logActivity('delete','Bulk delete: '+deleted+' client'+(deleted!==1?'s':'')+' removed');
+      if(activeProfileName && !p[activeProfileName])activeProfileName=null;
+      clearBulkSelect();updateStats();renderSidebarClients();
+      showAlert(deleted+' client'+(deleted!==1?'s':'')+' deleted.');
+    },
+    {title:'Delete '+names.length+' Clients?',okText:'Delete '+names.length+(names.length>1?' Clients':' Client'),danger:true}
+  );
+}
 
 // ============================================================
 //  CLIENT DETAIL TABS
