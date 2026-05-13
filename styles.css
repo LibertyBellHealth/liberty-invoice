@@ -523,7 +523,15 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
   /* Sidebar — hidden by default, opens as overlay via hamburger */
   #sidebar { display: none; }
   #sidebar.mobile-open { display: flex; position: fixed; z-index: 1000; height: 100vh; width: 260px; box-shadow: 4px 0 16px rgba(0,0,0,0.3); }
-  #mobileMenuBtn { display: block !important; }
+  /* Pin hamburger to top-left, ABOVE the sidebar — so tapping it always toggles (open OR close) */
+  #mobileMenuBtn { display: block !important; position: fixed !important; top: 8px; left: 8px; z-index: 1100; background: rgba(255,255,255,0.95) !important; border-radius: 6px !important; box-shadow: 0 1px 3px rgba(0,0,0,0.15); padding: 6px 10px !important; }
+  /* When sidebar is open, swap hamburger to an X via attribute selector */
+  #sidebar.mobile-open ~ #main #mobileMenuBtn::before { content: '\2715'; }
+  #sidebar.mobile-open ~ #main #mobileMenuBtn { font-size: 16px; color: #fff !important; background: #1a2b45 !important; }
+  #sidebar.mobile-open ~ #main #mobileMenuBtn { text-indent: -9999px; }
+  #sidebar.mobile-open ~ #main #mobileMenuBtn::before { display: block; text-indent: 0; }
+  /* Topbar needs left padding so breadcrumb doesn't sit under the fixed hamburger */
+  #topbar { padding-left: 52px !important; }
   #main { width: 100%; }
 
   /* Dashboard header — wrap so "+ New Client" button stays visible */
