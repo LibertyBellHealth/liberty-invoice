@@ -523,6 +523,11 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
   /* Sidebar — hidden by default, opens as overlay via hamburger */
   #sidebar { display: none; }
   #sidebar.mobile-open { display: flex !important; position: fixed; z-index: 1000; height: 100vh; width: 260px; top: 0; left: 0; box-shadow: 4px 0 16px rgba(0,0,0,0.4); }
+  /* Force-expand on mobile: the desktop collapse button (.sb-collapse) shouldn't apply on phone — hide it and reset any inherited .collapsed state */
+  .sb-collapse { display: none !important; }
+  #sidebar.collapsed { width: 260px !important; min-width: 260px !important; }
+  #sidebar.collapsed .sb-client-info, #sidebar.collapsed .sl { display: block !important; }
+  #sidebar.collapsed .sb-client-row { padding: 6px 14px !important; justify-content: flex-start !important; }
   /* Pin hamburger to top-left, ABOVE the sidebar — same icon both states, toggles on tap */
   #mobileMenuBtn { display: block !important; position: fixed !important; top: 8px; left: 8px; z-index: 1100; background: #fff !important; border-radius: 6px !important; box-shadow: 0 1px 4px rgba(0,0,0,0.2); padding: 6px 12px !important; font-size: 22px !important; line-height: 1 !important; }
   /* When sidebar is open, hamburger sits above it with white-on-navy contrast */
