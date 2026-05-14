@@ -29,7 +29,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 .sb-client-row:hover{background:rgba(255,255,255,0.06);border-left-color:#4a8fd4;}
 .sb-client-row.active{background:rgba(24,95,165,0.28);border-left-color:#4a8fd4;}
 .sb-avatar{width:25px;height:25px;border-radius:50%;background:#2a4a6e;color:#9ab5cc;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.sb-client-info{min-width:0;overflow:hidden;}
+.sb-client-info{flex:1;min-width:0;overflow:hidden;}
 .sb-client-name{font-size:11px;color:#c8dced;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500;}
 .sb-client-meta{font-size:10px;color:#435f7a;white-space:nowrap;}
 #sidebar.collapsed .sb-client-info{display:none;}
