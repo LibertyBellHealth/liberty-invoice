@@ -1389,7 +1389,7 @@ function showNewCaregiverForm(){
   document.getElementById('cgFormWrap').style.display='block';
   document.getElementById('cgFormTitle').textContent='New Caregiver';
   document.getElementById('cg-editing-id').value='';
-  ['cg-first','cg-middle','cg-last','cg-nickname','cg-phone','cg-email','cg-dl','cg-ssn','cg-street','cg-city','cg-state','cg-zip','cg-county','cg-dob','cg-gender','cg-hire','cg-pay','cg-hours','cg-certs','cg-ec-name','cg-ec-phone','cg-champs','cg-notes'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  ['cg-first','cg-middle','cg-last','cg-nickname','cg-phone','cg-email','cg-dl','cg-ssn','cg-street','cg-city','cg-state','cg-zip','cg-county','cg-dob','cg-gender','cg-hire','cg-pay','cg-hours','cg-certs','cg-ec-name','cg-ec-phone','cg-champs','cg-milogin-user','cg-milogin-pass','cg-notes'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('cg-status').value='active';document.getElementById('cg-emptype').value='full-time';
   document.getElementById('cgDeleteBtn').style.display='none';
   var cgDocSec=document.getElementById('cgDocsSection');if(cgDocSec)cgDocSec.style.display='none';
@@ -1418,6 +1418,8 @@ function editCaregiver(id){
   document.getElementById('cg-county').value=cg.county||'';
   var cgDobEl=document.getElementById('cg-dob');if(cgDobEl)cgDobEl.value=cg.dob||cg.dateOfBirth||'';
   var cgChampsEl=document.getElementById('cg-champs');if(cgChampsEl)cgChampsEl.value=cg.champsId||cg.champs_id||'';
+  var cgMiuEl=document.getElementById('cg-milogin-user');if(cgMiuEl)cgMiuEl.value=cg.miloginUsername||cg.milogin_username||'';
+  var cgMipEl=document.getElementById('cg-milogin-pass');if(cgMipEl)cgMipEl.value=cg.miloginPassword||cg.milogin_password||'';
   var cgGenderEl=document.getElementById('cg-gender');if(cgGenderEl)cgGenderEl.value=cg.gender||'';
   document.getElementById('cg-hire').value=cg.hireDate||'';document.getElementById('cg-pay').value=cg.payRate||'';
   document.getElementById('cg-hours').value=cg.maxHours||'';document.getElementById('cg-certs').value=cg.certs||'';
@@ -1455,6 +1457,8 @@ function saveCaregiver(){
     certs:document.getElementById('cg-certs').value,ecName:document.getElementById('cg-ec-name').value,
     ecPhone:document.getElementById('cg-ec-phone').value,
     champsId:(document.getElementById('cg-champs')||{}).value||'',
+    miloginUsername:(document.getElementById('cg-milogin-user')||{}).value||'',
+    miloginPassword:(document.getElementById('cg-milogin-pass')||{}).value||'',
     gender:(document.getElementById('cg-gender')||{}).value||'',
     notes:document.getElementById('cg-notes').value};
   saveCaregiversLS(cgs);saveCaregiverAPI(id, cgs[id]);hideCgForm();updateStats();
@@ -1950,6 +1954,15 @@ function renderCgInfoPane(){
     '<div class="info-field"><label>County</label><input id="cgi-county" value="'+esc(cg.county||'')+'"></div>');
 
   mkRow('<div class="info-field full"><label>CHAMPS Provider ID <span style="font-weight:400;color:#8ca0b4;">(used on BPHASA-2421)</span></label><input id="cgi-champs" value="'+esc(cg.champsId||cg.champs_id||'')+'" placeholder="e.g. 6221933"></div>');
+  mkRow(
+    '<div class="info-field"><label>MI Login Username <span style="font-weight:400;color:#8ca0b4;">(state portal)</span></label><input id="cgi-milogin-user" value="'+esc(cg.miloginUsername||cg.milogin_username||'')+'" placeholder="username" autocomplete="off"></div>'+
+    '<div class="info-field"><label>MI Login Password</label>'+
+      '<div style="display:flex;gap:4px;align-items:center;">'+
+        '<input id="cgi-milogin-pass" type="password" value="'+esc(cg.miloginPassword||cg.milogin_password||'')+'" autocomplete="off" style="flex:1;">'+
+        '<button type="button" class="btn btn-secondary btn-sm" onclick="toggleMask(\'cgi-milogin-pass\',this)" style="padding:4px 8px;font-size:11px;white-space:nowrap;">Show</button>'+
+      '</div>'+
+    '</div>'
+  );
 
   mkDiv('Employment');
   mkRow('<div class="info-field"><label>Hire Date</label><input id="cgi-hire" type="date" value="'+esc(cg.hireDate||'')+'"></div>'+
@@ -1991,6 +2004,8 @@ function saveCgInfoPane(){
   cg.hireDate=document.getElementById('cgi-hire').value;cg.emptype=document.getElementById('cgi-emptype').value;
   cg.payRate=document.getElementById('cgi-pay').value;cg.maxHours=document.getElementById('cgi-hours').value;
   var cgiChamps=document.getElementById('cgi-champs');if(cgiChamps)cg.champsId=cgiChamps.value;
+  var cgiMiu=document.getElementById('cgi-milogin-user');if(cgiMiu)cg.miloginUsername=cgiMiu.value;
+  var cgiMip=document.getElementById('cgi-milogin-pass');if(cgiMip)cg.miloginPassword=cgiMip.value;
   cg.certifications=document.getElementById('cgi-certs').value;
   cg.ecName=document.getElementById('cgi-ecname').value;cg.ecPhone=document.getElementById('cgi-ecphone').value;
   saveCaregiversLS(cgs);saveCaregiverAPI(activeCgId,cg);
@@ -5240,6 +5255,7 @@ function loadCaregiversAPI() {
           certs: cg.certifications || '',
           ecName: cg.ec_name || '', ecPhone: cg.ec_phone || '',
           champsId: cg.champs_id || '', gender: cg.gender || '',
+          miloginUsername: cg.milogin_username || '', miloginPassword: cg.milogin_password || '',
           street: cg.street || '', city: cg.city || '',
           state: cg.state || '', zip: cg.zip || '', county: cg.county || '',
           dob: cg.dob || '', driversLicense: cg.drivers_license || '', ssn: cg.ssn || '',
@@ -5269,6 +5285,7 @@ function saveCaregiverAPI(id, cg) {
       certifications: cg.certs || cg.certifications || '',
       ec_name: cg.ecName || '', ec_phone: cg.ecPhone || '',
       champs_id: cg.champsId || '', gender: cg.gender || '',
+      milogin_username: cg.miloginUsername || '', milogin_password: cg.miloginPassword || '',
       // Identity (sensitive — these fields are masked in exports too)
       dob: cg.dob || '', drivers_license: cg.driversLicense || '', ssn: cg.ssn || ''
     }),

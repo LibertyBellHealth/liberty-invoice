@@ -26,7 +26,7 @@ function aiTrack(name, props){
   }catch(e){}
 }
 </script>
-<link rel="stylesheet" href="styles.css?v=20260513c">
+<link rel="stylesheet" href="styles.css?v=20260513d">
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -406,6 +406,15 @@ function aiTrack(name, props){
           <div class="ff-row">
             <div class="ff"><label>CHAMPS Provider ID <span style="font-weight:400;font-size:10px;color:#8ca0b4;">(individual caregiver — used on BPHASA-2421 Live-In form)</span></label><input id="cg-champs" placeholder="Caregiver's CHAMPS ID" maxlength="40"></div>
             <div class="ff"></div>
+          </div>
+          <div class="ff-row">
+            <div class="ff"><label>MI Login Username <span style="font-weight:400;font-size:10px;color:#8ca0b4;">(state portal — CHAMPS / MDHHS)</span></label><input id="cg-milogin-user" placeholder="username" maxlength="120" autocomplete="off"></div>
+            <div class="ff"><label>MI Login Password</label>
+              <div style="display:flex;gap:4px;align-items:center;">
+                <input id="cg-milogin-pass" type="password" placeholder="password" maxlength="200" autocomplete="off" style="flex:1;">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleMask('cg-milogin-pass',this)" style="padding:4px 8px;font-size:11px;white-space:nowrap;">Show</button>
+              </div>
+            </div>
           </div>
           <div class="ff"><label>Certifications &amp; Training</label><textarea id="cg-certs" rows="2" placeholder="CPR, First Aid, HHA, CNA…"></textarea></div>
           <div class="ff-row">
@@ -1103,6 +1112,6 @@ function aiTrack(name, props){
     </div>
   </div>
 </div>
-<script src="app.js?v=20260513c"></script>
+<script src="app.js?v=20260513d"></script>
 </body>
 </html>
