@@ -1805,7 +1805,19 @@ function _doDeleteCaregiverFromDetail(){
   aiTrack('CaregiverDeleted',{caregiverId:activeCgId,caregiverName:cg.name||activeCgId});
   showCgGrid();
 }
+var cgUnsavedChanges=false;
 function switchCgTab(tab){
+  // Guard against losing edits when leaving the Info tab with unsaved changes
+  if(cgUnsavedChanges && tab!=='info'){
+    showConfirm('You have unsaved changes on the caregiver Info tab. Leave anyway?',function(){
+      cgUnsavedChanges=false;
+      _doSwitchCgTab(tab);
+    },{title:'Unsaved Changes',okText:'Discard & Leave',danger:true});
+    return;
+  }
+  _doSwitchCgTab(tab);
+}
+function _doSwitchCgTab(tab){
   ['overview','info','clients','notes','docs','signatures','audit'].forEach(function(t){
     var tb=document.getElementById('cgtab-'+t);
     var pn=document.getElementById('cgpane-'+t);
@@ -1903,6 +1915,11 @@ function renderCgInfoPane(){
   var cg=getCaregivers()[activeCgId];
   var c=document.getElementById('cgInfoContent');c.innerHTML='';
   if(!cg)return;
+  // Re-rendering the pane means the prior unsaved state is being replaced by a fresh form load
+  cgUnsavedChanges=false;
+  // Capture any subsequent input/change as "unsaved" — delegated listener on the pane
+  c.oninput=function(){cgUnsavedChanges=true;};
+  c.onchange=function(){cgUnsavedChanges=true;};
 
   var g=document.createElement('div');g.className='info-grid';
   c.appendChild(g);
@@ -2015,6 +2032,7 @@ function saveCgInfoPane(){
   document.getElementById('cgDetailMeta').innerHTML=esc(cg.emptype||'')+(cg.payRate?' · $'+cg.payRate+'/hr':'')+' &nbsp;<span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span>';
   var btn=document.getElementById('cgSaveInfoBtn');if(btn){btn.textContent='Saved ✓';setTimeout(function(){btn.textContent='Save Changes';},1800);}
   addAuditEntry(cg.name,'Caregiver profile updated');
+  cgUnsavedChanges=false;
   renderCaregiverGrid();
 }
 function renderCgClientsPane(){
@@ -5591,7 +5609,18 @@ function showCwGrid(){
   hideCaseworkerForm();
   renderCaseworkerList();
 }
+var cwUnsavedChanges=false;
 function switchCwTab(tab){
+  if(cwUnsavedChanges && tab!=='info'){
+    showConfirm('You have unsaved changes on the caseworker Info tab. Leave anyway?',function(){
+      cwUnsavedChanges=false;
+      _doSwitchCwTab(tab);
+    },{title:'Unsaved Changes',okText:'Discard & Leave',danger:true});
+    return;
+  }
+  _doSwitchCwTab(tab);
+}
+function _doSwitchCwTab(tab){
   ['overview','info','clients','notes','docs','audit'].forEach(function(t){
     var tb=document.getElementById('cwtab-'+t);
     var pn=document.getElementById('cwpane-'+t);
@@ -5650,6 +5679,9 @@ function renderCwInfoPane(){
   var cw=getCaseworkers().find(function(c){return c.id===activeCwId;});
   var c=document.getElementById('cwInfoContent');c.innerHTML='';
   if(!cw)return;
+  cwUnsavedChanges=false;
+  c.oninput=function(){cwUnsavedChanges=true;};
+  c.onchange=function(){cwUnsavedChanges=true;};
 
   var g=document.createElement('div');g.className='info-grid';c.appendChild(g);
 
@@ -5704,6 +5736,7 @@ function saveCwInfoPane(){
   document.getElementById('cwDetailMeta').innerHTML=esc(cw.agency||'')+(cw.phone?' · '+cw.phone:'');
   var btn=document.getElementById('cwSaveInfoBtn');if(btn){btn.textContent='Saved ✓';setTimeout(function(){btn.textContent='Save Changes';},1800);}
   addAuditEntry(cw.name,'Caseworker profile updated');
+  cwUnsavedChanges=false;
   renderCaseworkerList();
 }
 function showCwEditForm(){
