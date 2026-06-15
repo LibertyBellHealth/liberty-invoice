@@ -969,7 +969,7 @@ function promptInvNote(idx){
   showPrompt('Note for this invoice:',cur,function(note){
     var p2=getProfiles();if(!p2[activeProfileName]||!p2[activeProfileName].invoices[idx])return;
     p2[activeProfileName].invoices[idx].invoiceNote=note||'';
-    saveProfilesLS(p2);renderInvHistory();renderOverviewPane();
+    saveProfilesLS(p2);saveProfileSP(activeProfileName,p2[activeProfileName]);renderInvHistory();renderOverviewPane();
   },{title:'Invoice Note',okText:'Save Note'});
 }
 function cycleStatusByIdx(idx,el){
@@ -995,7 +995,13 @@ function cycleStatusByIdx(idx,el){
 }
 function saveInvNote(input){
   var p=getProfiles(),idx=parseInt(input.dataset.idx);
-  if(p[activeProfileName]&&p[activeProfileName].invoices&&p[activeProfileName].invoices[idx]){p[activeProfileName].invoices[idx].invoiceNote=input.value;saveProfilesLS(p);}
+  if(p[activeProfileName]&&p[activeProfileName].invoices&&p[activeProfileName].invoices[idx]){
+    p[activeProfileName].invoices[idx].invoiceNote=input.value;
+    saveProfilesLS(p);
+    // Debounce backend save so we don't slam the API on every keystroke
+    clearTimeout(saveInvNote._t);
+    saveInvNote._t=setTimeout(function(){saveProfileSP(activeProfileName,p[activeProfileName]);},600);
+  }
 }
 function deleteInv(idx){
   var p=getProfiles(),inv=p[activeProfileName].invoices[idx];
@@ -1068,7 +1074,14 @@ function renderNotesPane(){
     c.appendChild(row);
   });
   c.querySelectorAll('input[data-idx]').forEach(function(inp){
-    inp.addEventListener('change',function(){var p2=getProfiles(),i=parseInt(inp.dataset.idx);if(p2[activeProfileName]&&p2[activeProfileName].invoices[i]){p2[activeProfileName].invoices[i].invoiceNote=inp.value;saveProfilesLS(p2);}});
+    inp.addEventListener('change',function(){
+      var p2=getProfiles(),i=parseInt(inp.dataset.idx);
+      if(p2[activeProfileName]&&p2[activeProfileName].invoices[i]){
+        p2[activeProfileName].invoices[i].invoiceNote=inp.value;
+        saveProfilesLS(p2);
+        saveProfileSP(activeProfileName,p2[activeProfileName]);
+      }
+    });
   });
 }
 
@@ -1880,19 +1893,22 @@ function renderCgNotesPane(){
   var cg=getCaregivers()[activeCgId];
   var c=document.getElementById('cgNotesContent');
   if(!c||!cg)return;
-  c.innerHTML='<textarea id="cgNotesArea" style="width:100%;min-height:200px;padding:12px;border:1px solid #d0d8e4;border-radius:6px;font-size:13px;font-family:Arial,sans-serif;outline:none;resize:vertical;max-width:620px;">'+esc(cg.notes||'')+'</textarea>'+
-    '<div style="margin-top:10px;"><button class="btn btn-primary" onclick="saveCgNotes()">Save Notes</button></div>';
-}
-function saveCgNotes(){
-  var cgs=getCaregivers();
-  if(!cgs[activeCgId])return;
-  var area=document.getElementById('cgNotesArea');
-  if(!area)return;
-  cgs[activeCgId].notes=area.value;
-  saveCaregiversLS(cgs);
-  saveCaregiverAPI(activeCgId,cgs[activeCgId]);
-  var btn=document.querySelector('#cgNotesContent .btn-primary');
-  if(btn){btn.textContent='Saved';setTimeout(function(){btn.textContent='Save Notes';},1800);}
+  c.innerHTML='<div style="margin-bottom:6px;font-size:11px;color:#8ca0b4;">Auto-saves as you type <span id="cgNotesSavedFlash" style="display:none;color:#1a7740;font-weight:600;">· Saved ✓</span></div>'+
+    '<textarea id="cgNotesArea" style="width:100%;min-height:200px;padding:12px;border:1px solid #d0d8e4;border-radius:6px;font-size:13px;font-family:Arial,sans-serif;outline:none;resize:vertical;max-width:620px;">'+esc(cg.notes||'')+'</textarea>';
+  var ta=document.getElementById('cgNotesArea');
+  var t=null;
+  ta.addEventListener('input',function(){
+    clearTimeout(t);
+    t=setTimeout(function(){
+      var cgs=getCaregivers();
+      if(!cgs[activeCgId])return;
+      cgs[activeCgId].notes=ta.value;
+      saveCaregiversLS(cgs);
+      saveCaregiverAPI(activeCgId,cgs[activeCgId]);
+      var f=document.getElementById('cgNotesSavedFlash');
+      if(f){f.style.display='inline';setTimeout(function(){f.style.display='none';},2000);}
+    },600);
+  });
 }
 function renderCgAuditPane(){
   var pane=document.getElementById('cgpane-audit');
@@ -2716,7 +2732,13 @@ function deleteTodo(id){
 }
 function clearDoneTasks(){
   showConfirm('Remove all completed tasks?',function(){
-    saveTodos(getTodos().filter(function(t){return !t.done;}));renderTodos();updateTaskBadge();
+    var all=getTodos();
+    var done=all.filter(function(t){return t.done;});
+    var keep=all.filter(function(t){return !t.done;});
+    saveTodos(keep);
+    // Also delete each completed task from the backend so they don't reappear on next load
+    done.forEach(function(t){if(t.dbId)deleteTaskAPI(t.dbId);});
+    renderTodos();updateTaskBadge();
   },{title:'Clear Completed Tasks',okText:'Remove All'});
 }
 function populateTodoClientSelect(){
@@ -3536,7 +3558,13 @@ function importProfiles(ev){
       });
       var conf=keys.filter(function(k){return ex[k];});
       function doImport(){
-        saveProfilesLS(Object.assign({},ex,imp));renderSidebarClients();renderClientGrid();updateStats();
+        var merged=Object.assign({},ex,imp);
+        saveProfilesLS(merged);
+        // Persist each imported client to the backend so the data isn't just local
+        keys.forEach(function(name){
+          try{saveProfileSP(name,merged[name]);}catch(e){console.error('Failed to sync imported client to DB: '+name,e);}
+        });
+        renderSidebarClients();renderClientGrid();updateStats();
         showConfirm('Imported '+keys.length+' client'+(keys.length>1?'s':'')+'.',function(){},{title:'Import Complete',okText:'OK',danger:false});
       }
       if(conf.length){
@@ -6065,20 +6093,23 @@ function renderCwNotesPane(){
   var cw=getCaseworkers().find(function(c){return c.id===activeCwId;});
   var c=document.getElementById('cwNotesContent');
   if(!c||!cw)return;
-  c.innerHTML='<textarea id="cwNotesArea" style="width:100%;min-height:200px;padding:12px;border:1px solid #d0d8e4;border-radius:6px;font-size:13px;font-family:Arial,sans-serif;outline:none;resize:vertical;max-width:620px;">'+esc(cw.notes||'')+'</textarea>'+
-    '<div style="margin-top:10px;"><button class="btn btn-primary" onclick="saveCwNotes()">Save Notes</button></div>';
-}
-function saveCwNotes(){
-  var arr=getCaseworkers();
-  var cw=arr.find(function(c){return c.id===activeCwId;});
-  if(!cw)return;
-  var area=document.getElementById('cwNotesArea');
-  if(!area)return;
-  cw.notes=area.value;
-  saveCaseworkersLS(arr);
-  saveCaseworkerAPI(cw);
-  var btn=document.querySelector('#cwNotesContent .btn-primary');
-  if(btn){btn.textContent='Saved';setTimeout(function(){btn.textContent='Save Notes';},1800);}
+  c.innerHTML='<div style="margin-bottom:6px;font-size:11px;color:#8ca0b4;">Auto-saves as you type <span id="cwNotesSavedFlash" style="display:none;color:#1a7740;font-weight:600;">· Saved ✓</span></div>'+
+    '<textarea id="cwNotesArea" style="width:100%;min-height:200px;padding:12px;border:1px solid #d0d8e4;border-radius:6px;font-size:13px;font-family:Arial,sans-serif;outline:none;resize:vertical;max-width:620px;">'+esc(cw.notes||'')+'</textarea>';
+  var ta=document.getElementById('cwNotesArea');
+  var t=null;
+  ta.addEventListener('input',function(){
+    clearTimeout(t);
+    t=setTimeout(function(){
+      var arr=getCaseworkers();
+      var cwRec=arr.find(function(c){return c.id===activeCwId;});
+      if(!cwRec)return;
+      cwRec.notes=ta.value;
+      saveCaseworkersLS(arr);
+      saveCaseworkerAPI(cwRec);
+      var f=document.getElementById('cwNotesSavedFlash');
+      if(f){f.style.display='inline';setTimeout(function(){f.style.display='none';},2000);}
+    },600);
+  });
 }
 function renderCwDocsPane(){
   if(!activeCwId)return;
