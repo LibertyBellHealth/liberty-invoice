@@ -4494,7 +4494,22 @@ function saveEmailAuditLog(arr){
 }
 function renderEmailAuditTable(){
   var wrap=document.getElementById('emailAuditTableWrap');if(!wrap)return;
-  var arr=getEmailAuditLog();
+  // Instant render from LS cache, then refresh from DB (source of truth)
+  _renderEmailAuditTableFromArray(getEmailAuditLog());
+  fetch(API_BASE+'/audit-events?type=email_send&limit=1000',{headers:apiHeaders()})
+    .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+    .then(function(rows){
+      // Unpack metadata blob back into the rendering shape
+      var unpacked=rows.map(function(ev){
+        try{var m=JSON.parse(ev.metadata||'{}');m.timestamp=m.timestamp||ev.created_at;return m;}
+        catch(e){return {timestamp:ev.created_at,recipient:'(parse error)',success:false};}
+      });
+      _renderEmailAuditTableFromArray(unpacked);
+    })
+    .catch(function(e){console.error('Email audit DB fetch failed (using LS cache):',e);});
+}
+function _renderEmailAuditTableFromArray(arr){
+  var wrap=document.getElementById('emailAuditTableWrap');if(!wrap)return;
   if(!arr.length){wrap.innerHTML='<div style="padding:14px;color:#8ca0b4;text-align:center;">No log entries yet.</div>';return;}
   // Newest first
   var rows=arr.slice().reverse().map(function(r){
@@ -4527,8 +4542,26 @@ function renderEmailAuditTable(){
 }
 
 function downloadEmailAuditCSV(){
-  var arr=getEmailAuditLog();
-  if(!arr.length){showAlert('No audit log entries to download.');return;}
+  // Pull canonical history from DB (HIPAA requirement: complete and authoritative)
+  fetch(API_BASE+'/audit-events?type=email_send&limit=1000',{headers:apiHeaders()})
+    .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+    .then(function(rows){
+      var arr=rows.map(function(ev){
+        try{var m=JSON.parse(ev.metadata||'{}');m.timestamp=m.timestamp||ev.created_at;return m;}
+        catch(e){return {timestamp:ev.created_at,recipient:'(parse error)',success:false};}
+      });
+      if(!arr.length){showAlert('No audit log entries to download.');return;}
+      _doEmailAuditCSVDownload(arr);
+    })
+    .catch(function(e){
+      // Fall back to LS cache if DB unreachable
+      console.error('Email audit DB fetch failed, using LS cache:',e);
+      var arr=getEmailAuditLog();
+      if(!arr.length){showAlert('No audit log entries to download.');return;}
+      _doEmailAuditCSVDownload(arr);
+    });
+}
+function _doEmailAuditCSVDownload(arr){
   function csvEscape(v){var s=String(v==null?'':v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
   var header=['Timestamp','SentBy','Type','Recipient','CaseworkerName','BillingPeriod','AttachmentCount','ClientNames','Success','ErrorMsg'].join(',');
   var lines=arr.map(function(r){return [
@@ -4544,13 +4577,28 @@ function downloadEmailAuditCSV(){
 }
 
 function logEmailSend(entry){
-  // entry: { recipient, caseworkerName, billingPeriod, clientNames[], attachmentCount, sentBy, success, errorMsg? }
+  // entry: { recipient, caseworkerName, billingPeriod, clientNames[], attachmentCount, sentBy, success, errorMsg?, cc? }
   var record=Object.assign({
     timestamp:new Date().toISOString(),
     sentBy:(window.signedInEmail||'unknown')
   },entry);
+  // HIPAA-critical — persist to DB FIRST, then mirror to LS as display cache
+  var summary='Email to '+(record.recipient||'?')+' · '+((record.clientNames||[]).length)+' client'+((record.clientNames||[]).length===1?'':'s')+' · '+(record.success?'sent':'failed');
+  fetch(API_BASE+'/audit-events',{
+    method:'POST',
+    headers:apiHeaders(),
+    body:JSON.stringify({
+      event_type:'email_send',
+      actor:record.sentBy,
+      target_type:record.caseworkerName?'caseworker':'',
+      target_id:record.caseworkerName||'',
+      summary:summary,
+      metadata:JSON.stringify(record)
+    })
+  }).catch(function(e){console.error('Email audit DB write failed:',e);});
+  // Mirror to LS for instant display (keep as cache only — DB is source of truth)
   var arr=getEmailAuditLog();arr.push(record);saveEmailAuditLog(arr);
-  // Mirror to App Insights for centralized tracking
+  // App Insights for centralized observability
   try{aiTrack('PHIEmailSend',{
     recipient:record.recipient,
     caseworker:record.caseworkerName,
