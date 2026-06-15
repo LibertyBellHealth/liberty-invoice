@@ -3903,6 +3903,47 @@ function showToast(msg,ms){
   t.textContent=msg;t.classList.add('show');
   clearTimeout(t._tid);t._tid=setTimeout(function(){t.classList.remove('show');},ms||3500);
 }
+// ── Save-status toast — used by every API save path so failures are never silent ──
+// Usage: trackSave('client', () => fetch(...))  — returns the promise so callers can await/chain
+// On failure: shows a red toast with a Retry button that re-invokes the save.
+var _saveStatusEl=null;
+function _showSaveStatus(state,label,onRetry){
+  if(!_saveStatusEl){
+    _saveStatusEl=document.createElement('div');
+    _saveStatusEl.id='saveStatusToast';
+    _saveStatusEl.style.cssText='position:fixed;bottom:18px;right:18px;background:#fff;border:1px solid #d0d8e4;border-radius:8px;padding:10px 14px;box-shadow:0 4px 12px rgba(0,0,0,0.15);font-size:12px;z-index:10000;display:none;align-items:center;gap:10px;font-family:Arial,sans-serif;';
+    document.body.appendChild(_saveStatusEl);
+  }
+  _saveStatusEl.style.display='flex';
+  if(state==='saving'){
+    _saveStatusEl.style.borderColor='#d0d8e4';_saveStatusEl.style.background='#fff';
+    _saveStatusEl.innerHTML='<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#cbb26b;animation:sfPulse 1.4s ease-in-out infinite;"></span><span style="color:#1a2b45;">Saving '+esc(label)+'…</span>';
+    clearTimeout(_saveStatusEl._t);_saveStatusEl._t=setTimeout(function(){_saveStatusEl.style.display='none';},5000);
+  } else if(state==='saved'){
+    _saveStatusEl.style.borderColor='#b9e4c9';_saveStatusEl.style.background='#eef9f1';
+    _saveStatusEl.innerHTML='<span style="color:#1a7740;font-weight:700;">✓</span><span style="color:#1a7740;">Saved '+esc(label)+'</span>';
+    clearTimeout(_saveStatusEl._t);_saveStatusEl._t=setTimeout(function(){_saveStatusEl.style.display='none';},1800);
+  } else if(state==='failed'){
+    _saveStatusEl.style.borderColor='#f0c0c0';_saveStatusEl.style.background='#fdecec';
+    _saveStatusEl.innerHTML='<span style="color:#a00;font-weight:700;">✗</span><span style="color:#a00;flex:1;">Save failed: '+esc(label)+'</span>'+
+      (onRetry?'<button class="btn btn-secondary btn-sm" style="padding:4px 10px;" id="_sstRetryBtn">Retry</button>':'')+
+      '<button style="background:none;border:none;color:#a00;cursor:pointer;font-size:14px;padding:0 4px;" onclick="document.getElementById(\'saveStatusToast\').style.display=\'none\';">✕</button>';
+    if(onRetry){
+      var btn=document.getElementById('_sstRetryBtn');
+      if(btn)btn.addEventListener('click',function(){onRetry();});
+    }
+    // Don't auto-dismiss failures — user must acknowledge or retry
+  }
+}
+function trackSave(label,doSave){
+  _showSaveStatus('saving',label);
+  return doSave()
+    .then(function(r){_showSaveStatus('saved',label);return r;})
+    .catch(function(e){
+      _showSaveStatus('failed',label+' ('+(e&&e.message?e.message:'unknown')+')',function(){trackSave(label,doSave);});
+      throw e;
+    });
+}
 
 // ── PDF / Print helpers ────────────────────────────────────────
 function buildInvoiceHTML(){
@@ -5262,6 +5303,9 @@ function loadProfilesAPI() {
 }
 
 // ── SAVE client profile to Azure SQL ────────────────────────
+// Returns a Promise. Shows save-status toast (Saving → Saved ✓ / Save failed [Retry]).
+// On failure the LS write done by the caller is preserved so the user can keep working
+// against the optimistic state, and the Retry button re-invokes this exact save.
 function saveProfileSP(name, data) {
   var idMap = getIdMap();
   var dbId = data._dbId || idMap[name];
@@ -5281,20 +5325,25 @@ function saveProfileSP(name, data) {
     start_date: data.startDate || '', live_in: data.liveIn ? 1 : 0,
     client_notes: data.clientNotes || '', audit_json: JSON.stringify(data.auditLog || []),
   };
-  fetch(API_BASE + '/homecare-clients', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(body) })
-    .then(function (r) { return r.json(); })
-    .then(function (result) {
-      if (!dbId && result.id) {
-        idMap[name] = result.id; localStorage.setItem('lhca_id_map', JSON.stringify(idMap));
-        var p = getProfiles(); if (p[name]) { p[name]._dbId = result.id; saveProfilesLS(p); }
-      }
-      aiTrack('ClientInfoUpdated',{clientName:name,clientStatus:body.client_status});
-      var now = new Date().toLocaleString(); localStorage.setItem('lhca_last_synced', now);
-      var lsl = document.getElementById('lastSyncedLabel'); if (lsl) lsl.textContent = 'Last synced: ' + now;
-      // Sync any invoices not yet in DB
-      syncNewInvoices(name, data);
-    })
-    .catch(function (e) { console.error('Save profile error:', e); });
+  return trackSave(name, function(){
+    return fetch(API_BASE + '/homecare-clients', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(body) })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (result) {
+        if (!dbId && result.id) {
+          idMap[name] = result.id; localStorage.setItem('lhca_id_map', JSON.stringify(idMap));
+          var p = getProfiles(); if (p[name]) { p[name]._dbId = result.id; saveProfilesLS(p); }
+        }
+        aiTrack('ClientInfoUpdated',{clientName:name,clientStatus:body.client_status});
+        var now = new Date().toLocaleString(); localStorage.setItem('lhca_last_synced', now);
+        var lsl = document.getElementById('lastSyncedLabel'); if (lsl) lsl.textContent = 'Last synced: ' + now;
+        // Sync any invoices not yet in DB
+        syncNewInvoices(name, data);
+        return result;
+      });
+  });
 }
 function syncNewInvoices(name, data) {
   var idMap = getIdMap(); var clientDbId = idMap[name];
