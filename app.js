@@ -3299,8 +3299,15 @@ async function backupToOneDrive(){
 async function doBackupToOneDrive(includeFullSSN,silent){
   var btn=document.getElementById('oneDriveBackupBtn');
   var oldText=btn?btn.textContent:'';
-  if(btn&&!silent){btn.disabled=true;btn.textContent='Uploading…';}
+  if(btn&&!silent){btn.disabled=true;btn.textContent='Refreshing from DB…';}
   try{
+    // Pull canonical state from DB before serializing — backups must reflect the
+    // source of truth, not whatever happens to be in this device's LS cache.
+    // Waits for the fetch to complete before building the payload.
+    if(spToken && typeof loadProfilesAPI==='function'){
+      try{ await loadProfilesAPI(); }catch(e){ console.warn('DB refresh failed before backup, using current LS:',e); }
+    }
+    if(btn&&!silent){btn.textContent='Uploading…';}
     // Build the backup payload (same logic as JSON export)
     var p=getProfiles();
     if(!Object.keys(p).length){throw new Error('No clients yet.');}
@@ -5250,7 +5257,8 @@ function revalidate(force){
 // One round-trip instead of N+1. Backend returns clients with invoices nested.
 function loadProfilesAPI() {
   syncStart();
-  fetch(API_BASE + '/homecare-clients-with-invoices', { headers: apiHeaders() })
+  // Return the promise so callers (e.g. OneDrive backup) can await freshness
+  return fetch(API_BASE + '/homecare-clients-with-invoices', { headers: apiHeaders() })
     .then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
