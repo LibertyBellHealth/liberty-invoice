@@ -4323,22 +4323,24 @@ async function captureInvoicePDF(){
 //                      (handles up to ~150 MB; ~3-10 sec for 30 PDFs)
 //  attachments: [{name, base64}], onProgress?: (done,total,label) => void
 // ──────────────────────────────────────────────────────────────────
-async function sendMailWithPDF(toEmail,subject,bodyHtml,attachments,onProgress){
+async function sendMailWithPDF(toEmail,subject,bodyHtml,attachments,onProgress,ccEmails){
   if(!spToken)return {ok:false,err:'Not signed in'};
   // Calculate total attachment size in bytes (base64 inflates ~33%, so actual=base64Length*0.75)
   var totalBytes=0;
   attachments.forEach(function(a){totalBytes+=Math.floor(a.base64.length*0.75);});
   var THRESHOLD_BYTES=3.5*1024*1024; // stay safely under Graph's 4 MB sendMail cap
   if(totalBytes<=THRESHOLD_BYTES){
-    return _sendMailDirect(toEmail,subject,bodyHtml,attachments);
+    return _sendMailDirect(toEmail,subject,bodyHtml,attachments,ccEmails);
   }
   console.log('[Graph] Total attachments '+(totalBytes/1024/1024).toFixed(2)+' MB exceeds 3.5 MB — using upload-session flow');
-  return _sendMailUploadSession(toEmail,subject,bodyHtml,attachments,onProgress);
+  return _sendMailUploadSession(toEmail,subject,bodyHtml,attachments,onProgress,ccEmails);
 }
 
 // Fast path — direct sendMail with attachments inline (≤4 MB total)
-async function _sendMailDirect(toEmail,subject,bodyHtml,attachments){
+async function _sendMailDirect(toEmail,subject,bodyHtml,attachments,ccEmails){
+  var ccList=(ccEmails||[]).filter(Boolean).map(function(e){return{emailAddress:{address:e}};});
   var msg={subject:subject,body:{contentType:'HTML',content:bodyHtml},toRecipients:[{emailAddress:{address:toEmail}}],attachments:attachments.map(function(a){return{'@odata.type':'#microsoft.graph.fileAttachment',name:a.name,contentType:'application/pdf',contentBytes:a.base64};})};
+  if(ccList.length)msg.ccRecipients=ccList;
   try{
     var resp=await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{'Authorization':'Bearer '+spToken,'Content-Type':'application/json'},body:JSON.stringify({message:msg,saveToSentItems:true})});
     if(resp.ok||resp.status===202||resp.status===204)return {ok:true};
@@ -4349,12 +4351,14 @@ async function _sendMailDirect(toEmail,subject,bodyHtml,attachments){
 }
 
 // Upload-session path — for emails > 4 MB. Creates draft, uploads each attachment via session, then sends.
-async function _sendMailUploadSession(toEmail,subject,bodyHtml,attachments,onProgress){
+async function _sendMailUploadSession(toEmail,subject,bodyHtml,attachments,onProgress,ccEmails){
   function progress(done,total,label){if(typeof onProgress==='function')onProgress(done,total,label);}
   try{
     // 1) Create draft message (no attachments yet)
     progress(0,attachments.length,'Creating draft…');
+    var ccList=(ccEmails||[]).filter(Boolean).map(function(e){return{emailAddress:{address:e}};});
     var draftBody={subject:subject,body:{contentType:'HTML',content:bodyHtml},toRecipients:[{emailAddress:{address:toEmail}}]};
+    if(ccList.length)draftBody.ccRecipients=ccList;
     var draftResp=await fetch('https://graph.microsoft.com/v1.0/me/messages',{method:'POST',headers:{'Authorization':'Bearer '+spToken,'Content-Type':'application/json'},body:JSON.stringify(draftBody)});
     if(!draftResp.ok){var t=await draftResp.text();return {ok:false,status:draftResp.status,err:'Draft creation failed: '+t};}
     var draft=await draftResp.json();
@@ -5164,9 +5168,10 @@ function loadProfilesAPI() {
       syncEnd();
     });
 
-  // Also load caregivers, caseworkers, tasks, and signatures from API
+  // Also load caregivers, caseworkers, supervisors, tasks, and signatures from API
   loadCaregiversAPI();
   loadCaseworkersAPI();
+  loadSupervisorsAPI();
   loadTasksAPI();
   loadSignaturesAPI();
 }
@@ -5371,7 +5376,7 @@ function loadCaseworkersAPI(){
         return { id:c.id, name:c.name||'', first_name:c.first_name||'', last_name:c.last_name||'',
                  agency:c.agency||'', phone:c.phone||'', email:c.email||'', fax:c.fax||'',
                  street:c.street||'', city:c.city||'', state:c.state||'', zip:c.zip||'', county:c.county||'',
-                 notes:c.notes||'' };
+                 notes:c.notes||'', supervisor_id:c.supervisor_id||'' };
       });
       saveCaseworkersLS(arr);
       if (typeof renderCaseworkerList === 'function' && document.getElementById('cwList')) renderCaseworkerList();
@@ -5390,6 +5395,140 @@ function deleteCaseworkerAPI(id){
   }).catch(function(e){ console.error('Delete caseworker error:', e); });
 }
 function cwId(){return 'cw_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);}
+
+// ============================================================
+//  SUPERVISORS — managed inline via caseworker form dropdown
+//  (no dedicated page; CC'd on monthly invoice emails when assigned)
+// ============================================================
+function getSupervisors(){try{return JSON.parse(localStorage.getItem('lhca_supervisors')||'{}');}catch(e){return{};}}
+function saveSupervisorsLS(map){localStorage.setItem('lhca_supervisors',JSON.stringify(map));}
+function supId(){return 'sup_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);}
+function loadSupervisorsAPI(){
+  syncStart();
+  return fetch(API_BASE+'/supervisors',{headers:apiHeaders()})
+    .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+    .then(function(rows){
+      var map={};
+      (rows||[]).forEach(function(s){
+        map[s.id]={id:s.id,name:s.name||'',phone:s.phone||'',email:s.email||''};
+      });
+      saveSupervisorsLS(map);
+      // If a caseworker form is open, refresh its dropdown
+      refreshSupervisorDropdowns();
+      syncEnd();
+    })
+    .catch(function(e){console.error('Load supervisors error:',e);syncEnd();});
+}
+function saveSupervisorAPI(sup){
+  return fetch(API_BASE+'/supervisors',{
+    method:'POST',headers:apiHeaders(),body:JSON.stringify(sup)
+  }).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+    .catch(function(e){console.error('Save supervisor error:',e);});
+}
+function deleteSupervisorAPI(id){
+  return fetch(API_BASE+'/supervisors/'+encodeURIComponent(id),{
+    method:'DELETE',headers:apiHeaders()
+  }).catch(function(e){console.error('Delete supervisor error:',e);});
+}
+function populateSupervisorDropdown(selectEl,currentId){
+  if(!selectEl)return;
+  var sups=getSupervisors();
+  var ids=Object.keys(sups).sort(function(a,b){return (sups[a].name||'').localeCompare(sups[b].name||'');});
+  selectEl.innerHTML='<option value="">— None —</option>'+ids.map(function(id){
+    var s=sups[id];
+    return '<option value="'+esc(id)+'"'+(id===currentId?' selected':'')+'>'+esc(s.name)+(s.email?' ('+esc(s.email)+')':'')+'</option>';
+  }).join('');
+  // Show/hide the Edit button next to the dropdown based on selection
+  var editBtn=document.getElementById(selectEl.id+'-edit-btn');
+  if(editBtn)editBtn.style.display=selectEl.value?'inline-block':'none';
+  selectEl.onchange=function(){
+    var eb=document.getElementById(selectEl.id+'-edit-btn');
+    if(eb)eb.style.display=selectEl.value?'inline-block':'none';
+  };
+}
+function refreshSupervisorDropdowns(){
+  var sel1=document.getElementById('cw-supervisor');
+  if(sel1)populateSupervisorDropdown(sel1,sel1.value);
+  var sel2=document.getElementById('cwi-supervisor');
+  if(sel2)populateSupervisorDropdown(sel2,sel2.value);
+}
+function openSupervisorModal(){_openSupervisorModal(null);}
+function editSelectedSupervisor(){
+  var sel=document.getElementById('cw-supervisor')||document.getElementById('cwi-supervisor');
+  if(sel && sel.value)_openSupervisorModal(sel.value);
+}
+function _openSupervisorModal(editId){
+  var sups=getSupervisors();
+  var sup=editId?(sups[editId]||{}):{};
+  var existing=document.getElementById('supModal');
+  if(existing)existing.remove();
+  var overlay=document.createElement('div');
+  overlay.id='supModal';
+  overlay.className='modal-overlay open';
+  overlay.innerHTML=
+    '<div class="modal-box" style="max-width:420px;">'+
+      '<h3>'+(editId?'Edit Supervisor':'New Supervisor')+'</h3>'+
+      '<div class="ff" style="margin-top:8px;"><label>Name *</label><input id="sup-name" value="'+esc(sup.name||'')+'" placeholder="Full name" maxlength="120"></div>'+
+      '<div class="ff" style="margin-top:8px;"><label>Phone</label><input id="sup-phone" value="'+esc(sup.phone||'')+'" placeholder="(555) 555-5555" maxlength="30"></div>'+
+      '<div class="ff" style="margin-top:8px;"><label>Email <span style="font-weight:400;font-size:10px;color:#8ca0b4;">(used for CC on monthly invoice emails)</span></label><input id="sup-email" type="email" value="'+esc(sup.email||'')+'" placeholder="supervisor@michigan.gov" maxlength="120"></div>'+
+      '<div class="modal-row" style="justify-content:space-between;">'+
+        (editId?'<button class="btn btn-danger btn-sm" onclick="_deleteSupervisorFromModal(\''+esc(editId)+'\')">Delete</button>':'<span></span>')+
+        '<div style="display:flex;gap:8px;">'+
+          '<button class="btn btn-secondary" onclick="document.getElementById(\'supModal\').remove()">Cancel</button>'+
+          '<button class="btn btn-primary" onclick="_saveSupervisorFromModal(\''+(editId||'')+'\')">Save</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  document.body.appendChild(overlay);
+  setTimeout(function(){var n=document.getElementById('sup-name');if(n)n.focus();},80);
+}
+function _saveSupervisorFromModal(editId){
+  var name=(document.getElementById('sup-name').value||'').trim();
+  if(!name){showAlert('Supervisor name is required.');return;}
+  var phone=(document.getElementById('sup-phone').value||'').trim();
+  var email=(document.getElementById('sup-email').value||'').trim();
+  var sups=getSupervisors();
+  var id=editId||supId();
+  sups[id]={id:id,name:name,phone:phone,email:email};
+  saveSupervisorsLS(sups);
+  saveSupervisorAPI(sups[id]);
+  document.getElementById('supModal').remove();
+  // Refresh both dropdowns + select the newly added/edited one if we were in a form context
+  ['cw-supervisor','cwi-supervisor'].forEach(function(selId){
+    var sel=document.getElementById(selId);
+    if(sel){
+      populateSupervisorDropdown(sel,id);
+      sel.value=id;
+      var eb=document.getElementById(selId+'-edit-btn');
+      if(eb)eb.style.display='inline-block';
+    }
+  });
+  showToast((editId?'✓ Updated':'✓ Added')+' supervisor: '+name,3000);
+}
+function _deleteSupervisorFromModal(id){
+  var sups=getSupervisors();
+  var name=sups[id]?sups[id].name:'this supervisor';
+  // Warn about caseworker assignments that would be orphaned
+  var assigned=getCaseworkers().filter(function(c){return c.supervisor_id===id;});
+  var warn=assigned.length?'\n\n'+assigned.length+' caseworker'+(assigned.length>1?'s':'')+' assigned to this supervisor will be unassigned.':'';
+  showConfirm(
+    'Delete '+name+'?'+warn+'\n\nThis cannot be undone.',
+    function(){
+      delete sups[id];
+      saveSupervisorsLS(sups);
+      deleteSupervisorAPI(id);
+      // Unassign locally on any caseworkers that had this supervisor (server is already stateless about it)
+      var arr=getCaseworkers();
+      arr.forEach(function(c){if(c.supervisor_id===id){c.supervisor_id='';saveCaseworkerAPI(c);}});
+      saveCaseworkersLS(arr);
+      var m=document.getElementById('supModal');if(m)m.remove();
+      refreshSupervisorDropdowns();
+      if(typeof renderCaseworkerList==='function')renderCaseworkerList();
+      showToast('Supervisor deleted',3000);
+    },
+    {title:'Delete Supervisor',okText:'Delete',danger:true}
+  );
+}
 function navCaseworkers(){
   showPage('caseworkers');bc([{l:'Caseworkers'}]);document.getElementById('topbarActions').innerHTML='';
   showCwGrid();
@@ -5422,16 +5561,21 @@ function showCaseworkerForm(id){
       document.getElementById('cw-phone').value=cw.phone||'';
       document.getElementById('cw-fax').value=cw.fax||'';
       document.getElementById('cw-email').value=cw.email||'';
+      // Supervisor dropdown is populated separately by populateSupervisorDropdown() after the form opens
       document.getElementById('cw-street').value=cw.street||'';
       document.getElementById('cw-city').value=cw.city||'';
       document.getElementById('cw-state').value=cw.state||'';
       document.getElementById('cw-zip').value=cw.zip||'';
       document.getElementById('cw-county').value=cw.county||'';
       document.getElementById('cw-notes').value=cw.notes||'';
+      // Populate supervisor dropdown with the currently assigned one selected
+      populateSupervisorDropdown(document.getElementById('cw-supervisor'),cw.supervisor_id||'');
     }
     document.getElementById('cwDeleteBtn').style.display='inline-block';
   } else {
     ['cw-first-name','cw-middle-name','cw-last-name','cw-nickname','cw-agency','cw-phone','cw-fax','cw-email','cw-street','cw-city','cw-state','cw-zip','cw-county','cw-notes'].forEach(function(fid){var e=document.getElementById(fid);if(e)e.value='';});
+    // Fresh form — populate dropdown with no selection
+    populateSupervisorDropdown(document.getElementById('cw-supervisor'),'');
     document.getElementById('cwDeleteBtn').style.display='none';
   }
   document.getElementById('cwFormWrap').scrollIntoView({behavior:'smooth'});
@@ -5465,7 +5609,8 @@ function saveCaseworker(){
     state:document.getElementById('cw-state').value,
     zip:document.getElementById('cw-zip').value,
     county:document.getElementById('cw-county').value,
-    notes:document.getElementById('cw-notes').value
+    notes:document.getElementById('cw-notes').value,
+    supervisor_id:(document.getElementById('cw-supervisor')||{}).value||''
   };
   if(editingId){
     var idx=cws.findIndex(function(c){return c.id===editingId;});
@@ -5529,9 +5674,11 @@ function renderCaseworkerList(){
   var empty=document.getElementById('cwTableEmpty');
   if(!filtered.length){if(empty)empty.style.display='block';return;}
   if(empty)empty.style.display='none';
+  var sups=getSupervisors();
   filtered.forEach(function(cw){
     var clientCount=Object.keys(profiles).filter(function(k){return (profiles[k].caseworkerId===cw.id||profiles[k].worker===cw.name) && (profiles[k].clientStatus||'active')==='active';}).length;
     var hrefCw=buildCaseworkerUrl(cw.id);
+    var supName=cw.supervisor_id && sups[cw.supervisor_id] ? sups[cw.supervisor_id].name : '';
     var tr=document.createElement('tr');
     var checked=cwBulkSelected[cw.id]?'checked':'';
     tr.innerHTML=
@@ -5540,6 +5687,7 @@ function renderCaseworkerList(){
       '<td style="color:#4a6a8a;font-size:12px;">'+esc(cw.phone||'—')+'</td>'+
       '<td style="color:#4a6a8a;font-size:12px;">'+esc(cw.email||'—')+'</td>'+
       '<td style="color:#4a6a8a;font-size:12px;">'+esc(cw.county||'—')+'</td>'+
+      '<td style="color:#4a6a8a;font-size:12px;">'+esc(supName||'—')+'</td>'+
       '<td style="font-size:12px;">'+clientCount+'</td>'+
       '<td onclick="event.stopPropagation()"><button class="ct-action-btn" onclick="event.stopPropagation();showCaseworkerForm(\''+cw.id+'\')">Edit</button></td>';
     tr.addEventListener('click',function(e){
@@ -5705,6 +5853,17 @@ function renderCwInfoPane(){
   mkRow('<div class="info-field"><label>Phone</label><input id="cwi-phone" value="'+esc(cw.phone||'')+'"></div>'+
     '<div class="info-field"><label>Fax</label><input id="cwi-fax" value="'+esc(cw.fax||'')+'"></div>');
   mkF('cwi-email','Email',cw.email,true);
+  // Supervisor dropdown + Add/Edit buttons (CC'd on monthly invoice emails when set)
+  var supDiv=document.createElement('div');supDiv.className='info-field full';
+  supDiv.innerHTML='<label>Supervisor <span style="font-weight:400;font-size:10px;color:#8ca0b4;">(CC\'d on monthly invoice emails when set)</span></label>'+
+    '<div style="display:flex;gap:6px;align-items:center;">'+
+      '<select id="cwi-supervisor" style="flex:1;"></select>'+
+      '<button type="button" class="btn btn-secondary btn-sm" onclick="openSupervisorModal()" style="white-space:nowrap;">+ Add</button>'+
+      '<button type="button" id="cwi-supervisor-edit-btn" class="btn btn-secondary btn-sm" onclick="editSelectedSupervisor()" style="white-space:nowrap;display:none;">Edit</button>'+
+    '</div>';
+  g.appendChild(supDiv);
+  // Populate after element is attached so the populate fn can find #cwi-supervisor
+  setTimeout(function(){populateSupervisorDropdown(document.getElementById('cwi-supervisor'),cw.supervisor_id||'');},0);
 
   mkDiv('Address');
   mkF('cwi-street','Street',cw.street,true);
@@ -5731,6 +5890,7 @@ function saveCwInfoPane(){
   cw.email=document.getElementById('cwi-email').value;
   cw.street=document.getElementById('cwi-street').value;cw.city=document.getElementById('cwi-city').value;
   cw.state=document.getElementById('cwi-state').value;cw.zip=document.getElementById('cwi-zip').value;cw.county=document.getElementById('cwi-county').value;
+  var cwiSup=document.getElementById('cwi-supervisor');if(cwiSup)cw.supervisor_id=cwiSup.value||'';
   saveCaseworkersLS(arr);saveCaseworkerAPI(cw);
   document.getElementById('cwDetailName').textContent=cw.name;
   document.getElementById('cwDetailMeta').innerHTML=esc(cw.agency||'')+(cw.phone?' · '+cw.phone:'');
@@ -7596,16 +7756,23 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
       '<p>Thanks,<br>Tommy<br>Liberty Home Care Assistance<br>(248) 291-4106</p>';
   }
 
+  // Resolve supervisor CC — caseworker → supervisor_id → supervisor.email
+  var cwRec=getCaseworkers().find(function(c){return (c.email||'').toLowerCase()===(email||'').toLowerCase();})||{};
+  var sups=getSupervisors();
+  var sup=cwRec.supervisor_id?(sups[cwRec.supervisor_id]||null):null;
+  var ccEmails=(sup && sup.email)?[sup.email]:[];
+
   var result=await sendMailWithPDF(email,subj,body,attachments,function(done,total,label){
     if(pb)pb.style.width=Math.round((done/Math.max(total,1))*100)+'%';
     if(pl)pl.textContent=label||('Sending '+done+' of '+total+'…');
-  });
+  },ccEmails);
   if(po)po.classList.remove('open');
 
   // HIPAA audit: log every PHI email send (success OR failure)
   logEmailSend({
     type:'mass',
     recipient:email,
+    cc:ccEmails,
     caseworkerName:workerName||'(none)',
     billingPeriod:period,
     clientNames:attachments.map(function(a){return a.clientName;}),

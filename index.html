@@ -26,7 +26,7 @@ function aiTrack(name, props){
   }catch(e){}
 }
 </script>
-<link rel="stylesheet" href="styles.css?v=20260513e">
+<link rel="stylesheet" href="styles.css?v=20260513f">
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -618,6 +618,7 @@ function aiTrack(name, props){
               <th>Phone</th>
               <th>Email</th>
               <th>County</th>
+              <th>Supervisor</th>
               <th>Clients</th>
               <th></th>
             </tr>
@@ -645,6 +646,14 @@ function aiTrack(name, props){
           <div class="ff"><label>Fax</label><input id="cw-fax" placeholder="(555) 555-5555" maxlength="20"></div>
         </div>
         <div class="ff"><label>Email</label><input id="cw-email" placeholder="worker@michigan.gov" maxlength="80"></div>
+        <div class="ff">
+          <label>Supervisor <span style="font-weight:400;font-size:10px;color:#8ca0b4;">(CC'd on monthly invoice emails when set)</span></label>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <select id="cw-supervisor" style="flex:1;"><option value="">— None —</option></select>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="openSupervisorModal()" style="white-space:nowrap;">+ Add</button>
+            <button type="button" id="cw-supervisor-edit-btn" class="btn btn-secondary btn-sm" onclick="editSelectedSupervisor()" style="white-space:nowrap;display:none;">Edit</button>
+          </div>
+        </div>
         <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Address</div>
         <div class="ff"><label>Street</label><input id="cw-street" placeholder="Street address" maxlength="120"></div>
         <div class="ff-row">
@@ -1112,6 +1121,6 @@ function aiTrack(name, props){
     </div>
   </div>
 </div>
-<script src="app.js?v=20260513e"></script>
+<script src="app.js?v=20260513f"></script>
 </body>
 </html>
