@@ -1047,7 +1047,16 @@ function renderNotesPane(){
   ta.value=(prof&&prof.clientNotes)?prof.clientNotes:'';
   if(ta._nl)ta.removeEventListener('input',ta._nl);
   var t=null;
-  ta._nl=function(){clearTimeout(t);t=setTimeout(function(){var p2=getProfiles();if(p2[activeProfileName]){p2[activeProfileName].clientNotes=ta.value;saveProfilesLS(p2);var f=document.getElementById('notesSavedFlash');f.style.display='inline';setTimeout(function(){f.style.display='none';},2000);}},600);};
+  ta._nl=function(){clearTimeout(t);t=setTimeout(function(){
+    var p2=getProfiles();
+    if(p2[activeProfileName]){
+      p2[activeProfileName].clientNotes=ta.value;
+      saveProfilesLS(p2);
+      // Persist to backend too — without this, notes vanished on refresh / other device
+      saveProfileSP(activeProfileName,p2[activeProfileName]);
+      var f=document.getElementById('notesSavedFlash');f.style.display='inline';setTimeout(function(){f.style.display='none';},2000);
+    }
+  },600);};
   ta.addEventListener('input',ta._nl);
   var c=document.getElementById('invNotesContent'),invoices=(prof&&prof.invoices)?prof.invoices:[];
   if(!invoices.length){c.innerHTML='<div style="color:#8ca0b4;font-size:13px;">No saved invoices yet.</div>';return;}
