@@ -26,7 +26,7 @@ function aiTrack(name, props){
   }catch(e){}
 }
 </script>
-<link rel="stylesheet" href="styles.css?v=20260513f">
+<link rel="stylesheet" href="styles.css?v=20260513g">
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -579,53 +579,103 @@ function aiTrack(name, props){
     <div id="cwGridView">
       <div class="dashboard-header">
         <div class="dashboard-title-block">
-          <div class="dashboard-title">Caseworkers</div>
-          <div class="dashboard-sub">Manage caseworkers and their client assignments.</div>
+          <div class="dashboard-title" id="cwPageTitle">Caseworkers</div>
+          <div class="dashboard-sub" id="cwPageSub">Manage caseworkers and their client assignments.</div>
         </div>
         <div class="dashboard-actions">
-          <button class="btn btn-primary" data-sync-disable="1" onclick="showCaseworkerForm()">+ Add Caseworker</button>
+          <!-- Pill toggle between Caseworkers and Supervisors views -->
+          <div class="pill-toggle" role="tablist">
+            <button class="pill active" id="pillCaseworkers" onclick="showCwView('caseworkers')" role="tab">Caseworkers</button>
+            <button class="pill" id="pillSupervisors" onclick="showCwView('supervisors')" role="tab">Supervisors</button>
+          </div>
+          <button class="btn btn-primary" id="cwAddBtn" data-sync-disable="1" onclick="showCaseworkerForm()">+ Add Caseworker</button>
         </div>
       </div>
-      <!-- METRIC ROW -->
-      <div class="metric-row">
-        <div class="metric">
-          <div class="metric-val" id="cwStatActive">0</div>
-          <div class="metric-lbl">Active Caseworkers</div>
+
+      <!-- CASEWORKERS VIEW -->
+      <div id="cwViewCaseworkers">
+        <div class="metric-row">
+          <div class="metric">
+            <div class="metric-val" id="cwStatActive">0</div>
+            <div class="metric-lbl">Active Caseworkers</div>
+          </div>
+          <div class="metric">
+            <div class="metric-val" id="cwStatNoClients">0</div>
+            <div class="metric-lbl">Unassigned</div>
+          </div>
+          <div class="metric">
+            <div class="metric-val" id="cwStatTotal">0</div>
+            <div class="metric-lbl">Total</div>
+          </div>
         </div>
-        <div class="metric">
-          <div class="metric-val" id="cwStatNoClients">0</div>
-          <div class="metric-lbl">Unassigned</div>
-        </div>
-        <div class="metric">
-          <div class="metric-val" id="cwStatTotal">0</div>
-          <div class="metric-lbl">Total</div>
+        <div class="client-table-wrap" style="margin-top:16px;">
+          <div class="ct-toolbar">
+            <input id="cwSearch" class="ct-search" placeholder="Search by name or agency…" oninput="renderCaseworkerList()">
+          </div>
+          <div class="ct-bulk-bar" id="cwBulkBar">
+            <span id="cwBulkCount">0 selected</span>
+            <button onclick="bulkDeleteCaseworkers()" style="background:#c0392b;color:#fff;">Delete Selected</button>
+            <button onclick="clearCwBulkSelect()">Cancel</button>
+          </div>
+          <table class="client-table">
+            <thead>
+              <tr>
+                <th style="width:32px;"><input type="checkbox" id="cwSelectAll" onchange="toggleAllCaseworkers(this)" style="width:13px;height:13px;cursor:pointer;"></th>
+                <th>Caseworker</th>
+                <th>Phone</th>
+                <th>Email</th>
+                <th>County</th>
+                <th>Supervisor</th>
+                <th>Clients</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="cwTableBody"></tbody>
+          </table>
+          <div id="cwTableEmpty" style="display:none;" class="ct-empty">No caseworkers match your search.</div>
         </div>
       </div>
-      <div class="client-table-wrap" style="margin-top:16px;">
-        <div class="ct-toolbar">
-          <input id="cwSearch" class="ct-search" placeholder="Search by name or agency…" oninput="renderCaseworkerList()">
+
+      <!-- SUPERVISORS VIEW -->
+      <div id="cwViewSupervisors" style="display:none;">
+        <div class="metric-row">
+          <div class="metric">
+            <div class="metric-val" id="supStatActive">0</div>
+            <div class="metric-lbl">Active Supervisors</div>
+          </div>
+          <div class="metric">
+            <div class="metric-val" id="supStatUnassigned">0</div>
+            <div class="metric-lbl">No Caseworkers</div>
+          </div>
+          <div class="metric">
+            <div class="metric-val" id="supStatTotal">0</div>
+            <div class="metric-lbl">Total</div>
+          </div>
         </div>
-        <div class="ct-bulk-bar" id="cwBulkBar">
-          <span id="cwBulkCount">0 selected</span>
-          <button onclick="bulkDeleteCaseworkers()" style="background:#c0392b;color:#fff;">Delete Selected</button>
-          <button onclick="clearCwBulkSelect()">Cancel</button>
+        <div class="client-table-wrap" style="margin-top:16px;">
+          <div class="ct-toolbar">
+            <input id="supSearch" class="ct-search" placeholder="Search by name or email…" oninput="renderSupervisorList()">
+          </div>
+          <div class="ct-bulk-bar" id="supBulkBar">
+            <span id="supBulkCount">0 selected</span>
+            <button onclick="bulkDeleteSupervisors()" style="background:#c0392b;color:#fff;">Delete Selected</button>
+            <button onclick="clearSupBulkSelect()">Cancel</button>
+          </div>
+          <table class="client-table">
+            <thead>
+              <tr>
+                <th style="width:32px;"><input type="checkbox" id="supSelectAll" onchange="toggleAllSupervisors(this)" style="width:13px;height:13px;cursor:pointer;"></th>
+                <th>Supervisor</th>
+                <th>Phone</th>
+                <th>Email</th>
+                <th>Caseworkers</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="supTableBody"></tbody>
+          </table>
+          <div id="supTableEmpty" style="display:none;" class="ct-empty">No supervisors yet — tap + Add Supervisor to create one.</div>
         </div>
-        <table class="client-table">
-          <thead>
-            <tr>
-              <th style="width:32px;"><input type="checkbox" id="cwSelectAll" onchange="toggleAllCaseworkers(this)" style="width:13px;height:13px;cursor:pointer;"></th>
-              <th>Caseworker</th>
-              <th>Phone</th>
-              <th>Email</th>
-              <th>County</th>
-              <th>Supervisor</th>
-              <th>Clients</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="cwTableBody"></tbody>
-        </table>
-        <div id="cwTableEmpty" style="display:none;" class="ct-empty">No caseworkers match your search.</div>
       </div>
     </div>
     <div id="cwFormWrap" style="display:none;margin-top:16px;">
@@ -1121,6 +1171,6 @@ function aiTrack(name, props){
     </div>
   </div>
 </div>
-<script src="app.js?v=20260513f"></script>
+<script src="app.js?v=20260513g"></script>
 </body>
 </html>

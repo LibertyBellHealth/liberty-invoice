@@ -5503,6 +5503,8 @@ function _saveSupervisorFromModal(editId){
       if(eb)eb.style.display='inline-block';
     }
   });
+  // If on the Supervisors view, refresh that table too
+  if(typeof renderSupervisorList==='function' && document.getElementById('cwViewSupervisors') && document.getElementById('cwViewSupervisors').style.display!=='none')renderSupervisorList();
   showToast((editId?'✓ Updated':'✓ Added')+' supervisor: '+name,3000);
 }
 function _deleteSupervisorFromModal(id){
@@ -5524,6 +5526,7 @@ function _deleteSupervisorFromModal(id){
       var m=document.getElementById('supModal');if(m)m.remove();
       refreshSupervisorDropdowns();
       if(typeof renderCaseworkerList==='function')renderCaseworkerList();
+      if(typeof renderSupervisorList==='function' && document.getElementById('cwViewSupervisors') && document.getElementById('cwViewSupervisors').style.display!=='none')renderSupervisorList();
       showToast('Supervisor deleted',3000);
     },
     {title:'Delete Supervisor',okText:'Delete',danger:true}
@@ -5532,6 +5535,121 @@ function _deleteSupervisorFromModal(id){
 function navCaseworkers(){
   showPage('caseworkers');bc([{l:'Caseworkers'}]);document.getElementById('topbarActions').innerHTML='';
   showCwGrid();
+  // Default back to Caseworkers view when arriving at the page
+  showCwView('caseworkers');
+}
+
+// Pill toggle on the Caseworkers page — flips between Caseworkers list and Supervisors list
+function showCwView(view){
+  var isSup = view === 'supervisors';
+  var cwView=document.getElementById('cwViewCaseworkers');
+  var supView=document.getElementById('cwViewSupervisors');
+  var pillCw=document.getElementById('pillCaseworkers');
+  var pillSup=document.getElementById('pillSupervisors');
+  var addBtn=document.getElementById('cwAddBtn');
+  var title=document.getElementById('cwPageTitle');
+  var sub=document.getElementById('cwPageSub');
+  if(cwView)cwView.style.display=isSup?'none':'';
+  if(supView)supView.style.display=isSup?'':'none';
+  if(pillCw)pillCw.classList.toggle('active',!isSup);
+  if(pillSup)pillSup.classList.toggle('active',isSup);
+  if(addBtn){
+    addBtn.textContent=isSup?'+ Add Supervisor':'+ Add Caseworker';
+    addBtn.onclick=isSup?function(){openSupervisorModal();}:function(){showCaseworkerForm();};
+  }
+  if(title)title.textContent=isSup?'Supervisors':'Caseworkers';
+  if(sub)sub.textContent=isSup?'Manage supervisors — assigned to caseworkers as the CC on monthly invoice emails.':'Manage caseworkers and their client assignments.';
+  if(isSup)renderSupervisorList();
+}
+
+// ── Supervisors list (within Caseworkers page) ──────────────
+var supBulkSelected={};
+function renderSupervisorList(){
+  var sups=getSupervisors();
+  var q=(document.getElementById('supSearch')?document.getElementById('supSearch').value:'').toLowerCase();
+  var cws=getCaseworkers();
+
+  // Caseworker-count per supervisor (for the table cell + metrics)
+  var countBySup={};
+  cws.forEach(function(c){if(c.supervisor_id){countBySup[c.supervisor_id]=(countBySup[c.supervisor_id]||0)+1;}});
+
+  // Metric tiles
+  var allIds=Object.keys(sups);
+  var nActive=0,nUnassigned=0;
+  allIds.forEach(function(id){if(countBySup[id]>0)nActive++;else nUnassigned++;});
+  var setMetric=function(id,v){var el=document.getElementById(id);if(el)el.textContent=v;};
+  setMetric('supStatActive',nActive);setMetric('supStatUnassigned',nUnassigned);setMetric('supStatTotal',allIds.length);
+
+  var tbody=document.getElementById('supTableBody');if(!tbody)return;tbody.innerHTML='';
+  var ids=allIds.filter(function(id){
+    if(!q)return true;
+    var s=sups[id];
+    return (s.name||'').toLowerCase().includes(q)||(s.email||'').toLowerCase().includes(q)||(s.phone||'').includes(q);
+  });
+  ids.sort(function(a,b){return (sups[a].name||'').localeCompare(sups[b].name||'');});
+  var empty=document.getElementById('supTableEmpty');
+  if(!ids.length){if(empty)empty.style.display='block';return;}
+  if(empty)empty.style.display='none';
+  ids.forEach(function(id){
+    var s=sups[id];
+    var cwCount=countBySup[id]||0;
+    var tr=document.createElement('tr');
+    var checked=supBulkSelected[id]?'checked':'';
+    tr.innerHTML=
+      '<td style="width:32px;" onclick="event.stopPropagation()"><input type="checkbox" class="sup-select" data-id="'+esc(id)+'" '+checked+' onchange="toggleBulkSupervisor(\''+esc(id)+'\',this)" style="width:13px;height:13px;cursor:pointer;"></td>'+
+      '<td><div class="ct-name">'+esc(s.name||'')+'</div></td>'+
+      '<td style="color:#4a6a8a;font-size:12px;">'+esc(s.phone||'—')+'</td>'+
+      '<td style="color:#4a6a8a;font-size:12px;">'+esc(s.email||'—')+'</td>'+
+      '<td style="font-size:12px;">'+cwCount+'</td>'+
+      '<td onclick="event.stopPropagation()"><button class="ct-action-btn" onclick="event.stopPropagation();_openSupervisorModal(\''+esc(id)+'\')">Edit</button></td>';
+    tr.addEventListener('click',function(e){
+      if(e.target.closest('a')||e.target.tagName==='BUTTON'||e.target.tagName==='INPUT')return;
+      _openSupervisorModal(id);
+    });
+    tbody.appendChild(tr);
+  });
+}
+function toggleBulkSupervisor(id,cb){
+  if(cb.checked)supBulkSelected[id]=true;else delete supBulkSelected[id];
+  var count=Object.keys(supBulkSelected).length;
+  var bar=document.getElementById('supBulkBar');
+  if(bar){bar.classList.toggle('visible',count>0);var lbl=document.getElementById('supBulkCount');if(lbl)lbl.textContent=count+' selected';}
+}
+function clearSupBulkSelect(){supBulkSelected={};var bar=document.getElementById('supBulkBar');if(bar)bar.classList.remove('visible');var sa=document.getElementById('supSelectAll');if(sa)sa.checked=false;renderSupervisorList();}
+function toggleAllSupervisors(cb){
+  document.querySelectorAll('.sup-select').forEach(function(c){
+    c.checked=cb.checked;
+    var id=c.dataset.id;
+    if(cb.checked)supBulkSelected[id]=true;else delete supBulkSelected[id];
+  });
+  var count=Object.keys(supBulkSelected).length;
+  var bar=document.getElementById('supBulkBar');
+  if(bar){bar.classList.toggle('visible',count>0);var lbl=document.getElementById('supBulkCount');if(lbl)lbl.textContent=count+' selected';}
+}
+function bulkDeleteSupervisors(){
+  var ids=Object.keys(supBulkSelected);if(!ids.length){showAlert('No supervisors selected.');return;}
+  var sups=getSupervisors();
+  var preview=ids.slice(0,5).map(function(id){return '• '+(sups[id]?sups[id].name||id:id);}).join('\n')+(ids.length>5?'\n• …and '+(ids.length-5)+' more':'');
+  // Count caseworker re-assignments that would orphan
+  var cws=getCaseworkers();
+  var affected=cws.filter(function(c){return ids.indexOf(c.supervisor_id)>=0;}).length;
+  var warn=affected?'\n\n'+affected+' caseworker'+(affected>1?'s':'')+' assigned to these supervisors will be unassigned.':'';
+  showConfirm(
+    'Delete '+ids.length+' supervisor'+(ids.length>1?'s':'')+'?\n\n'+preview+warn+'\n\nThis cannot be undone.',
+    function(){
+      ids.forEach(function(id){
+        delete sups[id];
+        try{deleteSupervisorAPI(id);}catch(e){}
+      });
+      saveSupervisorsLS(sups);
+      cws.forEach(function(c){if(ids.indexOf(c.supervisor_id)>=0){c.supervisor_id='';saveCaseworkerAPI(c);}});
+      saveCaseworkersLS(cws);
+      logActivity('delete','Bulk supervisor delete: '+ids.length+' removed');
+      clearSupBulkSelect();
+      showAlert(ids.length+' supervisor'+(ids.length!==1?'s':'')+' deleted.');
+    },
+    {title:'Delete '+ids.length+' Supervisors?',okText:'Delete '+ids.length+(ids.length>1?' Supervisors':' Supervisor'),danger:true}
+  );
 }
 function showCaseworkerForm(id){
   // Hide detail view always; for new caseworker keep grid visible (scroll to form), for edit from detail hide grid
