@@ -5424,29 +5424,31 @@ function loadCaregiversAPI() {
     }).catch(function (e) { console.error('Load caregivers error:', e); syncEnd(); });
 }
 function saveCaregiverAPI(id, cg) {
-  fetch(API_BASE + '/caregivers', {
-    method: 'POST', headers: apiHeaders(),
-    body: JSON.stringify({
-      id: id, name: cg.name || '',
-      first_name: cg.firstName || '', last_name: cg.lastName || '',
-      middle_name: cg.middleName || '', nickname: cg.nickname || '',
-      role: cg.emptype || '', emptype: cg.emptype || '',
-      phone: cg.phone || '', email: cg.email || '',
-      start_date: cg.hireDate || '', hire_date: cg.hireDate || '',
-      status: cg.status || 'active', notes: cg.notes || '',
-      // Address
-      street: cg.street || cg.address || '', city: cg.city || '',
-      state: cg.state || '', zip: cg.zip || '', county: cg.county || '',
-      // Employment
-      pay_rate: cg.payRate || '', max_hours: cg.maxHours || '',
-      certifications: cg.certs || cg.certifications || '',
-      ec_name: cg.ecName || '', ec_phone: cg.ecPhone || '',
-      champs_id: cg.champsId || '', gender: cg.gender || '',
-      milogin_username: cg.miloginUsername || '', milogin_password: cg.miloginPassword || '',
-      // Identity (sensitive — these fields are masked in exports too)
-      dob: cg.dob || '', drivers_license: cg.driversLicense || '', ssn: cg.ssn || ''
-    }),
-  }).catch(function (e) { console.error('Save caregiver error:', e); });
+  return trackSave(cg.name||id, function(){
+    return fetch(API_BASE + '/caregivers', {
+      method: 'POST', headers: apiHeaders(),
+      body: JSON.stringify({
+        id: id, name: cg.name || '',
+        first_name: cg.firstName || '', last_name: cg.lastName || '',
+        middle_name: cg.middleName || '', nickname: cg.nickname || '',
+        role: cg.emptype || '', emptype: cg.emptype || '',
+        phone: cg.phone || '', email: cg.email || '',
+        start_date: cg.hireDate || '', hire_date: cg.hireDate || '',
+        status: cg.status || 'active', notes: cg.notes || '',
+        // Address
+        street: cg.street || cg.address || '', city: cg.city || '',
+        state: cg.state || '', zip: cg.zip || '', county: cg.county || '',
+        // Employment
+        pay_rate: cg.payRate || '', max_hours: cg.maxHours || '',
+        certifications: cg.certs || cg.certifications || '',
+        ec_name: cg.ecName || '', ec_phone: cg.ecPhone || '',
+        champs_id: cg.champsId || '', gender: cg.gender || '',
+        milogin_username: cg.miloginUsername || '', milogin_password: cg.miloginPassword || '',
+        // Identity (sensitive — these fields are masked in exports too)
+        dob: cg.dob || '', drivers_license: cg.driversLicense || '', ssn: cg.ssn || ''
+      }),
+    }).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();});
+  });
 }
 function deleteCaregiverAPI(id) {
   fetch(API_BASE + '/caregivers/' + id, { method: 'DELETE', headers: apiHeaders() })
@@ -5477,16 +5479,22 @@ function loadTasksAPI() {
     }).catch(function (e) { console.error('Load tasks error:', e); });
 }
 function saveTaskAPI(todo) {
-  fetch(API_BASE + '/tasks', {
-    method: 'POST', headers: apiHeaders(),
-    body: JSON.stringify({
-      id: todo.dbId || undefined, text: todo.text, done: todo.done ? 1 : 0,
-      due: todo.due || null, client: todo.client || '', priority: todo.priority || 'normal', source: 'homecare',
-      parent_id: todo.parentId || null, note: todo.note || null,
-    }),
-  }).then(function (r) { return r.json(); })
-    .then(function (result) { if (!todo.dbId && result.id) { todo.dbId = result.id; } })
-    .catch(function (e) { console.error('Save task error:', e); });
+  return trackSave('task: '+(todo.text||'').slice(0,32), function(){
+    return fetch(API_BASE + '/tasks', {
+      method: 'POST', headers: apiHeaders(),
+      body: JSON.stringify({
+        id: todo.dbId || undefined, text: todo.text, done: todo.done ? 1 : 0,
+        due: todo.due || null, client: todo.client || '', priority: todo.priority || 'normal', source: 'homecare',
+        parent_id: todo.parentId || null, note: todo.note || null,
+      }),
+    }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function (result) {
+      if (!todo.dbId && result.id) { todo.dbId = result.id; }
+      return result;
+    });
+  });
 }
 function deleteTaskAPI(dbId) {
   if (!dbId) return;
@@ -5519,9 +5527,11 @@ function loadCaseworkersAPI(){
     .catch(function(e){ console.error('Load caseworkers error:', e); syncEnd(); });
 }
 function saveCaseworkerAPI(cw){
-  return fetch(API_BASE + '/caseworkers', {
-    method: 'POST', headers: apiHeaders(), body: JSON.stringify(cw),
-  }).catch(function(e){ console.error('Save caseworker error:', e); });
+  return trackSave(cw.name||cw.id||'caseworker', function(){
+    return fetch(API_BASE + '/caseworkers', {
+      method: 'POST', headers: apiHeaders(), body: JSON.stringify(cw),
+    }).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();});
+  });
 }
 function deleteCaseworkerAPI(id){
   return fetch(API_BASE + '/caseworkers/' + encodeURIComponent(id), {
@@ -5554,10 +5564,11 @@ function loadSupervisorsAPI(){
     .catch(function(e){console.error('Load supervisors error:',e);syncEnd();});
 }
 function saveSupervisorAPI(sup){
-  return fetch(API_BASE+'/supervisors',{
-    method:'POST',headers:apiHeaders(),body:JSON.stringify(sup)
-  }).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
-    .catch(function(e){console.error('Save supervisor error:',e);});
+  return trackSave('supervisor: '+(sup.name||sup.id||''), function(){
+    return fetch(API_BASE+'/supervisors',{
+      method:'POST',headers:apiHeaders(),body:JSON.stringify(sup)
+    }).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();});
+  });
 }
 function deleteSupervisorAPI(id){
   return fetch(API_BASE+'/supervisors/'+encodeURIComponent(id),{
