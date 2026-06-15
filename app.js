@@ -91,7 +91,7 @@ function bc(crumbs){
     el.appendChild(s);
   });
 }
-function navHome(){showPage('home');bc([{l:'Clients'}]);document.getElementById('topbarActions').innerHTML='';unsavedChanges=false;renderClientTable();updateStats();renderSidebarClients();}
+function navHome(){showPage('home');bc([{l:'Clients'}]);document.getElementById('topbarActions').innerHTML='';unsavedChanges=false;renderClientTable();updateStats();renderSidebarClients();if(typeof revalidate==='function')revalidate();}
 
 // ============================================================
 //  HASH ROUTER — enables right-click "Open in new tab" for records
@@ -354,9 +354,10 @@ function navCaregivers(){
   document.getElementById('cgGridView').style.display='';
   activeCgId=null;
   renderCaregiverGrid();
+  if(typeof revalidate==='function')revalidate();
 }
-function navSettings(){showPage('settings');bc([{l:'Settings'}]);document.getElementById('topbarActions').innerHTML='';renderSigSettings();updateSettingsAuth();renderEmailAuditTable();if(typeof loadSigningTemplates==='function')loadSigningTemplates();}
-function navTasks(){showPage('tasks');bc([{l:'Tasks'}]);document.getElementById('topbarActions').innerHTML='';populateTodoClientSelect();renderTodos();}
+function navSettings(){showPage('settings');bc([{l:'Settings'}]);document.getElementById('topbarActions').innerHTML='';renderSigSettings();updateSettingsAuth();renderEmailAuditTable();if(typeof loadSigningTemplates==='function')loadSigningTemplates();if(typeof revalidate==='function')revalidate();}
+function navTasks(){showPage('tasks');bc([{l:'Tasks'}]);document.getElementById('topbarActions').innerHTML='';populateTodoClientSelect();renderTodos();if(typeof revalidate==='function')revalidate();}
 function navReports(){showPage('reports');bc([{l:'Reports'}]);document.getElementById('topbarActions').innerHTML='';renderReports();}
 
 // ============================================================
@@ -5222,6 +5223,28 @@ function syncEnd(){
     document.body.classList.remove('db-syncing');
   }
 }
+// ── SWR: revalidate DB → LS on nav, throttled to avoid hammering on rapid clicks ──
+// Skipped if any unsaved-changes flag is active so an in-flight edit doesn't get clobbered.
+var _lastRevalidate=0;
+var REVALIDATE_THROTTLE_MS=30000; // 30 sec — bandwidth vs freshness trade-off for a 3-user CRM
+function revalidate(force){
+  // Guard 1: avoid clobbering in-progress edits
+  if(typeof unsavedChanges!=='undefined'&&unsavedChanges)return;
+  if(typeof cgUnsavedChanges!=='undefined'&&cgUnsavedChanges)return;
+  if(typeof cwUnsavedChanges!=='undefined'&&cwUnsavedChanges)return;
+  // Guard 2: throttle to once per 30 sec unless forced
+  var now=Date.now();
+  if(!force&&(now-_lastRevalidate)<REVALIDATE_THROTTLE_MS)return;
+  _lastRevalidate=now;
+  // Need an auth token to actually fetch — silently skip on cold start
+  if(!spToken)return;
+  // Fire all entity loads in parallel; each one re-renders its respective UI
+  if(typeof loadProfilesAPI==='function')loadProfilesAPI();
+  if(typeof loadCaregiversAPI==='function')loadCaregiversAPI();
+  if(typeof loadCaseworkersAPI==='function')loadCaseworkersAPI();
+  if(typeof loadSupervisorsAPI==='function')loadSupervisorsAPI();
+  if(typeof loadTasksAPI==='function')loadTasksAPI();
+}
 
 // ── LOAD all clients + invoices from Azure SQL (bulk fetch) ───────────────
 // One round-trip instead of N+1. Backend returns clients with invoices nested.
@@ -5682,6 +5705,7 @@ function navCaseworkers(){
   showCwGrid();
   // Default back to Caseworkers view when arriving at the page
   showCwView('caseworkers');
+  if(typeof revalidate==='function')revalidate();
 }
 
 // Pill toggle on the Caseworkers page — flips between Caseworkers list and Supervisors list
