@@ -1308,7 +1308,15 @@ function _doCreateClient(name,first,middle,last,nickname){
 //  CAREGIVERS
 // ============================================================
 function getCaregivers(){try{return JSON.parse(localStorage.getItem('lhca_caregivers')||'{}');}catch(e){return{};}}
-function saveCaregiversLS(cg){localStorage.setItem('lhca_caregivers',JSON.stringify(cg));}
+function saveCaregiversLS(cg){
+  // HIPAA: never persist MI Login passwords to localStorage (credential at-rest).
+  // Strip on a shallow copy so the in-memory record still has it for the API save.
+  var clean={};
+  Object.keys(cg).forEach(function(k){
+    var c=Object.assign({},cg[k]);delete c.miloginPassword;delete c.milogin_password;clean[k]=c;
+  });
+  localStorage.setItem('lhca_caregivers',JSON.stringify(clean));
+}
 function cgId(){return 'cg_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);}
 
 var cgBulkSelected={};
@@ -1442,7 +1450,8 @@ function editCaregiver(id){
   var cgDobEl=document.getElementById('cg-dob');if(cgDobEl)cgDobEl.value=cg.dob||cg.dateOfBirth||'';
   var cgChampsEl=document.getElementById('cg-champs');if(cgChampsEl)cgChampsEl.value=cg.champsId||cg.champs_id||'';
   var cgMiuEl=document.getElementById('cg-milogin-user');if(cgMiuEl)cgMiuEl.value=cg.miloginUsername||cg.milogin_username||'';
-  var cgMipEl=document.getElementById('cg-milogin-pass');if(cgMipEl)cgMipEl.value=cg.miloginPassword||cg.milogin_password||'';
+  // MI Login password is NOT preloaded — it stays blank and is fetched on demand via the Show button.
+  var cgMipEl=document.getElementById('cg-milogin-pass');if(cgMipEl)cgMipEl.value='';
   var cgGenderEl=document.getElementById('cg-gender');if(cgGenderEl)cgGenderEl.value=cg.gender||'';
   document.getElementById('cg-hire').value=cg.hireDate||'';document.getElementById('cg-pay').value=cg.payRate||'';
   document.getElementById('cg-hours').value=cg.maxHours||'';document.getElementById('cg-certs').value=cg.certs||'';
@@ -2001,8 +2010,8 @@ function renderCgInfoPane(){
     '<div class="info-field"><label>MI Login Username <span style="font-weight:400;color:#8ca0b4;">(state portal)</span></label><input id="cgi-milogin-user" value="'+esc(cg.miloginUsername||cg.milogin_username||'')+'" placeholder="username" autocomplete="off"></div>'+
     '<div class="info-field"><label>MI Login Password</label>'+
       '<div style="display:flex;gap:4px;align-items:center;">'+
-        '<input id="cgi-milogin-pass" type="password" value="'+esc(cg.miloginPassword||cg.milogin_password||'')+'" autocomplete="off" style="flex:1;">'+
-        '<button type="button" class="btn btn-secondary btn-sm" onclick="toggleMask(\'cgi-milogin-pass\',this)" style="padding:4px 8px;font-size:11px;white-space:nowrap;">Show</button>'+
+        '<input id="cgi-milogin-pass" type="password" value="" placeholder="•••••• (click Show)" autocomplete="off" style="flex:1;">'+
+        '<button type="button" class="btn btn-secondary btn-sm" onclick="revealMilogin(\'cgi-milogin-pass\',this,\''+esc(activeCgId)+'\')" style="padding:4px 8px;font-size:11px;white-space:nowrap;">Show</button>'+
       '</div>'+
     '</div>'
   );
@@ -2291,6 +2300,25 @@ function showPrompt(message,initialValue,onSave,opts){
 }
 
 // Toggle masking on a sensitive input (SSN). Auto re-masks after 8 seconds.
+// Fetch a caregiver's MI Login password on demand (it is never preloaded or cached),
+// then reveal it via the normal mask toggle (which auto-re-masks after 8s).
+function revealMilogin(inputId,btn,cgIdArg){
+  var inp=document.getElementById(inputId);if(!inp)return;
+  // Already revealed, or the user has typed a value — just toggle visibility.
+  if(inp.type==='text'||inp.value){toggleMask(inputId,btn);return;}
+  var idEl=document.getElementById('cg-editing-id');
+  var id=cgIdArg||(idEl&&idEl.value)||activeCgId||'';
+  if(!id){toggleMask(inputId,btn);return;} // new caregiver — nothing stored yet
+  var orig=btn?btn.textContent:'';if(btn)btn.textContent='…';
+  fetch(API_BASE+'/caregivers/'+encodeURIComponent(id)+'/milogin',{headers:apiHeaders()})
+    .then(function(r){return r.ok?r.json():null;})
+    .then(function(d){
+      if(d&&typeof d.milogin_password==='string')inp.value=d.milogin_password;
+      if(btn)btn.textContent=orig||'Show';
+      toggleMask(inputId,btn);
+    })
+    .catch(function(){if(btn)btn.textContent=orig||'Show';});
+}
 function toggleMask(inputId,btn){
   var inp=document.getElementById(inputId);if(!inp)return;
   if(inp.type==='password'){
@@ -3584,7 +3612,7 @@ function importProfiles(ev){
     ev.target.value='';
   };r.readAsText(file);
 }
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
 // ============================================================
 //  INVOICE FORM
@@ -6374,7 +6402,11 @@ document.addEventListener('keydown',function(e){
   }
 });
 window.addEventListener('beforeunload',function(e){
-  if(unsavedChanges){e.preventDefault();e.returnValue='';}
+  // Warn on any in-progress edit — client, caregiver, OR caseworker panes.
+  var dirty=unsavedChanges||
+    (typeof cgUnsavedChanges!=='undefined'&&cgUnsavedChanges)||
+    (typeof cwUnsavedChanges!=='undefined'&&cwUnsavedChanges);
+  if(dirty){e.preventDefault();e.returnValue='';}
 });
 
 // ============================================================
