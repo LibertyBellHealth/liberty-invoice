@@ -1011,7 +1011,7 @@ function saveInvNote(input){
     saveProfilesLS(p);
     // Debounce backend save so we don't slam the API on every keystroke
     clearTimeout(saveInvNote._t);
-    saveInvNote._t=setTimeout(function(){saveProfileSP(activeProfileName,p[activeProfileName]);},600);
+    saveInvNote._t=setTimeout(function(){saveProfileSP(activeProfileName,p[activeProfileName],true);},600);
   }
 }
 function deleteInv(idx){
@@ -1070,7 +1070,7 @@ function renderNotesPane(){
       p2[activeProfileName].clientNotes=ta.value;
       saveProfilesLS(p2);
       // Persist to backend too — without this, notes vanished on refresh / other device
-      saveProfileSP(activeProfileName,p2[activeProfileName]);
+      saveProfileSP(activeProfileName,p2[activeProfileName],true);
       var f=document.getElementById('notesSavedFlash');f.style.display='inline';setTimeout(function(){f.style.display='none';},2000);
     }
   },600);};
@@ -1090,7 +1090,7 @@ function renderNotesPane(){
       if(p2[activeProfileName]&&p2[activeProfileName].invoices[i]){
         p2[activeProfileName].invoices[i].invoiceNote=inp.value;
         saveProfilesLS(p2);
-        saveProfileSP(activeProfileName,p2[activeProfileName]);
+        saveProfileSP(activeProfileName,p2[activeProfileName],true);
       }
     });
   });
@@ -1924,7 +1924,7 @@ function renderCgNotesPane(){
       if(!cgs[activeCgId])return;
       cgs[activeCgId].notes=ta.value;
       saveCaregiversLS(cgs);
-      saveCaregiverAPI(activeCgId,cgs[activeCgId]);
+      saveCaregiverAPI(activeCgId,cgs[activeCgId],true);
       var f=document.getElementById('cgNotesSavedFlash');
       if(f){f.style.display='inline';setTimeout(function(){f.style.display='none';},2000);}
     },600);
@@ -5375,7 +5375,7 @@ function loadProfilesAPI() {
 // Returns a Promise. Shows save-status toast (Saving → Saved ✓ / Save failed [Retry]).
 // On failure the LS write done by the caller is preserved so the user can keep working
 // against the optimistic state, and the Retry button re-invokes this exact save.
-function saveProfileSP(name, data) {
+function saveProfileSP(name, data, quiet) {
   var idMap = getIdMap();
   var dbId = data._dbId || idMap[name];
   var body = {
@@ -5394,7 +5394,7 @@ function saveProfileSP(name, data) {
     start_date: data.startDate || '', live_in: data.liveIn ? 1 : 0,
     client_notes: data.clientNotes || '', audit_json: JSON.stringify(data.auditLog || []),
   };
-  return trackSave(name, function(){
+  var _doSave = function(){
     return fetch(API_BASE + '/homecare-clients', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(body) })
       .then(function (r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -5412,7 +5412,10 @@ function saveProfileSP(name, data) {
         syncNewInvoices(name, data);
         return result;
       });
-  });
+  };
+  // quiet = auto-save (notes typing): persist without the corner toast — the inline
+  // "Saved" indicator already covers it. Deliberate saves keep the toast.
+  return quiet ? _doSave() : trackSave(name, _doSave);
 }
 function syncNewInvoices(name, data) {
   var idMap = getIdMap(); var clientDbId = idMap[name];
@@ -5496,8 +5499,8 @@ function loadCaregiversAPI() {
       syncEnd();
     }).catch(function (e) { console.error('Load caregivers error:', e); syncEnd(); });
 }
-function saveCaregiverAPI(id, cg) {
-  return trackSave(cg.name||id, function(){
+function saveCaregiverAPI(id, cg, quiet) {
+  var _doSave = function(){
     return fetch(API_BASE + '/caregivers', {
       method: 'POST', headers: apiHeaders(),
       body: JSON.stringify({
@@ -5521,7 +5524,8 @@ function saveCaregiverAPI(id, cg) {
         dob: cg.dob || '', drivers_license: cg.driversLicense || '', ssn: cg.ssn || ''
       }),
     }).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();});
-  });
+  };
+  return quiet ? _doSave() : trackSave(cg.name||id, _doSave);
 }
 function deleteCaregiverAPI(id) {
   fetch(API_BASE + '/caregivers/' + id, { method: 'DELETE', headers: apiHeaders() })
@@ -5599,12 +5603,13 @@ function loadCaseworkersAPI(){
     })
     .catch(function(e){ console.error('Load caseworkers error:', e); syncEnd(); });
 }
-function saveCaseworkerAPI(cw){
-  return trackSave(cw.name||cw.id||'caseworker', function(){
+function saveCaseworkerAPI(cw, quiet){
+  var _doSave = function(){
     return fetch(API_BASE + '/caseworkers', {
       method: 'POST', headers: apiHeaders(), body: JSON.stringify(cw),
     }).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();});
-  });
+  };
+  return quiet ? _doSave() : trackSave(cw.name||cw.id||'caseworker', _doSave);
 }
 function deleteCaseworkerAPI(id){
   return fetch(API_BASE + '/caseworkers/' + encodeURIComponent(id), {
@@ -6289,7 +6294,7 @@ function renderCwNotesPane(){
       if(!cwRec)return;
       cwRec.notes=ta.value;
       saveCaseworkersLS(arr);
-      saveCaseworkerAPI(cwRec);
+      saveCaseworkerAPI(cwRec,true);
       var f=document.getElementById('cwNotesSavedFlash');
       if(f){f.style.display='inline';setTimeout(function(){f.style.display='none';},2000);}
     },600);
