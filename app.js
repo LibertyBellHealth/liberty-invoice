@@ -169,6 +169,14 @@ document.addEventListener('click',function(e){
 // ============================================================
 //  GLOBAL SEARCH
 // ============================================================
+// Debounce wrapper — the search scans every client + invoice, so run it ~180ms
+// after typing stops instead of on every keystroke. Clearing is immediate (snappy).
+var _gsTimer=null;
+function debouncedGlobalSearch(q){
+  clearTimeout(_gsTimer);
+  if(!q||q.length<2){runGlobalSearch(q);return;}
+  _gsTimer=setTimeout(function(){runGlobalSearch(q);},180);
+}
 function runGlobalSearch(q){
   var res=document.getElementById('globalResults');if(!q||q.length<2){res.style.display='none';return;}
   q=q.toLowerCase();

@@ -92,7 +92,7 @@ function aiTrack(name, props){
       </div>
       <div class="dashboard-actions">
         <div class="global-search-wrap">
-          <input id="globalSearch" class="global-search" placeholder="Search clients, invoices, tasks…" oninput="runGlobalSearch(this.value)" onkeydown="if(event.key==='Escape')closeGlobalSearch()">
+          <input id="globalSearch" class="global-search" placeholder="Search clients, invoices, tasks…" oninput="debouncedGlobalSearch(this.value)" onkeydown="if(event.key==='Escape')closeGlobalSearch()">
           <div class="global-results" id="globalResults" style="display:none;"></div>
         </div>
         <button class="btn btn-secondary" data-sync-disable="1" onclick="openGenerateInvoicesModal()">🔄 Generate Invoices</button>
