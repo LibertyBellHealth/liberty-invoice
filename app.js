@@ -5268,6 +5268,25 @@ function syncEnd(){
     document.body.classList.remove('db-syncing');
   }
 }
+// ── DB load-error banner: surface a failed load instead of leaving a silent empty page ──
+function showDbError(what){
+  var el=document.getElementById('dbErrorBanner');
+  if(!el){
+    el=document.createElement('div');
+    el.id='dbErrorBanner';
+    el.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:#fdecec;color:#a00;padding:9px 16px;font-family:Arial,sans-serif;font-size:13px;border-bottom:1px solid #f0c0c0;box-shadow:0 2px 6px rgba(0,0,0,0.08);display:flex;align-items:center;justify-content:center;gap:12px;';
+    document.body.appendChild(el);
+  }
+  el.innerHTML='<span>⚠️ Couldn’t reach the database'+(what?' ('+esc(what)+')':'')+'. Your data is safe — this is usually a brief connection hiccup.</span>'+
+    '<button class="btn btn-secondary btn-sm" id="_dbRetryBtn" style="padding:3px 12px;">Retry</button>'+
+    '<button id="_dbErrDismiss" style="background:none;border:none;color:#a00;cursor:pointer;font-size:16px;line-height:1;padding:0 4px;">✕</button>';
+  el.style.display='flex';
+  var rb=document.getElementById('_dbRetryBtn');
+  if(rb)rb.onclick=function(){hideDbError();if(typeof loadProfilesAPI==='function')loadProfilesAPI();};
+  var db=document.getElementById('_dbErrDismiss');
+  if(db)db.onclick=hideDbError;
+}
+function hideDbError(){var el=document.getElementById('dbErrorBanner');if(el)el.style.display='none';}
 // ── SWR: revalidate DB → LS on nav, throttled to avoid hammering on rapid clicks ──
 // Skipped if any unsaved-changes flag is active so an in-flight edit doesn't get clobbered.
 var _lastRevalidate=0;
@@ -5351,6 +5370,7 @@ function loadProfilesAPI() {
       });
       saveProfilesLS(profiles);
       localStorage.setItem('lhca_id_map', JSON.stringify(idMap));
+      hideDbError(); // fresh data arrived — clear any stale connection-error banner
       var now = new Date().toLocaleString(); localStorage.setItem('lhca_last_synced', now);
       renderSidebarClients(); renderClientTable(); updateStats();
       var lsl = document.getElementById('lastSyncedLabel');
@@ -5359,6 +5379,7 @@ function loadProfilesAPI() {
     })
     .catch(function (e) {
       console.error('Bulk load error:', e);
+      showDbError('clients');
       renderSidebarClients(); renderClientTable(); updateStats();
       syncEnd();
     });
@@ -5497,7 +5518,7 @@ function loadCaregiversAPI() {
       // renders an empty grid and never refreshes when the fetch lands.
       if (typeof renderCaregiverGrid === 'function' && document.getElementById('cgTableBody')) renderCaregiverGrid();
       syncEnd();
-    }).catch(function (e) { console.error('Load caregivers error:', e); syncEnd(); });
+    }).catch(function (e) { console.error('Load caregivers error:', e); showDbError('caregivers'); syncEnd(); });
 }
 function saveCaregiverAPI(id, cg, quiet) {
   var _doSave = function(){
@@ -5553,7 +5574,7 @@ function loadTasksAPI() {
       if(document.getElementById('page-tasks')&&document.getElementById('page-tasks').classList.contains('active')){
         renderTodos();updateTaskBadge();
       }
-    }).catch(function (e) { console.error('Load tasks error:', e); });
+    }).catch(function (e) { console.error('Load tasks error:', e); showDbError('tasks'); });
 }
 function saveTaskAPI(todo) {
   return trackSave('task: '+(todo.text||'').slice(0,32), function(){
@@ -5601,7 +5622,7 @@ function loadCaseworkersAPI(){
       if (typeof renderCaseworkerList === 'function' && document.getElementById('cwList')) renderCaseworkerList();
       syncEnd();
     })
-    .catch(function(e){ console.error('Load caseworkers error:', e); syncEnd(); });
+    .catch(function(e){ console.error('Load caseworkers error:', e); showDbError('caseworkers'); syncEnd(); });
 }
 function saveCaseworkerAPI(cw, quiet){
   var _doSave = function(){
@@ -5639,7 +5660,7 @@ function loadSupervisorsAPI(){
       refreshSupervisorDropdowns();
       syncEnd();
     })
-    .catch(function(e){console.error('Load supervisors error:',e);syncEnd();});
+    .catch(function(e){console.error('Load supervisors error:',e);showDbError('supervisors');syncEnd();});
 }
 function saveSupervisorAPI(sup){
   return trackSave('supervisor: '+(sup.name||sup.id||''), function(){
