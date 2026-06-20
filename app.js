@@ -5523,6 +5523,10 @@ function loadCaregiversAPI() {
       // Without this, a cold cache (new device/URL, or after the idle-timeout clears storage)
       // renders an empty grid and never refreshes when the fetch lands.
       if (typeof renderCaregiverGrid === 'function' && document.getElementById('cgTableBody')) renderCaregiverGrid();
+      // Also refresh the dashboard count + client table caregiver column, so a cold load
+      // never shows a false "0 caregivers" or blank caregiver names once the data lands.
+      if (typeof updateStats === 'function') updateStats();
+      if (typeof renderClientTable === 'function' && document.getElementById('clientTableBody')) renderClientTable();
       syncEnd();
     }).catch(function (e) { console.error('Load caregivers error:', e); showDbError('caregivers'); syncEnd(); });
 }
