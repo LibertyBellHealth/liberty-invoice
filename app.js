@@ -354,6 +354,8 @@ function navCaregivers(){
   document.getElementById('cgGridView').style.display='';
   activeCgId=null;
   renderCaregiverGrid();
+  // Cold cache (nothing stored yet): fetch directly, bypassing the 30s revalidate throttle.
+  if(typeof spToken!=='undefined'&&spToken&&Object.keys(getCaregivers()).length===0&&typeof loadCaregiversAPI==='function')loadCaregiversAPI();
   if(typeof revalidate==='function')revalidate();
 }
 function navSettings(){showPage('settings');bc([{l:'Settings'}]);document.getElementById('topbarActions').innerHTML='';renderSigSettings();updateSettingsAuth();renderEmailAuditTable();if(typeof loadSigningTemplates==='function')loadSigningTemplates();if(typeof revalidate==='function')revalidate();}
@@ -5479,6 +5481,10 @@ function loadCaregiversAPI() {
         };
       });
       if (Object.keys(obj).length) saveCaregiversLS(obj);
+      // Repaint the grid now that fresh data is in — matches loadProfilesAPI/loadCaseworkersAPI.
+      // Without this, a cold cache (new device/URL, or after the idle-timeout clears storage)
+      // renders an empty grid and never refreshes when the fetch lands.
+      if (typeof renderCaregiverGrid === 'function' && document.getElementById('cgTableBody')) renderCaregiverGrid();
       syncEnd();
     }).catch(function (e) { console.error('Load caregivers error:', e); syncEnd(); });
 }
@@ -5741,6 +5747,8 @@ function navCaseworkers(){
   showCwGrid();
   // Default back to Caseworkers view when arriving at the page
   showCwView('caseworkers');
+  // Cold cache: fetch directly, bypassing the 30s revalidate throttle.
+  if(typeof spToken!=='undefined'&&spToken&&getCaseworkers().length===0&&typeof loadCaseworkersAPI==='function')loadCaseworkersAPI();
   if(typeof revalidate==='function')revalidate();
 }
 
