@@ -337,14 +337,20 @@ function confirmNewInvoice(mode){
     document.getElementById('dupWarning').style.display='none';
   } else {
     loadProfileIntoForm(prof);
-    document.getElementById('billingPeriod').value='';
-    document.getElementById('billingPeriod2').value='';
+    // Default billing period to the previous month (invoices are billed in arrears)
+    // instead of leaving it blank — saves re-typing MM/YYYY every cycle.
+    var _pm=new Date();_pm=new Date(_pm.getFullYear(),_pm.getMonth()-1,1);
+    var _mm=String(_pm.getMonth()+1).padStart(2,'0'),_yy=String(_pm.getFullYear());
+    var _defBP=_mm+'/'+_yy;
+    document.getElementById('billingPeriod').value=_defBP;
+    document.getElementById('billingPeriod2').value=_defBP;
     var T=today();
     document.getElementById('dateSubmitted').value=T;
     document.getElementById('sigDate1').value=T;
     document.getElementById('sigDate2').value=T;
     ['svcHH','svcMM','cplxHH','cplxMM','p1HH','p1MM','grandHH','grandMM'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
-    rebuild(31);
+    rebuild(daysIn(_mm,_yy));
+    checkDuplicatePeriod(_defBP);
     resetSigArea(1);resetSigArea(2);
   }
   startDraftAutosave();
@@ -3968,7 +3974,7 @@ function _showSaveStatus(state,label,onRetry){
   } else if(state==='saved'){
     _saveStatusEl.style.borderColor='#b9e4c9';_saveStatusEl.style.background='#eef9f1';
     _saveStatusEl.innerHTML='<span style="color:#1a7740;font-weight:700;">✓</span><span style="color:#1a7740;">Saved '+esc(label)+'</span>';
-    clearTimeout(_saveStatusEl._t);_saveStatusEl._t=setTimeout(function(){_saveStatusEl.style.display='none';},1800);
+    clearTimeout(_saveStatusEl._t);_saveStatusEl._t=setTimeout(function(){_saveStatusEl.style.display='none';},2800);
   } else if(state==='failed'){
     _saveStatusEl.style.borderColor='#f0c0c0';_saveStatusEl.style.background='#fdecec';
     _saveStatusEl.innerHTML='<span style="color:#a00;font-weight:700;">✗</span><span style="color:#a00;flex:1;">Save failed: '+esc(label)+'</span>'+
