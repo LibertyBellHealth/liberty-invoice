@@ -2098,7 +2098,7 @@ function switchCgTab(tab){
   _doSwitchCgTab(tab);
 }
 function _doSwitchCgTab(tab){
-  ['overview','info','clients','notes','docs','signatures','audit'].forEach(function(t){
+  ['overview','info','clients','notes','docs','audit'].forEach(function(t){
     var tb=document.getElementById('cgtab-'+t);
     var pn=document.getElementById('cgpane-'+t);
     if(tb)tb.classList.toggle('active',t===tab);
@@ -2108,8 +2108,12 @@ function _doSwitchCgTab(tab){
   if(tab==='info')renderCgInfoPane();
   if(tab==='clients')renderCgClientsPane();
   if(tab==='notes')renderCgNotesPane();
-  if(tab==='docs')renderCgDocsPane();
-  if(tab==='signatures'&&typeof loadCgSigningRequests==='function')loadCgSigningRequests();
+  if(tab==='docs'){
+    renderCgDocsPane();
+    // Signatures used to have its own tab; now they live at the bottom of Documents.
+    // Kick off the fetch so the list populates when the tab opens.
+    if(typeof loadCgSigningRequests==='function')loadCgSigningRequests();
+  }
   if(tab==='audit')renderCgAuditPane();
 }
 function renderCgOverviewPane(){

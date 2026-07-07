@@ -26,7 +26,7 @@ function aiTrack(name, props){
   }catch(e){}
 }
 </script>
-<link rel="stylesheet" href="styles.css?v=20260707p">
+<link rel="stylesheet" href="styles.css?v=20260707q">
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -195,7 +195,7 @@ function aiTrack(name, props){
       <button class="dtab" id="dtab-history" onclick="switchTab('history')">Invoices</button>
       <button class="dtab" id="dtab-notes" onclick="switchTab('notes')">Notes</button>
       <button class="dtab" id="dtab-docs" onclick="switchTab('docs')">Documents</button>
-      <button class="dtab" id="dtab-audit" onclick="switchTab('audit')">Audit Log</button>
+      <button class="dtab" id="dtab-audit" onclick="switchTab('audit')">Audit</button>
     </div>
     <div class="detail-pane active" id="dpane-overview"></div>
     <div class="detail-pane" id="dpane-info">
@@ -439,9 +439,7 @@ function aiTrack(name, props){
           <h1 class="detail-name" id="cgDetailName"></h1>
           <div class="dh-sub detail-meta" id="cgDetailMeta"></div>
         </div>
-        <div class="dh-actions detail-actions">
-          <button class="btn btn-primary" onclick="openSendForSignatureModal()">Send for Signature</button>
-        </div>
+        <div class="dh-actions detail-actions"></div>
       </div>
       <div class="detail-tabs">
         <button class="dtab active" id="cgtab-overview" onclick="switchCgTab('overview')">Overview</button>
@@ -449,15 +447,24 @@ function aiTrack(name, props){
         <button class="dtab" id="cgtab-clients" onclick="switchCgTab('clients')">Clients</button>
         <button class="dtab" id="cgtab-notes" onclick="switchCgTab('notes')">Notes</button>
         <button class="dtab" id="cgtab-docs" onclick="switchCgTab('docs')">Documents</button>
-        <button class="dtab" id="cgtab-signatures" onclick="switchCgTab('signatures')">Signatures</button>
-        <button class="dtab" id="cgtab-audit" onclick="switchCgTab('audit')">Audit Log</button>
+        <button class="dtab" id="cgtab-audit" onclick="switchCgTab('audit')">Audit</button>
       </div>
       <div class="detail-pane active" id="cgpane-overview"></div>
       <div class="detail-pane" id="cgpane-info"><div id="cgInfoContent"></div></div>
       <div class="detail-pane" id="cgpane-clients"><div id="cgClientsContent"></div></div>
       <div class="detail-pane" id="cgpane-notes"><div id="cgNotesContent"></div></div>
-      <div class="detail-pane" id="cgpane-docs"><div id="cgDocsContent"></div></div>
-      <div class="detail-pane" id="cgpane-signatures"><div style="border:1px solid #e1e5ea;border-radius:6px;background:#fff;" id="cgSigList"><div style="padding:14px;color:#8ca0b4;text-align:center;font-size:12px;">Loading…</div></div></div>
+      <div class="detail-pane" id="cgpane-docs">
+        <div id="cgDocsContent"></div>
+        <!-- Signatures section — folded in from the removed Signatures tab. Header + button sit
+             outside #cgSigList so they survive loadCgSigningRequests() re-renders. -->
+        <div style="margin-top:28px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div class="section-heading" style="margin:0;">Signatures</div>
+          <button class="btn btn-primary btn-sm" onclick="openSendForSignatureModal()">+ Send for Signature</button>
+        </div>
+        <div style="border:1px solid var(--border);border-radius:6px;background:var(--surface);margin-top:10px;" id="cgSigList">
+          <div style="padding:14px;color:var(--text-subtle);text-align:center;font-size:12px;">Loading signatures…</div>
+        </div>
+      </div>
       <div class="detail-pane" id="cgpane-audit"></div>
     </div>
   </div>
@@ -732,7 +739,7 @@ function aiTrack(name, props){
         <button class="dtab" id="cwtab-clients" onclick="switchCwTab('clients')">Clients</button>
         <button class="dtab" id="cwtab-notes" onclick="switchCwTab('notes')">Notes</button>
         <button class="dtab" id="cwtab-docs" onclick="switchCwTab('docs')">Documents</button>
-        <button class="dtab" id="cwtab-audit" onclick="switchCwTab('audit')">Audit Log</button>
+        <button class="dtab" id="cwtab-audit" onclick="switchCwTab('audit')">Audit</button>
       </div>
       <div class="detail-pane active" id="cwpane-overview"></div>
       <div class="detail-pane" id="cwpane-info"><div id="cwInfoContent"></div></div>
@@ -1165,6 +1172,6 @@ function aiTrack(name, props){
     </div>
   </div>
 </div>
-<script src="app.js?v=20260707p"></script>
+<script src="app.js?v=20260707q"></script>
 </body>
 </html>
