@@ -5266,12 +5266,17 @@ function updateAuthUI(on) {
 window._dbSyncPending=0;
 function syncStart(){
   window._dbSyncPending++;
-  document.body.classList.add('db-syncing');
+  // Only show the full-page banner on initial cold load — when LS is genuinely empty
+  // and Add buttons would be unsafe. After the first sync completes, LS has data and
+  // background revalidation on nav should be silent (Phase-5 SWR).
+  if(!window._initialLoadDone)document.body.classList.add('db-syncing');
 }
 function syncEnd(){
   window._dbSyncPending=Math.max(0,window._dbSyncPending-1);
   if(window._dbSyncPending===0){
     document.body.classList.remove('db-syncing');
+    // Mark initial load complete — every subsequent sync is background revalidation
+    window._initialLoadDone=true;
   }
 }
 // ── DB load-error banner: surface a failed load instead of leaving a silent empty page ──
