@@ -450,7 +450,7 @@ function renderAttentionPanel(){
   var active=Object.keys(p).filter(function(k){return !p[k].clientStatus||p[k].clientStatus==='active';});
   var missingPrev=active.filter(function(k){return clientWasActiveInPeriod(p[k],prevPeriod) && !((p[k].invoices)||[]).some(function(i){return i.billingPeriod===prevPeriod;});});
   if(missingPrev.length){
-    items.push({cls:'attn-warn',count:missingPrev.length,label:missingPrev.length+' active client'+(missingPrev.length>1?'s':'')+' missing invoice for '+prevPeriod+' — click 🔄 Generate Invoices to create',fn:'openGenerateInvoicesModal()'});
+    items.push({cls:'attn-warn',count:missingPrev.length,label:missingPrev.length+' active client'+(missingPrev.length>1?'s':'')+' missing invoice for '+prevPeriod,fn:'showMissingInvoicesModal(\''+prevPeriod+'\')'});
   }
   var stale=[];Object.keys(p).forEach(function(k){(p[k].invoices||[]).forEach(function(inv){if(inv.status==='submitted'){var age=(new Date()-new Date(inv.savedAt))/(1000*60*60*24);if(age>30)stale.push(1);}});});
   if(stale.length)items.push({cls:'attn-danger',count:stale.length,label:stale.length+' submitted invoice'+(stale.length>1?'s':'')+' pending 30+ days — follow up on payment',fn:'openAllInvoicesModal("outstanding")'});
@@ -7652,14 +7652,49 @@ function defaultGenInvPeriod(){
   var d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);
   return String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
 }
+// Small modal that lists exactly which active clients are missing an invoice for a
+// specific billing period. Clicking a name jumps to the client's detail; the "+ Create
+// Invoice" button jumps straight to the new-invoice screen for that client.
+function showMissingInvoicesModal(period){
+  var existing=document.getElementById('missingInvModal');if(existing)existing.remove();
+  var profiles=getProfiles();
+  var missing=Object.keys(profiles).filter(function(name){
+    var st=profiles[name].clientStatus||'active';
+    if(st!=='active')return false;
+    return !((profiles[name].invoices)||[]).some(function(i){return i.billingPeriod===period;});
+  }).sort(function(a,b){return a.localeCompare(b);});
+  var ov=document.createElement('div');
+  ov.id='missingInvModal';ov.className='modal-overlay open';
+  var rows=missing.map(function(name){
+    var prof=profiles[name];
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);">'+
+      '<a href="'+buildClientUrl(name)+'" class="link-plain" style="font-size:13px;font-weight:600;" onclick="closeMissingInvModal()">'+esc(name)+(prof.medicaidId?' <span style="font-weight:400;color:var(--text-muted);font-size:11px;">'+esc(prof.medicaidId)+'</span>':'')+'</a>'+
+      '<button class="btn btn-primary btn-sm" style="font-size:11px;padding:4px 10px;white-space:nowrap;" onclick="activeProfileName=\''+esc(name).replace(/'/g,"\\'")+'\';closeMissingInvModal();navInvoice()">+ Invoice</button>'+
+    '</div>';
+  }).join('');
+  ov.innerHTML='<div class="modal-box" style="max-width:520px;">'+
+    '<h3>Missing invoices for '+esc(period)+'</h3>'+
+    (missing.length?
+      '<div style="font-size:11px;color:var(--text-muted);margin:4px 0 12px;">'+missing.length+' active client'+(missing.length>1?'s':'')+'</div>'+
+      '<div style="max-height:340px;overflow-y:auto;">'+rows+'</div>':
+      '<div style="font-size:13px;color:var(--text-muted);padding:16px 0;">✓ All active clients have an invoice for this period.</div>'
+    )+
+    '<div class="modal-row" style="display:flex;gap:8px;justify-content:space-between;margin-top:16px;">'+
+      (missing.length?'<button class="btn btn-secondary" onclick="closeMissingInvModal();openGenerateInvoicesModal();">Generate for all →</button>':'<span></span>')+
+      '<button class="btn btn-secondary" onclick="closeMissingInvModal()">Close</button>'+
+    '</div>'+
+  '</div>';
+  document.body.appendChild(ov);
+}
+function closeMissingInvModal(){var m=document.getElementById('missingInvModal');if(m)m.remove();}
+
 function openGenerateInvoicesModal(){
   var existing=document.getElementById('genInvModal');if(existing)existing.remove();
   var ov=document.createElement('div');
   ov.id='genInvModal';ov.className='modal-overlay open';
   ov.innerHTML='<div class="modal-box" style="max-width:480px;">'+
-    '<h3>🔄 Generate Invoices</h3>'+
-    '<div style="font-size:13px;color:#4a5d7a;margin:8px 0 14px;">Copies each active client\'s most recent invoice into the chosen billing period — weekly tasks shifted by one day, hospital column cleared, marked as draft.</div>'+
-    '<label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Billing Period</label>'+
+    '<h3>Generate Invoices</h3>'+
+    '<label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-top:12px;margin-bottom:4px;">Billing Period</label>'+
     '<input id="genInvPeriod" type="text" placeholder="MM/YYYY" maxlength="7" '+
       'style="padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:14px;width:140px;outline:none;" '+
       'oninput="onMonthlyPeriodInput(this)" onblur="onMonthlyPeriodBlur(this);refreshGenInvCount();" '+
