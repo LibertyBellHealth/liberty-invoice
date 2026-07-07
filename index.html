@@ -26,7 +26,7 @@ function aiTrack(name, props){
   }catch(e){}
 }
 </script>
-<link rel="stylesheet" href="styles.css?v=20260707e">
+<link rel="stylesheet" href="styles.css?v=20260707f">
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -64,8 +64,9 @@ function aiTrack(name, props){
   <button class="sb-btn" id="sb-monthly" onclick="openMonthlyInvModal()">Monthly Emails</button>
   <a class="sb-btn" id="sb-settings" href="#/settings" style="text-decoration:none;">Settings</a>
   <hr class="sb-divider">
-  <div class="sb-section">Clients</div>
-  <div class="sb-clients" id="sbClientList"></div>
+  <!-- Sidebar quick-access client list. No section label — the page title carries
+       the "Clients" context; a duplicate label above the list read weirdly.  -->
+  <div class="sb-clients" id="sbClientList" style="margin-top:8px;"></div>
   <div class="sb-footer">
     <div id="authStatus">Not signed in</div>
     <div class="last-synced" id="lastSyncedLabel"></div>
@@ -124,8 +125,6 @@ function aiTrack(name, props){
         <!-- Hidden legacy inputs kept so existing code paths don't crash. -->
         <input type="hidden" id="filterSort" value="name">
         <input type="hidden" id="filterCaregiver" value="">
-        <!-- Row count at right-end of toolbar (updated by renderClientTable) -->
-        <span id="clientTableCount" style="margin-left:auto;font-size:12px;color:var(--text-muted);"></span>
       </div>
       <div class="ct-bulk-bar" id="ctBulkBar">
         <span id="ctBulkCount">0 selected</span>
@@ -152,6 +151,10 @@ function aiTrack(name, props){
         <tbody id="clientTableBody"></tbody>
       </table>
       <div id="clientTableEmpty" style="display:none;" class="ct-empty">No clients match your filters.</div>
+      <!-- Row count at bottom-right (AMS+-style "N clients" indicator, updated by renderClientTable) -->
+      <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;">
+        <span id="clientTableCount" style="font-size:12px;color:var(--text-muted);"></span>
+      </div>
     </div>
   </div>
 
@@ -1150,6 +1153,6 @@ function aiTrack(name, props){
     </div>
   </div>
 </div>
-<script src="app.js?v=20260707e"></script>
+<script src="app.js?v=20260707f"></script>
 </body>
 </html>
