@@ -204,12 +204,17 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 .empty-state .ei{font-size:38px;margin-bottom:10px;}
 .empty-state h3{font-size:15px;font-weight:600;color:#4a6a8a;margin-bottom:5px;}
 
-/* DETAIL */
-.detail-header{display:flex;align-items:center;gap:14px;margin-bottom:20px;}
-.detail-avatar{width:44px;height:44px;border-radius:50%;background:#e8f0f9;color:#185FA5;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.detail-name{font-size:18px;font-weight:700;color:#1a2b45;}
-.detail-meta{font-size:12px;color:#6b8dae;margin-top:2px;}
-.detail-actions{margin-left:auto;display:flex;gap:7px;flex-wrap:wrap;}
+/* DETAIL — unified header pattern for Client / Caregiver / Caseworker (Phase 4a).
+   The .dh-* rules at the top of this file already handle the modern shape
+   (back button top-left, then avatar / body / actions). The legacy classes
+   (.detail-avatar, .detail-name, .detail-meta, .detail-actions) are kept as
+   aliases so older code paths that reference them keep painting correctly. */
+.detail-header{display:flex;align-items:center;gap:12px;padding:14px 24px 10px;margin-bottom:8px;}
+.detail-header .detail-avatar{width:44px;height:44px;border-radius:50%;background:var(--accent-tint);color:var(--accent);font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.detail-header .dh-body{flex:1;min-width:0;}
+.detail-header .detail-name{font-size:17px;font-weight:700;color:var(--text);line-height:1.2;margin:0;}
+.detail-header .detail-meta{font-size:12px;color:var(--text-muted);margin-top:2px;}
+.detail-header .detail-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .detail-tabs{display:flex;border-bottom:2px solid #e1e5ea;margin-bottom:18px;}
 .dtab{padding:7px 16px;font-size:13px;cursor:pointer;color:#6b8dae;border-bottom:2px solid transparent;margin-bottom:-2px;font-weight:500;background:none;border-top:none;border-left:none;border-right:none;font-family:Arial,sans-serif;}
 .dtab:hover{color:#185FA5;}
