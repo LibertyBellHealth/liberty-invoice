@@ -513,7 +513,9 @@ function _clientSortCompare(a,b,profiles,cgs,cwsArr){
 }
 
 // ── Client-table column widths + pagination — persisted per-device in localStorage ──
-var _clientColDefaults={name:20,status:9,caregiver:14,caseworker:14,county:9,phone:13,lastInvoice:11};
+// Widths are % of table width (excluding the 32px checkbox column). Should sum to ~95-100.
+// Status is small because "• Active" is short; Client is largest because it stacks name + Medicaid ID.
+var _clientColDefaults={name:22,status:7,phone:13,caregiver:15,caseworker:15,county:10,lastInvoice:12};
 var _clientColumnWidths=null;
 var _clientPage=1;
 var _clientPageSize=25;
@@ -650,10 +652,10 @@ function renderClientTable(forceStatus){
       '<td style="width:32px;" onclick="event.stopPropagation()"><input type="checkbox" '+checked+' onchange="toggleBulkClient(\''+esc(name)+'\',this)" style="width:13px;height:13px;cursor:pointer;"></td>'+
       '<td><a href="'+hrefCl+'" class="link-plain" style="display:block;"><div class="ct-name">'+esc(name)+(prof.nickname?'<span style="font-weight:normal;color:var(--text-subtle);"> ('+esc(prof.nickname)+')</span>':'')+'</div><div class="ct-id">'+(prof.medicaidId||'No Medicaid ID')+'</div></a></td>'+
       '<td><span class="status-inline"><span class="status-dot '+st+'"></span>'+stLabel+'</span></td>'+
+      '<td style="color:var(--text-muted);font-size:12px;">'+esc(phone)+'</td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cgName)+'</td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cwName)+'</td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(county)+'</td>'+
-      '<td style="color:var(--text-muted);font-size:12px;">'+esc(phone)+'</td>'+
       '<td style="font-size:12px;color:var(--text-muted);">'+esc(lastInv)+'</td>';
     tr.addEventListener('click',function(e){
       if(e.target.closest('a')||e.target.tagName==='BUTTON'||e.target.tagName==='INPUT')return;

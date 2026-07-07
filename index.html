@@ -26,7 +26,7 @@ function aiTrack(name, props){
   }catch(e){}
 }
 </script>
-<link rel="stylesheet" href="styles.css?v=20260707i">
+<link rel="stylesheet" href="styles.css?v=20260707j">
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -147,11 +147,11 @@ function aiTrack(name, props){
             <th style="width:32px;"></th>
             <th class="sortable resizable" data-sortkey="name" data-col="name" onclick="sortClientBy('name')">Client<span class="resize-handle" onmousedown="startColResize(event,'name')"></span></th>
             <th class="sortable resizable" data-sortkey="status" data-col="status" onclick="sortClientBy('status')">Status<span class="resize-handle" onmousedown="startColResize(event,'status')"></span></th>
+            <th class="sortable resizable" data-sortkey="phone" data-col="phone" onclick="sortClientBy('phone')">Phone<span class="resize-handle" onmousedown="startColResize(event,'phone')"></span></th>
             <th class="sortable resizable" data-sortkey="caregiver" data-col="caregiver" onclick="sortClientBy('caregiver')">Caregiver<span class="resize-handle" onmousedown="startColResize(event,'caregiver')"></span></th>
             <th class="sortable resizable" data-sortkey="caseworker" data-col="caseworker" onclick="sortClientBy('caseworker')">Caseworker<span class="resize-handle" onmousedown="startColResize(event,'caseworker')"></span></th>
             <th class="sortable resizable" data-sortkey="county" data-col="county" onclick="sortClientBy('county')">County<span class="resize-handle" onmousedown="startColResize(event,'county')"></span></th>
-            <th class="sortable resizable" data-sortkey="phone" data-col="phone" onclick="sortClientBy('phone')">Phone<span class="resize-handle" onmousedown="startColResize(event,'phone')"></span></th>
-            <th class="sortable" data-sortkey="lastInvoice" data-col="lastInvoice" onclick="sortClientBy('lastInvoice')">Invoiced</th>
+            <th class="sortable" data-sortkey="lastInvoice" data-col="lastInvoice" onclick="sortClientBy('lastInvoice')">Last Invoice</th>
           </tr>
         </thead>
         <tbody id="clientTableBody"></tbody>
@@ -1172,6 +1172,6 @@ function aiTrack(name, props){
     </div>
   </div>
 </div>
-<script src="app.js?v=20260707i"></script>
+<script src="app.js?v=20260707j"></script>
 </body>
 </html>
