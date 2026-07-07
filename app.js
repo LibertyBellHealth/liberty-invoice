@@ -5759,11 +5759,15 @@ function _saveSupervisorFromModal(editId){
   });
   // If on the Supervisors view, refresh that table too
   if(typeof renderSupervisorList==='function' && document.getElementById('cwViewSupervisors') && document.getElementById('cwViewSupervisors').style.display!=='none')renderSupervisorList();
-  showToast((editId?'✓ Updated':'✓ Added')+' supervisor: '+name,3000);
+  // No manual showToast here — saveSupervisorAPI (wrapped in trackSave since Phase 4) already
+  // shows a "✓ Saved supervisor: …" toast on success. A second one caused the overlap.
 }
 function _deleteSupervisorFromModal(id){
   var sups=getSupervisors();
   var name=sups[id]?sups[id].name:'this supervisor';
+  // Close the edit modal FIRST so the confirm isn't hidden behind it — both share
+  // z-index:9000 so the later-appended supModal was stacking on top of showConfirm.
+  var m=document.getElementById('supModal');if(m)m.remove();
   // Warn about caseworker assignments that would be orphaned
   var assigned=getCaseworkers().filter(function(c){return c.supervisor_id===id;});
   var warn=assigned.length?'\n\n'+assigned.length+' caseworker'+(assigned.length>1?'s':'')+' assigned to this supervisor will be unassigned.':'';
@@ -5777,7 +5781,6 @@ function _deleteSupervisorFromModal(id){
       var arr=getCaseworkers();
       arr.forEach(function(c){if(c.supervisor_id===id){c.supervisor_id='';saveCaseworkerAPI(c);}});
       saveCaseworkersLS(arr);
-      var m=document.getElementById('supModal');if(m)m.remove();
       refreshSupervisorDropdowns();
       if(typeof renderCaseworkerList==='function')renderCaseworkerList();
       if(typeof renderSupervisorList==='function' && document.getElementById('cwViewSupervisors') && document.getElementById('cwViewSupervisors').style.display!=='none')renderSupervisorList();
