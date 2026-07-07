@@ -7365,6 +7365,9 @@ function buildBPHASA2421(prof,cw){
 function openMonthlyInvModal(){
   var modal=document.getElementById('monthlyInvModal');if(!modal)return;
   modal.classList.add('open');
+  // Force-refresh caseworkers + clients from DB so "No email on file" doesn't show against
+  // a stale LS cache. Force=true bypasses the 30-sec SWR throttle since this is user-initiated.
+  if(typeof revalidate==='function')revalidate(true);
   // Default to previous month
   var d=new Date();d.setMonth(d.getMonth()-1);
   var m=String(d.getMonth()+1).padStart(2,'0'),y=d.getFullYear();
@@ -7432,6 +7435,18 @@ function validateInvoiceForSend(name,prof,inv,cwRec){
 function previewMonthlyInvoices(){
   var period=(document.getElementById('monthlyInvPeriod').value||'').trim();
   if(!period||period.length<7){showAlert('Enter a billing period in MM/YYYY format.');return;}
+  // Show a "loading" hint and force a fresh fetch of caseworkers + clients from DB before rendering
+  // so we never render "No email on file" against stale LS. If the fetch takes >200ms we swap the
+  // hint for the real preview; if it fails we fall through to whatever LS has (offline tolerance).
+  var resultsEl=document.getElementById('monthlyInvResults');
+  if(resultsEl)resultsEl.innerHTML='<div style="color:#8ca0b4;font-size:13px;text-align:center;padding:24px 0;">Refreshing caseworker + client data…</div>';
+  var freshFetch=Promise.all([
+    (typeof loadCaseworkersAPI==='function'?loadCaseworkersAPI():Promise.resolve()),
+    (typeof loadProfilesAPI==='function'?loadProfilesAPI():Promise.resolve()),
+  ]).catch(function(e){console.warn('Fresh fetch failed, using LS cache:',e);});
+  freshFetch.then(function(){_previewMonthlyInvoicesRender(period);});
+}
+function _previewMonthlyInvoicesRender(period){
   var profiles=getProfiles();
   var cws=getCaseworkers();
   // Group ALL active clients by worker name
