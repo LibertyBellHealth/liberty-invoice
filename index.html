@@ -26,7 +26,7 @@ function aiTrack(name, props){
   }catch(e){}
 }
 </script>
-<link rel="stylesheet" href="styles.css?v=20260707a">
+<link rel="stylesheet" href="styles.css?v=20260707b">
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -83,19 +83,19 @@ function aiTrack(name, props){
     <div id="topbarActions"></div>
   </div>
 
-  <!-- HOME -->
+  <!-- HOME (Clients) — Phase 2 migrated to unified .entity-header pattern -->
   <div class="page active" id="page-home">
-    <div class="dashboard-header">
-      <div class="dashboard-title-block">
-        <div class="dashboard-title">Liberty Home Care</div>
-        <div class="dashboard-sub">Client Management System</div>
+    <div class="entity-header">
+      <div class="titles">
+        <h1>Clients</h1>
+        <div class="subtitle">Manage clients, invoices, and caseworker assignments.</div>
       </div>
-      <div class="dashboard-actions">
+      <div class="actions">
         <div class="global-search-wrap">
-          <input id="globalSearch" class="global-search" placeholder="Search clients, invoices, tasks…" oninput="debouncedGlobalSearch(this.value)" onkeydown="if(event.key==='Escape')closeGlobalSearch()">
+          <input id="globalSearch" class="search-slim" placeholder="Search everything…" oninput="debouncedGlobalSearch(this.value)" onkeydown="if(event.key==='Escape')closeGlobalSearch()">
           <div class="global-results" id="globalResults" style="display:none;"></div>
         </div>
-        <button class="btn btn-secondary" data-sync-disable="1" onclick="openGenerateInvoicesModal()">🔄 Generate Invoices</button>
+        <button class="btn btn-secondary" data-sync-disable="1" onclick="openGenerateInvoicesModal()">Generate Invoices</button>
         <button class="btn btn-primary" data-sync-disable="1" onclick="navNewClient()">+ New Client</button>
       </div>
     </div>
@@ -106,31 +106,20 @@ function aiTrack(name, props){
     <!-- AUTO-GENERATE UNDO BANNER (24h) -->
     <div id="autogenUndoBanner" style="display:none;"></div>
 
-    <!-- METRIC ROW -->
-    <div class="metric-row">
-      <div class="metric clickable-stat" onclick="renderClientTable('all')">
-        <div class="metric-val" id="statTotal">0</div>
-        <div class="metric-lbl">Active Clients</div>
-      </div>
-      <div class="metric clickable-stat" onclick="openAllInvoicesModal('outstanding')">
-        <div class="metric-val outstanding-val" id="statOutstanding">0</div>
-        <div class="metric-lbl">Outstanding</div>
-      </div>
-      <div class="metric clickable-stat" onclick="openAllInvoicesModal('all')">
-        <div class="metric-val" id="statInvoices">0</div>
-        <div class="metric-lbl">Total Invoices</div>
-      </div>
-      <div class="metric clickable-stat" onclick="navCaregivers()">
-        <div class="metric-val" id="statCaregivers">0</div>
-        <div class="metric-lbl">Caregivers</div>
-      </div>
-      <div class="metric">
-        <div class="metric-val period-val" id="statMonth">—</div>
-        <div class="metric-lbl">Billing Period</div>
-      </div>
+    <!-- Compact one-line metric summary — replaces the big colorful tile row -->
+    <div class="entity-metrics">
+      <span class="metric-item clickable" onclick="renderClientTable('all')"><span class="metric-num" id="statTotal">0</span> active</span>
+      <span class="metric-sep">·</span>
+      <span class="metric-item clickable" onclick="openAllInvoicesModal('outstanding')"><span class="metric-num" id="statOutstanding">0</span> outstanding</span>
+      <span class="metric-sep">·</span>
+      <span class="metric-item clickable" onclick="openAllInvoicesModal('all')"><span class="metric-num" id="statInvoices">0</span> invoices</span>
+      <span class="metric-sep">·</span>
+      <span class="metric-item clickable" onclick="navCaregivers()"><span class="metric-num" id="statCaregivers">0</span> caregivers</span>
+      <span class="metric-sep">·</span>
+      <span class="metric-item">Billing <span class="metric-num" id="statMonth">—</span></span>
     </div>
 
-    <!-- CLIENT TABLE -->
+    <!-- CLIENT TABLE — filters kept, sort dropdown removed (sort moved to column headers) -->
     <div class="client-table-wrap">
       <div class="ct-toolbar">
         <input id="clientSearch" class="ct-search" placeholder="Filter clients…" oninput="renderClientTable()">
@@ -143,10 +132,8 @@ function aiTrack(name, props){
         </select>
         <select id="filterCaregiver" onchange="renderClientTable()" class="ct-filter"><option value="">All Caregivers</option></select>
         <label class="ct-check"><input type="checkbox" id="filterOutstanding" onchange="renderClientTable()"> Outstanding only</label>
-        <select id="filterSort" onchange="renderClientTable()" class="ct-filter">
-          <option value="name">Name A–Z</option>
-          <option value="recent">Most Recent Invoice</option>
-        </select>
+        <!-- Hidden legacy input kept so filterSort references don't crash. Real sort is on column headers. -->
+        <input type="hidden" id="filterSort" value="name">
       </div>
       <div class="ct-bulk-bar" id="ctBulkBar">
         <span id="ctBulkCount">0 selected</span>
@@ -154,19 +141,19 @@ function aiTrack(name, props){
         <button onclick="bulkSetClientStatus('inactive')">Mark Inactive</button>
         <button onclick="bulkSetClientStatus('lost')">Mark Lost</button>
         <button onclick="bulkSetClientStatus('terminated')">Mark Terminated</button>
-        <button onclick="bulkDelete()" title="Permanently removes client and all their invoices/history. Use Terminated for routine offboarding instead." style="background:#c0392b;color:#fff;">Delete (Permanent)</button>
+        <button onclick="bulkDelete()" style="background:#c0392b;color:#fff;">Delete</button>
         <button onclick="clearBulkSelect()">Cancel</button>
       </div>
-      <table class="client-table" id="clientTable">
+      <table class="client-table entity-table" id="clientTable">
         <thead>
           <tr>
             <th style="width:32px;"></th>
-            <th>Client</th>
-            <th>Status</th>
-            <th>Caregiver</th>
-            <th>Last Invoice</th>
-            <th>Open</th>
-            <th>Rate</th>
+            <th class="sortable" data-sortkey="name" onclick="sortClientBy('name')">Client</th>
+            <th class="sortable" data-sortkey="status" onclick="sortClientBy('status')">Status</th>
+            <th class="sortable" data-sortkey="caregiver" onclick="sortClientBy('caregiver')">Caregiver</th>
+            <th class="sortable" data-sortkey="lastInvoice" onclick="sortClientBy('lastInvoice')">Last Invoice</th>
+            <th class="sortable" data-sortkey="open" onclick="sortClientBy('open')">Open</th>
+            <th class="sortable" data-sortkey="rate" onclick="sortClientBy('rate')">Rate</th>
             <th></th>
           </tr>
         </thead>
@@ -1171,6 +1158,6 @@ function aiTrack(name, props){
     </div>
   </div>
 </div>
-<script src="app.js?v=20260707a"></script>
+<script src="app.js?v=20260707b"></script>
 </body>
 </html>

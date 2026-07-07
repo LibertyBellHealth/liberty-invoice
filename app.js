@@ -465,12 +465,34 @@ function renderAttentionPanel(){
   }).join('');
 }
 var bulkSelected={};
+// Sort state for the Clients table — column-header clicks toggle this
+var _clientSort={key:'name',dir:'asc'};
+function sortClientBy(key){
+  if(_clientSort.key===key)_clientSort.dir=_clientSort.dir==='asc'?'desc':'asc';
+  else {_clientSort.key=key;_clientSort.dir='asc';}
+  renderClientTable();
+}
+function _clientSortCompare(a,b,profiles,cgs){
+  var pa=profiles[a],pb=profiles[b];
+  var key=_clientSort.key,dir=_clientSort.dir==='asc'?1:-1;
+  function val(k,p,name){
+    if(k==='name')return (name||'').toLowerCase();
+    if(k==='status')return (p.clientStatus||'active');
+    if(k==='caregiver'){var cg=p.caregiverId&&cgs[p.caregiverId]?cgs[p.caregiverId].name:'';return (cg||'').toLowerCase();}
+    if(k==='lastInvoice'){var inv=(p.invoices||[])[0];return inv?new Date(inv.savedAt).getTime():0;}
+    if(k==='open')return (p.invoices||[]).filter(function(i){return !i.status||i.status==='draft'||i.status==='submitted';}).length;
+    if(k==='rate')return parseFloat(p.hourlyRate||0)||0;
+    return 0;
+  }
+  var va=val(key,pa,a),vb=val(key,pb,b);
+  if(typeof va==='string'){return va.localeCompare(vb)*dir;}
+  return (va<vb?-1:va>vb?1:0)*dir;
+}
 function renderClientTable(forceStatus){
   var profiles=getProfiles();
   var q=((document.getElementById('clientSearch')?document.getElementById('clientSearch').value:'')||'').toLowerCase();
   var filterStatus=forceStatus||(document.getElementById('filterStatus')?document.getElementById('filterStatus').value:'active');
   var filterCg=(document.getElementById('filterCaregiver')&&document.getElementById('filterCaregiver').value)||'';
-  var sortBy=(document.getElementById('filterSort')&&document.getElementById('filterSort').value)||'name';
   var outstandingOnly=document.getElementById('filterOutstanding')&&document.getElementById('filterOutstanding').checked;
   var cgs=getCaregivers();
   var keys=Object.keys(profiles).filter(function(k){
@@ -481,12 +503,15 @@ function renderClientTable(forceStatus){
     var matchOut=!outstandingOnly||(profiles[k].invoices||[]).some(function(i){return !i.status||i.status==='draft'||i.status==='submitted';});
     return matchStatus&&matchQ&&matchCg&&matchOut;
   });
-  if(sortBy==='name')keys.sort(function(a,b){return a.localeCompare(b);});
-  else if(sortBy==='recent')keys.sort(function(a,b){
-    var la=(profiles[a].invoices||[])[0],lb=(profiles[b].invoices||[])[0];
-    if(!la&&!lb)return 0;if(!la)return 1;if(!lb)return -1;
-    return new Date(lb.savedAt)-new Date(la.savedAt);
+  keys.sort(function(a,b){return _clientSortCompare(a,b,profiles,cgs);});
+
+  // Reflect sort state on column headers so users see which column is active
+  var headers=document.querySelectorAll('#clientTable thead th.sortable');
+  headers.forEach(function(h){
+    h.classList.remove('sort-asc','sort-desc');
+    if(h.dataset.sortkey===_clientSort.key){h.classList.add(_clientSort.dir==='asc'?'sort-asc':'sort-desc');}
   });
+
   var tbody=document.getElementById('clientTableBody'),empty=document.getElementById('clientTableEmpty');
   if(!tbody)return;tbody.innerHTML='';
   if(!keys.length){if(empty)empty.style.display='block';if(tbody)tbody.innerHTML='';return;}
@@ -494,6 +519,7 @@ function renderClientTable(forceStatus){
   keys.forEach(function(name){
     var prof=profiles[name];
     var st=prof.clientStatus||'active';
+    var stLabel=st.charAt(0).toUpperCase()+st.slice(1);
     var cgName=prof.caregiverId&&cgs[prof.caregiverId]?cgs[prof.caregiverId].name:'—';
     var invs=prof.invoices||[];
     var lastInv=invs.length?invs[0].billingPeriod:'—';
@@ -504,12 +530,12 @@ function renderClientTable(forceStatus){
     var hrefCl=buildClientUrl(name);
     tr.innerHTML=
       '<td style="width:32px;" onclick="event.stopPropagation()"><input type="checkbox" '+checked+' onchange="toggleBulkClient(\''+esc(name)+'\',this)" style="width:13px;height:13px;cursor:pointer;"></td>'+
-      '<td><a href="'+hrefCl+'" style="text-decoration:none;color:inherit;display:block;"><div class="ct-name">'+esc(name)+(prof.nickname?'<span style="font-weight:normal;color:#8ca0b4;"> ('+esc(prof.nickname)+')</span>':'')+'</div><div class="ct-id">'+(prof.medicaidId||'No Medicaid ID')+'</div></a></td>'+
-      '<td><span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span></td>'+
-      '<td style="color:#4a6a8a;font-size:12px;">'+esc(cgName)+'</td>'+
-      '<td style="font-size:12px;color:#4a6a8a;">'+esc(lastInv)+'</td>'+
-      '<td>'+(open?'<span style="color:#c47800;font-weight:700;">'+open+'</span>':'<span style="color:#ccc;">0</span>')+'</td>'+
-      '<td style="font-size:12px;color:#4a6a8a;">'+esc(rate)+'</td>'+
+      '<td><a href="'+hrefCl+'" class="link-plain" style="display:block;"><div class="ct-name">'+esc(name)+(prof.nickname?'<span style="font-weight:normal;color:var(--text-subtle);"> ('+esc(prof.nickname)+')</span>':'')+'</div><div class="ct-id">'+(prof.medicaidId||'No Medicaid ID')+'</div></a></td>'+
+      '<td><span class="status-inline"><span class="status-dot '+st+'"></span>'+stLabel+'</span></td>'+
+      '<td style="color:var(--text-muted);font-size:12px;">'+esc(cgName)+'</td>'+
+      '<td style="font-size:12px;color:var(--text-muted);">'+esc(lastInv)+'</td>'+
+      '<td style="color:var(--text);">'+(open?open:'<span style="color:var(--text-subtle);">0</span>')+'</td>'+
+      '<td style="font-size:12px;color:var(--text-muted);">'+esc(rate)+'</td>'+
       '<td onclick="event.stopPropagation()"><button class="ct-action-btn" onclick="activeProfileName=\''+esc(name)+'\';navInvoice()">+ Invoice</button></td>';
     tr.addEventListener('click',function(e){
       if(e.target.closest('a')||e.target.tagName==='BUTTON'||e.target.tagName==='INPUT')return;
