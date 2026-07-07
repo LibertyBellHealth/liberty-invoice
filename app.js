@@ -1804,6 +1804,10 @@ var activeCgId=null;
 function openCgDetail(id){
   var cg=getCaregivers()[id];if(!cg)return;
   activeCgId=id;
+  // Match Client detail's topbar breadcrumb pattern: "Caregivers > [name]" with the
+  // parent clickable to go back to the list. Was previously left as just "Caregivers"
+  // from the parent page.
+  bc([{l:'Caregivers',fn:navCaregivers},{l:cg.name||''}]);
   document.getElementById('cgGridView').style.display='none';
   document.getElementById('cgFormWrap').style.display='none';
   document.getElementById('cgDetailView').style.display='block';
@@ -6497,6 +6501,8 @@ function openCwDetail(id){
   var cw=getCaseworkers().find(function(c){return c.id===id;});
   if(!cw)return;
   activeCwId=id;
+  // Same topbar breadcrumb pattern as Client + Caregiver detail: "Caseworkers > [name]".
+  bc([{l:'Caseworkers',fn:navCaseworkers},{l:cw.name||''}]);
   document.getElementById('cwGridView').style.display='none';
   document.getElementById('cwFormWrap').style.display='none';
   document.getElementById('cwDetailView').style.display='block';
