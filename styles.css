@@ -215,11 +215,6 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 .detail-header .detail-name{font-size:17px;font-weight:700;color:var(--text);line-height:1.2;margin:0;}
 .detail-header .detail-meta{font-size:12px;color:var(--text-muted);margin-top:2px;}
 .detail-header .detail-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-/* Breadcrumb above the name — replaces the explicit ← Back button.
-   Reads as "Clients ›" (small gray, clickable) so you always know
-   which list you came from AND how to get back. */
-.detail-header .breadcrumb{display:inline-block;font-size:11px;color:var(--text-muted);cursor:pointer;text-decoration:none;margin-bottom:2px;letter-spacing:0.3px;line-height:1;}
-.detail-header .breadcrumb:hover{color:var(--accent);}
 .detail-tabs{display:flex;border-bottom:2px solid #e1e5ea;margin-bottom:18px;}
 .dtab{padding:7px 16px;font-size:13px;cursor:pointer;color:#6b8dae;border-bottom:2px solid transparent;margin-bottom:-2px;font-weight:500;background:none;border-top:none;border-left:none;border-right:none;font-family:Arial,sans-serif;}
 .dtab:hover{color:#185FA5;}
