@@ -26,7 +26,7 @@ function aiTrack(name, props){
   }catch(e){}
 }
 </script>
-<link rel="stylesheet" href="styles.css?v=20260707n">
+<link rel="stylesheet" href="styles.css?v=20260707o">
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -180,9 +180,12 @@ function aiTrack(name, props){
   <!-- CLIENT DETAIL -->
   <div class="page" id="page-detail">
     <div class="detail-header">
-      <button class="back" onclick="navHome()">← Back</button>
       <div class="dh-avatar detail-avatar" id="detailAvatar"></div>
-      <div class="dh-body"><h1 class="detail-name" id="detailName"></h1><div class="dh-sub detail-meta" id="detailMeta"></div></div>
+      <div class="dh-body">
+        <a class="breadcrumb" onclick="navHome()">Clients ›</a>
+        <h1 class="detail-name" id="detailName"></h1>
+        <div class="dh-sub detail-meta" id="detailMeta"></div>
+      </div>
       <div class="dh-actions detail-actions">
         <button class="btn btn-primary" onclick="navInvoice()">+ New Invoice</button>
       </div>
@@ -432,9 +435,12 @@ function aiTrack(name, props){
     <!-- Detail view -->
     <div id="cgDetailView" style="display:none;">
       <div class="detail-header">
-        <button class="back" onclick="showCgGrid()">← Back</button>
         <div class="dh-avatar detail-avatar" id="cgDetailAvatar"></div>
-        <div class="dh-body"><h1 class="detail-name" id="cgDetailName"></h1><div class="dh-sub detail-meta" id="cgDetailMeta"></div></div>
+        <div class="dh-body">
+          <a class="breadcrumb" onclick="showCgGrid()">Caregivers ›</a>
+          <h1 class="detail-name" id="cgDetailName"></h1>
+          <div class="dh-sub detail-meta" id="cgDetailMeta"></div>
+        </div>
         <div class="dh-actions detail-actions">
           <button class="btn btn-primary" onclick="openSendForSignatureModal()">Send for Signature</button>
         </div>
@@ -715,9 +721,12 @@ function aiTrack(name, props){
     <!-- Caseworker Detail View -->
     <div id="cwDetailView" style="display:none;">
       <div class="detail-header">
-        <button class="back" onclick="showCwGrid()">← Back</button>
         <div class="dh-avatar detail-avatar" id="cwDetailAvatar"></div>
-        <div class="dh-body"><h1 class="detail-name" id="cwDetailName"></h1><div class="dh-sub detail-meta" id="cwDetailMeta"></div></div>
+        <div class="dh-body">
+          <a class="breadcrumb" onclick="showCwGrid()">Caseworkers ›</a>
+          <h1 class="detail-name" id="cwDetailName"></h1>
+          <div class="dh-sub detail-meta" id="cwDetailMeta"></div>
+        </div>
         <div class="dh-actions detail-actions"></div>
       </div>
       <div class="detail-tabs">
@@ -1159,6 +1168,6 @@ function aiTrack(name, props){
     </div>
   </div>
 </div>
-<script src="app.js?v=20260707n"></script>
+<script src="app.js?v=20260707o"></script>
 </body>
 </html>
