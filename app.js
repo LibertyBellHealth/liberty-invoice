@@ -490,29 +490,91 @@ function sortClientBy(key){
   else {_clientSort.key=key;_clientSort.dir='asc';}
   renderClientTable();
 }
-function _clientSortCompare(a,b,profiles,cgs){
+function _clientSortCompare(a,b,profiles,cgs,cwsArr){
   var pa=profiles[a],pb=profiles[b];
   var key=_clientSort.key,dir=_clientSort.dir==='asc'?1:-1;
   function val(k,p,name){
     if(k==='name')return (name||'').toLowerCase();
     if(k==='status')return (p.clientStatus||'active');
     if(k==='caregiver'){var cg=p.caregiverId&&cgs[p.caregiverId]?cgs[p.caregiverId].name:'';return (cg||'').toLowerCase();}
+    if(k==='caseworker'){
+      var cw=null;
+      if(p.caseworkerId && Array.isArray(cwsArr))cw=cwsArr.find(function(c){return c.id===p.caseworkerId;});
+      return (cw?cw.name:(p.worker||'')).toLowerCase();
+    }
+    if(k==='county')return (p.county||'').toLowerCase();
+    if(k==='phone')return (p.phone||'').toLowerCase();
     if(k==='lastInvoice'){var inv=(p.invoices||[])[0];return inv?new Date(inv.savedAt).getTime():0;}
-    if(k==='open')return (p.invoices||[]).filter(function(i){return !i.status||i.status==='draft'||i.status==='submitted';}).length;
-    if(k==='rate')return parseFloat(p.hourlyRate||0)||0;
     return 0;
   }
   var va=val(key,pa,a),vb=val(key,pb,b);
   if(typeof va==='string'){return va.localeCompare(vb)*dir;}
   return (va<vb?-1:va>vb?1:0)*dir;
 }
+
+// ── Client-table column widths + pagination — persisted per-device in localStorage ──
+var _clientColDefaults={name:20,status:9,caregiver:14,caseworker:14,county:9,phone:13,lastInvoice:11};
+var _clientColumnWidths=null;
+var _clientPage=1;
+var _clientPageSize=25;
+(function loadClientPrefs(){
+  try{
+    var w=localStorage.getItem('lhca_client_col_widths');if(w)_clientColumnWidths=JSON.parse(w);
+    var ps=localStorage.getItem('lhca_client_page_size');
+    if(ps==='all')_clientPageSize=Infinity;
+    else if(ps){var n=parseInt(ps);if(n>0)_clientPageSize=n;}
+  }catch(e){}
+})();
+function applyClientColWidths(){
+  var headers=document.querySelectorAll('#clientTable thead th[data-col]');
+  headers.forEach(function(th){
+    var col=th.dataset.col;
+    var w=(_clientColumnWidths&&_clientColumnWidths[col])||_clientColDefaults[col];
+    if(w)th.style.width=w+'%';
+  });
+}
+function startColResize(e,col){
+  e.preventDefault();e.stopPropagation();
+  var th=e.target.closest('th');if(!th)return;
+  var startX=e.pageX;
+  var startWidth=th.offsetWidth;
+  var tableWidth=th.closest('table').offsetWidth;
+  document.body.style.cursor='col-resize';document.body.style.userSelect='none';
+  function onMove(ev){
+    var delta=ev.pageX-startX;
+    var newPx=Math.max(60,startWidth+delta);
+    var newPct=(newPx/tableWidth)*100;
+    th.style.width=newPct+'%';
+    if(!_clientColumnWidths)_clientColumnWidths={};
+    _clientColumnWidths[col]=newPct;
+  }
+  function onUp(){
+    document.removeEventListener('mousemove',onMove);
+    document.removeEventListener('mouseup',onUp);
+    document.body.style.cursor='';document.body.style.userSelect='';
+    try{localStorage.setItem('lhca_client_col_widths',JSON.stringify(_clientColumnWidths||{}));}catch(e){}
+  }
+  document.addEventListener('mousemove',onMove);
+  document.addEventListener('mouseup',onUp);
+}
+function clientPageSizeChange(){
+  var sel=document.getElementById('clientPageSize');
+  var v=sel.value;
+  if(v==='all'){_clientPageSize=Infinity;}
+  else {_clientPageSize=parseInt(v)||25;}
+  _clientPage=1;
+  try{localStorage.setItem('lhca_client_page_size',v);}catch(e){}
+  renderClientTable();
+}
+function goToClientPage(n){_clientPage=n;renderClientTable();}
 function renderClientTable(forceStatus){
   var profiles=getProfiles();
   var q=((document.getElementById('clientSearch')?document.getElementById('clientSearch').value:'')||'').toLowerCase();
   var filterStatus=forceStatus||(document.getElementById('filterStatus')?document.getElementById('filterStatus').value:'active');
   var filterCg=(document.getElementById('filterCaregiver')&&document.getElementById('filterCaregiver').value)||'';
-  // "Outstanding only" filter removed entirely — Reports > Outstanding covers the case.
   var cgs=getCaregivers();
+  var cwsArr=getCaseworkers();
+  var cwById={};cwsArr.forEach(function(c){cwById[c.id]=c;});
   var keys=Object.keys(profiles).filter(function(k){
     var st=profiles[k].clientStatus||'active';
     var matchStatus=filterStatus==='all'||st===filterStatus;
@@ -520,39 +582,67 @@ function renderClientTable(forceStatus){
     var matchCg=!filterCg||profiles[k].caregiverId===filterCg;
     return matchStatus&&matchQ&&matchCg;
   });
-  keys.sort(function(a,b){return _clientSortCompare(a,b,profiles,cgs);});
+  keys.sort(function(a,b){return _clientSortCompare(a,b,profiles,cgs,cwsArr);});
 
-  // Reflect sort state on column headers so users see which column is active
+  // Reflect sort state on column headers
   var headers=document.querySelectorAll('#clientTable thead th.sortable');
   headers.forEach(function(h){
     h.classList.remove('sort-asc','sort-desc');
     if(h.dataset.sortkey===_clientSort.key){h.classList.add(_clientSort.dir==='asc'?'sort-asc':'sort-desc');}
   });
+  // Restore user-set column widths on every render (headers rebuild if the page reloads)
+  applyClientColWidths();
+
+  // Pagination — slice keys[] to the current page
+  var totalMatched=keys.length;
+  var totalPages=Math.max(1,Math.ceil(totalMatched/_clientPageSize));
+  if(_clientPage>totalPages)_clientPage=totalPages;
+  var startIdx=(_clientPage-1)*_clientPageSize;
+  var endIdx=Math.min(startIdx+_clientPageSize,totalMatched);
+  var visibleKeys=keys.slice(startIdx,endIdx);
 
   var tbody=document.getElementById('clientTableBody'),empty=document.getElementById('clientTableEmpty');
-  // "Showing X of Y" indicator — Y is total clients matching status only, X is after all filters
-  var totalActiveMatchingStatus=Object.keys(profiles).filter(function(k){
-    var st=profiles[k].clientStatus||'active';
-    return filterStatus==='all'||st===filterStatus;
-  }).length;
+  // Count + page controls
   var countEl=document.getElementById('clientTableCount');
   if(countEl){
-    countEl.textContent=keys.length===totalActiveMatchingStatus?
-      keys.length+' client'+(keys.length===1?'':'s'):
-      keys.length+' of '+totalActiveMatchingStatus+' shown';
+    if(!totalMatched){countEl.textContent='';}
+    else if(_clientPageSize===Infinity||totalMatched<=_clientPageSize){
+      countEl.textContent=totalMatched+' client'+(totalMatched===1?'':'s');
+    } else {
+      countEl.textContent='Showing '+(startIdx+1)+'–'+endIdx+' of '+totalMatched;
+    }
   }
+  var pageControls=document.getElementById('clientPageControls');
+  if(pageControls){
+    if(totalPages<=1){pageControls.innerHTML='';}
+    else {
+      var html='';
+      html+='<button class="pg-btn" onclick="goToClientPage('+(_clientPage-1)+')"'+(_clientPage===1?' disabled':'')+'>‹</button>';
+      var startPg=Math.max(1,_clientPage-2);
+      var endPg=Math.min(totalPages,startPg+4);
+      if(endPg-startPg<4)startPg=Math.max(1,endPg-4);
+      for(var p=startPg;p<=endPg;p++){
+        html+='<button class="pg-btn'+(p===_clientPage?' active':'')+'" onclick="goToClientPage('+p+')">'+p+'</button>';
+      }
+      html+='<button class="pg-btn" onclick="goToClientPage('+(_clientPage+1)+')"'+(_clientPage===totalPages?' disabled':'')+'>›</button>';
+      pageControls.innerHTML=html;
+    }
+  }
+
   if(!tbody)return;tbody.innerHTML='';
   if(!keys.length){if(empty)empty.style.display='block';if(tbody)tbody.innerHTML='';return;}
   if(empty)empty.style.display='none';
-  keys.forEach(function(name){
+  visibleKeys.forEach(function(name){
     var prof=profiles[name];
     var st=prof.clientStatus||'active';
     var stLabel=st.charAt(0).toUpperCase()+st.slice(1);
     var cgName=prof.caregiverId&&cgs[prof.caregiverId]?cgs[prof.caregiverId].name:'—';
+    var cw=prof.caseworkerId?cwById[prof.caseworkerId]:null;
+    var cwName=cw?cw.name:(prof.worker||'—');
+    var county=prof.county||'—';
+    var phone=prof.phone||'—';
     var invs=prof.invoices||[];
     var lastInv=invs.length?invs[0].billingPeriod:'—';
-    var open=invs.filter(function(i){return !i.status||i.status==='draft'||i.status==='submitted';}).length;
-    var rate=prof.hourlyRate?'$'+prof.hourlyRate+'/hr':'—';
     var checked=bulkSelected[name]?'checked':'';
     var tr=document.createElement('tr');
     var hrefCl=buildClientUrl(name);
@@ -561,16 +651,23 @@ function renderClientTable(forceStatus){
       '<td><a href="'+hrefCl+'" class="link-plain" style="display:block;"><div class="ct-name">'+esc(name)+(prof.nickname?'<span style="font-weight:normal;color:var(--text-subtle);"> ('+esc(prof.nickname)+')</span>':'')+'</div><div class="ct-id">'+(prof.medicaidId||'No Medicaid ID')+'</div></a></td>'+
       '<td><span class="status-inline"><span class="status-dot '+st+'"></span>'+stLabel+'</span></td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cgName)+'</td>'+
-      '<td style="font-size:12px;color:var(--text-muted);">'+esc(lastInv)+'</td>'+
-      '<td style="color:var(--text);">'+(open?open:'<span style="color:var(--text-subtle);">0</span>')+'</td>'+
-      '<td style="font-size:12px;color:var(--text-muted);">'+esc(rate)+'</td>'+
-      '<td onclick="event.stopPropagation()"><button class="ct-action-btn" onclick="activeProfileName=\''+esc(name)+'\';navInvoice()">+ Invoice</button></td>';
+      '<td style="color:var(--text-muted);font-size:12px;">'+esc(cwName)+'</td>'+
+      '<td style="color:var(--text-muted);font-size:12px;">'+esc(county)+'</td>'+
+      '<td style="color:var(--text-muted);font-size:12px;">'+esc(phone)+'</td>'+
+      '<td style="font-size:12px;color:var(--text-muted);">'+esc(lastInv)+'</td>';
     tr.addEventListener('click',function(e){
       if(e.target.closest('a')||e.target.tagName==='BUTTON'||e.target.tagName==='INPUT')return;
       navDetail(name);
     });
     tbody.appendChild(tr);
   });
+
+  // Sync the page-size selector with saved value on first render (dropdown may still show default)
+  var sel=document.getElementById('clientPageSize');
+  if(sel){
+    var savedPs=_clientPageSize===Infinity?'all':String(_clientPageSize);
+    if(sel.value!==savedPs)sel.value=savedPs;
+  }
 }
 function renderClientGrid(){renderClientTable();}
 function toggleBulkClient(name,cb){

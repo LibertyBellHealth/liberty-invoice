@@ -26,7 +26,7 @@ function aiTrack(name, props){
   }catch(e){}
 }
 </script>
-<link rel="stylesheet" href="styles.css?v=20260707h">
+<link rel="stylesheet" href="styles.css?v=20260707i">
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -145,21 +145,34 @@ function aiTrack(name, props){
         <thead>
           <tr>
             <th style="width:32px;"></th>
-            <th class="sortable" data-sortkey="name" onclick="sortClientBy('name')">Client</th>
-            <th class="sortable" data-sortkey="status" onclick="sortClientBy('status')">Status</th>
-            <th class="sortable" data-sortkey="caregiver" onclick="sortClientBy('caregiver')">Caregiver</th>
-            <th class="sortable" data-sortkey="lastInvoice" onclick="sortClientBy('lastInvoice')">Last Invoice</th>
-            <th class="sortable" data-sortkey="open" onclick="sortClientBy('open')">Open</th>
-            <th class="sortable" data-sortkey="rate" onclick="sortClientBy('rate')">Rate</th>
-            <th></th>
+            <th class="sortable resizable" data-sortkey="name" data-col="name" onclick="sortClientBy('name')">Client<span class="resize-handle" onmousedown="startColResize(event,'name')"></span></th>
+            <th class="sortable resizable" data-sortkey="status" data-col="status" onclick="sortClientBy('status')">Status<span class="resize-handle" onmousedown="startColResize(event,'status')"></span></th>
+            <th class="sortable resizable" data-sortkey="caregiver" data-col="caregiver" onclick="sortClientBy('caregiver')">Caregiver<span class="resize-handle" onmousedown="startColResize(event,'caregiver')"></span></th>
+            <th class="sortable resizable" data-sortkey="caseworker" data-col="caseworker" onclick="sortClientBy('caseworker')">Caseworker<span class="resize-handle" onmousedown="startColResize(event,'caseworker')"></span></th>
+            <th class="sortable resizable" data-sortkey="county" data-col="county" onclick="sortClientBy('county')">County<span class="resize-handle" onmousedown="startColResize(event,'county')"></span></th>
+            <th class="sortable resizable" data-sortkey="phone" data-col="phone" onclick="sortClientBy('phone')">Phone<span class="resize-handle" onmousedown="startColResize(event,'phone')"></span></th>
+            <th class="sortable" data-sortkey="lastInvoice" data-col="lastInvoice" onclick="sortClientBy('lastInvoice')">Invoiced</th>
           </tr>
         </thead>
         <tbody id="clientTableBody"></tbody>
       </table>
       <div id="clientTableEmpty" style="display:none;" class="ct-empty">No clients match your filters.</div>
-      <!-- Row count at bottom-right (AMS+-style "N clients" indicator, updated by renderClientTable) -->
-      <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;">
+      <!-- Pagination footer: count on left, page-size selector + page controls on right -->
+      <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
         <span id="clientTableCount" style="font-size:12px;color:var(--text-muted);"></span>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <span style="font-size:12px;color:var(--text-muted);">
+            Show
+            <select id="clientPageSize" onchange="clientPageSizeChange()" style="font-size:12px;padding:3px 6px;border:1px solid var(--border-strong);border-radius:4px;margin-left:4px;">
+              <option value="10">10</option>
+              <option value="25" selected>25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="all">All</option>
+            </select>
+          </span>
+          <div id="clientPageControls" style="display:flex;gap:2px;"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -1159,6 +1172,6 @@ function aiTrack(name, props){
     </div>
   </div>
 </div>
-<script src="app.js?v=20260707h"></script>
+<script src="app.js?v=20260707i"></script>
 </body>
 </html>
