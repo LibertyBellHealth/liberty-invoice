@@ -26,7 +26,7 @@ function aiTrack(name, props){
   }catch(e){}
 }
 </script>
-<link rel="stylesheet" href="styles.css?v=20260707j">
+<link rel="stylesheet" href="styles.css?v=20260707k">
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -282,35 +282,15 @@ function aiTrack(name, props){
   <!-- CAREGIVERS PAGE -->
   <div class="page" id="page-caregivers">
     <div id="cgGridView">
-      <div class="dashboard-header">
-        <div class="dashboard-title-block">
-          <div class="dashboard-title">Caregivers</div>
-          <div class="dashboard-sub">Employment records and client assignments</div>
+      <div class="entity-header">
+        <div class="titles">
+          <h1>Caregivers</h1>
         </div>
-        <div class="dashboard-actions">
+        <div class="actions">
           <button class="btn btn-primary" data-sync-disable="1" onclick="showNewCaregiverForm()">+ New Caregiver</button>
         </div>
       </div>
-      <!-- METRIC ROW -->
-      <div class="metric-row">
-        <div class="metric clickable-stat" onclick="document.getElementById('cgFilterStatus').value='active';renderCaregiverGrid();">
-          <div class="metric-val" id="cgStatActive">0</div>
-          <div class="metric-lbl">Active Caregivers</div>
-        </div>
-        <div class="metric clickable-stat" onclick="document.getElementById('cgFilterStatus').value='inactive';renderCaregiverGrid();">
-          <div class="metric-val" id="cgStatInactive">0</div>
-          <div class="metric-lbl">Inactive</div>
-        </div>
-        <div class="metric clickable-stat" onclick="document.getElementById('cgFilterStatus').value='terminated';renderCaregiverGrid();">
-          <div class="metric-val" id="cgStatTerminated">0</div>
-          <div class="metric-lbl">Terminated</div>
-        </div>
-        <div class="metric clickable-stat" onclick="document.getElementById('cgFilterStatus').value='all';renderCaregiverGrid();">
-          <div class="metric-val" id="cgStatTotal">0</div>
-          <div class="metric-lbl">Total</div>
-        </div>
-      </div>
-      <div class="client-table-wrap" style="margin-top:16px;">
+      <div class="client-table-wrap">
         <div class="ct-toolbar">
           <input id="cgSearch" class="ct-search" placeholder="Filter caregivers…" oninput="renderCaregiverGrid()">
           <select id="cgFilterStatus" onchange="renderCaregiverGrid()" class="ct-filter">
@@ -325,25 +305,40 @@ function aiTrack(name, props){
           <button onclick="bulkSetCaregiverStatus('active')">Mark Active</button>
           <button onclick="bulkSetCaregiverStatus('inactive')">Mark Inactive</button>
           <button onclick="bulkSetCaregiverStatus('terminated')">Mark Terminated</button>
-          <button onclick="bulkDeleteCaregivers()" title="Permanently removes caregiver and all their records. Use Terminated for routine offboarding instead." style="background:#c0392b;color:#fff;">Delete (Permanent)</button>
+          <button onclick="bulkDeleteCaregivers()" style="background:#c0392b;color:#fff;">Delete</button>
           <button onclick="clearCgBulkSelect()">Cancel</button>
         </div>
-        <table class="client-table">
+        <table class="client-table entity-table" id="cgTable">
           <thead>
             <tr>
               <th style="width:32px;"><input type="checkbox" id="cgSelectAll" onchange="toggleAllCaregivers(this)" style="width:13px;height:13px;cursor:pointer;"></th>
-              <th>Caregiver</th>
-              <th>Status</th>
-              <th>Role</th>
-              <th>Phone</th>
-              <th>Hire Date</th>
-              <th>Clients</th>
-              <th></th>
+              <th class="sortable resizable" data-sortkey="name" data-col="name" onclick="sortCgBy('name')">Caregiver<span class="resize-handle" onmousedown="startCgColResize(event,'name')"></span></th>
+              <th class="sortable resizable" data-sortkey="status" data-col="status" onclick="sortCgBy('status')">Status<span class="resize-handle" onmousedown="startCgColResize(event,'status')"></span></th>
+              <th class="sortable resizable" data-sortkey="phone" data-col="phone" onclick="sortCgBy('phone')">Phone<span class="resize-handle" onmousedown="startCgColResize(event,'phone')"></span></th>
+              <th class="sortable resizable" data-sortkey="role" data-col="role" onclick="sortCgBy('role')">Role<span class="resize-handle" onmousedown="startCgColResize(event,'role')"></span></th>
+              <th class="sortable resizable" data-sortkey="hireDate" data-col="hireDate" onclick="sortCgBy('hireDate')">Hire Date<span class="resize-handle" onmousedown="startCgColResize(event,'hireDate')"></span></th>
+              <th class="sortable" data-sortkey="clients" data-col="clients" onclick="sortCgBy('clients')">Clients</th>
             </tr>
           </thead>
           <tbody id="cgTableBody"></tbody>
         </table>
         <div id="cgTableEmpty" style="display:none;" class="ct-empty">No caregivers match your filters.</div>
+        <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+          <span id="cgTableCount" style="font-size:12px;color:var(--text-muted);"></span>
+          <div style="display:flex;align-items:center;gap:14px;">
+            <span style="font-size:12px;color:var(--text-muted);">
+              Show
+              <select id="cgPageSize" onchange="cgPageSizeChange()" style="font-size:12px;padding:3px 6px;border:1px solid var(--border-strong);border-radius:4px;margin-left:4px;">
+                <option value="10">10</option>
+                <option value="25" selected>25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="all">All</option>
+              </select>
+            </span>
+            <div id="cgPageControls" style="display:flex;gap:2px;"></div>
+          </div>
+        </div>
       </div>
       <div id="cgFormWrap" style="display:none;margin:16px 24px 0;">
         <div class="form-card" style="max-width:620px;">
@@ -578,13 +573,11 @@ function aiTrack(name, props){
   <!-- CASEWORKERS PAGE -->
   <div class="page" id="page-caseworkers">
     <div id="cwGridView">
-      <div class="dashboard-header">
-        <div class="dashboard-title-block">
-          <div class="dashboard-title" id="cwPageTitle">Caseworkers</div>
-          <div class="dashboard-sub" id="cwPageSub">Manage caseworkers and their client assignments.</div>
+      <div class="entity-header">
+        <div class="titles">
+          <h1 id="cwPageTitle">Caseworkers</h1>
         </div>
-        <div class="dashboard-actions">
-          <!-- Pill toggle between Caseworkers and Supervisors views -->
+        <div class="actions">
           <div class="pill-toggle" role="tablist">
             <button class="pill active" id="pillCaseworkers" onclick="showCwView('caseworkers')" role="tab">Caseworkers</button>
             <button class="pill" id="pillSupervisors" onclick="showCwView('supervisors')" role="tab">Supervisors</button>
@@ -595,87 +588,81 @@ function aiTrack(name, props){
 
       <!-- CASEWORKERS VIEW -->
       <div id="cwViewCaseworkers">
-        <div class="metric-row">
-          <div class="metric">
-            <div class="metric-val" id="cwStatActive">0</div>
-            <div class="metric-lbl">Active Caseworkers</div>
-          </div>
-          <div class="metric">
-            <div class="metric-val" id="cwStatNoClients">0</div>
-            <div class="metric-lbl">Unassigned</div>
-          </div>
-          <div class="metric">
-            <div class="metric-val" id="cwStatTotal">0</div>
-            <div class="metric-lbl">Total</div>
-          </div>
-        </div>
-        <div class="client-table-wrap" style="margin-top:16px;">
+        <div class="client-table-wrap">
           <div class="ct-toolbar">
-            <input id="cwSearch" class="ct-search" placeholder="Search by name or agency…" oninput="renderCaseworkerList()">
+            <input id="cwSearch" class="ct-search" placeholder="Filter caseworkers…" oninput="renderCaseworkerList()">
           </div>
           <div class="ct-bulk-bar" id="cwBulkBar">
             <span id="cwBulkCount">0 selected</span>
-            <button onclick="bulkDeleteCaseworkers()" style="background:#c0392b;color:#fff;">Delete Selected</button>
+            <button onclick="bulkDeleteCaseworkers()" style="background:#c0392b;color:#fff;">Delete</button>
             <button onclick="clearCwBulkSelect()">Cancel</button>
           </div>
-          <table class="client-table">
+          <table class="client-table entity-table" id="cwTable">
             <thead>
               <tr>
                 <th style="width:32px;"><input type="checkbox" id="cwSelectAll" onchange="toggleAllCaseworkers(this)" style="width:13px;height:13px;cursor:pointer;"></th>
-                <th>Caseworker</th>
-                <th>Phone</th>
-                <th>Email</th>
-                <th>County</th>
-                <th>Supervisor</th>
-                <th>Clients</th>
-                <th></th>
+                <th class="sortable resizable" data-sortkey="name" data-col="name" onclick="sortCwBy('name')">Caseworker<span class="resize-handle" onmousedown="startCwColResize(event,'name')"></span></th>
+                <th class="sortable resizable" data-sortkey="phone" data-col="phone" onclick="sortCwBy('phone')">Phone<span class="resize-handle" onmousedown="startCwColResize(event,'phone')"></span></th>
+                <th class="sortable resizable" data-sortkey="email" data-col="email" onclick="sortCwBy('email')">Email<span class="resize-handle" onmousedown="startCwColResize(event,'email')"></span></th>
+                <th class="sortable resizable" data-sortkey="county" data-col="county" onclick="sortCwBy('county')">County<span class="resize-handle" onmousedown="startCwColResize(event,'county')"></span></th>
+                <th class="sortable resizable" data-sortkey="supervisor" data-col="supervisor" onclick="sortCwBy('supervisor')">Supervisor<span class="resize-handle" onmousedown="startCwColResize(event,'supervisor')"></span></th>
+                <th class="sortable" data-sortkey="clients" data-col="clients" onclick="sortCwBy('clients')">Clients</th>
               </tr>
             </thead>
             <tbody id="cwTableBody"></tbody>
           </table>
           <div id="cwTableEmpty" style="display:none;" class="ct-empty">No caseworkers match your search.</div>
+          <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+            <span id="cwTableCount" style="font-size:12px;color:var(--text-muted);"></span>
+            <div style="display:flex;align-items:center;gap:14px;">
+              <span style="font-size:12px;color:var(--text-muted);">
+                Show
+                <select id="cwPageSize" onchange="cwPageSizeChange()" style="font-size:12px;padding:3px 6px;border:1px solid var(--border-strong);border-radius:4px;margin-left:4px;">
+                  <option value="10">10</option><option value="25" selected>25</option><option value="50">50</option><option value="100">100</option><option value="all">All</option>
+                </select>
+              </span>
+              <div id="cwPageControls" style="display:flex;gap:2px;"></div>
+            </div>
+          </div>
         </div>
       </div>
 
       <!-- SUPERVISORS VIEW -->
       <div id="cwViewSupervisors" style="display:none;">
-        <div class="metric-row">
-          <div class="metric">
-            <div class="metric-val" id="supStatActive">0</div>
-            <div class="metric-lbl">Active Supervisors</div>
-          </div>
-          <div class="metric">
-            <div class="metric-val" id="supStatUnassigned">0</div>
-            <div class="metric-lbl">No Caseworkers</div>
-          </div>
-          <div class="metric">
-            <div class="metric-val" id="supStatTotal">0</div>
-            <div class="metric-lbl">Total</div>
-          </div>
-        </div>
-        <div class="client-table-wrap" style="margin-top:16px;">
+        <div class="client-table-wrap">
           <div class="ct-toolbar">
-            <input id="supSearch" class="ct-search" placeholder="Search by name or email…" oninput="renderSupervisorList()">
+            <input id="supSearch" class="ct-search" placeholder="Filter supervisors…" oninput="renderSupervisorList()">
           </div>
           <div class="ct-bulk-bar" id="supBulkBar">
             <span id="supBulkCount">0 selected</span>
-            <button onclick="bulkDeleteSupervisors()" style="background:#c0392b;color:#fff;">Delete Selected</button>
+            <button onclick="bulkDeleteSupervisors()" style="background:#c0392b;color:#fff;">Delete</button>
             <button onclick="clearSupBulkSelect()">Cancel</button>
           </div>
-          <table class="client-table">
+          <table class="client-table entity-table" id="supTable">
             <thead>
               <tr>
                 <th style="width:32px;"><input type="checkbox" id="supSelectAll" onchange="toggleAllSupervisors(this)" style="width:13px;height:13px;cursor:pointer;"></th>
-                <th>Supervisor</th>
-                <th>Phone</th>
-                <th>Email</th>
-                <th>Caseworkers</th>
-                <th></th>
+                <th class="sortable resizable" data-sortkey="name" data-col="name" onclick="sortSupBy('name')">Supervisor<span class="resize-handle" onmousedown="startSupColResize(event,'name')"></span></th>
+                <th class="sortable resizable" data-sortkey="phone" data-col="phone" onclick="sortSupBy('phone')">Phone<span class="resize-handle" onmousedown="startSupColResize(event,'phone')"></span></th>
+                <th class="sortable resizable" data-sortkey="email" data-col="email" onclick="sortSupBy('email')">Email<span class="resize-handle" onmousedown="startSupColResize(event,'email')"></span></th>
+                <th class="sortable" data-sortkey="caseworkers" data-col="caseworkers" onclick="sortSupBy('caseworkers')">Caseworkers</th>
               </tr>
             </thead>
             <tbody id="supTableBody"></tbody>
           </table>
           <div id="supTableEmpty" style="display:none;" class="ct-empty">No supervisors yet — tap + Add Supervisor to create one.</div>
+          <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+            <span id="supTableCount" style="font-size:12px;color:var(--text-muted);"></span>
+            <div style="display:flex;align-items:center;gap:14px;">
+              <span style="font-size:12px;color:var(--text-muted);">
+                Show
+                <select id="supPageSize" onchange="supPageSizeChange()" style="font-size:12px;padding:3px 6px;border:1px solid var(--border-strong);border-radius:4px;margin-left:4px;">
+                  <option value="10">10</option><option value="25" selected>25</option><option value="50">50</option><option value="100">100</option><option value="all">All</option>
+                </select>
+              </span>
+              <div id="supPageControls" style="display:flex;gap:2px;"></div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1172,6 +1159,6 @@ function aiTrack(name, props){
     </div>
   </div>
 </div>
-<script src="app.js?v=20260707j"></script>
+<script src="app.js?v=20260707k"></script>
 </body>
 </html>

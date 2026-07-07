@@ -1489,19 +1489,60 @@ function saveCaregiversLS(cg){
 function cgId(){return 'cg_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);}
 
 var cgBulkSelected={};
+// Sort / pagination / column-width state for Caregivers table — mirrors Clients pattern
+var _cgSort={key:'name',dir:'asc'};
+var _cgColDefaults={name:24,status:9,phone:15,role:14,hireDate:14,clients:10};
+var _cgColumnWidths=null;
+var _cgPage=1;
+var _cgPageSize=25;
+(function loadCgPrefs(){
+  try{
+    var w=localStorage.getItem('lhca_cg_col_widths');if(w)_cgColumnWidths=JSON.parse(w);
+    var ps=localStorage.getItem('lhca_cg_page_size');
+    if(ps==='all')_cgPageSize=Infinity;else if(ps){var n=parseInt(ps);if(n>0)_cgPageSize=n;}
+  }catch(e){}
+})();
+function sortCgBy(key){if(_cgSort.key===key)_cgSort.dir=_cgSort.dir==='asc'?'desc':'asc';else{_cgSort.key=key;_cgSort.dir='asc';}renderCaregiverGrid();}
+function _cgSortCompare(a,b,cgs,profiles){
+  var ca=cgs[a],cb=cgs[b];
+  var key=_cgSort.key,dir=_cgSort.dir==='asc'?1:-1;
+  function clientCount(id){return Object.keys(profiles).filter(function(k){return profiles[k].caregiverId===id && (profiles[k].clientStatus||'active')==='active';}).length;}
+  function val(k,c,id){
+    if(k==='name')return (c.name||'').toLowerCase();
+    if(k==='status')return c.status||'active';
+    if(k==='phone')return (c.phone||'').toLowerCase();
+    if(k==='role')return (c.emptype||'').toLowerCase();
+    if(k==='hireDate')return c.hireDate?new Date(c.hireDate).getTime():0;
+    if(k==='clients')return clientCount(id);
+    return 0;
+  }
+  var va=val(key,ca,a),vb=val(key,cb,b);
+  if(typeof va==='string')return va.localeCompare(vb)*dir;
+  return (va<vb?-1:va>vb?1:0)*dir;
+}
+function applyCgColWidths(){
+  var headers=document.querySelectorAll('#cgTable thead th[data-col]');
+  headers.forEach(function(th){var col=th.dataset.col;var w=(_cgColumnWidths&&_cgColumnWidths[col])||_cgColDefaults[col];if(w)th.style.width=w+'%';});
+}
+function startCgColResize(e,col){
+  e.preventDefault();e.stopPropagation();
+  var th=e.target.closest('th');if(!th)return;
+  var startX=e.pageX,startWidth=th.offsetWidth,tableWidth=th.closest('table').offsetWidth;
+  document.body.style.cursor='col-resize';document.body.style.userSelect='none';
+  function onMove(ev){var d=ev.pageX-startX;var nx=Math.max(60,startWidth+d);var pct=(nx/tableWidth)*100;th.style.width=pct+'%';if(!_cgColumnWidths)_cgColumnWidths={};_cgColumnWidths[col]=pct;}
+  function onUp(){document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);document.body.style.cursor='';document.body.style.userSelect='';try{localStorage.setItem('lhca_cg_col_widths',JSON.stringify(_cgColumnWidths||{}));}catch(e){}}
+  document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
+}
+function cgPageSizeChange(){var s=document.getElementById('cgPageSize');var v=s.value;if(v==='all')_cgPageSize=Infinity;else _cgPageSize=parseInt(v)||25;_cgPage=1;try{localStorage.setItem('lhca_cg_page_size',v);}catch(e){}renderCaregiverGrid();}
+function goToCgPage(n){_cgPage=n;renderCaregiverGrid();}
+
 function renderCaregiverGrid(){
   var cgs=getCaregivers();
   var q=(document.getElementById('cgSearch')?document.getElementById('cgSearch').value:'').toLowerCase();
   var filterStatus=(document.getElementById('cgFilterStatus')&&document.getElementById('cgFilterStatus').value)||'active';
   var profiles=getProfiles();
-  // Refresh metric tiles
-  var allIds=Object.keys(cgs);
-  var nActive=0,nInactive=0,nTerm=0;
-  allIds.forEach(function(id){var st=cgs[id].status||'active';if(st==='active')nActive++;else if(st==='inactive')nInactive++;else if(st==='terminated')nTerm++;});
-  var setMetric=function(id,v){var el=document.getElementById(id);if(el)el.textContent=v;};
-  setMetric('cgStatActive',nActive);setMetric('cgStatInactive',nInactive);setMetric('cgStatTerminated',nTerm);setMetric('cgStatTotal',allIds.length);
 
-  var tbody=document.getElementById('cgTableBody');if(!tbody)return;tbody.innerHTML='';
+  var allIds=Object.keys(cgs);
   var ids=allIds.filter(function(id){
     var cg=cgs[id];
     var st=cg.status||'active';
@@ -1509,14 +1550,47 @@ function renderCaregiverGrid(){
     var matchQ=!q||(cg.name||'').toLowerCase().includes(q)||(cg.phone||'').includes(q);
     return matchStatus&&matchQ;
   });
-  ids.sort(function(a,b){return (cgs[a].name||'').localeCompare(cgs[b].name||'');});
+  ids.sort(function(a,b){return _cgSortCompare(a,b,cgs,profiles);});
+
+  // Sort arrows + column widths
+  var headers=document.querySelectorAll('#cgTable thead th.sortable');
+  headers.forEach(function(h){h.classList.remove('sort-asc','sort-desc');if(h.dataset.sortkey===_cgSort.key)h.classList.add(_cgSort.dir==='asc'?'sort-asc':'sort-desc');});
+  applyCgColWidths();
+
+  // Pagination
+  var totalMatched=ids.length;
+  var totalPages=Math.max(1,Math.ceil(totalMatched/_cgPageSize));
+  if(_cgPage>totalPages)_cgPage=totalPages;
+  var startIdx=(_cgPage-1)*_cgPageSize;
+  var endIdx=Math.min(startIdx+_cgPageSize,totalMatched);
+  var visibleIds=ids.slice(startIdx,endIdx);
+  var countEl=document.getElementById('cgTableCount');
+  if(countEl){
+    if(!totalMatched)countEl.textContent='';
+    else if(_cgPageSize===Infinity||totalMatched<=_cgPageSize)countEl.textContent=totalMatched+' caregiver'+(totalMatched===1?'':'s');
+    else countEl.textContent='Showing '+(startIdx+1)+'–'+endIdx+' of '+totalMatched;
+  }
+  var pageControls=document.getElementById('cgPageControls');
+  if(pageControls){
+    if(totalPages<=1)pageControls.innerHTML='';
+    else {
+      var html='<button class="pg-btn" onclick="goToCgPage('+(_cgPage-1)+')"'+(_cgPage===1?' disabled':'')+'>‹</button>';
+      var startPg=Math.max(1,_cgPage-2),endPg=Math.min(totalPages,startPg+4);
+      if(endPg-startPg<4)startPg=Math.max(1,endPg-4);
+      for(var p=startPg;p<=endPg;p++)html+='<button class="pg-btn'+(p===_cgPage?' active':'')+'" onclick="goToCgPage('+p+')">'+p+'</button>';
+      html+='<button class="pg-btn" onclick="goToCgPage('+(_cgPage+1)+')"'+(_cgPage===totalPages?' disabled':'')+'>›</button>';
+      pageControls.innerHTML=html;
+    }
+  }
+
+  var tbody=document.getElementById('cgTableBody');if(!tbody)return;tbody.innerHTML='';
   var empty=document.getElementById('cgTableEmpty');
   if(!ids.length){if(empty)empty.style.display='block';return;}
   if(empty)empty.style.display='none';
-  ids.forEach(function(id){
+  visibleIds.forEach(function(id){
     var cg=cgs[id];
     var st=cg.status||'active';
-    // Active assignments only — terminated/inactive/lost clients don't count toward caregiver workload
+    var stLabel=st.charAt(0).toUpperCase()+st.slice(1);
     var clientCount=Object.keys(profiles).filter(function(k){return profiles[k].caregiverId===id && (profiles[k].clientStatus||'active')==='active';}).length;
     var displayName=(cg.firstName&&cg.lastName)?(cg.firstName+(cg.middleName?' '+cg.middleName:'')+' '+cg.lastName).trim():(cg.name||id);
     var tr=document.createElement('tr');
@@ -1524,21 +1598,22 @@ function renderCaregiverGrid(){
     var checked=cgBulkSelected[id]?'checked':'';
     tr.innerHTML=
       '<td style="width:32px;" onclick="event.stopPropagation()"><input type="checkbox" class="cg-select" data-id="'+esc(id)+'" '+checked+' onchange="toggleBulkCaregiver(\''+esc(id)+'\',this)" style="width:13px;height:13px;cursor:pointer;"></td>'+
-      '<td><a href="'+hrefCg+'" style="text-decoration:none;color:inherit;display:block;"><div class="ct-name">'+esc(displayName)+(cg.nickname?'<span style="font-weight:normal;color:#8ca0b4;"> ('+esc(cg.nickname)+')</span>':'')+'</div>'+
-        '<div class="ct-id">'+(cg.email||'No email')+'</div></a></td>'+
-      '<td><span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span></td>'+
-      '<td style="color:#4a6a8a;font-size:12px;">'+esc(cg.emptype||'—')+'</td>'+
-      '<td style="color:#4a6a8a;font-size:12px;">'+esc(cg.phone||'—')+'</td>'+
-      '<td style="font-size:12px;color:#4a6a8a;">'+esc(cg.hireDate||'—')+'</td>'+
-      '<td style="font-size:12px;">'+clientCount+'</td>'+
-      '<td onclick="event.stopPropagation()"><button class="ct-action-btn" onclick="event.stopPropagation();editCaregiver(\''+id+'\')">Edit</button></td>';
+      '<td><a href="'+hrefCg+'" class="link-plain" style="display:block;"><div class="ct-name">'+esc(displayName)+(cg.nickname?'<span style="font-weight:normal;color:var(--text-subtle);"> ('+esc(cg.nickname)+')</span>':'')+'</div><div class="ct-id">'+(cg.email||'No email')+'</div></a></td>'+
+      '<td><span class="status-inline"><span class="status-dot '+st+'"></span>'+stLabel+'</span></td>'+
+      '<td style="color:var(--text-muted);font-size:12px;">'+esc(cg.phone||'—')+'</td>'+
+      '<td style="color:var(--text-muted);font-size:12px;">'+esc(cg.emptype||'—')+'</td>'+
+      '<td style="color:var(--text-muted);font-size:12px;">'+esc(cg.hireDate||'—')+'</td>'+
+      '<td style="color:var(--text);font-size:12px;">'+clientCount+'</td>';
     tr.addEventListener('click',function(e){
-      // Don't double-fire if user clicked the <a>/checkbox/button (browser handles those)
       if(e.target.closest('a')||e.target.tagName==='BUTTON'||e.target.tagName==='INPUT')return;
       openCgDetail(id);
     });
     tbody.appendChild(tr);
   });
+
+  // Sync the page-size selector with saved value
+  var sel=document.getElementById('cgPageSize');
+  if(sel){var savedPs=_cgPageSize===Infinity?'all':String(_cgPageSize);if(sel.value!==savedPs)sel.value=savedPs;}
 }
 function toggleBulkCaregiver(id,cb){
   if(cb.checked)cgBulkSelected[id]=true;else delete cgBulkSelected[id];
@@ -5982,33 +6057,98 @@ function showCwView(view){
 
 // ── Supervisors list (within Caseworkers page) ──────────────
 var supBulkSelected={};
+// Sort / pagination / column-width state for Supervisors table — mirrors Clients pattern
+var _supSort={key:'name',dir:'asc'};
+var _supColDefaults={name:26,phone:18,email:30,caseworkers:16};
+var _supColumnWidths=null;
+var _supPage=1;
+var _supPageSize=25;
+(function loadSupPrefs(){
+  try{
+    var w=localStorage.getItem('lhca_sup_col_widths');if(w)_supColumnWidths=JSON.parse(w);
+    var ps=localStorage.getItem('lhca_sup_page_size');
+    if(ps==='all')_supPageSize=Infinity;else if(ps){var n=parseInt(ps);if(n>0)_supPageSize=n;}
+  }catch(e){}
+})();
+function sortSupBy(key){if(_supSort.key===key)_supSort.dir=_supSort.dir==='asc'?'desc':'asc';else{_supSort.key=key;_supSort.dir='asc';}renderSupervisorList();}
+function _supSortCompare(a,b,sups,countBySup){
+  var sa=sups[a],sb=sups[b];
+  var key=_supSort.key,dir=_supSort.dir==='asc'?1:-1;
+  function val(k,s,id){
+    if(k==='name')return (s.name||'').toLowerCase();
+    if(k==='phone')return (s.phone||'').toLowerCase();
+    if(k==='email')return (s.email||'').toLowerCase();
+    if(k==='caseworkers')return countBySup[id]||0;
+    return 0;
+  }
+  var va=val(key,sa,a),vb=val(key,sb,b);
+  if(typeof va==='string')return va.localeCompare(vb)*dir;
+  return (va<vb?-1:va>vb?1:0)*dir;
+}
+function applySupColWidths(){var headers=document.querySelectorAll('#supTable thead th[data-col]');headers.forEach(function(th){var col=th.dataset.col;var w=(_supColumnWidths&&_supColumnWidths[col])||_supColDefaults[col];if(w)th.style.width=w+'%';});}
+function startSupColResize(e,col){
+  e.preventDefault();e.stopPropagation();
+  var th=e.target.closest('th');if(!th)return;
+  var startX=e.pageX,startWidth=th.offsetWidth,tableWidth=th.closest('table').offsetWidth;
+  document.body.style.cursor='col-resize';document.body.style.userSelect='none';
+  function onMove(ev){var d=ev.pageX-startX;var nx=Math.max(60,startWidth+d);var pct=(nx/tableWidth)*100;th.style.width=pct+'%';if(!_supColumnWidths)_supColumnWidths={};_supColumnWidths[col]=pct;}
+  function onUp(){document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);document.body.style.cursor='';document.body.style.userSelect='';try{localStorage.setItem('lhca_sup_col_widths',JSON.stringify(_supColumnWidths||{}));}catch(e){}}
+  document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
+}
+function supPageSizeChange(){var s=document.getElementById('supPageSize');var v=s.value;if(v==='all')_supPageSize=Infinity;else _supPageSize=parseInt(v)||25;_supPage=1;try{localStorage.setItem('lhca_sup_page_size',v);}catch(e){}renderSupervisorList();}
+function goToSupPage(n){_supPage=n;renderSupervisorList();}
+
 function renderSupervisorList(){
   var sups=getSupervisors();
   var q=(document.getElementById('supSearch')?document.getElementById('supSearch').value:'').toLowerCase();
   var cws=getCaseworkers();
-
-  // Caseworker-count per supervisor (for the table cell + metrics)
   var countBySup={};
   cws.forEach(function(c){if(c.supervisor_id){countBySup[c.supervisor_id]=(countBySup[c.supervisor_id]||0)+1;}});
 
-  // Metric tiles
   var allIds=Object.keys(sups);
-  var nActive=0,nUnassigned=0;
-  allIds.forEach(function(id){if(countBySup[id]>0)nActive++;else nUnassigned++;});
-  var setMetric=function(id,v){var el=document.getElementById(id);if(el)el.textContent=v;};
-  setMetric('supStatActive',nActive);setMetric('supStatUnassigned',nUnassigned);setMetric('supStatTotal',allIds.length);
-
-  var tbody=document.getElementById('supTableBody');if(!tbody)return;tbody.innerHTML='';
   var ids=allIds.filter(function(id){
     if(!q)return true;
     var s=sups[id];
     return (s.name||'').toLowerCase().includes(q)||(s.email||'').toLowerCase().includes(q)||(s.phone||'').includes(q);
   });
-  ids.sort(function(a,b){return (sups[a].name||'').localeCompare(sups[b].name||'');});
+  ids.sort(function(a,b){return _supSortCompare(a,b,sups,countBySup);});
+
+  // Sort arrows + widths
+  var headers=document.querySelectorAll('#supTable thead th.sortable');
+  headers.forEach(function(h){h.classList.remove('sort-asc','sort-desc');if(h.dataset.sortkey===_supSort.key)h.classList.add(_supSort.dir==='asc'?'sort-asc':'sort-desc');});
+  applySupColWidths();
+
+  // Pagination
+  var totalMatched=ids.length;
+  var totalPages=Math.max(1,Math.ceil(totalMatched/_supPageSize));
+  if(_supPage>totalPages)_supPage=totalPages;
+  var startIdx=(_supPage-1)*_supPageSize;
+  var endIdx=Math.min(startIdx+_supPageSize,totalMatched);
+  var visibleIds=ids.slice(startIdx,endIdx);
+  var countEl=document.getElementById('supTableCount');
+  if(countEl){
+    if(!totalMatched)countEl.textContent='';
+    else if(_supPageSize===Infinity||totalMatched<=_supPageSize)countEl.textContent=totalMatched+' supervisor'+(totalMatched===1?'':'s');
+    else countEl.textContent='Showing '+(startIdx+1)+'–'+endIdx+' of '+totalMatched;
+  }
+  var pageControls=document.getElementById('supPageControls');
+  if(pageControls){
+    if(totalPages<=1)pageControls.innerHTML='';
+    else {
+      var html='<button class="pg-btn" onclick="goToSupPage('+(_supPage-1)+')"'+(_supPage===1?' disabled':'')+'>‹</button>';
+      var startPg=Math.max(1,_supPage-2),endPg=Math.min(totalPages,startPg+4);
+      if(endPg-startPg<4)startPg=Math.max(1,endPg-4);
+      for(var p=startPg;p<=endPg;p++)html+='<button class="pg-btn'+(p===_supPage?' active':'')+'" onclick="goToSupPage('+p+')">'+p+'</button>';
+      html+='<button class="pg-btn" onclick="goToSupPage('+(_supPage+1)+')"'+(_supPage===totalPages?' disabled':'')+'>›</button>';
+      pageControls.innerHTML=html;
+    }
+  }
+
+  var tbody=document.getElementById('supTableBody');if(!tbody)return;tbody.innerHTML='';
   var empty=document.getElementById('supTableEmpty');
   if(!ids.length){if(empty)empty.style.display='block';return;}
   if(empty)empty.style.display='none';
-  ids.forEach(function(id){
+  visibleIds.forEach(function(id){
     var s=sups[id];
     var cwCount=countBySup[id]||0;
     var tr=document.createElement('tr');
@@ -6016,16 +6156,19 @@ function renderSupervisorList(){
     tr.innerHTML=
       '<td style="width:32px;" onclick="event.stopPropagation()"><input type="checkbox" class="sup-select" data-id="'+esc(id)+'" '+checked+' onchange="toggleBulkSupervisor(\''+esc(id)+'\',this)" style="width:13px;height:13px;cursor:pointer;"></td>'+
       '<td><div class="ct-name">'+esc(s.name||'')+'</div></td>'+
-      '<td style="color:#4a6a8a;font-size:12px;">'+esc(s.phone||'—')+'</td>'+
-      '<td style="color:#4a6a8a;font-size:12px;">'+esc(s.email||'—')+'</td>'+
-      '<td style="font-size:12px;">'+cwCount+'</td>'+
-      '<td onclick="event.stopPropagation()"><button class="ct-action-btn" onclick="event.stopPropagation();_openSupervisorModal(\''+esc(id)+'\')">Edit</button></td>';
+      '<td style="color:var(--text-muted);font-size:12px;">'+esc(s.phone||'—')+'</td>'+
+      '<td style="color:var(--text-muted);font-size:12px;">'+esc(s.email||'—')+'</td>'+
+      '<td style="color:var(--text);font-size:12px;">'+cwCount+'</td>';
     tr.addEventListener('click',function(e){
       if(e.target.closest('a')||e.target.tagName==='BUTTON'||e.target.tagName==='INPUT')return;
       _openSupervisorModal(id);
     });
     tbody.appendChild(tr);
   });
+
+  // Sync page-size selector
+  var sel=document.getElementById('supPageSize');
+  if(sel){var savedPs=_supPageSize===Infinity?'all':String(_supPageSize);if(sel.value!==savedPs)sel.value=savedPs;}
 }
 function toggleBulkSupervisor(id,cb){
   if(cb.checked)supBulkSelected[id]=true;else delete supBulkSelected[id];
@@ -6188,30 +6331,94 @@ function deleteCaseworkerFromDetail(){
   },{title:'Delete Caseworker',okText:'Delete'});
 }
 var cwBulkSelected={};
+// Sort / pagination / column-width state for Caseworkers table — mirrors Clients pattern
+var _cwSort={key:'name',dir:'asc'};
+var _cwColDefaults={name:20,phone:14,email:20,county:11,supervisor:16,clients:10};
+var _cwColumnWidths=null;
+var _cwPage=1;
+var _cwPageSize=25;
+(function loadCwPrefs(){
+  try{
+    var w=localStorage.getItem('lhca_cw_col_widths');if(w)_cwColumnWidths=JSON.parse(w);
+    var ps=localStorage.getItem('lhca_cw_page_size');
+    if(ps==='all')_cwPageSize=Infinity;else if(ps){var n=parseInt(ps);if(n>0)_cwPageSize=n;}
+  }catch(e){}
+})();
+function sortCwBy(key){if(_cwSort.key===key)_cwSort.dir=_cwSort.dir==='asc'?'desc':'asc';else{_cwSort.key=key;_cwSort.dir='asc';}renderCaseworkerList();}
+function _cwSortCompare(a,b,profiles,sups){
+  var key=_cwSort.key,dir=_cwSort.dir==='asc'?1:-1;
+  function clientCount(cw){return Object.keys(profiles).filter(function(k){return (profiles[k].caseworkerId===cw.id||profiles[k].worker===cw.name) && (profiles[k].clientStatus||'active')==='active';}).length;}
+  function val(k,c){
+    if(k==='name')return (c.name||'').toLowerCase();
+    if(k==='phone')return (c.phone||'').toLowerCase();
+    if(k==='email')return (c.email||'').toLowerCase();
+    if(k==='county')return (c.county||'').toLowerCase();
+    if(k==='supervisor'){var s=c.supervisor_id&&sups[c.supervisor_id]?sups[c.supervisor_id].name:'';return s.toLowerCase();}
+    if(k==='clients')return clientCount(c);
+    return 0;
+  }
+  var va=val(key,a),vb=val(key,b);
+  if(typeof va==='string')return va.localeCompare(vb)*dir;
+  return (va<vb?-1:va>vb?1:0)*dir;
+}
+function applyCwColWidths(){var headers=document.querySelectorAll('#cwTable thead th[data-col]');headers.forEach(function(th){var col=th.dataset.col;var w=(_cwColumnWidths&&_cwColumnWidths[col])||_cwColDefaults[col];if(w)th.style.width=w+'%';});}
+function startCwColResize(e,col){
+  e.preventDefault();e.stopPropagation();
+  var th=e.target.closest('th');if(!th)return;
+  var startX=e.pageX,startWidth=th.offsetWidth,tableWidth=th.closest('table').offsetWidth;
+  document.body.style.cursor='col-resize';document.body.style.userSelect='none';
+  function onMove(ev){var d=ev.pageX-startX;var nx=Math.max(60,startWidth+d);var pct=(nx/tableWidth)*100;th.style.width=pct+'%';if(!_cwColumnWidths)_cwColumnWidths={};_cwColumnWidths[col]=pct;}
+  function onUp(){document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);document.body.style.cursor='';document.body.style.userSelect='';try{localStorage.setItem('lhca_cw_col_widths',JSON.stringify(_cwColumnWidths||{}));}catch(e){}}
+  document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
+}
+function cwPageSizeChange(){var s=document.getElementById('cwPageSize');var v=s.value;if(v==='all')_cwPageSize=Infinity;else _cwPageSize=parseInt(v)||25;_cwPage=1;try{localStorage.setItem('lhca_cw_page_size',v);}catch(e){}renderCaseworkerList();}
+function goToCwPage(n){_cwPage=n;renderCaseworkerList();}
+
 function renderCaseworkerList(){
   var cws=getCaseworkers();
   var q=(document.getElementById('cwSearch')?document.getElementById('cwSearch').value:'').toLowerCase();
   var profiles=getProfiles();
-  // Refresh metric tiles
-  var totalCw=cws.length;
-  var activeCw=0,unassigned=0;
-  cws.forEach(function(cw){
-    var clientCount=Object.keys(profiles).filter(function(k){return (profiles[k].caseworkerId===cw.id||profiles[k].worker===cw.name) && (profiles[k].clientStatus||'active')==='active';}).length;
-    if(clientCount>0)activeCw++;else unassigned++;
-  });
-  var setMetric=function(id,v){var el=document.getElementById(id);if(el)el.textContent=v;};
-  setMetric('cwStatActive',activeCw);setMetric('cwStatNoClients',unassigned);setMetric('cwStatTotal',totalCw);
+  var sups=getSupervisors();
+
+  var filtered=cws.filter(function(cw){return !q||(cw.name||'').toLowerCase().includes(q)||(cw.agency||'').toLowerCase().includes(q)||(cw.email||'').toLowerCase().includes(q);});
+  filtered.sort(function(a,b){return _cwSortCompare(a,b,profiles,sups);});
+
+  // Sort arrows + widths
+  var headers=document.querySelectorAll('#cwTable thead th.sortable');
+  headers.forEach(function(h){h.classList.remove('sort-asc','sort-desc');if(h.dataset.sortkey===_cwSort.key)h.classList.add(_cwSort.dir==='asc'?'sort-asc':'sort-desc');});
+  applyCwColWidths();
+
+  // Pagination
+  var totalMatched=filtered.length;
+  var totalPages=Math.max(1,Math.ceil(totalMatched/_cwPageSize));
+  if(_cwPage>totalPages)_cwPage=totalPages;
+  var startIdx=(_cwPage-1)*_cwPageSize;
+  var endIdx=Math.min(startIdx+_cwPageSize,totalMatched);
+  var visible=filtered.slice(startIdx,endIdx);
+  var countEl=document.getElementById('cwTableCount');
+  if(countEl){
+    if(!totalMatched)countEl.textContent='';
+    else if(_cwPageSize===Infinity||totalMatched<=_cwPageSize)countEl.textContent=totalMatched+' caseworker'+(totalMatched===1?'':'s');
+    else countEl.textContent='Showing '+(startIdx+1)+'–'+endIdx+' of '+totalMatched;
+  }
+  var pageControls=document.getElementById('cwPageControls');
+  if(pageControls){
+    if(totalPages<=1)pageControls.innerHTML='';
+    else {
+      var html='<button class="pg-btn" onclick="goToCwPage('+(_cwPage-1)+')"'+(_cwPage===1?' disabled':'')+'>‹</button>';
+      var startPg=Math.max(1,_cwPage-2),endPg=Math.min(totalPages,startPg+4);
+      if(endPg-startPg<4)startPg=Math.max(1,endPg-4);
+      for(var p=startPg;p<=endPg;p++)html+='<button class="pg-btn'+(p===_cwPage?' active':'')+'" onclick="goToCwPage('+p+')">'+p+'</button>';
+      html+='<button class="pg-btn" onclick="goToCwPage('+(_cwPage+1)+')"'+(_cwPage===totalPages?' disabled':'')+'>›</button>';
+      pageControls.innerHTML=html;
+    }
+  }
 
   var tbody=document.getElementById('cwTableBody');if(!tbody)return;tbody.innerHTML='';
-  var filtered=cws.filter(function(cw){
-    return !q||(cw.name||'').toLowerCase().includes(q)||(cw.agency||'').toLowerCase().includes(q);
-  });
-  filtered.sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
   var empty=document.getElementById('cwTableEmpty');
   if(!filtered.length){if(empty)empty.style.display='block';return;}
   if(empty)empty.style.display='none';
-  var sups=getSupervisors();
-  filtered.forEach(function(cw){
+  visible.forEach(function(cw){
     var clientCount=Object.keys(profiles).filter(function(k){return (profiles[k].caseworkerId===cw.id||profiles[k].worker===cw.name) && (profiles[k].clientStatus||'active')==='active';}).length;
     var hrefCw=buildCaseworkerUrl(cw.id);
     var supName=cw.supervisor_id && sups[cw.supervisor_id] ? sups[cw.supervisor_id].name : '';
@@ -6219,19 +6426,22 @@ function renderCaseworkerList(){
     var checked=cwBulkSelected[cw.id]?'checked':'';
     tr.innerHTML=
       '<td style="width:32px;" onclick="event.stopPropagation()"><input type="checkbox" class="cw-select" data-id="'+esc(cw.id)+'" '+checked+' onchange="toggleBulkCaseworker(\''+esc(cw.id)+'\',this)" style="width:13px;height:13px;cursor:pointer;"></td>'+
-      '<td><a href="'+hrefCw+'" style="text-decoration:none;color:inherit;display:block;"><div class="ct-name">'+esc(cw.name||'')+'</div><div class="ct-id">'+esc(cw.agency||'No agency')+'</div></a></td>'+
-      '<td style="color:#4a6a8a;font-size:12px;">'+esc(cw.phone||'—')+'</td>'+
-      '<td style="color:#4a6a8a;font-size:12px;">'+esc(cw.email||'—')+'</td>'+
-      '<td style="color:#4a6a8a;font-size:12px;">'+esc(cw.county||'—')+'</td>'+
-      '<td style="color:#4a6a8a;font-size:12px;">'+esc(supName||'—')+'</td>'+
-      '<td style="font-size:12px;">'+clientCount+'</td>'+
-      '<td onclick="event.stopPropagation()"><button class="ct-action-btn" onclick="event.stopPropagation();showCaseworkerForm(\''+cw.id+'\')">Edit</button></td>';
+      '<td><a href="'+hrefCw+'" class="link-plain" style="display:block;"><div class="ct-name">'+esc(cw.name||'')+'</div><div class="ct-id">'+esc(cw.agency||'No agency')+'</div></a></td>'+
+      '<td style="color:var(--text-muted);font-size:12px;">'+esc(cw.phone||'—')+'</td>'+
+      '<td style="color:var(--text-muted);font-size:12px;">'+esc(cw.email||'—')+'</td>'+
+      '<td style="color:var(--text-muted);font-size:12px;">'+esc(cw.county||'—')+'</td>'+
+      '<td style="color:var(--text-muted);font-size:12px;">'+esc(supName||'—')+'</td>'+
+      '<td style="color:var(--text);font-size:12px;">'+clientCount+'</td>';
     tr.addEventListener('click',function(e){
       if(e.target.closest('a')||e.target.closest('button')||e.target.closest('input'))return;
       openCwDetail(cw.id);
     });
     tbody.appendChild(tr);
   });
+
+  // Sync page-size selector
+  var sel=document.getElementById('cwPageSize');
+  if(sel){var savedPs=_cwPageSize===Infinity?'all':String(_cwPageSize);if(sel.value!==savedPs)sel.value=savedPs;}
 }
 function toggleBulkCaseworker(id,cb){
   if(cb.checked)cwBulkSelected[id]=true;else delete cwBulkSelected[id];
