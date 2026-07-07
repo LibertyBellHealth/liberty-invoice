@@ -515,7 +515,10 @@ function _clientSortCompare(a,b,profiles,cgs,cwsArr){
 // ── Client-table column widths + pagination — persisted per-device in localStorage ──
 // Widths are % of table width (excluding the 32px checkbox column). Should sum to ~95-100.
 // Status is small because "• Active" is short; Client is largest because it stacks name + Medicaid ID.
-var _clientColDefaults={name:22,status:7,phone:13,caregiver:15,caseworker:15,county:10,lastInvoice:12};
+// Column widths sum to 100 so every column gets exactly the space it deserves —
+// no browser auto-expansion. Name column trimmed from 22 → 18 per user feedback
+// (it was reading as bulky against the other columns).
+var _clientColDefaults={name:18,status:7,phone:14,caregiver:16,caseworker:16,county:11,lastInvoice:14};
 var _clientColumnWidths=null;
 var _clientPage=1;
 var _clientPageSize=25;
@@ -1491,7 +1494,8 @@ function cgId(){return 'cg_'+Date.now()+'_'+Math.random().toString(36).slice(2,7
 var cgBulkSelected={};
 // Sort / pagination / column-width state for Caregivers table — mirrors Clients pattern
 var _cgSort={key:'name',dir:'asc'};
-var _cgColDefaults={name:24,status:9,phone:15,role:14,hireDate:14,clients:10};
+// Widths sum to ~95; Caregiver column trimmed from 24 → 20 for balance.
+var _cgColDefaults={name:20,status:9,phone:16,role:16,hireDate:15,clients:19};
 var _cgColumnWidths=null;
 var _cgPage=1;
 var _cgPageSize=25;
@@ -6059,7 +6063,8 @@ function showCwView(view){
 var supBulkSelected={};
 // Sort / pagination / column-width state for Supervisors table — mirrors Clients pattern
 var _supSort={key:'name',dir:'asc'};
-var _supColDefaults={name:26,phone:18,email:30,caseworkers:16};
+// Widths sum to ~90; Supervisor column trimmed from 26 → 22.
+var _supColDefaults={name:22,phone:20,email:32,caseworkers:16};
 var _supColumnWidths=null;
 var _supPage=1;
 var _supPageSize=25;
@@ -6333,7 +6338,8 @@ function deleteCaseworkerFromDetail(){
 var cwBulkSelected={};
 // Sort / pagination / column-width state for Caseworkers table — mirrors Clients pattern
 var _cwSort={key:'name',dir:'asc'};
-var _cwColDefaults={name:20,phone:14,email:20,county:11,supervisor:16,clients:10};
+// Widths sum to ~92; Caseworker column trimmed from 20 → 17.
+var _cwColDefaults={name:17,phone:14,email:22,county:12,supervisor:16,clients:12};
 var _cwColumnWidths=null;
 var _cwPage=1;
 var _cwPageSize=25;

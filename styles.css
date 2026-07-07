@@ -32,14 +32,11 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
   --dot-info:#185FA5;
 }
 
-/* --- Entity page header (Clients / Caregivers / Caseworkers / Supervisors) -------
-    Sized to sit calmly with the ~12px table content — the title reads as a page
-    label, not a shout. Padding tightened so the header doesn't dominate the
-    fold. */
-.entity-header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px 10px;gap:16px;flex-wrap:wrap;}
+/* --- Entity page header (Clients / Caregivers / Caseworkers / Supervisors) ------- */
+.entity-header{display:flex;align-items:center;justify-content:space-between;padding:16px 24px 10px;gap:16px;flex-wrap:wrap;}
 .entity-header .titles{min-width:0;}
-.entity-header h1{font-size:15px;font-weight:700;color:var(--text);line-height:1.2;margin:0;}
-.entity-header .subtitle{font-size:11px;color:var(--text-muted);margin-top:2px;}
+.entity-header h1{font-size:17px;font-weight:700;color:var(--text);line-height:1.2;margin:0;}
+.entity-header .subtitle{font-size:12px;color:var(--text-muted);margin-top:2px;}
 .entity-header .actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
 .entity-header .search-slim{padding:7px 12px;border:1px solid var(--border-strong);border-radius:6px;font-size:12px;font-family:Arial,sans-serif;outline:none;color:var(--text);background:var(--surface);width:220px;max-width:100%;}
 .entity-header .search-slim:focus{border-color:var(--accent);}
