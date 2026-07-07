@@ -26,7 +26,7 @@ function aiTrack(name, props){
   }catch(e){}
 }
 </script>
-<link rel="stylesheet" href="styles.css?v=20260707g">
+<link rel="stylesheet" href="styles.css?v=20260707h">
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -126,10 +126,9 @@ function aiTrack(name, props){
           <option value="lost">Lost</option>
           <option value="terminated">Terminated</option>
         </select>
-        <!-- Hidden legacy inputs kept so existing code paths don't crash.
-             "Outstanding only" filter dropped — Reports handles that view; the missing-invoice
-             attention banner + modal handle the create-invoice flow. -->
-        <input type="hidden" id="filterOutstanding" value="">
+        <!-- "Outstanding only" filter removed — Reports > Outstanding is the right place
+             for that view. filterSort / filterCaregiver hidden legacy inputs still kept
+             so a couple of older code paths that read their .value don't NPE. -->
         <input type="hidden" id="filterSort" value="name">
         <input type="hidden" id="filterCaregiver" value="">
       </div>
@@ -1160,6 +1159,6 @@ function aiTrack(name, props){
     </div>
   </div>
 </div>
-<script src="app.js?v=20260707g"></script>
+<script src="app.js?v=20260707h"></script>
 </body>
 </html>

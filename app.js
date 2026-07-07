@@ -511,18 +511,14 @@ function renderClientTable(forceStatus){
   var q=((document.getElementById('clientSearch')?document.getElementById('clientSearch').value:'')||'').toLowerCase();
   var filterStatus=forceStatus||(document.getElementById('filterStatus')?document.getElementById('filterStatus').value:'active');
   var filterCg=(document.getElementById('filterCaregiver')&&document.getElementById('filterCaregiver').value)||'';
-  // Legacy: element may be a hidden input (Phase 2 cleanup) or a checkbox (older markup).
-  // Read whichever exists so this keeps working across HTML shapes.
-  var _oe=document.getElementById('filterOutstanding');
-  var outstandingOnly=_oe && (_oe.type==='checkbox'?_oe.checked:false);
+  // "Outstanding only" filter removed entirely — Reports > Outstanding covers the case.
   var cgs=getCaregivers();
   var keys=Object.keys(profiles).filter(function(k){
     var st=profiles[k].clientStatus||'active';
     var matchStatus=filterStatus==='all'||st===filterStatus;
     var matchQ=!q||k.toLowerCase().includes(q)||(profiles[k].medicaidId||'').toLowerCase().includes(q);
     var matchCg=!filterCg||profiles[k].caregiverId===filterCg;
-    var matchOut=!outstandingOnly||(profiles[k].invoices||[]).some(function(i){return !i.status||i.status==='draft'||i.status==='submitted';});
-    return matchStatus&&matchQ&&matchCg&&matchOut;
+    return matchStatus&&matchQ&&matchCg;
   });
   keys.sort(function(a,b){return _clientSortCompare(a,b,profiles,cgs);});
 
