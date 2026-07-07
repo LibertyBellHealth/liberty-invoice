@@ -26,7 +26,7 @@ function aiTrack(name, props){
   }catch(e){}
 }
 </script>
-<link rel="stylesheet" href="styles.css?v=20260707f">
+<link rel="stylesheet" href="styles.css?v=20260707g">
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -54,15 +54,22 @@ function aiTrack(name, props){
     <button class="sb-collapse" onclick="toggleSidebar()">&#9776;</button>
   </div>
   <div class="sb-section">Navigation</div>
-  <a class="sb-btn active" id="sb-home" href="#/" style="text-decoration:none;">Clients</a>
-  <a class="sb-btn" id="sb-caregivers" href="#/caregivers" style="text-decoration:none;">Caregivers</a>
-  <a class="sb-btn" id="sb-caseworkers" href="#/caseworkers" style="text-decoration:none;">Caseworkers</a>
-  <a class="sb-btn" id="sb-forms" href="#/forms" style="text-decoration:none;">Forms</a>
-  <a class="sb-btn" id="sb-tasks" href="#/tasks" style="text-decoration:none;">Tasks <span id="taskBadge" style="display:none;background:#c0392b;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:4px;font-weight:700;vertical-align:middle;"></span></a>
-  <a class="sb-btn" id="sb-reports" href="#/reports" style="text-decoration:none;">Reports</a>
+  <!--
+    Every nav <a> uses href for right-click "Open in new tab" but ALSO an onclick that
+    programmatically navigates. Otherwise: if the current URL already matches the target
+    (e.g., you're on #/client/adnan and tap "Clients" going to #/), the browser sometimes
+    doesn't fire hashchange and the page silently ignores the click. The onclick guarantees
+    the nav runs every time; Cmd/Ctrl/Shift-click still lets the browser open a new tab.
+  -->
+  <a class="sb-btn active" id="sb-home" href="#/" onclick="return navClick(event, '#/', navHome)" style="text-decoration:none;">Clients</a>
+  <a class="sb-btn" id="sb-caregivers" href="#/caregivers" onclick="return navClick(event, '#/caregivers', navCaregivers)" style="text-decoration:none;">Caregivers</a>
+  <a class="sb-btn" id="sb-caseworkers" href="#/caseworkers" onclick="return navClick(event, '#/caseworkers', navCaseworkers)" style="text-decoration:none;">Caseworkers</a>
+  <a class="sb-btn" id="sb-forms" href="#/forms" onclick="return navClick(event, '#/forms', navForms)" style="text-decoration:none;">Forms</a>
+  <a class="sb-btn" id="sb-tasks" href="#/tasks" onclick="return navClick(event, '#/tasks', navTasks)" style="text-decoration:none;">Tasks <span id="taskBadge" style="display:none;background:#c0392b;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:4px;font-weight:700;vertical-align:middle;"></span></a>
+  <a class="sb-btn" id="sb-reports" href="#/reports" onclick="return navClick(event, '#/reports', navReports)" style="text-decoration:none;">Reports</a>
   <hr class="sb-divider">
   <button class="sb-btn" id="sb-monthly" onclick="openMonthlyInvModal()">Monthly Emails</button>
-  <a class="sb-btn" id="sb-settings" href="#/settings" style="text-decoration:none;">Settings</a>
+  <a class="sb-btn" id="sb-settings" href="#/settings" onclick="return navClick(event, '#/settings', navSettings)" style="text-decoration:none;">Settings</a>
   <hr class="sb-divider">
   <!-- Sidebar quick-access client list. No section label — the page title carries
        the "Clients" context; a duplicate label above the list read weirdly.  -->
@@ -91,10 +98,8 @@ function aiTrack(name, props){
         <h1>Clients</h1>
       </div>
       <div class="actions">
-        <div class="global-search-wrap">
-          <input id="globalSearch" class="search-slim" placeholder="Search everything…" oninput="debouncedGlobalSearch(this.value)" onkeydown="if(event.key==='Escape')closeGlobalSearch()">
-          <div class="global-results" id="globalResults" style="display:none;"></div>
-        </div>
+        <!-- Global search moved out of the Clients header — belongs in the topbar
+             (Phase 4.6 will put it there so it works from any page). -->
         <button class="btn btn-secondary" data-sync-disable="1" onclick="openGenerateInvoicesModal()">Generate Invoices</button>
         <button class="btn btn-primary" data-sync-disable="1" onclick="navNewClient()">+ New Client</button>
       </div>
@@ -121,8 +126,10 @@ function aiTrack(name, props){
           <option value="lost">Lost</option>
           <option value="terminated">Terminated</option>
         </select>
-        <label class="ct-check"><input type="checkbox" id="filterOutstanding" onchange="renderClientTable()"> Outstanding only</label>
-        <!-- Hidden legacy inputs kept so existing code paths don't crash. -->
+        <!-- Hidden legacy inputs kept so existing code paths don't crash.
+             "Outstanding only" filter dropped — Reports handles that view; the missing-invoice
+             attention banner + modal handle the create-invoice flow. -->
+        <input type="hidden" id="filterOutstanding" value="">
         <input type="hidden" id="filterSort" value="name">
         <input type="hidden" id="filterCaregiver" value="">
       </div>
@@ -1153,6 +1160,6 @@ function aiTrack(name, props){
     </div>
   </div>
 </div>
-<script src="app.js?v=20260707f"></script>
+<script src="app.js?v=20260707g"></script>
 </body>
 </html>

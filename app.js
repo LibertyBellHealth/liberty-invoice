@@ -128,6 +128,24 @@ function routeFromHash(){
 }
 window.addEventListener('hashchange',routeFromHash);
 
+// Explicit nav click helper — guarantees the target page renders even when the
+// current URL already matches the target hash (in which case hashchange doesn't
+// fire and the router would silently skip the click). Cmd/Ctrl/Shift-click still
+// falls through to the browser's default behavior so "open in new tab" works.
+function navClick(e, targetHash, targetFn){
+  if(e && (e.metaKey||e.ctrlKey||e.shiftKey||e.button===1))return true;
+  if(e && typeof e.preventDefault==='function')e.preventDefault();
+  var cur=window.location.hash||'';
+  if(cur===targetHash){
+    // Already on target — force a re-render since hashchange won't fire
+    if(typeof targetFn==='function')targetFn();
+  } else {
+    // hashchange will fire and routeFromHash will call the appropriate nav function
+    window.location.hash=targetHash;
+  }
+  return false;
+}
+
 // ============================================================
 //  MOBILE SIDEBAR — open via hamburger, close via backdrop tap or nav
 // ============================================================
@@ -493,7 +511,10 @@ function renderClientTable(forceStatus){
   var q=((document.getElementById('clientSearch')?document.getElementById('clientSearch').value:'')||'').toLowerCase();
   var filterStatus=forceStatus||(document.getElementById('filterStatus')?document.getElementById('filterStatus').value:'active');
   var filterCg=(document.getElementById('filterCaregiver')&&document.getElementById('filterCaregiver').value)||'';
-  var outstandingOnly=document.getElementById('filterOutstanding')&&document.getElementById('filterOutstanding').checked;
+  // Legacy: element may be a hidden input (Phase 2 cleanup) or a checkbox (older markup).
+  // Read whichever exists so this keeps working across HTML shapes.
+  var _oe=document.getElementById('filterOutstanding');
+  var outstandingOnly=_oe && (_oe.type==='checkbox'?_oe.checked:false);
   var cgs=getCaregivers();
   var keys=Object.keys(profiles).filter(function(k){
     var st=profiles[k].clientStatus||'active';
