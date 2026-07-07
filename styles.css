@@ -1,6 +1,100 @@
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f7;display:flex;min-height:100vh;}
 
+/* ============================================================
+   MUTED DESIGN SYSTEM v2 (Phase 1 of UX consistency refactor)
+   Reduces the app to ONE accent color (brand blue). Everything
+   else is neutral gray. Status is shown via small colored dots
+   next to plain text — not colorful pills. See the CHANGELOG for
+   the reasoning.
+   ============================================================ */
+:root{
+  /* Text — near-black primary, gray secondary. Used everywhere. */
+  --text:#1a2b45;
+  --text-muted:#6b8dae;
+  --text-subtle:#8ca0b4;
+  /* Surfaces — page, card, hover. */
+  --surface:#fff;
+  --surface-alt:#fafbfc;
+  --surface-hover:#f5f8fc;
+  /* Borders — subtle divider grays. */
+  --border:#e1e5ea;
+  --border-strong:#d0d8e4;
+  /* The ONE accent color. Used for primary buttons + focus rings + active tab. Nothing else. */
+  --accent:#185FA5;
+  --accent-hover:#124a80;
+  --accent-tint:#e8f0f9;
+  /* Status dot colors — tiny 6px circles next to plain text. No pills, no fills. */
+  --dot-active:#1a7740;
+  --dot-inactive:#8ca0b4;
+  --dot-warning:#c07000;
+  --dot-danger:#a02020;
+  --dot-info:#185FA5;
+}
+
+/* --- Entity page header (Clients / Caregivers / Caseworkers / Supervisors) ------- */
+.entity-header{display:flex;align-items:center;justify-content:space-between;padding:18px 24px 12px;gap:16px;flex-wrap:wrap;}
+.entity-header .titles{min-width:0;}
+.entity-header h1{font-size:20px;font-weight:700;color:var(--text);line-height:1.2;margin:0;}
+.entity-header .subtitle{font-size:12px;color:var(--text-muted);margin-top:2px;}
+.entity-header .actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.entity-header .search-slim{padding:7px 12px;border:1px solid var(--border-strong);border-radius:6px;font-size:12px;font-family:Arial,sans-serif;outline:none;color:var(--text);background:var(--surface);width:220px;max-width:100%;}
+.entity-header .search-slim:focus{border-color:var(--accent);}
+
+/* --- Compact one-line metric summary (replaces the big colorful tile row) ------- */
+.entity-metrics{display:flex;align-items:center;gap:20px;padding:0 24px 12px;font-size:12px;color:var(--text-muted);flex-wrap:wrap;}
+.entity-metrics .metric-item{display:flex;align-items:baseline;gap:6px;cursor:default;}
+.entity-metrics .metric-item.clickable{cursor:pointer;}
+.entity-metrics .metric-item.clickable:hover .metric-num{color:var(--accent);}
+.entity-metrics .metric-num{font-size:13px;font-weight:700;color:var(--text);}
+.entity-metrics .metric-sep{color:var(--border-strong);}
+
+/* --- Sortable column headers with unicode arrows ------- */
+.entity-table th.sortable{cursor:pointer;user-select:none;position:relative;padding-right:20px;}
+.entity-table th.sortable:hover{color:var(--text);}
+.entity-table th.sortable::after{content:'↕';position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--text-subtle);opacity:0.6;}
+.entity-table th.sortable.sort-asc::after{content:'↑';color:var(--accent);opacity:1;}
+.entity-table th.sortable.sort-desc::after{content:'↓';color:var(--accent);opacity:1;}
+
+/* --- Status: small colored dot + plain text (replaces pill fills) ------- */
+.status-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:middle;}
+.status-dot.active{background:var(--dot-active);}
+.status-dot.inactive,.status-dot.terminated,.status-dot.lost{background:var(--dot-inactive);}
+.status-dot.warning,.status-dot.submitted{background:var(--dot-warning);}
+.status-dot.danger{background:var(--dot-danger);}
+.status-dot.info,.status-dot.paid{background:var(--dot-info);}
+.status-inline{display:inline-flex;align-items:center;color:var(--text);}
+
+/* --- Related-record card (used for "clients under caregiver", "caregiver on client", etc.) --- */
+.related-card{display:flex;align-items:center;gap:12px;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;text-decoration:none;color:inherit;transition:border-color 0.12s,background 0.12s;}
+.related-card:hover{border-color:var(--accent);background:var(--surface-hover);}
+.related-card .rc-avatar{width:32px;height:32px;border-radius:50%;background:var(--accent-tint);color:var(--accent);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.related-card .rc-body{flex:1;min-width:0;}
+.related-card .rc-title{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.related-card .rc-sub{font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
+.related-card .rc-meta{font-size:11px;color:var(--text-muted);white-space:nowrap;margin-left:auto;}
+.related-card .rc-chevron{color:var(--text-subtle);font-size:14px;line-height:1;}
+
+/* --- Section header inside cards — gray instead of blue ------- */
+.section-heading{font-size:10px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px;}
+
+/* --- Detail-page header — same on client/caregiver/caseworker ------- */
+.detail-header{display:flex;align-items:center;padding:16px 24px 8px;gap:12px;}
+.detail-header .back{display:inline-flex;align-items:center;gap:4px;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:12px;padding:6px 8px;border-radius:4px;font-family:Arial,sans-serif;}
+.detail-header .back:hover{background:var(--surface-hover);color:var(--text);}
+.detail-header .dh-avatar{width:44px;height:44px;border-radius:50%;background:var(--accent-tint);color:var(--accent);font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.detail-header .dh-body{flex:1;min-width:0;}
+.detail-header h1{font-size:18px;font-weight:700;color:var(--text);line-height:1.2;margin:0;}
+.detail-header .dh-sub{font-size:12px;color:var(--text-muted);margin-top:2px;}
+.detail-header .dh-actions{display:flex;align-items:center;gap:8px;}
+
+/* --- Body-text-colored links (underline only on hover) instead of always-blue ------- */
+.link-plain{color:var(--text);text-decoration:none;}
+.link-plain:hover{text-decoration:underline;color:var(--accent);}
+
+/* Phase 1 END */
+
+
 /* ===== SIDEBAR ===== */
 #sidebar{width:220px;min-width:220px;background:#1a2b45;display:flex;flex-direction:column;height:100vh;position:sticky;top:0;flex-shrink:0;transition:width 0.2s;overflow:hidden;}
 #sidebar.collapsed{width:48px;min-width:48px;}
