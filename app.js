@@ -649,7 +649,7 @@ function renderClientTable(forceStatus){
     var tr=document.createElement('tr');
     var hrefCl=buildClientUrl(name);
     tr.innerHTML=
-      '<td style="width:32px;" onclick="event.stopPropagation()"><input type="checkbox" '+checked+' onchange="toggleBulkClient(\''+esc(name)+'\',this)" style="width:13px;height:13px;cursor:pointer;"></td>'+
+      '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" '+checked+' onchange="toggleBulkClient(\''+esc(name)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
       '<td><a href="'+hrefCl+'" class="link-plain" style="display:block;"><div class="ct-name">'+esc(name)+(prof.nickname?'<span style="font-weight:normal;color:var(--text-subtle);"> ('+esc(prof.nickname)+')</span>':'')+'</div><div class="ct-id">'+(prof.medicaidId||'No Medicaid ID')+'</div></a></td>'+
       '<td><span class="status-inline"><span class="status-dot '+st+'"></span>'+stLabel+'</span></td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(phone)+'</td>'+
@@ -1597,7 +1597,7 @@ function renderCaregiverGrid(){
     var hrefCg=buildCaregiverUrl(id);
     var checked=cgBulkSelected[id]?'checked':'';
     tr.innerHTML=
-      '<td style="width:32px;" onclick="event.stopPropagation()"><input type="checkbox" class="cg-select" data-id="'+esc(id)+'" '+checked+' onchange="toggleBulkCaregiver(\''+esc(id)+'\',this)" style="width:13px;height:13px;cursor:pointer;"></td>'+
+      '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" class="cg-select" data-id="'+esc(id)+'" '+checked+' onchange="toggleBulkCaregiver(\''+esc(id)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
       '<td><a href="'+hrefCg+'" class="link-plain" style="display:block;"><div class="ct-name">'+esc(displayName)+(cg.nickname?'<span style="font-weight:normal;color:var(--text-subtle);"> ('+esc(cg.nickname)+')</span>':'')+'</div><div class="ct-id">'+(cg.email||'No email')+'</div></a></td>'+
       '<td><span class="status-inline"><span class="status-dot '+st+'"></span>'+stLabel+'</span></td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cg.phone||'—')+'</td>'+
@@ -6154,7 +6154,7 @@ function renderSupervisorList(){
     var tr=document.createElement('tr');
     var checked=supBulkSelected[id]?'checked':'';
     tr.innerHTML=
-      '<td style="width:32px;" onclick="event.stopPropagation()"><input type="checkbox" class="sup-select" data-id="'+esc(id)+'" '+checked+' onchange="toggleBulkSupervisor(\''+esc(id)+'\',this)" style="width:13px;height:13px;cursor:pointer;"></td>'+
+      '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" class="sup-select" data-id="'+esc(id)+'" '+checked+' onchange="toggleBulkSupervisor(\''+esc(id)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
       '<td><div class="ct-name">'+esc(s.name||'')+'</div></td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(s.phone||'—')+'</td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(s.email||'—')+'</td>'+
@@ -6425,7 +6425,7 @@ function renderCaseworkerList(){
     var tr=document.createElement('tr');
     var checked=cwBulkSelected[cw.id]?'checked':'';
     tr.innerHTML=
-      '<td style="width:32px;" onclick="event.stopPropagation()"><input type="checkbox" class="cw-select" data-id="'+esc(cw.id)+'" '+checked+' onchange="toggleBulkCaseworker(\''+esc(cw.id)+'\',this)" style="width:13px;height:13px;cursor:pointer;"></td>'+
+      '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" class="cw-select" data-id="'+esc(cw.id)+'" '+checked+' onchange="toggleBulkCaseworker(\''+esc(cw.id)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
       '<td><a href="'+hrefCw+'" class="link-plain" style="display:block;"><div class="ct-name">'+esc(cw.name||'')+'</div><div class="ct-id">'+esc(cw.agency||'No agency')+'</div></a></td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cw.phone||'—')+'</td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cw.email||'—')+'</td>'+

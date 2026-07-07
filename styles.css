@@ -32,11 +32,14 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
   --dot-info:#185FA5;
 }
 
-/* --- Entity page header (Clients / Caregivers / Caseworkers / Supervisors) ------- */
-.entity-header{display:flex;align-items:center;justify-content:space-between;padding:18px 24px 12px;gap:16px;flex-wrap:wrap;}
+/* --- Entity page header (Clients / Caregivers / Caseworkers / Supervisors) -------
+    Sized to sit calmly with the ~12px table content — the title reads as a page
+    label, not a shout. Padding tightened so the header doesn't dominate the
+    fold. */
+.entity-header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px 10px;gap:16px;flex-wrap:wrap;}
 .entity-header .titles{min-width:0;}
-.entity-header h1{font-size:20px;font-weight:700;color:var(--text);line-height:1.2;margin:0;}
-.entity-header .subtitle{font-size:12px;color:var(--text-muted);margin-top:2px;}
+.entity-header h1{font-size:15px;font-weight:700;color:var(--text);line-height:1.2;margin:0;}
+.entity-header .subtitle{font-size:11px;color:var(--text-muted);margin-top:2px;}
 .entity-header .actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
 .entity-header .search-slim{padding:7px 12px;border:1px solid var(--border-strong);border-radius:6px;font-size:12px;font-family:Arial,sans-serif;outline:none;color:var(--text);background:var(--surface);width:220px;max-width:100%;}
 .entity-header .search-slim:focus{border-color:var(--accent);}
@@ -92,13 +95,19 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 .link-plain{color:var(--text);text-decoration:none;}
 .link-plain:hover{text-decoration:underline;color:var(--accent);}
 
-/* --- Column resize handles (Phase 3a — Clients table) ------- */
+/* --- Column resize handles (Phase 3a — entity tables) ------- */
 .entity-table{table-layout:fixed;}
 .entity-table th.resizable{position:relative;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .entity-table td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .entity-table th .resize-handle{position:absolute;right:0;top:0;bottom:0;width:6px;cursor:col-resize;user-select:none;z-index:5;}
 .entity-table th .resize-handle:hover{background:var(--accent);opacity:0.4;}
 .entity-table th.resizable{padding-right:22px;} /* room for sort arrow + resize handle */
+/* Checkbox column — narrow padding so the 26px column actually fits the 12px checkbox */
+.entity-table th:first-child,
+.entity-table td:first-child{padding:8px 6px;text-align:center;}
+/* Tighten row padding overall — matches the smaller header font */
+.entity-table thead th{padding:8px 12px;}
+.entity-table tbody td{padding:9px 12px;}
 
 /* --- Pagination buttons (Phase 3a) ------- */
 .pg-btn{background:none;border:1px solid var(--border);color:var(--text);cursor:pointer;padding:4px 9px;font-size:12px;font-family:Arial,sans-serif;border-radius:4px;min-width:28px;line-height:1;}

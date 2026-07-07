@@ -26,7 +26,7 @@ function aiTrack(name, props){
   }catch(e){}
 }
 </script>
-<link rel="stylesheet" href="styles.css?v=20260707k">
+<link rel="stylesheet" href="styles.css?v=20260707l">
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -144,7 +144,7 @@ function aiTrack(name, props){
       <table class="client-table entity-table" id="clientTable">
         <thead>
           <tr>
-            <th style="width:32px;"></th>
+            <th style="width:26px;"></th>
             <th class="sortable resizable" data-sortkey="name" data-col="name" onclick="sortClientBy('name')">Client<span class="resize-handle" onmousedown="startColResize(event,'name')"></span></th>
             <th class="sortable resizable" data-sortkey="status" data-col="status" onclick="sortClientBy('status')">Status<span class="resize-handle" onmousedown="startColResize(event,'status')"></span></th>
             <th class="sortable resizable" data-sortkey="phone" data-col="phone" onclick="sortClientBy('phone')">Phone<span class="resize-handle" onmousedown="startColResize(event,'phone')"></span></th>
@@ -311,7 +311,7 @@ function aiTrack(name, props){
         <table class="client-table entity-table" id="cgTable">
           <thead>
             <tr>
-              <th style="width:32px;"><input type="checkbox" id="cgSelectAll" onchange="toggleAllCaregivers(this)" style="width:13px;height:13px;cursor:pointer;"></th>
+              <th style="width:32px;"><input type="checkbox" id="cgSelectAll" onchange="toggleAllCaregivers(this)" style="width:12px;height:12px;cursor:pointer;"></th>
               <th class="sortable resizable" data-sortkey="name" data-col="name" onclick="sortCgBy('name')">Caregiver<span class="resize-handle" onmousedown="startCgColResize(event,'name')"></span></th>
               <th class="sortable resizable" data-sortkey="status" data-col="status" onclick="sortCgBy('status')">Status<span class="resize-handle" onmousedown="startCgColResize(event,'status')"></span></th>
               <th class="sortable resizable" data-sortkey="phone" data-col="phone" onclick="sortCgBy('phone')">Phone<span class="resize-handle" onmousedown="startCgColResize(event,'phone')"></span></th>
@@ -600,7 +600,7 @@ function aiTrack(name, props){
           <table class="client-table entity-table" id="cwTable">
             <thead>
               <tr>
-                <th style="width:32px;"><input type="checkbox" id="cwSelectAll" onchange="toggleAllCaseworkers(this)" style="width:13px;height:13px;cursor:pointer;"></th>
+                <th style="width:32px;"><input type="checkbox" id="cwSelectAll" onchange="toggleAllCaseworkers(this)" style="width:12px;height:12px;cursor:pointer;"></th>
                 <th class="sortable resizable" data-sortkey="name" data-col="name" onclick="sortCwBy('name')">Caseworker<span class="resize-handle" onmousedown="startCwColResize(event,'name')"></span></th>
                 <th class="sortable resizable" data-sortkey="phone" data-col="phone" onclick="sortCwBy('phone')">Phone<span class="resize-handle" onmousedown="startCwColResize(event,'phone')"></span></th>
                 <th class="sortable resizable" data-sortkey="email" data-col="email" onclick="sortCwBy('email')">Email<span class="resize-handle" onmousedown="startCwColResize(event,'email')"></span></th>
@@ -641,7 +641,7 @@ function aiTrack(name, props){
           <table class="client-table entity-table" id="supTable">
             <thead>
               <tr>
-                <th style="width:32px;"><input type="checkbox" id="supSelectAll" onchange="toggleAllSupervisors(this)" style="width:13px;height:13px;cursor:pointer;"></th>
+                <th style="width:32px;"><input type="checkbox" id="supSelectAll" onchange="toggleAllSupervisors(this)" style="width:12px;height:12px;cursor:pointer;"></th>
                 <th class="sortable resizable" data-sortkey="name" data-col="name" onclick="sortSupBy('name')">Supervisor<span class="resize-handle" onmousedown="startSupColResize(event,'name')"></span></th>
                 <th class="sortable resizable" data-sortkey="phone" data-col="phone" onclick="sortSupBy('phone')">Phone<span class="resize-handle" onmousedown="startSupColResize(event,'phone')"></span></th>
                 <th class="sortable resizable" data-sortkey="email" data-col="email" onclick="sortSupBy('email')">Email<span class="resize-handle" onmousedown="startSupColResize(event,'email')"></span></th>
@@ -1159,6 +1159,6 @@ function aiTrack(name, props){
     </div>
   </div>
 </div>
-<script src="app.js?v=20260707k"></script>
+<script src="app.js?v=20260707l"></script>
 </body>
 </html>
