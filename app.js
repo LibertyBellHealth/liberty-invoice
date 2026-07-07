@@ -513,6 +513,17 @@ function renderClientTable(forceStatus){
   });
 
   var tbody=document.getElementById('clientTableBody'),empty=document.getElementById('clientTableEmpty');
+  // "Showing X of Y" indicator — Y is total clients matching status only, X is after all filters
+  var totalActiveMatchingStatus=Object.keys(profiles).filter(function(k){
+    var st=profiles[k].clientStatus||'active';
+    return filterStatus==='all'||st===filterStatus;
+  }).length;
+  var countEl=document.getElementById('clientTableCount');
+  if(countEl){
+    countEl.textContent=keys.length===totalActiveMatchingStatus?
+      keys.length+' client'+(keys.length===1?'':'s'):
+      keys.length+' of '+totalActiveMatchingStatus+' shown';
+  }
   if(!tbody)return;tbody.innerHTML='';
   if(!keys.length){if(empty)empty.style.display='block';if(tbody)tbody.innerHTML='';return;}
   if(empty)empty.style.display='none';

@@ -26,7 +26,7 @@ function aiTrack(name, props){
   }catch(e){}
 }
 </script>
-<link rel="stylesheet" href="styles.css?v=20260707b">
+<link rel="stylesheet" href="styles.css?v=20260707c">
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -106,20 +106,11 @@ function aiTrack(name, props){
     <!-- AUTO-GENERATE UNDO BANNER (24h) -->
     <div id="autogenUndoBanner" style="display:none;"></div>
 
-    <!-- Compact one-line metric summary — replaces the big colorful tile row -->
-    <div class="entity-metrics">
-      <span class="metric-item clickable" onclick="renderClientTable('all')"><span class="metric-num" id="statTotal">0</span> active</span>
-      <span class="metric-sep">·</span>
-      <span class="metric-item clickable" onclick="openAllInvoicesModal('outstanding')"><span class="metric-num" id="statOutstanding">0</span> outstanding</span>
-      <span class="metric-sep">·</span>
-      <span class="metric-item clickable" onclick="openAllInvoicesModal('all')"><span class="metric-num" id="statInvoices">0</span> invoices</span>
-      <span class="metric-sep">·</span>
-      <span class="metric-item clickable" onclick="navCaregivers()"><span class="metric-num" id="statCaregivers">0</span> caregivers</span>
-      <span class="metric-sep">·</span>
-      <span class="metric-item">Billing <span class="metric-num" id="statMonth">—</span></span>
-    </div>
+    <!-- Metric row removed — caregiver count / invoice count / billing period all belong
+         on their respective pages, not here. Only "Showing X of Y" indicator remains
+         (rendered by renderClientTable, positioned bottom-right of the table). -->
 
-    <!-- CLIENT TABLE — filters kept, sort dropdown removed (sort moved to column headers) -->
+    <!-- CLIENT TABLE — filters kept, sort dropdown + All-Caregivers dropdown removed -->
     <div class="client-table-wrap">
       <div class="ct-toolbar">
         <input id="clientSearch" class="ct-search" placeholder="Filter clients…" oninput="renderClientTable()">
@@ -130,10 +121,12 @@ function aiTrack(name, props){
           <option value="lost">Lost</option>
           <option value="terminated">Terminated</option>
         </select>
-        <select id="filterCaregiver" onchange="renderClientTable()" class="ct-filter"><option value="">All Caregivers</option></select>
         <label class="ct-check"><input type="checkbox" id="filterOutstanding" onchange="renderClientTable()"> Outstanding only</label>
-        <!-- Hidden legacy input kept so filterSort references don't crash. Real sort is on column headers. -->
+        <!-- Hidden legacy inputs kept so existing code paths don't crash. -->
         <input type="hidden" id="filterSort" value="name">
+        <input type="hidden" id="filterCaregiver" value="">
+        <!-- Row count at right-end of toolbar (updated by renderClientTable) -->
+        <span id="clientTableCount" style="margin-left:auto;font-size:12px;color:var(--text-muted);"></span>
       </div>
       <div class="ct-bulk-bar" id="ctBulkBar">
         <span id="ctBulkCount">0 selected</span>
@@ -1158,6 +1151,6 @@ function aiTrack(name, props){
     </div>
   </div>
 </div>
-<script src="app.js?v=20260707b"></script>
+<script src="app.js?v=20260707c"></script>
 </body>
 </html>
