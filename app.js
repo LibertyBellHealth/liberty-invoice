@@ -6851,8 +6851,8 @@ window.addEventListener('beforeunload',function(e){
 // ============================================================
 //  AUTO SESSION TIMEOUT (HIPAA — 15 min inactivity)
 // ============================================================
-var SESSION_TIMEOUT_MS  = 15 * 60 * 1000; // sign out after 15 min idle
-var SESSION_WARN_MS     = 13 * 60 * 1000; // warn at 13 min
+var SESSION_TIMEOUT_MS  = 45 * 60 * 1000; // sign out after 45 min idle
+var SESSION_WARN_MS     = 43 * 60 * 1000; // warn at 43 min
 var _sessionTimer, _sessionWarnTimer;
 
 function resetSessionTimer(){
@@ -6870,8 +6870,10 @@ function resetSessionTimer(){
     showToast('Signed out automatically due to inactivity.', 5000);
   }, SESSION_TIMEOUT_MS);
 }
-// Restart timer on any user interaction
-['mousemove','mousedown','keydown','touchstart','scroll','click'].forEach(function(ev){
+// Restart the timer on GENUINE interaction only. mousemove and scroll used to be in
+// this list, which meant any cursor drift — or an animated/auto-scrolling element —
+// kept an unattended session alive forever, defeating the purpose.
+['mousedown','keydown','touchstart','click'].forEach(function(ev){
   document.addEventListener(ev, resetSessionTimer, {passive:true});
 });
 
