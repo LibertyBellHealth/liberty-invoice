@@ -640,7 +640,7 @@ function renderClientTable(forceStatus){
   visibleKeys.forEach(function(name){
     var prof=profiles[name];
     var st=prof.clientStatus||'active';
-    var stLabel=st.charAt(0).toUpperCase()+st.slice(1);
+    var stLabel=st==='inactive'?'In Progress':st.charAt(0).toUpperCase()+st.slice(1);
     var cgName=prof.caregiverId&&cgs[prof.caregiverId]?cgs[prof.caregiverId].name:'—';
     var cw=prof.caseworkerId?cwById[prof.caseworkerId]:null;
     var cwName=cw?cw.name:(prof.worker||'—');
@@ -922,7 +922,7 @@ function renderInfoPane(){
   var dNickSt=document.createElement('div');dNickSt.className='info-field-row full';
   dNickSt.innerHTML='<div class="info-field"><label>Nickname / Goes By</label><input id="ei-nickname" value="'+esc(prof.nickname||'')+'" oninput="unsavedChanges=true;"></div>'+
     '<div class="info-field"><label>Client Status</label><select id="ei-status">'+
-      ['active','inactive','lost','terminated'].map(function(s){return '<option value="'+s+'"'+((prof.clientStatus||'active')===s?' selected':'')+'>'+s.charAt(0).toUpperCase()+s.slice(1)+'</option>';}).join('')+
+      ['active','inactive','lost','terminated'].map(function(s){return '<option value="'+s+'"'+((prof.clientStatus||'active')===s?' selected':'')+'>'+(s==='inactive'?'In Progress':s.charAt(0).toUpperCase()+s.slice(1))+'</option>';}).join('')+
     '</select></div>';
   g.appendChild(dNickSt);
 
@@ -941,13 +941,10 @@ function renderInfoPane(){
   g.appendChild(dGender);
   mkField('ei-rate','Hourly Rate',prof.hourlyRate||'',false);
   mkField('ei-dl',"Driver's License #",prof.driversLicense||'',false);
-  // SSN masked by default with Show/Hide toggle
+  // SSN masked by default; reveals while the field is focused, re-masks on blur
   var dSsn=document.createElement('div');dSsn.className='info-field';
   dSsn.innerHTML='<label>Social Security #</label>'+
-    '<div style="display:flex;gap:4px;align-items:center;">'+
-      '<input id="ei-ssn" type="password" autocomplete="off" value="'+esc(prof.ssn||'')+'" style="flex:1;" oninput="unsavedChanges=true;">'+
-      '<button type="button" class="btn btn-secondary btn-sm" onclick="toggleMask(\'ei-ssn\',this)" style="padding:4px 8px;font-size:11px;white-space:nowrap;">Show</button>'+
-    '</div>';
+    '<input id="ei-ssn" type="password" autocomplete="off" value="'+esc(prof.ssn||'')+'" oninput="unsavedChanges=true;" onfocus="this.type=\'text\'" onblur="this.type=\'password\'">';
   g.appendChild(dSsn);
   mkField('ei-phone','Client Phone',prof.phone||'',false);
   mkField('ei-cemail','Client Email',prof.clientEmail||'',false);
@@ -2247,13 +2244,10 @@ function renderCgInfoPane(){
   mkF('cgi-phone','Phone',cg.phone,false);
   mkF('cgi-email','Email',cg.email,false);
   mkF('cgi-dl',"Driver's License #",cg.driversLicense,false);
-  // SSN masked with Show/Hide toggle
+  // SSN masked; reveals while the field is focused, re-masks on blur
   var cgSsnDiv=document.createElement('div');cgSsnDiv.className='info-field';
   cgSsnDiv.innerHTML='<label>Social Security #</label>'+
-    '<div style="display:flex;gap:4px;align-items:center;">'+
-      '<input id="cgi-ssn" type="password" autocomplete="off" value="'+esc(cg.ssn||'')+'" style="flex:1;">'+
-      '<button type="button" class="btn btn-secondary btn-sm" onclick="toggleMask(\'cgi-ssn\',this)" style="padding:4px 8px;font-size:11px;white-space:nowrap;">Show</button>'+
-    '</div>';
+    '<input id="cgi-ssn" type="password" autocomplete="off" value="'+esc(cg.ssn||'')+'" onfocus="this.type=\'text\'" onblur="this.type=\'password\'">';
   g.appendChild(cgSsnDiv);
   mkF('cgi-street','Street',cg.street||cg.address,true);
   mkRow('<div class="info-field"><label>City</label><input id="cgi-city" value="'+esc(cg.city||'')+'"></div>'+
@@ -6564,7 +6558,7 @@ function renderCwOverviewPane(){
         return '<div onclick="navDetail(\''+esc(name).replace(/'/g,"\\'")+'\')" style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#f7faff;border:1px solid #e1e5ea;border-radius:5px;cursor:pointer;font-size:12px;" onmouseover="this.style.borderColor=\'#b0c8e8\'" onmouseout="this.style.borderColor=\'#e1e5ea\'">'+
           '<span style="flex:1;color:#185FA5;font-weight:500;">'+esc(name)+'</span>'+
           (p.medicaidId?'<span style="color:#8ca0b4;">'+esc(p.medicaidId)+'</span>':'')+
-          '<span style="color:'+stColor+';font-size:10px;font-weight:600;text-transform:uppercase;">'+st+'</span>'+
+          '<span style="color:'+stColor+';font-size:10px;font-weight:600;text-transform:uppercase;">'+(st==='inactive'?'In Progress':st)+'</span>'+
         '</div>';
       }).join('')+
     '</div>';
