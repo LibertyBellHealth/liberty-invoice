@@ -120,9 +120,9 @@ function aiTrack(name, props){
       <div class="ct-toolbar">
         <input id="clientSearch" class="ct-search" placeholder="Filter clients…" oninput="renderClientTable()">
         <select id="filterStatus" onchange="renderClientTable()" class="ct-filter">
-          <option value="active">Active</option>
           <option value="all">All Statuses</option>
-          <option value="inactive">Inactive</option>
+          <option value="active">Active</option>
+          <option value="inactive">In Progress</option>
           <option value="lost">Lost</option>
           <option value="terminated">Terminated</option>
         </select>
@@ -135,7 +135,7 @@ function aiTrack(name, props){
       <div class="ct-bulk-bar" id="ctBulkBar">
         <span id="ctBulkCount">0 selected</span>
         <button onclick="bulkSetClientStatus('active')">Mark Active</button>
-        <button onclick="bulkSetClientStatus('inactive')">Mark Inactive</button>
+        <button onclick="bulkSetClientStatus('inactive')">Mark In Progress</button>
         <button onclick="bulkSetClientStatus('lost')">Mark Lost</button>
         <button onclick="bulkSetClientStatus('terminated')">Mark Terminated</button>
         <button onclick="bulkDelete()" style="background:#c0392b;color:#fff;">Delete</button>
@@ -231,7 +231,7 @@ function aiTrack(name, props){
       <div class="ff-row">
         <div class="ff"><label>Nickname / Goes By</label><input id="nc-nickname" placeholder="Optional" maxlength="40"></div>
         <div class="ff"><label>Status</label>
-          <select id="nc-status"><option value="active">Active</option><option value="inactive">Inactive</option><option value="lost">Lost</option><option value="terminated">Terminated</option></select>
+          <select id="nc-status"><option value="active">Active</option><option value="inactive">In Progress</option><option value="lost">Lost</option><option value="terminated">Terminated</option></select>
         </div>
       </div>
       <div class="ff-row">
@@ -241,11 +241,7 @@ function aiTrack(name, props){
       <div class="ff-row">
         <div class="ff"><label>Driver's License #</label><input id="nc-dl" placeholder="DL number" maxlength="40"></div>
         <div class="ff"><label>Social Security #</label>
-          <div style="display:flex;gap:4px;align-items:center;">
-            <input id="nc-ssn" type="password" placeholder="XXX-XX-XXXX" maxlength="20" autocomplete="off" style="flex:1;">
-            <button type="button" class="btn btn-secondary btn-sm" onclick="toggleMask('nc-ssn',this)" style="padding:4px 8px;font-size:11px;white-space:nowrap;">Show</button>
-          </div>
-        </div>
+          <input id="nc-ssn" type="password" placeholder="XXX-XX-XXXX" maxlength="20" autocomplete="off" onfocus="this.type='text'" onblur="this.type='password'"></div>
       </div>
       <div class="ff-row">
         <div class="ff"><label>Phone #</label><input id="nc-phone" placeholder="(555) 555-5555" maxlength="20"></div>
@@ -375,11 +371,7 @@ function aiTrack(name, props){
           <div class="ff-row">
             <div class="ff"><label>Driver's License #</label><input id="cg-dl" placeholder="DL number" maxlength="40"></div>
             <div class="ff"><label>Social Security #</label>
-              <div style="display:flex;gap:4px;align-items:center;">
-                <input id="cg-ssn" type="password" placeholder="XXX-XX-XXXX" maxlength="20" autocomplete="off" style="flex:1;">
-                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleMask('cg-ssn',this)" style="padding:4px 8px;font-size:11px;white-space:nowrap;">Show</button>
-              </div>
-            </div>
+              <input id="cg-ssn" type="password" placeholder="XXX-XX-XXXX" maxlength="20" autocomplete="off" onfocus="this.type='text'" onblur="this.type='password'"></div>
           </div>
           <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Address</div>
           <div class="ff"><label>Street</label><input id="cg-street" placeholder="Street address" maxlength="120"></div>
