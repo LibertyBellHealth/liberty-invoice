@@ -260,7 +260,11 @@ function aiTrack(name, props){
       <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Assignments</div>
       <div class="ff"><label>Service Start Date <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(prevents "missing invoice" warnings for months before this date)</span></label><input id="nc-start-date" type="date"></div>
       <div class="ff-row">
-        <div class="ff"><label>Assigned Caregiver</label><select id="nc-caregiver"><option value="">— None assigned —</option></select></div>
+        <div class="ff" style="position:relative;"><label>Assigned Caregiver</label>
+          <input id="nc-caregiver-search" placeholder="Click to browse, or type to search…" maxlength="80" autocomplete="off" oninput="cgSearch(this,'nc-caregiver-val','nc-caregiver-drop')" onfocus="cgSearch(this,'nc-caregiver-val','nc-caregiver-drop')" onblur="setTimeout(function(){var d=document.getElementById('nc-caregiver-drop');if(d)d.style.display='none';},200)">
+          <input type="hidden" id="nc-caregiver-val">
+          <div id="nc-caregiver-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>
+        </div>
         <div class="ff" style="display:flex;align-items:flex-end;padding-bottom:8px;">
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:500;"><input type="checkbox" id="nc-live-in" style="width:14px;height:14px;cursor:pointer;"> Live-In Caregiver</label>
         </div>
