@@ -979,7 +979,7 @@ function renderInfoPane(){
           '<input type="hidden" id="ei-caregiver-val" value="'+esc(prof.caregiverId||'')+'">'+
           '<div id="ei-caregiver-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>'+
         '</div>'+
-        (prof.caregiverId?'<button class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="navCaregivers();setTimeout(function(){openCgDetail(\''+esc(prof.caregiverId)+'\');},50)">Open</button>':'')+
+        (prof.caregiverId?'<button class="btn-open" onclick="navCaregivers();setTimeout(function(){openCgDetail(\''+esc(prof.caregiverId)+'\');},50)">Open ↗</button>':'')+
       '</div>'+
     '</div>'+
     '<div class="info-field" style="display:flex;align-items:flex-end;padding-bottom:8px;">'+
@@ -997,7 +997,7 @@ function renderInfoPane(){
         '<input type="hidden" id="ei-worker-val" value="'+esc(prof.caseworkerId||'')+'">'+
         '<div id="ei-worker-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>'+
       '</div>'+
-      (prof.caseworkerId?'<button class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="navCaseworkers();setTimeout(function(){openCwDetail(\''+esc(prof.caseworkerId)+'\');},50)">Open</button>':'')+
+      (prof.caseworkerId?'<button class="btn-open" onclick="navCaseworkers();setTimeout(function(){openCwDetail(\''+esc(prof.caseworkerId)+'\');},50)">Open ↗</button>':'')+
     '</div>';
   g.appendChild(dCw);
 }
@@ -2741,12 +2741,9 @@ function cwSearch(input, hiddenId, dropId) {
     addItem.addEventListener('mousedown', function(e){
       e.preventDefault();
       drop.style.display = 'none';
-      var newName = input.value.trim();
-      var newId = cwId();
-      var newCw = { id: newId, name: newName, first_name: '', last_name: '', agency: '', phone: '', email: '', fax: '', street: '', city: '', state: '', zip: '', county: '', notes: '' };
-      var arr = getCaseworkers(); arr.push(newCw); saveCaseworkersLS(arr);
-      saveCaseworkerAPI(newCw);
-      if(hidden)hidden.value = newId;
+      openQuickCreate('caseworker', input.value.trim(), function(id, name){
+        input.value = name; if(hidden) hidden.value = id;
+      });
     });
     drop.appendChild(addItem);
   }
@@ -2787,12 +2784,9 @@ function cgSearch(input, hiddenId, dropId) {
     addItem.addEventListener('mousedown', function(e){
       e.preventDefault();
       drop.style.display = 'none';
-      var newName = input.value.trim();
-      var newId = cgId();
-      var newCg = { id: newId, name: newName, status: 'active' };
-      var all = getCaregivers(); all[newId] = newCg; saveCaregiversLS(all);
-      if (typeof saveCaregiverAPI === 'function') saveCaregiverAPI(newId, newCg);
-      input.value = newName; if(hidden)hidden.value = newId;
+      openQuickCreate('caregiver', input.value.trim(), function(id, name){
+        input.value = name; if(hidden) hidden.value = id;
+      });
     });
     drop.appendChild(addItem);
   }
@@ -2806,6 +2800,54 @@ function cgSearch(input, hiddenId, dropId) {
 }
 // Focus handler — opens the dropdown showing all options
 function cgSearchFocus(input, hiddenId, dropId){ cgSearch(input, hiddenId, dropId); }
+
+// Inline "quick create" popup for a new caregiver/caseworker from an assignment
+// field. Captures just the essentials (name + contact); the full record is
+// filled in later from their own page. On save, calls onCreated(id, name).
+function openQuickCreate(kind, prefillName, onCreated){
+  var isCg = kind === 'caregiver';
+  var ov = document.createElement('div');
+  ov.className = 'modal-overlay open';
+  ov.innerHTML =
+    '<div class="modal-box" style="max-width:380px;">'+
+      '<h3>New ' + (isCg ? 'Caregiver' : 'Caseworker') + '</h3>'+
+      '<p>Just the essentials — add the rest later on their page.</p>'+
+      '<label class="qc-l">Name</label><input id="qc-name" class="qc-i" maxlength="80" value="'+esc(prefillName||'')+'">'+
+      (isCg ? '' : '<label class="qc-l">Agency</label><input id="qc-agency" class="qc-i" maxlength="80">')+
+      '<label class="qc-l">Phone</label><input id="qc-phone" class="qc-i" maxlength="20" placeholder="(555) 555-5555">'+
+      '<label class="qc-l">Email</label><input id="qc-email" class="qc-i" maxlength="80" placeholder="name@email.com">'+
+      '<div class="modal-row">'+
+        '<button class="btn btn-primary" id="qc-save">Create &amp; select</button>'+
+        '<button class="btn btn-secondary" id="qc-cancel">Cancel</button>'+
+      '</div>'+
+    '</div>';
+  document.body.appendChild(ov);
+  var close = function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); };
+  ov.querySelector('#qc-cancel').addEventListener('click', close);
+  ov.addEventListener('mousedown', function(e){ if(e.target === ov) close(); });
+  ov.querySelector('#qc-save').addEventListener('click', function(){
+    var name = (ov.querySelector('#qc-name').value||'').trim();
+    if(!name){ ov.querySelector('#qc-name').focus(); return; }
+    var phone = (ov.querySelector('#qc-phone').value||'').trim();
+    var email = (ov.querySelector('#qc-email').value||'').trim();
+    var newId;
+    if(isCg){
+      newId = cgId();
+      var cg = { id:newId, name:name, phone:phone, email:email, status:'active' };
+      var all = getCaregivers(); all[newId] = cg; saveCaregiversLS(all);
+      if(typeof saveCaregiverAPI === 'function') saveCaregiverAPI(newId, cg);
+    } else {
+      newId = cwId();
+      var agency = (ov.querySelector('#qc-agency').value||'').trim();
+      var cw = { id:newId, name:name, first_name:'', last_name:'', agency:agency, phone:phone, email:email, fax:'', street:'', city:'', state:'', zip:'', county:'', notes:'' };
+      var arr = getCaseworkers(); arr.push(cw); saveCaseworkersLS(arr);
+      if(typeof saveCaseworkerAPI === 'function') saveCaseworkerAPI(cw);
+    }
+    close();
+    if(typeof onCreated === 'function') onCreated(newId, name);
+  });
+  setTimeout(function(){ var n = ov.querySelector('#qc-name'); if(n){ n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 30);
+}
 
 // ============================================================
 //  ACTIVITY LOG
