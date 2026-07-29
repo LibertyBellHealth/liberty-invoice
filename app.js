@@ -263,9 +263,9 @@ function _openEmailAfterPrint(toAddr,clientName,bp){
 }
 function navNewClient(){
   showPage('new-client');bc([{l:'Clients',fn:navHome},{l:'New Client'}]);document.getElementById('topbarActions').innerHTML='';
-  ['nc-first','nc-middle','nc-last','nc-nickname','nc-medicaid','nc-rate','nc-dl','nc-ssn','nc-phone','nc-cemail','nc-street','nc-city','nc-state','nc-zip','nc-county','nc-start-date','nc-worker-search','nc-worker-val'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  ['nc-first','nc-middle','nc-last','nc-nickname','nc-medicaid','nc-rate','nc-dl','nc-ssn','nc-phone','nc-cemail','nc-street','nc-city','nc-state','nc-zip','nc-county','nc-start-date','nc-worker-search','nc-worker-val','nc-caregiver-search','nc-caregiver-val'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
   var drop=document.getElementById('nc-worker-drop');if(drop)drop.style.display='none';
-  populateCaregiverSelect('nc-caregiver','');
+  var cgDrop=document.getElementById('nc-caregiver-drop');if(cgDrop)cgDrop.style.display='none';
 }
 function navDetail(name,tab){
   aiTrack('ClientRecordOpened',{client:name,tab:tab||'info'});
@@ -1465,7 +1465,7 @@ function _doCreateClient(name,first,middle,last,nickname){
   p[name].county=document.getElementById('nc-county').value.trim();
   p[name].worker=document.getElementById('nc-worker-search').value.trim();
   p[name].caseworkerId=document.getElementById('nc-worker-val').value.trim();
-  p[name].caregiverId=document.getElementById('nc-caregiver').value;
+  p[name].caregiverId=(document.getElementById('nc-caregiver-val').value||'').trim();
   p[name].liveIn=document.getElementById('nc-live-in').checked;
   p[name].startDate=document.getElementById('nc-start-date').value||'';
   p[name].clientStatus=document.getElementById('nc-status').value||'active';
@@ -2779,10 +2779,27 @@ function cgSearch(input, hiddenId, dropId) {
     item.addEventListener('mouseout', function(){ this.style.background=''; });
     drop.appendChild(item);
   });
-  if (!ids.length) {
+  // "+ Add new" option only when typing AND no exact name match exists
+  if (val && !ids.some(function(id){ return (cgs[id].name||'').toLowerCase() === val; })) {
+    var addItem = document.createElement('div');
+    addItem.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;color:#185FA5;font-weight:600;';
+    addItem.textContent = '+ Add "' + input.value.trim() + '" as new caregiver';
+    addItem.addEventListener('mousedown', function(e){
+      e.preventDefault();
+      drop.style.display = 'none';
+      var newName = input.value.trim();
+      var newId = cgId();
+      var newCg = { id: newId, name: newName, status: 'active' };
+      var all = getCaregivers(); all[newId] = newCg; saveCaregiversLS(all);
+      if (typeof saveCaregiverAPI === 'function') saveCaregiverAPI(newId, newCg);
+      input.value = newName; if(hidden)hidden.value = newId;
+    });
+    drop.appendChild(addItem);
+  }
+  if (!ids.length && !val) {
     var noItem = document.createElement('div');
     noItem.style.cssText = 'padding:8px 12px;font-size:13px;color:#8ca0b4;';
-    noItem.textContent = val ? 'No caregivers found' : 'No caregivers yet';
+    noItem.textContent = 'No caregivers yet';
     drop.appendChild(noItem);
   }
   drop.style.display = 'block';
