@@ -173,6 +173,13 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 .btn-danger{background:#fff;color:#b03030;border-color:#dbb0b0;}
 .btn-danger:hover{background:#fdf2f2;border-color:#b03030;}
 .btn-sm{padding:4px 10px;font-size:11px;}
+/* Subtle "jump to linked record" pill — used beside assigned caregiver/caseworker */
+.btn-open{display:inline-flex;align-items:center;gap:4px;background:#eef4fb;color:#185FA5;border:none;padding:6px 12px;border-radius:999px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:Arial,sans-serif;transition:background .12s,color .12s;}
+.btn-open:hover{background:#185FA5;color:#fff;}
+/* Quick-create popup (inline new caregiver/caseworker) */
+.qc-l{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#6b8dae;margin:10px 0 4px;}
+.qc-i{width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;box-sizing:border-box;}
+.qc-i:focus{border-color:#185FA5;}
 
 /* ===== PAGES ===== */
 .page{display:none;padding:24px 28px;}
