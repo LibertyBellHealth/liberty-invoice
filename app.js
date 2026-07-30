@@ -1267,36 +1267,7 @@ function renderDocsPane(){
   var c=document.getElementById('docsContent');c.innerHTML='';
   if(!activeProfileName)return;
   var clientId=getHcClientId();
-  c.innerHTML=
-    '<div class="doc-upload-card">'+
-      '<div class="doc-upload-head">'+
-        '<h4>Client Documents</h4>'+
-        '<p>Upload SSN cards, driver\'s licenses, insurance cards, authorizations, etc.</p>'+
-      '</div>'+
-      '<div class="doc-upload-row">'+
-        '<div class="doc-upload-fields">'+
-          '<label>Category</label>'+
-          '<select id="hcDocCategory">'+
-            '<option value="Other">Other</option>'+
-            '<option value="SSN_Card">SSN Card</option>'+
-            '<option value="Drivers_License">Driver\'s License</option>'+
-            '<option value="Insurance_Card">Insurance Card</option>'+
-            '<option value="Medicare_Card">Medicare Card</option>'+
-            '<option value="Medicaid_Card">Medicaid Card</option>'+
-            '<option value="Authorization">Authorization</option>'+
-          '</select>'+
-          '<label style="margin-top:8px;">File</label>'+
-          '<input type="file" id="hcDocFileInput" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple>'+
-        '</div>'+
-        '<div class="doc-upload-actions">'+
-          '<button class="btn btn-primary" onclick="uploadHcDoc()">Upload</button>'+
-          '<input type="file" id="docScanInput" accept="image/*" capture="environment" style="display:none;" onchange="handleDocScan(this)">'+
-          '<button class="btn btn-secondary" onclick="document.getElementById(\'docScanInput\').click()">Scan / Photo</button>'+
-        '</div>'+
-      '</div>'+
-      '<span id="hcDocStatus" class="doc-upload-status"></span>'+
-    '</div>'+
-    '<div id="hcDocList"><div style="color:#8ca0b4;font-size:13px;">Loading...</div></div>';
+  c.innerHTML=docUploaderHtml({title:'Client Documents',subtitle:"SSN cards, driver's licenses, insurance cards, authorizations, etc.",hasCategory:true,catId:'hcDocCategory',fileId:'hcDocFileInput',scanId:'docScanInput',scanFn:'handleDocScan(this)',uploadFn:'uploadHcDoc()',statusId:'hcDocStatus',listId:'hcDocList'});
   if(clientId){loadHcDocs(clientId);}
   else{document.getElementById('hcDocList').innerHTML='<div style="color:#8ca0b4;font-size:12px;">Save this client to the database first before uploading documents.</div>';}
 }
@@ -1306,35 +1277,139 @@ function loadHcDocs(clientId){
   .then(function(docs){renderHcDocList(clientId,docs||[]);})
   .catch(function(){renderHcDocList(clientId,[]);});
 }
-function renderHcDocList(clientId,docs){
-  var list=document.getElementById('hcDocList');if(!list)return;
-  if(!docs.length){list.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:4px 0;">No documents yet.</div>';return;}
-  list.innerHTML='';
-  var categoryLabels={SSN_Card:'SSN Card',Drivers_License:"Driver's License",Insurance_Card:'Insurance Card',Medicare_Card:'Medicare Card',Medicaid_Card:'Medicaid Card',Authorization:'Authorization',Other:'Other'};
-  docs.forEach(function(d){
-    var kb=d.size?Math.round(d.size/1024)+'KB':'';
-    var ext=(d.name||'').split('.').pop().toLowerCase();
-    var isImg=['jpg','jpeg','png','gif'].indexOf(ext)>=0;
-    var icon=(ext||"").toUpperCase().slice(0,4);
-    // parse category prefix from filename: "SSN_Card__filename.pdf"
-    var parts=d.name.split('__');
-    var cat=parts.length>1?parts[0]:'Other';
-    var displayName=parts.length>1?parts.slice(1).join('__'):d.name;
-    var catLabel=categoryLabels[cat]||cat;
-    var card=document.createElement('div');
-    card.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #e1e8f0;border-radius:6px;margin-bottom:6px;background:#fafbfc;';
-    card.innerHTML=
-      '<span style="display:inline-block;min-width:34px;padding:3px 6px;background:#e8eef5;color:#1a3a5c;border-radius:4px;font-size:10px;font-weight:600;text-align:center;letter-spacing:.3px;">'+(icon||'FILE')+'</span>'+
-      '<div style="flex:1;min-width:0;">'+
-        '<div style="font-size:12px;font-weight:600;color:#1a3a5c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><a href="'+d.url+'" target="_blank" style="color:#1a3a5c;text-decoration:none;">'+esc(displayName)+'</a></div>'+
-        '<div style="font-size:11px;color:#8ca0b4;">'+
-          '<span style="background:#dbeafe;color:#1e40af;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;margin-right:6px;">'+esc(catLabel)+'</span>'+
-          kb+
-        '</div>'+
+// ── Shared modern document grid (client / caregiver / caseworker) ──
+var DOC_CATS=[['Other','Other'],['SSN_Card','SSN Card'],['Drivers_License',"Driver's License"],['Insurance_Card','Insurance Card'],['Medicare_Card','Medicare Card'],['Medicaid_Card','Medicaid Card'],['Authorization','Authorization'],['Certification','Certification'],['Background_Check','Background Check'],['I9_W4','I-9 / W-4']];
+function _docCatLabel(c){for(var i=0;i<DOC_CATS.length;i++){if(DOC_CATS[i][0]===c)return DOC_CATS[i][1];}return c||'Other';}
+function _fmtDocSize(n){if(!n)return '';return n<1048576?Math.round(n/1024)+' KB':(n/1048576).toFixed(1)+' MB';}
+var _docEditCtx=null;
+function renderDocGrid(list,docs,opts){
+  if(!list)return; opts=opts||{};
+  if(!docs||!docs.length){list.className='';list.innerHTML='<div class="doc-empty">No documents yet.</div>';return;}
+  list.className='doc-grid';
+  _docEditCtx={docs:docs,clientType:opts.clientType,clientId:opts.clientId,refresh:opts.refresh};
+  list.innerHTML=docs.map(function(d,i){
+    var display=d.displayName||d.name||'Document';
+    var ext=(display.split('.').pop()||'').toLowerCase();
+    var isImg=['jpg','jpeg','png','gif','webp','heic','bmp'].indexOf(ext)>=0;
+    var isPdf=ext==='pdf';
+    var thumb=isImg
+      ?'<span class="doc-thumb" style="background-image:url(\''+esc(d.url)+'\')"></span>'
+      :'<span class="doc-thumb doc-thumb-file">'+_docFileIcon(ext)+'</span>';
+    return '<div class="doc-card">'+
+      '<a class="doc-card-preview" href="'+esc(d.url||'#')+'" target="_blank" rel="noopener" onclick="return openDocPreview('+i+')" title="Preview">'+thumb+'</a>'+
+      '<div class="doc-card-body">'+
+        '<a class="doc-card-name" href="'+esc(d.url||'#')+'" target="_blank" rel="noopener" onclick="return openDocPreview('+i+')" title="'+esc(display)+'">'+esc(display)+'</a>'+
+        '<div class="doc-card-meta"><span class="doc-cat-pill">'+esc(_docCatLabel(d.category))+'</span>'+(d.size?'<span class="doc-size">'+_fmtDocSize(d.size)+'</span>':'')+'</div>'+
       '</div>'+
-      '<button class="btn btn-danger btn-sm" style="padding:3px 10px;font-size:11px;" onclick="deleteHcDoc('+clientId+',\''+encodeURIComponent(d.name)+'\')">✕</button>';
-    list.appendChild(card);
+      '<div class="doc-card-actions">'+
+        '<a class="doc-act" href="'+esc(d.downloadUrl||d.url||'#')+'" title="Download" download>⬇</a>'+
+        '<button class="doc-act" title="Rename / relabel" onclick="openDocEditModal('+i+')">✎</button>'+
+        '<button class="doc-act doc-act-del" title="Delete" onclick="'+opts.deleteExpr(d.name)+'">✕</button>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+function openDocEditModal(index){
+  var ctx=_docEditCtx;if(!ctx)return; var d=ctx.docs[index];if(!d)return;
+  var ov=document.createElement('div');ov.className='modal-overlay open';
+  ov.innerHTML='<div class="modal-box" style="max-width:380px;">'+
+    '<h3>Edit Document</h3>'+
+    '<p>Rename this document or change its category.</p>'+
+    '<label class="qc-l">Name</label><input id="de-name" class="qc-i" maxlength="120" value="'+esc(d.displayName||d.name||'')+'">'+
+    docCategoryFieldHtml('de-cat',_docCatLabel(d.category))+
+    '<div class="modal-row"><button class="btn btn-primary" id="de-save">Save</button><button class="btn btn-secondary" id="de-cancel">Cancel</button></div>'+
+  '</div>';
+  document.body.appendChild(ov);
+  var close=function(){if(ov.parentNode)ov.parentNode.removeChild(ov);};
+  ov.querySelector('#de-cancel').addEventListener('click',close);
+  ov.addEventListener('mousedown',function(e){if(e.target===ov)close();});
+  ov.querySelector('#de-save').addEventListener('click',function(){
+    var name=(ov.querySelector('#de-name').value||'').trim();var cat=ov.querySelector('#de-cat').value;
+    if(!name){ov.querySelector('#de-name').focus();return;}
+    var btn=ov.querySelector('#de-save');btn.textContent='Saving…';btn.disabled=true;
+    fetch(API_BASE+'/documents/meta',{method:'PATCH',headers:apiHeaders(),body:JSON.stringify({clientType:ctx.clientType,clientId:ctx.clientId,name:d.name,displayName:name,category:cat})})
+      .then(function(r){if(!r.ok)throw new Error('Save failed ('+r.status+')');close();if(typeof ctx.refresh==='function')ctx.refresh();})
+      .catch(function(e){btn.textContent='Save';btn.disabled=false;showAlert(String(e));});
   });
+  setTimeout(function(){var n=ov.querySelector('#de-name');if(n){n.focus();}},30);
+}
+// In-app document preview (lightbox) — images inline, PDFs in a frame, else open in a tab.
+function openDocPreview(index){
+  var ctx=_docEditCtx;if(!ctx)return true; var d=ctx.docs[index];if(!d)return true;
+  var name=d.displayName||d.name||'Document';
+  var ext=(name.split('.').pop()||'').toLowerCase();
+  var isImg=['jpg','jpeg','png','gif','webp','bmp'].indexOf(ext)>=0;
+  var isPdf=ext==='pdf';
+  if(!isImg&&!isPdf){window.open(d.url,'_blank');return false;}
+  var ov=document.createElement('div');ov.className='modal-overlay open doc-lightbox';
+  var body=isImg?'<img src="'+esc(d.url)+'" alt="'+esc(name)+'" class="doc-lb-img">':'<iframe src="'+esc(d.url)+'" class="doc-lb-frame" title="'+esc(name)+'"></iframe>';
+  ov.innerHTML='<div class="doc-lb-box">'+
+    '<div class="doc-lb-head"><span class="doc-lb-title" title="'+esc(name)+'">'+esc(name)+'</span>'+
+      '<span class="doc-lb-actions">'+
+        '<a class="btn btn-secondary btn-sm" href="'+esc(d.downloadUrl||d.url)+'" download>Download</a>'+
+        '<a class="btn btn-secondary btn-sm" href="'+esc(d.url)+'" target="_blank" rel="noopener">Open in tab</a>'+
+        '<button class="btn btn-secondary btn-sm doc-lb-close">Close</button>'+
+      '</span></div>'+
+    '<div class="doc-lb-body">'+body+'</div>'+
+  '</div>';
+  document.body.appendChild(ov);
+  var close=function(){if(ov.parentNode)ov.parentNode.removeChild(ov);};
+  ov.querySelector('.doc-lb-close').addEventListener('click',close);
+  ov.addEventListener('mousedown',function(e){if(e.target===ov)close();});
+  return false;
+}
+// Clean colour-coded file icon for non-image documents.
+function _docFileIcon(ext){
+  var colors={pdf:'#e2574c',doc:'#2b7cd3',docx:'#2b7cd3',txt:'#5a7290',xls:'#1e7e34',xlsx:'#1e7e34',csv:'#1e7e34'};
+  var col=colors[ext]||'#5a7290';
+  return '<span class="doc-fileicon" style="color:'+col+'">'+
+    '<svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'+
+    '<span class="doc-fileicon-ext">'+esc((ext||'FILE').toUpperCase().slice(0,4))+'</span>'+
+  '</span>';
+}
+// Shared modern document uploader (drop zone + category combobox + scan) for all 3 panes.
+function docCategoryFieldHtml(id,value){
+  var chips=DOC_CATS.map(function(c){return '<button type="button" class="doc-chip" onclick="var e=document.getElementById(\''+id+'\');if(e){e.value=this.textContent;e.focus();}">'+esc(c[1])+'</button>';}).join('');
+  return '<div class="doc-field"><label class="doc-flabel">Category</label>'+
+    '<input id="'+id+'" class="doc-input" value="'+esc(value||'Other')+'" placeholder="Type a category, or tap one below" autocomplete="off">'+
+    '<div class="doc-chips">'+chips+'</div>'+
+  '</div>';
+}
+function docUploaderHtml(o){
+  return '<div class="doc-uploader">'+
+    '<div class="doc-uploader-head"><h4>'+esc(o.title)+'</h4><p>'+esc(o.subtitle)+'</p></div>'+
+    (o.hasCategory?docCategoryFieldHtml(o.catId,'Other'):'')+
+    '<label class="doc-drop" id="'+o.fileId+'-drop" for="'+o.fileId+'" ondragover="event.preventDefault();this.classList.add(\'dragover\')" ondragleave="this.classList.remove(\'dragover\')" ondrop="_docDrop(event,\''+o.fileId+'\')">'+
+      '<svg class="doc-drop-icon" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 9 12 4 17 9"/><line x1="12" y1="4" x2="12" y2="15"/></svg>'+
+      '<span class="doc-drop-text"><b>Choose a file</b> or drag it here</span>'+
+      '<span class="doc-drop-file" id="'+o.fileId+'-name"></span>'+
+      '<input type="file" id="'+o.fileId+'" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.heic,.webp" multiple style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;" onchange="_docShowPick(this)">'+
+    '</label>'+
+    '<div class="doc-uploader-actions">'+
+      '<button class="btn btn-primary" onclick="'+o.uploadFn+'">Upload</button>'+
+      '<input type="file" id="'+o.scanId+'" accept="image/*" capture="environment" style="display:none" onchange="'+o.scanFn+'">'+
+      '<button class="btn btn-secondary" onclick="document.getElementById(\''+o.scanId+'\').click()">📷 Scan / Photo</button>'+
+    '</div>'+
+    '<span id="'+o.statusId+'" class="doc-upload-status"></span>'+
+  '</div>'+
+  '<div id="'+o.listId+'"><div class="doc-empty">Loading…</div></div>';
+}
+function _docShowPick(input){
+  var el=document.getElementById(input.id+'-name');
+  if(el)el.textContent=input.files&&input.files.length?(input.files.length>1?input.files.length+' files selected':input.files[0].name):'';
+  var drop=document.getElementById(input.id+'-drop');if(drop)drop.classList.toggle('has-file',!!(input.files&&input.files.length));
+}
+function _docDrop(e,fileId){
+  e.preventDefault();
+  var inp=document.getElementById(fileId);var drop=document.getElementById(fileId+'-drop');
+  if(drop)drop.classList.remove('dragover');
+  if(inp&&e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length){
+    try{inp.files=e.dataTransfer.files;}catch(err){}
+    _docShowPick(inp);
+  }
+}
+function renderHcDocList(clientId,docs){
+  renderDocGrid(document.getElementById('hcDocList'),docs,{clientType:'homecare',clientId:clientId,deleteExpr:function(name){return 'deleteHcDoc('+clientId+',\''+encodeURIComponent(name)+'\')';},refresh:function(){loadHcDocs(clientId);}});
 }
 function uploadHcDoc(){
   var clientId=getHcClientId();
@@ -1345,7 +1420,7 @@ function uploadHcDoc(){
   var status=document.getElementById('hcDocStatus');
   status.textContent='Uploading...';
   var fd=new FormData();
-  fd.append('clientType','homecare');fd.append('clientId',clientId);
+  fd.append('clientType','homecare');fd.append('clientId',clientId);fd.append('category',cat);
   Array.from(input.files).forEach(function(f){
     var prefixedFile=new File([f],cat+'__'+f.name,{type:f.type});
     fd.append('file',prefixedFile);
@@ -1367,7 +1442,7 @@ function handleDocScan(input){
   var status=document.getElementById('hcDocStatus');
   if(status)status.textContent='Uploading scanned image…';
   var fd=new FormData();
-  fd.append('clientType','homecare');fd.append('clientId',clientId);
+  fd.append('clientType','homecare');fd.append('clientId',clientId);fd.append('category',cat);
   var f=input.files[0];
   var prefixedFile=new File([f],cat+'__'+f.name,{type:f.type});
   fd.append('file',prefixedFile);
@@ -2372,36 +2447,7 @@ function renderCgDocsPane(){
   if(!activeCgId)return;
   var cgName=getCaregivers()[activeCgId]?getCaregivers()[activeCgId].name:'Caregiver';
   var c=document.getElementById('cgDocsContent');
-  c.innerHTML=
-    '<div class="doc-upload-card">'+
-      '<div class="doc-upload-head">'+
-        '<h4>Documents for '+esc(cgName)+'</h4>'+
-        '<p>Upload SSN card, driver\'s license, certifications, etc.</p>'+
-      '</div>'+
-      '<div class="doc-upload-row">'+
-        '<div class="doc-upload-fields">'+
-          '<label>Category</label>'+
-          '<select id="cgDocCategory">'+
-            '<option value="Other">Other</option>'+
-            '<option value="SSN_Card">SSN Card</option>'+
-            '<option value="Drivers_License">Driver\'s License</option>'+
-            '<option value="Insurance_Card">Insurance Card</option>'+
-            '<option value="Certification">Certification</option>'+
-            '<option value="Background_Check">Background Check</option>'+
-            '<option value="I9_W4">I-9 / W-4</option>'+
-          '</select>'+
-          '<label style="margin-top:8px;">File</label>'+
-          '<input type="file" id="cgDocFileInput2" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple>'+
-        '</div>'+
-        '<div class="doc-upload-actions">'+
-          '<button class="btn btn-primary" onclick="uploadCgDocAzure()">Upload</button>'+
-          '<input type="file" id="cgDocScanInput" accept="image/*" capture="environment" style="display:none;" onchange="handleCgDocScan(this)">'+
-          '<button class="btn btn-secondary" onclick="document.getElementById(\'cgDocScanInput\').click()">Scan / Photo</button>'+
-        '</div>'+
-      '</div>'+
-      '<span id="cgDocUploadStatus" class="doc-upload-status"></span>'+
-    '</div>'+
-    '<div id="cgDocListAzure"><div style="color:#8ca0b4;font-size:13px;">Loading...</div></div>';
+  c.innerHTML=docUploaderHtml({title:'Documents for '+esc(cgName),subtitle:"SSN card, driver's license, certifications, etc.",hasCategory:true,catId:'cgDocCategory',fileId:'cgDocFileInput2',scanId:'cgDocScanInput',scanFn:'handleCgDocScan(this)',uploadFn:'uploadCgDocAzure()',statusId:'cgDocUploadStatus',listId:'cgDocListAzure'});
   loadCgDocsAzure(activeCgId);
 }
 function loadCgDocsAzure(cgId){
@@ -2411,41 +2457,14 @@ function loadCgDocsAzure(cgId){
   .catch(function(){renderCgDocListAzure(cgId,[]);});
 }
 function renderCgDocListAzure(cgId,docs){
-  var list=document.getElementById('cgDocListAzure');if(!list)return;
-  if(!docs.length){list.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:4px 0;">No documents yet.</div>';return;}
-  list.innerHTML='';
-  var categoryLabels={SSN_Card:'SSN Card',Drivers_License:"Driver's License",Insurance_Card:'Insurance Card',Certification:'Certification',Background_Check:'Background Check',I9_W4:'I-9 / W-4',Other:'Other'};
-  docs.forEach(function(d){
-    var kb=d.size?Math.round(d.size/1024)+'KB':'';
-    var ext=(d.name||'').split('.').pop().toLowerCase();
-    var isImg=['jpg','jpeg','png','gif'].indexOf(ext)>=0;
-    var icon=(ext||"").toUpperCase().slice(0,4);
-    // parse category prefix from filename: "SSN_Card__filename.pdf"
-    var parts=d.name.split('__');
-    var cat=parts.length>1?parts[0]:'Other';
-    var displayName=parts.length>1?parts.slice(1).join('__'):d.name;
-    var catLabel=categoryLabels[cat]||cat;
-    var card=document.createElement('div');
-    card.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #e1e8f0;border-radius:6px;margin-bottom:6px;background:#fafbfc;';
-    card.innerHTML=
-      '<span style="display:inline-block;min-width:34px;padding:3px 6px;background:#e8eef5;color:#1a3a5c;border-radius:4px;font-size:10px;font-weight:600;text-align:center;letter-spacing:.3px;">'+(icon||'FILE')+'</span>'+
-      '<div style="flex:1;min-width:0;">'+
-        '<div style="font-size:12px;font-weight:600;color:#1a3a5c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><a href="'+d.url+'" target="_blank" style="color:#1a3a5c;text-decoration:none;">'+esc(displayName)+'</a></div>'+
-        '<div style="font-size:11px;color:#8ca0b4;">'+
-          '<span style="background:#dbeafe;color:#1e40af;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;margin-right:6px;">'+esc(catLabel)+'</span>'+
-          kb+
-        '</div>'+
-      '</div>'+
-      '<button class="btn btn-danger btn-sm" style="padding:3px 10px;font-size:11px;" onclick="deleteCgDocAzure(\''+cgId+'\',\''+encodeURIComponent(d.name)+'\')">✕</button>';
-    list.appendChild(card);
-  });
+  renderDocGrid(document.getElementById('cgDocListAzure'),docs,{clientType:'caregiver',clientId:cgId,deleteExpr:function(name){return 'deleteCgDocAzure(\''+cgId+'\',\''+encodeURIComponent(name)+'\')';},refresh:function(){loadCgDocsAzure(cgId);}});
 }
 function uploadCgDocAzure(){
   var input=document.getElementById('cgDocFileInput2');
   if(!input||!input.files||!input.files.length){showAlert('Please select a file first.');return;}
   var cat=document.getElementById('cgDocCategory').value||'Other';
   var status=document.getElementById('cgDocUploadStatus');status.textContent='Uploading...';
-  var fd=new FormData();fd.append('clientType','caregiver');fd.append('clientId',activeCgId);
+  var fd=new FormData();fd.append('clientType','caregiver');fd.append('clientId',activeCgId);fd.append('category',cat);
   Array.from(input.files).forEach(function(f){
     // prefix filename with category
     var prefixedFile=new File([f],cat+'__'+f.name,{type:f.type});
@@ -2468,7 +2487,7 @@ function handleCgDocScan(input){
   var cat=(document.getElementById('cgDocCategory')&&document.getElementById('cgDocCategory').value)||'Other';
   var status=document.getElementById('cgDocUploadStatus');
   if(status)status.textContent='Uploading scanned image…';
-  var fd=new FormData();fd.append('clientType','caregiver');fd.append('clientId',activeCgId);
+  var fd=new FormData();fd.append('clientType','caregiver');fd.append('clientId',activeCgId);fd.append('category',cat);
   var f=input.files[0];
   var prefixedFile=new File([f],cat+'__'+f.name,{type:f.type});
   fd.append('file',prefixedFile);
@@ -6811,57 +6830,20 @@ function renderCwDocsPane(){
   var cw=getCaseworkers().find(function(c){return c.id===activeCwId;});
   var c=document.getElementById('cwDocsContent');
   if(!c||!cw)return;
-  c.innerHTML=
-    '<div class="doc-upload-card">'+
-      '<div class="doc-upload-head">'+
-        '<h4>Documents for '+esc(cw.name||'Caseworker')+'</h4>'+
-        '<p>Upload letters, authorization docs, etc.</p>'+
-      '</div>'+
-      '<div class="doc-upload-row">'+
-        '<div class="doc-upload-fields">'+
-          '<label>File</label>'+
-          '<input type="file" id="cwDocFileInput" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple>'+
-        '</div>'+
-        '<div class="doc-upload-actions">'+
-          '<button class="btn btn-primary" onclick="uploadCwDoc()">Upload</button>'+
-          '<input type="file" id="cwDocScanInput" accept="image/*" capture="environment" style="display:none;" onchange="handleCwDocScan(this)">'+
-          '<button class="btn btn-secondary" onclick="document.getElementById(\'cwDocScanInput\').click()">Scan / Photo</button>'+
-        '</div>'+
-      '</div>'+
-      '<span id="cwDocUploadStatus" class="doc-upload-status"></span>'+
-    '</div>'+
-    '<div id="cwDocListAzure"><div style="color:#8ca0b4;font-size:13px;">Loading...</div></div>';
+  c.innerHTML=docUploaderHtml({title:'Documents for '+esc(cw.name||'Caseworker'),subtitle:'Letters, authorization docs, etc.',hasCategory:true,catId:'cwDocCategory',fileId:'cwDocFileInput',scanId:'cwDocScanInput',scanFn:'handleCwDocScan(this)',uploadFn:'uploadCwDoc()',statusId:'cwDocUploadStatus',listId:'cwDocListAzure'});
   fetch(API_BASE+'/documents?clientType=caseworker&clientId='+activeCwId,{headers:apiHeaders()})
     .then(function(r){return r.json();})
     .then(function(docs){renderCwDocListAzure(activeCwId,docs||[]);})
     .catch(function(){renderCwDocListAzure(activeCwId,[]);});
 }
 function renderCwDocListAzure(cwId,docs){
-  var list=document.getElementById('cwDocListAzure');if(!list)return;
-  if(!docs.length){list.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:4px 0;">No documents yet.</div>';return;}
-  list.innerHTML='';
-  docs.forEach(function(d){
-    var kb=d.size?Math.round(d.size/1024)+'KB':'';
-    var ext=(d.name||'').split('.').pop().toLowerCase();
-    var isImg=['jpg','jpeg','png','gif'].indexOf(ext)>=0;
-    var icon=(ext||"").toUpperCase().slice(0,4);
-    var card=document.createElement('div');
-    card.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #e1e8f0;border-radius:6px;margin-bottom:6px;background:#fafbfc;';
-    card.innerHTML=
-      '<span style="display:inline-block;min-width:34px;padding:3px 6px;background:#e8eef5;color:#1a3a5c;border-radius:4px;font-size:10px;font-weight:600;text-align:center;letter-spacing:.3px;">'+(icon||'FILE')+'</span>'+
-      '<div style="flex:1;min-width:0;">'+
-        '<div style="font-size:12px;font-weight:600;color:#1a3a5c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><a href="'+d.url+'" target="_blank" style="color:#1a3a5c;text-decoration:none;">'+esc(d.name)+'</a></div>'+
-        '<div style="font-size:11px;color:#8ca0b4;">'+kb+'</div>'+
-      '</div>'+
-      '<button class="btn btn-danger btn-sm" style="padding:3px 10px;font-size:11px;" onclick="deleteCwDoc(\''+cwId+'\',\''+encodeURIComponent(d.name)+'\')">✕</button>';
-    list.appendChild(card);
-  });
+  renderDocGrid(document.getElementById('cwDocListAzure'),docs,{clientType:'caseworker',clientId:cwId,deleteExpr:function(name){return 'deleteCwDoc(\''+cwId+'\',\''+encodeURIComponent(name)+'\')';},refresh:function(){renderCwDocsPane();}});
 }
 function uploadCwDoc(){
   var input=document.getElementById('cwDocFileInput');
   if(!input||!input.files||!input.files.length){showAlert('Please select a file first.');return;}
   var status=document.getElementById('cwDocUploadStatus');status.textContent='Uploading...';
-  var fd=new FormData();fd.append('clientType','caseworker');fd.append('clientId',activeCwId);
+  var fd=new FormData();fd.append('clientType','caseworker');fd.append('clientId',activeCwId);fd.append('category',(document.getElementById('cwDocCategory')||{}).value||'Other');
   Array.from(input.files).forEach(function(f){fd.append('file',f);});
   fetch(API_BASE+'/documents',{method:'POST',headers:authUploadHeaders(),body:fd})
     .then(function(r){if(!r.ok)throw new Error('Upload failed ('+r.status+')');return r;})
@@ -6879,7 +6861,7 @@ function handleCwDocScan(input){
   if(!input||!input.files||!input.files.length)return;
   var status=document.getElementById('cwDocUploadStatus');
   if(status)status.textContent='Uploading scanned image…';
-  var fd=new FormData();fd.append('clientType','caseworker');fd.append('clientId',activeCwId);
+  var fd=new FormData();fd.append('clientType','caseworker');fd.append('clientId',activeCwId);fd.append('category',(document.getElementById('cwDocCategory')||{}).value||'Other');
   fd.append('file',input.files[0]);
   fetch(API_BASE+'/documents',{method:'POST',headers:authUploadHeaders(),body:fd})
     .then(function(r){if(!r.ok)throw new Error('Upload failed ('+r.status+')');return r;})
