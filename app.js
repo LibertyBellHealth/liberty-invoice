@@ -1005,6 +1005,7 @@ function saveClientInfo(){
   if(!activeProfileName)return;
   var p=getProfiles();
   var rec=p[activeProfileName];
+  if(((document.getElementById('ei-status')||{}).value||'')==='active' && !((document.getElementById('ei-start-date')||{}).value||'').trim()){showAlert('Service Start Date is required when the status is Active.');return;}
   var first=(document.getElementById('ei-first').value||'').trim();
   var middle=(document.getElementById('ei-middle').value||'').trim();
   var last=(document.getElementById('ei-last').value||'').trim();
@@ -1440,6 +1441,8 @@ function createClient(){
   var last=(document.getElementById('nc-last').value||'').trim();
   var nickname=(document.getElementById('nc-nickname').value||'').trim();
   if(!first||!last){showAlert('First Name and Last Name are required.');return;}
+  var ncStatus=(document.getElementById('nc-status')||{}).value||'active';
+  if(ncStatus==='active' && !((document.getElementById('nc-start-date')||{}).value||'').trim()){showAlert('Service Start Date is required when the status is Active.');return;}
   var name=(first+' '+last).trim();
   var p=getProfiles();
   if(p[name]){
@@ -1665,7 +1668,7 @@ function showNewCaregiverForm(){
   document.getElementById('cgFormWrap').style.display='block';
   document.getElementById('cgFormTitle').textContent='New Caregiver';
   document.getElementById('cg-editing-id').value='';
-  ['cg-first','cg-middle','cg-last','cg-nickname','cg-phone','cg-email','cg-dl','cg-ssn','cg-street','cg-city','cg-state','cg-zip','cg-county','cg-dob','cg-gender','cg-hire','cg-pay','cg-hours','cg-certs','cg-ec-name','cg-ec-phone','cg-champs','cg-milogin-user','cg-milogin-pass','cg-notes'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  ['cg-first','cg-middle','cg-last','cg-nickname','cg-phone','cg-email','cg-dl','cg-ssn','cg-street','cg-city','cg-state','cg-zip','cg-county','cg-dob','cg-gender','cg-hire','cg-pay','cg-champs','cg-milogin-user','cg-milogin-pass','cg-notes'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('cg-status').value='active';document.getElementById('cg-emptype').value='full-time';
   document.getElementById('cgDeleteBtn').style.display='none';
   var cgDocSec=document.getElementById('cgDocsSection');if(cgDocSec)cgDocSec.style.display='none';
@@ -1699,8 +1702,6 @@ function editCaregiver(id){
   var cgMipEl=document.getElementById('cg-milogin-pass');if(cgMipEl)cgMipEl.value='';
   var cgGenderEl=document.getElementById('cg-gender');if(cgGenderEl)cgGenderEl.value=cg.gender||'';
   document.getElementById('cg-hire').value=cg.hireDate||'';document.getElementById('cg-pay').value=cg.payRate||'';
-  document.getElementById('cg-hours').value=cg.maxHours||'';document.getElementById('cg-certs').value=cg.certs||'';
-  document.getElementById('cg-ec-name').value=cg.ecName||'';document.getElementById('cg-ec-phone').value=cg.ecPhone||'';
   document.getElementById('cg-notes').value=cg.notes||'';
   document.getElementById('cg-status').value=cg.status||'active';document.getElementById('cg-emptype').value=cg.emptype||'full-time';
   document.getElementById('cgDeleteBtn').style.display='inline-block';
@@ -1730,9 +1731,7 @@ function saveCaregiver(){
     address:[document.getElementById('cg-street').value,document.getElementById('cg-city').value,document.getElementById('cg-state').value,document.getElementById('cg-zip').value].filter(Boolean).join(', '),
     dob:(document.getElementById('cg-dob')||{}).value||'',
     hireDate:document.getElementById('cg-hire').value,emptype:document.getElementById('cg-emptype').value,
-    payRate:document.getElementById('cg-pay').value,maxHours:document.getElementById('cg-hours').value,
-    certs:document.getElementById('cg-certs').value,ecName:document.getElementById('cg-ec-name').value,
-    ecPhone:document.getElementById('cg-ec-phone').value,
+    payRate:document.getElementById('cg-pay').value,
     champsId:(document.getElementById('cg-champs')||{}).value||'',
     miloginUsername:(document.getElementById('cg-milogin-user')||{}).value||'',
     miloginPassword:(document.getElementById('cg-milogin-pass')||{}).value||'',
@@ -2126,22 +2125,16 @@ function renderCgOverviewPane(){
   // Active assignments only — terminated clients shouldn't count toward caregiver's current workload
   var assigned=Object.keys(profiles).filter(function(k){return profiles[k].caregiverId===activeCgId && (profiles[k].clientStatus||'active')==='active';});
   var addrStr=(cg.street||cg.address||'').trim();
-  var certsStr=cg.certifications||cg.certs||'';
   pane.innerHTML='<div class="overview-grid">'+
     '<div class="ov-card"><h4>Contact Info</h4>'+
       (cg.phone?'<div class="ov-row"><span class="ov-label">Phone</span><span class="ov-value">'+esc(cg.phone)+'</span></div>':'')+
       (cg.email?'<div class="ov-row"><span class="ov-label">Email</span><span class="ov-value">'+esc(cg.email)+'</span></div>':'')+
       (addrStr?'<div class="ov-row"><span class="ov-label">Address</span><span class="ov-value">'+esc(addrStr)+'</span></div>':'')+
-      (cg.ecName?'<div class="ov-row"><span class="ov-label">Emergency Contact</span><span class="ov-value">'+esc(cg.ecName)+(cg.ecPhone?' · '+cg.ecPhone:'')+'</span></div>':'')+
     '</div>'+
     '<div class="ov-card"><h4>Employment</h4>'+
       (cg.emptype?'<div class="ov-row"><span class="ov-label">Type</span><span class="ov-value">'+esc(cg.emptype)+'</span></div>':'')+
       (cg.hireDate?'<div class="ov-row"><span class="ov-label">Hire Date</span><span class="ov-value">'+esc(cg.hireDate)+'</span></div>':'')+
       (cg.payRate?'<div class="ov-row"><span class="ov-label">Pay Rate</span><span class="ov-value">$'+esc(cg.payRate)+'/hr</span></div>':'')+
-      (cg.maxHours?'<div class="ov-row"><span class="ov-label">Max Hours/Week</span><span class="ov-value">'+esc(cg.maxHours)+'</span></div>':'')+
-    '</div>'+
-    '<div class="ov-card"><h4>Certifications</h4>'+
-      (certsStr?'<div style="font-size:13px;color:#1a2b45;line-height:1.5;white-space:pre-wrap;">'+esc(certsStr)+'</div>':'<div style="color:#8ca0b4;font-size:12px;">No certifications on file.</div>')+
     '</div>'+
     '<div class="ov-card"><h4>Assigned Clients</h4>'+
       '<div class="ov-row" style="cursor:pointer;" onclick="switchCgTab(\'clients\')">'+
@@ -2269,16 +2262,7 @@ function renderCgInfoPane(){
   mkDiv('Employment');
   mkRow('<div class="info-field"><label>Hire Date</label><input id="cgi-hire" type="date" value="'+esc(cg.hireDate||'')+'"></div>'+
     '<div class="info-field"><label>Employment Type</label><select id="cgi-emptype"><option value="full-time"'+(cg.emptype==='full-time'?' selected':'')+'>Full-Time</option><option value="part-time"'+(cg.emptype==='part-time'?' selected':'')+'>Part-Time</option><option value="per-diem"'+(cg.emptype==='per-diem'?' selected':'')+'>Per Diem</option></select></div>');
-  mkRow('<div class="info-field"><label>Pay Rate ($/hr)</label><input id="cgi-pay" value="'+esc(cg.payRate||'')+'"></div>'+
-    '<div class="info-field"><label>Max Hours/Week</label><input id="cgi-hours" value="'+esc(cg.maxHours||'')+'"></div>');
-
-  var certDiv=document.createElement('div');certDiv.className='info-field full';
-  certDiv.innerHTML='<label>Certifications &amp; Training</label><textarea id="cgi-certs" rows="2" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;resize:vertical;">'+esc(cg.certs||cg.certifications||'')+'</textarea>';
-  g.appendChild(certDiv);
-
-  mkDiv('Emergency Contact');
-  mkRow('<div class="info-field"><label>Contact Name</label><input id="cgi-ecname" value="'+esc(cg.ecName||'')+'"></div>'+
-    '<div class="info-field"><label>Contact Phone</label><input id="cgi-ecphone" value="'+esc(cg.ecPhone||'')+'"></div>');
+  mkRow('<div class="info-field"><label>Pay Rate ($/hr)</label><input id="cgi-pay" value="'+esc(cg.payRate||'')+'"></div>');
 
   // Save + Delete buttons
   var actions=document.createElement('div');actions.style.cssText='margin-top:16px;display:flex;gap:8px;';
@@ -2304,12 +2288,10 @@ function saveCgInfoPane(){
   var cgiDob=document.getElementById('cgi-dob');if(cgiDob)cg.dob=cgiDob.value;
   var cgiGender=document.getElementById('cgi-gender');if(cgiGender)cg.gender=cgiGender.value;
   cg.hireDate=document.getElementById('cgi-hire').value;cg.emptype=document.getElementById('cgi-emptype').value;
-  cg.payRate=document.getElementById('cgi-pay').value;cg.maxHours=document.getElementById('cgi-hours').value;
+  cg.payRate=document.getElementById('cgi-pay').value;
   var cgiChamps=document.getElementById('cgi-champs');if(cgiChamps)cg.champsId=cgiChamps.value;
   var cgiMiu=document.getElementById('cgi-milogin-user');if(cgiMiu)cg.miloginUsername=cgiMiu.value;
   var cgiMip=document.getElementById('cgi-milogin-pass');if(cgiMip)cg.miloginPassword=cgiMip.value;
-  cg.certifications=document.getElementById('cgi-certs').value;
-  cg.ecName=document.getElementById('cgi-ecname').value;cg.ecPhone=document.getElementById('cgi-ecphone').value;
   saveCaregiversLS(cgs);saveCaregiverAPI(activeCgId,cg);
   // Update header
   document.getElementById('cgDetailName').textContent=cg.name;
