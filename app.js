@@ -5600,6 +5600,14 @@ function revalidate(force){
 // One round-trip instead of N+1. Backend returns clients with invoices nested.
 function loadProfilesAPI() {
   syncStart();
+  // Load the supporting datasets in parallel. These calls were previously placed AFTER
+  // the return below, making them unreachable dead code — so caregivers/caseworkers/etc.
+  // never loaded on sign-in, only when their tab was first opened.
+  if (typeof loadCaregiversAPI === 'function') loadCaregiversAPI();
+  if (typeof loadCaseworkersAPI === 'function') loadCaseworkersAPI();
+  if (typeof loadSupervisorsAPI === 'function') loadSupervisorsAPI();
+  if (typeof loadTasksAPI === 'function') loadTasksAPI();
+  if (typeof loadSignaturesAPI === 'function') loadSignaturesAPI();
   // Return the promise so callers (e.g. OneDrive backup) can await freshness
   return fetch(API_BASE + '/homecare-clients-with-invoices', { headers: apiHeaders() })
     .then(function (r) {
@@ -5669,13 +5677,6 @@ function loadProfilesAPI() {
       renderSidebarClients(); renderClientTable(); updateStats();
       syncEnd();
     });
-
-  // Also load caregivers, caseworkers, supervisors, tasks, and signatures from API
-  loadCaregiversAPI();
-  loadCaseworkersAPI();
-  loadSupervisorsAPI();
-  loadTasksAPI();
-  loadSignaturesAPI();
 }
 
 // ── SAVE client profile to Azure SQL ────────────────────────
