@@ -1352,6 +1352,7 @@ function uploadHcDoc(){
   });
   var fileNames=Array.from(input.files).map(function(f){return f.name;}).join(', ');
   fetch(API_BASE+'/documents',{method:'POST',headers:authUploadHeaders(),body:fd})
+  .then(function(r){if(!r.ok)throw new Error('Upload failed ('+r.status+')');return r;})
   .then(function(){
     aiTrack('DocumentUploaded',{clientType:'homecare',clientId:clientId,category:cat,files:fileNames});
     status.textContent='';input.value='';loadHcDocs(clientId);
@@ -1371,6 +1372,7 @@ function handleDocScan(input){
   var prefixedFile=new File([f],cat+'__'+f.name,{type:f.type});
   fd.append('file',prefixedFile);
   fetch(API_BASE+'/documents',{method:'POST',headers:authUploadHeaders(),body:fd})
+  .then(function(r){if(!r.ok)throw new Error('Upload failed ('+r.status+')');return r;})
   .then(function(){
     aiTrack('DocumentUploaded',{clientType:'homecare',clientId:clientId,category:cat,files:f.name,source:'scan'});
     if(status)status.textContent='';input.value='';loadHcDocs(clientId);
@@ -1419,6 +1421,7 @@ function uploadCgDoc(cgId){
   var cgFileNames=Array.from(input.files).map(function(f){return f.name;}).join(', ');
   Array.from(input.files).forEach(function(f){fd.append('file',f);});
   fetch(API_BASE+'/documents',{method:'POST',headers:authUploadHeaders(),body:fd})
+  .then(function(r){if(!r.ok)throw new Error('Upload failed ('+r.status+')');return r;})
   .then(function(){
     aiTrack('DocumentUploaded',{clientType:'caregiver',clientId:cgId,files:cgFileNames});
     status.textContent='';input.value='';loadCgDocs(cgId);
@@ -2412,6 +2415,7 @@ function uploadCgDocAzure(){
     fd.append('file',prefixedFile);
   });
   fetch(API_BASE+'/documents',{method:'POST',headers:authUploadHeaders(),body:fd})
+  .then(function(r){if(!r.ok)throw new Error('Upload failed ('+r.status+')');return r;})
   .then(function(){status.textContent='';input.value='';loadCgDocsAzure(activeCgId);})
   .catch(function(e){status.textContent='Upload failed: '+e;});
 }
@@ -2432,6 +2436,7 @@ function handleCgDocScan(input){
   var prefixedFile=new File([f],cat+'__'+f.name,{type:f.type});
   fd.append('file',prefixedFile);
   fetch(API_BASE+'/documents',{method:'POST',headers:authUploadHeaders(),body:fd})
+  .then(function(r){if(!r.ok)throw new Error('Upload failed ('+r.status+')');return r;})
   .then(function(){if(status)status.textContent='';input.value='';loadCgDocsAzure(activeCgId);})
   .catch(function(e){if(status)status.textContent='Upload failed: '+e;});
 }
@@ -6821,6 +6826,7 @@ function uploadCwDoc(){
   var fd=new FormData();fd.append('clientType','caseworker');fd.append('clientId',activeCwId);
   Array.from(input.files).forEach(function(f){fd.append('file',f);});
   fetch(API_BASE+'/documents',{method:'POST',headers:authUploadHeaders(),body:fd})
+    .then(function(r){if(!r.ok)throw new Error('Upload failed ('+r.status+')');return r;})
     .then(function(){status.textContent='';input.value='';renderCwDocsPane();})
     .catch(function(e){status.textContent='Upload failed: '+e;});
 }
@@ -6838,6 +6844,7 @@ function handleCwDocScan(input){
   var fd=new FormData();fd.append('clientType','caseworker');fd.append('clientId',activeCwId);
   fd.append('file',input.files[0]);
   fetch(API_BASE+'/documents',{method:'POST',headers:authUploadHeaders(),body:fd})
+    .then(function(r){if(!r.ok)throw new Error('Upload failed ('+r.status+')');return r;})
     .then(function(){if(status)status.textContent='';input.value='';renderCwDocsPane();})
     .catch(function(e){if(status)status.textContent='Upload failed: '+e;});
 }
