@@ -7009,7 +7009,10 @@ function openStateForm(type){
   document.getElementById('formFillTitle').textContent=titles[type]||'';
   // Single-pane PDF view — auto-fill from CRM on load, user can switch clients here
   var profsForPicker=getProfiles();
-  var clientNames=Object.keys(profsForPicker).filter(function(n){var p=profsForPicker[n];return !p.clientStatus||p.clientStatus==='active';}).sort();
+  // Show every client regardless of status — In Progress / onboarding clients are
+  // exactly the ones who need these state forms, so never filter by status here
+  // (matches the Forms-page picker, which already lists all clients).
+  var clientNames=Object.keys(profsForPicker).sort();
   var clientOpts='<option value=""'+(!activeFormClientName?' selected':'')+'>— Pick a client —</option>'+
     clientNames.map(function(n){return '<option value="'+esc(n)+'"'+(n===activeFormClientName?' selected':'')+'>'+esc(n)+'</option>';}).join('');
   document.getElementById('formFillContent').innerHTML=
