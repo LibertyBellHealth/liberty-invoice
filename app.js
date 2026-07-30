@@ -2017,6 +2017,52 @@ function revokeSigningRequest(id){
     }catch(e){showAlert('Failed: '+(e.message||e));}
   },{title:'Revoke',okText:'Revoke',danger:true});
 }
+// Shared, professional signing-request email — used by both the initial send and
+// the reminder. Table layout + inline styles for email-client compatibility, and
+// no external images (blocked images look broken/spammy). The clean layout, real
+// footer, and de-emphasized fallback link keep it out of spam and out of the
+// "is this phishing?" pile.
+function buildSigningEmail(o){
+  o=o||{};
+  var brand='Liberty Home Care Assistance';
+  var accent='#185FA5';
+  var logoUrl=((typeof location!=='undefined'&&location.origin)?location.origin:'https://app.libertybellhealth.com')+'/email-logo.png';
+  var docName=esc((o.docName||'').trim()||'your document');
+  var name=esc((o.name||'').trim()||'there');
+  var url=o.signUrl||'#';
+  var urlEsc=esc(url);
+  var expiry='';
+  try{ if(o.expiresAt) expiry=new Date(o.expiresAt).toLocaleDateString(undefined,{month:'long',day:'numeric',year:'numeric'}); }catch(e){}
+  var subject=o.isReminder ? ('Reminder — please sign '+docName) : ('Signature requested: '+docName);
+  var lead=o.isReminder
+    ? ('This is a friendly reminder that '+brand+' still needs your signature on <strong>'+docName+'</strong>. Your previous link has expired, so here is a fresh one.')
+    : (brand+' has a document ready for your signature: <strong>'+docName+'</strong>. It only takes a minute to review and sign online — no account or app needed.');
+  var html=''
+    +'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;padding:24px 0;margin:0;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;">'
+    +'<tr><td align="center">'
+    +'<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #e6eaee;">'
+    +'<tr><td align="center" style="background:#000000;padding:22px 32px;">'
+    +'<img src="'+esc(logoUrl)+'" width="280" alt="'+brand+'" style="display:block;margin:0 auto;border:0;outline:none;text-decoration:none;width:280px;max-width:72%;height:auto;color:#d4af6a;font-size:20px;font-weight:700;">'
+    +'</td></tr>'
+    +'<tr><td style="padding:32px 32px 28px;color:#243b53;font-size:15px;line-height:1.6;">'
+    +'<p style="margin:0 0 16px;">Hi '+name+',</p>'
+    +'<p style="margin:0 0 26px;">'+lead+'</p>'
+    +'<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 26px;"><tr><td style="border-radius:6px;background:'+accent+';">'
+    +'<a href="'+urlEsc+'" style="display:inline-block;padding:14px 32px;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:6px;">Review &amp; sign your document</a>'
+    +'</td></tr></table>'
+    +'<p style="margin:0 0 20px;font-size:13px;color:#486581;background:#eef3f8;border-radius:6px;padding:12px 14px;">🔒 For your protection, you\'ll be asked to confirm your date of birth before the document opens — so your information stays private even if this email is forwarded.</p>'
+    +(expiry?'<p style="margin:0 0 4px;font-size:13px;color:#627d98;">This secure link expires on <strong>'+esc(expiry)+'</strong> and can only be used once.</p>':'')
+    +'<p style="margin:18px 0 0;font-size:12px;color:#9fb3c8;">If the button doesn\'t work, copy and paste this link into your browser:<br><a href="'+urlEsc+'" style="color:'+accent+';word-break:break-all;">'+urlEsc+'</a></p>'
+    +'</td></tr>'
+    +'<tr><td style="padding:18px 32px;background:#f7f9fb;border-top:1px solid #e6eaee;color:#829ab1;font-size:12px;line-height:1.5;">'
+    +'<p style="margin:0 0 6px;color:#486581;font-weight:600;">'+brand+'</p>'
+    +'<p style="margin:0 0 6px;">Need help or have a question? Just reply to this email, or call us at <a href="tel:+12482914106" style="color:#486581;font-weight:600;text-decoration:none;">(248) 291-4106</a>.</p>'
+    +'<p style="margin:0;color:#9fb3c8;">You received this email because '+brand+' requested your signature on a document.</p>'
+    +'</td></tr>'
+    +'</table>'
+    +'</td></tr></table>';
+  return {subject:subject, html:html};
+}
 async function resendSigningRequest(id){
   if(!spToken){showAlert('Sign in with Microsoft first to send the email.');return;}
   try{
@@ -2024,13 +2070,9 @@ async function resendSigningRequest(id){
     var resp=await fetch(API_BASE+'/signing/'+id+'/resend',{method:'POST',headers:apiHeaders()});
     var data=await resp.json();
     if(!resp.ok)throw new Error(data.error||'HTTP '+resp.status);
-    var subject='Reminder: please sign your document';
-    var body='<p>Hi '+esc(data.recipientName||cg.name||'')+',</p>'+
-      '<p>Here\'s a fresh link to sign your document. The previous link is no longer valid.</p>'+
-      '<p><a href="'+data.signUrl+'" style="background:#185FA5;color:#fff;padding:10px 16px;border-radius:5px;text-decoration:none;display:inline-block;">Open &amp; Sign</a></p>'+
-      '<p style="font-size:13px;color:#444;">When you open the link, you\'ll be asked to verify your date of birth.</p>'+
-      '<p style="font-size:12px;color:#666;">Or paste:<br><span style="word-break:break-all;">'+data.signUrl+'</span></p>'+
-      '<p style="font-size:12px;color:#666;">Expires '+new Date(data.expiresAt).toLocaleDateString()+'.</p>';
+    var _mail=buildSigningEmail({name:data.recipientName||cg.name,docName:data.templateName||data.documentName||'',signUrl:data.signUrl,expiresAt:data.expiresAt,isReminder:true});
+    var subject=_mail.subject;
+    var body=_mail.html;
     var emailResp=await sendMailWithPDF(data.recipientEmail,subject,body,[]);
     if(!emailResp.ok){showAlert('Created the new link but email send failed: '+(emailResp.err||emailResp.status||'unknown')+'\n\nManual link:\n'+data.signUrl);loadCgSigningRequests();return;}
     showToast('✓ New link emailed',4000);
@@ -2120,14 +2162,9 @@ async function doSendForSignature(){
     if(!resp.ok){throw new Error(data.error||'HTTP '+resp.status);}
     // 2. Frontend uses existing Graph email infra to deliver it
     btn.textContent='Sending email…';
-    var subject='Please sign: '+(document.getElementById('sendSigTemplate').selectedOptions[0].textContent||'Document');
-    var body='<p>Hi '+esc(cg.name||'')+',</p>'+
-      '<p>Liberty Home Care needs your signature on a document. Please click the secure link below to review and sign.</p>'+
-      '<p><a href="'+data.signUrl+'" style="background:#185FA5;color:#fff;padding:10px 16px;border-radius:5px;text-decoration:none;display:inline-block;">Open &amp; Sign</a></p>'+
-      '<p style="font-size:13px;color:#444;">When you open the link, you\'ll be asked to verify your date of birth before viewing the document. This protects you in case the email is forwarded or intercepted.</p>'+
-      '<p style="font-size:12px;color:#666;">Or paste this URL into your browser:<br><span style="word-break:break-all;">'+data.signUrl+'</span></p>'+
-      '<p style="font-size:12px;color:#666;">This link expires '+new Date(data.expiresAt).toLocaleDateString()+' and can only be used once.</p>'+
-      '<p style="font-size:12px;color:#999;">— Liberty Home Care Assistance</p>';
+    var _mail=buildSigningEmail({name:cg.name,docName:(document.getElementById('sendSigTemplate').selectedOptions[0].textContent||'').trim(),signUrl:data.signUrl,expiresAt:data.expiresAt,isReminder:false});
+    var subject=_mail.subject;
+    var body=_mail.html;
     if(spToken){
       var emailResp=await sendMailWithPDF(cg.email,subject,body,[]);
       if(!emailResp.ok){
