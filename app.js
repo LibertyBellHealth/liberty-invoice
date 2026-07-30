@@ -49,7 +49,8 @@ function apiHeaders() {
 }
 // For multipart/form-data uploads — no Content-Type (browser sets boundary automatically)
 function authUploadHeaders() {
-  return _apiToken ? { 'Authorization': 'Bearer ' + _apiToken } : {};
+  // Only send the token to production; dev/staging uploads go anonymous to the open dev backend.
+  return (_apiToken && _IS_PROD_HOST) ? { 'Authorization': 'Bearer ' + _apiToken } : {};
 }
 async function refreshApiToken() {
   if (!msalInstance) return;
