@@ -2890,6 +2890,14 @@ function renderActivityFeed(){
 function currentUserEmail(){
   return (msalInstance&&msalInstance.getAllAccounts().length?msalInstance.getAllAccounts()[0].username:null)||'Local User';
 }
+// Only this account may generate invoices or send the monthly emails.
+var INVOICE_ADMIN_EMAIL='tommy@mybellcare.com';
+function isInvoiceAdmin(){return (currentUserEmail()||'').toLowerCase()===INVOICE_ADMIN_EMAIL;}
+// Hide the Generate Invoices + Monthly Emails controls for everyone else.
+function applyInvoiceAdminVisibility(){
+  var admin=isInvoiceAdmin();
+  ['genInvoicesBtn','sb-monthly'].forEach(function(id){var e=document.getElementById(id);if(e)e.style.display=admin?'':'none';});
+}
 function getAuditLog(){try{return JSON.parse(localStorage.getItem('lhca_audit')||'[]');}catch(e){return[];}}
 function addAuditEntry(clientName,action){
   var who=currentUserEmail();
@@ -5522,6 +5530,7 @@ function signOut() {
   msalInstance.logoutPopup({ redirectUri: REDIRECT_URI });
 }
 function updateAuthUI(on) {
+  applyInvoiceAdminVisibility();
   var wall = document.getElementById('loginWall');
   var wallMsg = document.getElementById('loginWallMsg');
   var wallBtn = document.getElementById('loginWallBtn');
@@ -7796,6 +7805,7 @@ function buildBPHASA2421(prof,cw){
 //  SESSION 3 — MONTHLY INVOICE EMAILS
 // ============================================================
 function openMonthlyInvModal(){
+  if(!isInvoiceAdmin()){showAlert('Only the account owner can send monthly emails.');return;}
   var modal=document.getElementById('monthlyInvModal');if(!modal)return;
   modal.classList.add('open');
   // Force-refresh caseworkers + clients from DB so "No email on file" doesn't show against
@@ -8077,6 +8087,7 @@ function showMissingInvoicesModal(period){
 function closeMissingInvModal(){var m=document.getElementById('missingInvModal');if(m)m.remove();}
 
 function openGenerateInvoicesModal(){
+  if(!isInvoiceAdmin()){showAlert('Only the account owner can generate invoices.');return;}
   var existing=document.getElementById('genInvModal');if(existing)existing.remove();
   var ov=document.createElement('div');
   ov.id='genInvModal';ov.className='modal-overlay open';
@@ -8355,6 +8366,7 @@ function autoGenerateMonthlyInvoices(period){
   );
 }
 function _doAutoGenerateInvoices(eligible,period){
+  if(!isInvoiceAdmin()){showAlert('Only the account owner can generate invoices.');return;}
   var profiles=getProfiles();
   var generated=0,skipped=0;
   var undoBatch={id:'b_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),period:period,when:Date.now(),invoices:[]};
@@ -8453,6 +8465,7 @@ async function sendAllCaseworkerEmails(period){
 }
 
 async function sendMonthlyEmail(email,workerName,clients,period){
+  if(!isInvoiceAdmin()){showAlert('Only the account owner can send monthly emails.');return;}
   if(!spToken){
     showConfirm('You need to sign in with your Microsoft account to send emails. Click Sign In to be redirected.',
       function(){signIn();},
