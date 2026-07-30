@@ -1296,12 +1296,13 @@ function renderDocGrid(list,docs,opts){
       ?'<span class="doc-thumb" style="background-image:url(\''+esc(d.url)+'\')"></span>'
       :'<span class="doc-thumb doc-thumb-file">'+_docFileIcon(ext)+'</span>';
     return '<div class="doc-card">'+
-      '<a class="doc-card-preview" href="'+esc(d.url||'#')+'" target="_blank" rel="noopener" title="Open document">'+thumb+'</a>'+
+      '<a class="doc-card-preview" href="'+esc(d.url||'#')+'" target="_blank" rel="noopener" onclick="return openDocPreview('+i+')" title="Preview">'+thumb+'</a>'+
       '<div class="doc-card-body">'+
-        '<a class="doc-card-name" href="'+esc(d.url||'#')+'" target="_blank" rel="noopener" title="'+esc(display)+'">'+esc(display)+'</a>'+
+        '<a class="doc-card-name" href="'+esc(d.url||'#')+'" target="_blank" rel="noopener" onclick="return openDocPreview('+i+')" title="'+esc(display)+'">'+esc(display)+'</a>'+
         '<div class="doc-card-meta"><span class="doc-cat-pill">'+esc(_docCatLabel(d.category))+'</span>'+(d.size?'<span class="doc-size">'+_fmtDocSize(d.size)+'</span>':'')+'</div>'+
       '</div>'+
       '<div class="doc-card-actions">'+
+        '<a class="doc-act" href="'+esc(d.downloadUrl||d.url||'#')+'" title="Download" download>⬇</a>'+
         '<button class="doc-act" title="Rename / relabel" onclick="openDocEditModal('+i+')">✎</button>'+
         '<button class="doc-act doc-act-del" title="Delete" onclick="'+opts.deleteExpr(d.name)+'">✕</button>'+
       '</div>'+
@@ -1315,8 +1316,7 @@ function openDocEditModal(index){
     '<h3>Edit Document</h3>'+
     '<p>Rename this document or change its category.</p>'+
     '<label class="qc-l">Name</label><input id="de-name" class="qc-i" maxlength="120" value="'+esc(d.displayName||d.name||'')+'">'+
-    _docCatDatalist()+
-    '<label class="qc-l">Category</label><input list="docCatList" id="de-cat" class="qc-i" value="'+esc(_docCatLabel(d.category))+'" placeholder="Choose or type your own…" autocomplete="off">'+
+    docCategoryFieldHtml('de-cat',_docCatLabel(d.category))+
     '<div class="modal-row"><button class="btn btn-primary" id="de-save">Save</button><button class="btn btn-secondary" id="de-cancel">Cancel</button></div>'+
   '</div>';
   document.body.appendChild(ov);
@@ -1333,6 +1333,31 @@ function openDocEditModal(index){
   });
   setTimeout(function(){var n=ov.querySelector('#de-name');if(n){n.focus();}},30);
 }
+// In-app document preview (lightbox) — images inline, PDFs in a frame, else open in a tab.
+function openDocPreview(index){
+  var ctx=_docEditCtx;if(!ctx)return true; var d=ctx.docs[index];if(!d)return true;
+  var name=d.displayName||d.name||'Document';
+  var ext=(name.split('.').pop()||'').toLowerCase();
+  var isImg=['jpg','jpeg','png','gif','webp','bmp'].indexOf(ext)>=0;
+  var isPdf=ext==='pdf';
+  if(!isImg&&!isPdf){window.open(d.url,'_blank');return false;}
+  var ov=document.createElement('div');ov.className='modal-overlay open doc-lightbox';
+  var body=isImg?'<img src="'+esc(d.url)+'" alt="'+esc(name)+'" class="doc-lb-img">':'<iframe src="'+esc(d.url)+'" class="doc-lb-frame" title="'+esc(name)+'"></iframe>';
+  ov.innerHTML='<div class="doc-lb-box">'+
+    '<div class="doc-lb-head"><span class="doc-lb-title" title="'+esc(name)+'">'+esc(name)+'</span>'+
+      '<span class="doc-lb-actions">'+
+        '<a class="btn btn-secondary btn-sm" href="'+esc(d.downloadUrl||d.url)+'" download>Download</a>'+
+        '<a class="btn btn-secondary btn-sm" href="'+esc(d.url)+'" target="_blank" rel="noopener">Open in tab</a>'+
+        '<button class="btn btn-secondary btn-sm doc-lb-close">Close</button>'+
+      '</span></div>'+
+    '<div class="doc-lb-body">'+body+'</div>'+
+  '</div>';
+  document.body.appendChild(ov);
+  var close=function(){if(ov.parentNode)ov.parentNode.removeChild(ov);};
+  ov.querySelector('.doc-lb-close').addEventListener('click',close);
+  ov.addEventListener('mousedown',function(e){if(e.target===ov)close();});
+  return false;
+}
 // Clean colour-coded file icon for non-image documents.
 function _docFileIcon(ext){
   var colors={pdf:'#e2574c',doc:'#2b7cd3',docx:'#2b7cd3',txt:'#5a7290',xls:'#1e7e34',xlsx:'#1e7e34',csv:'#1e7e34'};
@@ -1343,12 +1368,17 @@ function _docFileIcon(ext){
   '</span>';
 }
 // Shared modern document uploader (drop zone + category combobox + scan) for all 3 panes.
-function _docCatDatalist(){return '<datalist id="docCatList">'+DOC_CATS.map(function(c){return '<option value="'+esc(c[1])+'">';}).join('')+'</datalist>';}
+function docCategoryFieldHtml(id,value){
+  var chips=DOC_CATS.map(function(c){return '<button type="button" class="doc-chip" onclick="var e=document.getElementById(\''+id+'\');if(e){e.value=this.textContent;e.focus();}">'+esc(c[1])+'</button>';}).join('');
+  return '<div class="doc-field"><label class="doc-flabel">Category</label>'+
+    '<input id="'+id+'" class="doc-input" value="'+esc(value||'Other')+'" placeholder="Type a category, or tap one below" autocomplete="off">'+
+    '<div class="doc-chips">'+chips+'</div>'+
+  '</div>';
+}
 function docUploaderHtml(o){
-  return _docCatDatalist()+
-  '<div class="doc-uploader">'+
+  return '<div class="doc-uploader">'+
     '<div class="doc-uploader-head"><h4>'+esc(o.title)+'</h4><p>'+esc(o.subtitle)+'</p></div>'+
-    (o.hasCategory?'<div class="doc-field"><label class="doc-flabel">Category</label><input list="docCatList" id="'+o.catId+'" class="doc-input" placeholder="Choose or type your own…" value="Other" autocomplete="off"></div>':'')+
+    (o.hasCategory?docCategoryFieldHtml(o.catId,'Other'):'')+
     '<label class="doc-drop" id="'+o.fileId+'-drop" for="'+o.fileId+'" ondragover="event.preventDefault();this.classList.add(\'dragover\')" ondragleave="this.classList.remove(\'dragover\')" ondrop="_docDrop(event,\''+o.fileId+'\')">'+
       '<svg class="doc-drop-icon" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 9 12 4 17 9"/><line x1="12" y1="4" x2="12" y2="15"/></svg>'+
       '<span class="doc-drop-text"><b>Choose a file</b> or drag it here</span>'+
