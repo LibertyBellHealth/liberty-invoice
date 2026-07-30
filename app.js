@@ -42,7 +42,9 @@ var msalInstance = null, spToken = null;
 
 function apiHeaders() {
   var h = { 'Content-Type': 'application/json' };
-  if (_apiToken) h['Authorization'] = 'Bearer ' + _apiToken;
+  // Only send the auth token to production. The dev backend is open (synthetic data
+  // only) and does not require Microsoft auth, so dev/staging requests go anonymous.
+  if (_apiToken && _IS_PROD_HOST) h['Authorization'] = 'Bearer ' + _apiToken;
   return h;
 }
 // For multipart/form-data uploads — no Content-Type (browser sets boundary automatically)
