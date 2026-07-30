@@ -10,7 +10,13 @@ var unsavedChanges=false;
 // ============================================================
 //  AZURE FUNCTIONS API CONFIG
 // ============================================================
-var API_BASE    = 'https://liberty-crm-api-cyb3dkhnd2e7a3cy.centralus-01.azurewebsites.net/api';
+// Production talks to the real backend (real PHI). Every other host — staging previews,
+// localhost — talks to the PHI-free dev backend, so test data never touches production.
+var _PROD_API = 'https://liberty-crm-api-cyb3dkhnd2e7a3cy.centralus-01.azurewebsites.net/api';
+var _DEV_API  = 'https://liberty-crm-api-dev.azurewebsites.net/api';
+var _IS_PROD_HOST = (location.hostname === 'app.libertybellhealth.com'
+                  || location.hostname === 'zealous-forest-01e406a10.7.azurestaticapps.net');
+var API_BASE    = _IS_PROD_HOST ? _PROD_API : _DEV_API;
 var API_APP_ID  = '0c1627c1-c186-4e46-b919-e4a12f2f3952'; // Easy Auth app registration
 var _apiToken   = null; // cached Bearer token, refreshed automatically
 
