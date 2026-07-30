@@ -1180,7 +1180,11 @@ function saveInvNote(input){
     saveProfilesLS(p);
     // Debounce backend save so we don't slam the API on every keystroke
     clearTimeout(saveInvNote._t);
-    saveInvNote._t=setTimeout(function(){saveProfileSP(activeProfileName,p[activeProfileName],true);},600);
+    saveInvNote._t=setTimeout(function(){
+      // D8: surface a failure toast instead of silently saving to LS only.
+      var doSave=function(){return surfaceSaveFailure(saveProfileSP(activeProfileName,p[activeProfileName],true),'Invoice note',doSave);};
+      doSave();
+    },600);
   }
 }
 function deleteInv(idx){
@@ -1238,9 +1242,10 @@ function renderNotesPane(){
     if(p2[activeProfileName]){
       p2[activeProfileName].clientNotes=ta.value;
       saveProfilesLS(p2);
-      // Persist to backend too — without this, notes vanished on refresh / other device
-      saveProfileSP(activeProfileName,p2[activeProfileName],true);
-      var f=document.getElementById('notesSavedFlash');f.style.display='inline';setTimeout(function(){f.style.display='none';},2000);
+      // Persist to backend too — without this, notes vanished on refresh / other device.
+      // D8: only claim "Saved ✓" after the API resolves; surface failure otherwise.
+      var doSave=function(){return flashQuietSave(saveProfileSP(activeProfileName,p2[activeProfileName],true),'notesSavedFlash','Client note',doSave);};
+      doSave();
     }
   },600);};
   ta.addEventListener('input',ta._nl);
@@ -1259,7 +1264,9 @@ function renderNotesPane(){
       if(p2[activeProfileName]&&p2[activeProfileName].invoices[i]){
         p2[activeProfileName].invoices[i].invoiceNote=inp.value;
         saveProfilesLS(p2);
-        saveProfileSP(activeProfileName,p2[activeProfileName],true);
+        // D8: surface a failure toast instead of silently saving to LS only.
+        var doSave=function(){return surfaceSaveFailure(saveProfileSP(activeProfileName,p2[activeProfileName],true),'Invoice note',doSave);};
+        doSave();
       }
     });
   });
@@ -2284,9 +2291,9 @@ function renderCgNotesPane(){
       if(!cgs[activeCgId])return;
       cgs[activeCgId].notes=ta.value;
       saveCaregiversLS(cgs);
-      saveCaregiverAPI(activeCgId,cgs[activeCgId],true);
-      var f=document.getElementById('cgNotesSavedFlash');
-      if(f){f.style.display='inline';setTimeout(function(){f.style.display='none';},2000);}
+      // D8: only claim "Saved ✓" after the API resolves; surface failure otherwise.
+      var doSave=function(){return flashQuietSave(saveCaregiverAPI(activeCgId,cgs[activeCgId],true),'cgNotesSavedFlash','Caregiver note',doSave);};
+      doSave();
     },600);
   });
 }
@@ -4350,6 +4357,29 @@ function trackSave(label,doSave){
       throw e;
     });
 }
+// ── Silent-save guards (audit Batch 2: D8/D10/D13) ──────────────────
+// Optimistic UI updates and "quiet" auto-saves must never report success when
+// the API call actually failed. Both helpers expect a promise that REJECTS on a
+// non-2xx response (the save fns already do `if(!r.ok)throw`). On failure they
+// raise the persistent red save-status toast with a Retry button; success stays
+// quiet (surfaceSaveFailure) or shows the inline "· Saved ✓" tick (flashQuietSave).
+function surfaceSaveFailure(promise,label,onRetry){
+  // Fire-and-forget callers don't chain, so swallow after surfacing (retry is wired
+  // through the toast button) — rethrowing here would just be an unhandled rejection.
+  return promise.catch(function(e){
+    _showSaveStatus('failed',label+' ('+(e&&e.message?e.message:'network error')+')',onRetry||null);
+  });
+}
+function flashQuietSave(promise,flashElId,label,onRetry){
+  return promise.then(function(){
+    var f=flashElId&&document.getElementById(flashElId);
+    if(f){f.textContent='· Saved ✓';f.style.color='#1a7740';f.style.display='inline';setTimeout(function(){if(f)f.style.display='none';},2000);}
+  }).catch(function(e){
+    var f=flashElId&&document.getElementById(flashElId);
+    if(f)f.style.display='none';
+    _showSaveStatus('failed',label+' — not saved ('+(e&&e.message?e.message:'network error')+')',onRetry||null);
+  });
+}
 
 // ── PDF / Print helpers ────────────────────────────────────────
 function buildInvoiceHTML(){
@@ -5031,18 +5061,27 @@ function logEmailSend(entry){
   },entry);
   // HIPAA-critical — persist to DB FIRST, then mirror to LS as display cache
   var summary='Email to '+(record.recipient||'?')+' · '+((record.clientNames||[]).length)+' client'+((record.clientNames||[]).length===1?'':'s')+' · '+(record.success?'sent':'failed');
-  fetch(API_BASE+'/audit-events',{
-    method:'POST',
-    headers:apiHeaders(),
-    body:JSON.stringify({
-      event_type:'email_send',
-      actor:record.sentBy,
-      target_type:record.caseworkerName?'caseworker':'',
-      target_id:record.caseworkerName||'',
-      summary:summary,
-      metadata:JSON.stringify(record)
-    })
-  }).catch(function(e){console.error('Email audit DB write failed:',e);});
+  // D13: this DB write is the authoritative HIPAA record (the LS copy is only a
+  // display cache). A swallowed failure let an operator believe the trail was
+  // complete when the server never got the row — check r.ok and surface it loudly.
+  var doAudit=function(){
+    return fetch(API_BASE+'/audit-events',{
+      method:'POST',
+      headers:apiHeaders(),
+      body:JSON.stringify({
+        event_type:'email_send',
+        actor:record.sentBy,
+        target_type:record.caseworkerName?'caseworker':'',
+        target_id:record.caseworkerName||'',
+        summary:summary,
+        metadata:JSON.stringify(record)
+      })
+    }).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r;});
+  };
+  doAudit().catch(function(e){
+    console.error('Email audit DB write failed:',e);
+    _showSaveStatus('failed','HIPAA email-audit record not saved to server ('+(e&&e.message?e.message:'network error')+')',doAudit);
+  });
   // Mirror to LS for instant display (keep as cache only — DB is source of truth)
   var arr=getEmailAuditLog();arr.push(record);saveEmailAuditLog(arr);
   // App Insights for centralized observability
@@ -5066,7 +5105,12 @@ function markInvoiceSubmitted(clientName,period){
   saveProfilesLS(p);
   saveProfileSP(clientName,p[clientName]);
   if(inv.dbId){
-    fetch(API_BASE+'/invoices/'+inv.dbId+'/status',{method:'PATCH',headers:apiHeaders(),body:JSON.stringify({status:'submitted'})}).catch(function(e){console.error(e);});
+    // D10: check r.ok so a 4xx/5xx doesn't leave the LS status ahead of the DB silently.
+    var doSave=function(){return surfaceSaveFailure(
+      fetch(API_BASE+'/invoices/'+inv.dbId+'/status',{method:'PATCH',headers:apiHeaders(),body:JSON.stringify({status:'submitted'})})
+        .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r;}),
+      'Invoice status',doSave);};
+    doSave();
   }
 }
 
@@ -5303,10 +5347,12 @@ function confirmSig(){
   var id=sigId();
   var sigs=getSigs();sigs.push({id:id,label:label,data:data});saveSigsLS(sigs);
   // Persist to DB
-  if(spToken){
-    fetch(API_BASE+'/signatures',{method:'POST',headers:apiHeaders(),body:JSON.stringify({id:id,label:label,data_url:data})})
-      .catch(function(e){console.error('Sig save error:',e);});
-  }
+  // D6/D12: identity comes from Easy Auth (apiHeaders), NOT the Graph token —
+  // persist unconditionally and surface a failure/retry instead of saving to LS only.
+  trackSave('signature',function(){
+    return fetch(API_BASE+'/signatures',{method:'POST',headers:apiHeaders(),body:JSON.stringify({id:id,label:label,data_url:data})})
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r;});
+  });
   closeSigModal();
   if(pendingSigTarget!==null){stampSignatureData(pendingSigTarget,data);}
   if(document.getElementById('page-settings').classList.contains('active'))renderSigSettings();
@@ -5414,10 +5460,12 @@ function confirmUploadedSig(){
   var label=document.getElementById('sigLabel').value.trim()||'Uploaded Signature';
   var id=sigId();
   var sigs=getSigs();sigs.push({id:id,label:label,data:data});saveSigsLS(sigs);
-  if(spToken){
-    fetch(API_BASE+'/signatures',{method:'POST',headers:apiHeaders(),body:JSON.stringify({id:id,label:label,data_url:data})})
-      .catch(function(e){console.error('Sig save error:',e);});
-  }
+  // D6/D12: identity comes from Easy Auth (apiHeaders), NOT the Graph token —
+  // persist unconditionally and surface a failure/retry instead of saving to LS only.
+  trackSave('signature',function(){
+    return fetch(API_BASE+'/signatures',{method:'POST',headers:apiHeaders(),body:JSON.stringify({id:id,label:label,data_url:data})})
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r;});
+  });
   closeSigModal();
   if(pendingSigTarget!==null){stampSignatureData(pendingSigTarget,data);}
   if(document.getElementById('page-settings').classList.contains('active'))renderSigSettings();
@@ -5464,10 +5512,12 @@ function confirmTypedSig(){
   var id=sigId();
   var sigs=getSigs();sigs.push({id:id,label:label,data:data});saveSigsLS(sigs);
   // Persist to DB
-  if(spToken){
-    fetch(API_BASE+'/signatures',{method:'POST',headers:apiHeaders(),body:JSON.stringify({id:id,label:label,data_url:data})})
-      .catch(function(e){console.error('Sig save error:',e);});
-  }
+  // D6/D12: identity comes from Easy Auth (apiHeaders), NOT the Graph token —
+  // persist unconditionally and surface a failure/retry instead of saving to LS only.
+  trackSave('signature',function(){
+    return fetch(API_BASE+'/signatures',{method:'POST',headers:apiHeaders(),body:JSON.stringify({id:id,label:label,data_url:data})})
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r;});
+  });
   closeSigModal();
   if(pendingSigTarget!==null){stampSignatureData(pendingSigTarget,data);}
   if(document.getElementById('page-settings').classList.contains('active'))renderSigSettings();
@@ -5866,23 +5916,33 @@ function syncNewInvoices(name, data) {
 // ── DELETE client from Azure SQL ─────────────────────────────
 function deleteProfileSP(name) {
   var idMap = getIdMap(); var dbId = idMap[name]; if (!dbId) return;
-  fetch(API_BASE + '/homecare-clients/' + dbId, { method: 'DELETE', headers: apiHeaders() })
-    .then(function () { delete idMap[name]; localStorage.setItem('lhca_id_map', JSON.stringify(idMap)); })
-    .catch(function (e) { console.error('Delete profile error:', e); });
+  // D10: only drop the id-map entry after a confirmed OK; surface failure otherwise.
+  var doDel=function(){return surfaceSaveFailure(
+    fetch(API_BASE + '/homecare-clients/' + dbId, { method: 'DELETE', headers: apiHeaders() })
+      .then(function (r) { if(!r.ok)throw new Error('HTTP '+r.status); delete idMap[name]; localStorage.setItem('lhca_id_map', JSON.stringify(idMap)); return r; }),
+    'Delete client',doDel);};
+  doDel();
 }
 
 // ── INVOICE status update via API ───────────────────────────
 function updateInvoiceStatusAPI(dbId, status) {
   if (!dbId) return;
-  fetch(API_BASE + '/invoices/' + dbId + '/status', {
-    method: 'PATCH', headers: apiHeaders(), body: JSON.stringify({ status: status }),
-  }).catch(function (e) { console.error('Status update error:', e); });
+  // D10: surface a failure/retry so a status change can't silently miss the DB.
+  var doSave=function(){return surfaceSaveFailure(
+    fetch(API_BASE + '/invoices/' + dbId + '/status', { method: 'PATCH', headers: apiHeaders(), body: JSON.stringify({ status: status }) })
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r;}),
+    'Invoice status',doSave);};
+  doSave();
 }
 function deleteInvoiceAPI(dbId, clientName, billingPeriod) {
   if (!dbId) return;
   aiTrack('InvoiceDeleted',{invoiceDbId:dbId,clientName:clientName||'',billingPeriod:billingPeriod||''});
-  fetch(API_BASE + '/invoices/' + dbId, { method: 'DELETE', headers: apiHeaders() })
-    .catch(function (e) { console.error('Delete invoice error:', e); });
+  // D10: surface a failure/retry so a "deleted" invoice can't reappear on next sync.
+  var doDel=function(){return surfaceSaveFailure(
+    fetch(API_BASE + '/invoices/' + dbId, { method: 'DELETE', headers: apiHeaders() })
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r;}),
+    'Delete invoice',doDel);};
+  doDel();
 }
 
 // ── CAREGIVERS API ───────────────────────────────────────────
@@ -5955,8 +6015,12 @@ function saveCaregiverAPI(id, cg, quiet) {
   return quiet ? _doSave() : trackSave(cg.name||id, _doSave);
 }
 function deleteCaregiverAPI(id) {
-  fetch(API_BASE + '/caregivers/' + id, { method: 'DELETE', headers: apiHeaders() })
-    .catch(function (e) { console.error('Delete caregiver error:', e); });
+  // D10: surface a failure/retry so a "deleted" caregiver can't reappear on next sync.
+  var doDel=function(){return surfaceSaveFailure(
+    fetch(API_BASE + '/caregivers/' + id, { method: 'DELETE', headers: apiHeaders() })
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r;}),
+    'Delete caregiver',doDel);};
+  doDel();
 }
 
 // ── TASKS API ────────────────────────────────────────────────
@@ -6002,8 +6066,12 @@ function saveTaskAPI(todo) {
 }
 function deleteTaskAPI(dbId) {
   if (!dbId) return;
-  fetch(API_BASE + '/tasks/' + dbId, { method: 'DELETE', headers: apiHeaders() })
-    .catch(function (e) { console.error('Delete task error:', e); });
+  // D10: surface a failure/retry so a "deleted" task can't reappear on next sync.
+  var doDel=function(){return surfaceSaveFailure(
+    fetch(API_BASE + '/tasks/' + dbId, { method: 'DELETE', headers: apiHeaders() })
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r;}),
+    'Delete task',doDel);};
+  doDel();
 }
 
 // ============================================================
@@ -6016,16 +6084,20 @@ function saveCaseworkersLS(arr){localStorage.setItem('lhca_caseworkers',JSON.str
 function loadCaseworkersAPI(){
   syncStart();
   return fetch(API_BASE + '/caseworkers', { headers: apiHeaders() })
-    .then(function(r){ return r.json(); })
+    .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); return r.json(); })
     .then(function(rows){
       var arr = (rows||[]).map(function(c){
-        return { id:c.id, name:c.name||'', first_name:c.first_name||'', last_name:c.last_name||'',
+        // D7: map middle_name/nickname back so they survive a reload (was dropping both).
+        return { id:c.id, name:c.name||'', first_name:c.first_name||'', middle_name:c.middle_name||'', last_name:c.last_name||'', nickname:c.nickname||'',
                  agency:c.agency||'', phone:c.phone||'', email:c.email||'', fax:c.fax||'',
                  street:c.street||'', city:c.city||'', state:c.state||'', zip:c.zip||'', county:c.county||'',
                  notes:c.notes||'', supervisor_id:c.supervisor_id||'' };
       });
-      saveCaseworkersLS(arr);
-      if (typeof renderCaseworkerList === 'function' && document.getElementById('cwList')) renderCaseworkerList();
+      // D11: don't let a transient empty/partial response wipe the good caseworker cache.
+      if (arr.length) {
+        saveCaseworkersLS(arr);
+        if (typeof renderCaseworkerList === 'function' && document.getElementById('cwList')) renderCaseworkerList();
+      }
       syncEnd();
     })
     .catch(function(e){ console.error('Load caseworkers error:', e); showDbError('caseworkers'); syncEnd(); });
@@ -6863,9 +6935,9 @@ function renderCwNotesPane(){
       if(!cwRec)return;
       cwRec.notes=ta.value;
       saveCaseworkersLS(arr);
-      saveCaseworkerAPI(cwRec,true);
-      var f=document.getElementById('cwNotesSavedFlash');
-      if(f){f.style.display='inline';setTimeout(function(){f.style.display='none';},2000);}
+      // D8: only claim "Saved ✓" after the API resolves; surface failure otherwise.
+      var doSave=function(){return flashQuietSave(saveCaseworkerAPI(cwRec,true),'cwNotesSavedFlash','Caseworker note',doSave);};
+      doSave();
     },600);
   });
 }
