@@ -3021,7 +3021,8 @@ function showTaskEditModal(opts){
   // Populate client picker
   if(clientSel){
     var profs=getProfiles();
-    var names=Object.keys(profs).filter(function(n){return !profs[n].clientStatus||profs[n].clientStatus==='active';}).sort(function(a,b){return a.localeCompare(b);});
+    // Any status — tasks get attached to In Progress / onboarding clients too, not just active
+    var names=Object.keys(profs).sort(function(a,b){return a.localeCompare(b);});
     clientSel.innerHTML='<option value="">— No client —</option>'+names.map(function(n){return '<option value="'+esc(n)+'"'+(n===(opts.client||'')?' selected':'')+'>'+esc(n)+'</option>';}).join('');
   }
   var saveBtn=document.getElementById('taskEditSaveBtn');
