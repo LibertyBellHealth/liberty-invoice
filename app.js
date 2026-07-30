@@ -399,7 +399,7 @@ function navCaregivers(){
   if(typeof spToken!=='undefined'&&spToken&&Object.keys(getCaregivers()).length===0&&typeof loadCaregiversAPI==='function')loadCaregiversAPI();
   if(typeof revalidate==='function')revalidate();
 }
-function navSettings(){showPage('settings');bc([{l:'Settings'}]);document.getElementById('topbarActions').innerHTML='';renderSigSettings();updateSettingsAuth();renderEmailAuditTable();if(typeof loadSigningTemplates==='function')loadSigningTemplates();if(typeof revalidate==='function')revalidate();}
+function navSettings(){showPage('settings');bc([{l:'Settings'}]);document.getElementById('topbarActions').innerHTML='';renderSigSettings();updateSettingsAuth();renderEmailAuditTable();if(typeof loadSigningTemplates==='function')loadSigningTemplates();if(typeof revalidate==='function')revalidate();var sr=document.getElementById('stateRateInput');if(sr)sr.value=stateRate();var srs=document.getElementById('stateRateStatus');if(srs)srs.textContent='';}
 function navTasks(){showPage('tasks');bc([{l:'Tasks'}]);document.getElementById('topbarActions').innerHTML='';populateTodoClientSelect();renderTodos();if(typeof revalidate==='function')revalidate();}
 function navReports(){showPage('reports');bc([{l:'Reports'}]);document.getElementById('topbarActions').innerHTML='';renderReports();}
 
@@ -3995,7 +3995,7 @@ function loadProfileIntoForm(prof){
   document.getElementById('billTo').value=(cwRec.agency||cwRec.county||'');
   document.getElementById('worker').value=prof.worker||'';document.getElementById('worker2').value=prof.worker||'';
   // Hourly rate on invoice is always the government billing rate ($27), not caregiver pay rate
-  document.getElementById('hourlyRate').value='27.00';
+  document.getElementById('hourlyRate').value=stateRate();
   document.getElementById('showComplex').checked=prof.hasComplex||false;toggleComplex();
   if(prof.tasks){applyStates(prof.tasks);lastLoadedStates=prof.tasks;}
   // Agent email from caseworker record
@@ -4010,7 +4010,7 @@ function applyFullInvoice(data){
   var f=['clientName','medicaidId','worker','billingPeriod','svcHH','svcMM','cplxHH','cplxMM','p1HH','p1MM','grandHH','grandMM','dateSubmitted','sigDate1','sigDate2'];
   f.forEach(function(id){var el=document.getElementById(id);if(el&&data[id]!==undefined)el.value=data[id];});
   // Hourly rate is always the government billing rate
-  document.getElementById('hourlyRate').value='27.00';
+  document.getElementById('hourlyRate').value=stateRate();
   // Bill To: always from caseworker billing code, not whatever was saved on the invoice
   var profCur=(activeProfileName&&getProfiles()[activeProfileName])||{};
   var cwApply=getCaseworkers().find(function(c){return c.id===profCur.caseworkerId||c.name===(data.worker||profCur.worker);})||{};
@@ -4901,7 +4901,7 @@ async function loadInvoiceForCapture(clientName,inv,period){
   document.getElementById('billingPeriod').value=period;
   document.getElementById('billingPeriod2').value=period;
   document.getElementById('medicaidId').value=prof.medicaidId||'';
-  document.getElementById('hourlyRate').value='27.00';
+  document.getElementById('hourlyRate').value=stateRate();
   var cwRecCapture=getCaseworkers().find(function(c){return c.id===prof.caseworkerId||c.name===prof.worker;})||{};
   document.getElementById('billTo').value=(cwRecCapture.agency||cwRecCapture.county||'');
   document.getElementById('worker').value=prof.worker||'';
@@ -5164,6 +5164,19 @@ async function sendEmail(){
   }catch(e){showAlert('Error generating PDF: '+e.message);}
   if(btn){btn.disabled=false;btn.textContent='✉ Email Worker';}
 }
+// The government/state hourly rate billed on every invoice (NOT the caregiver pay rate).
+// Configurable in Settings so the once-a-year rate change is a setting, not a code edit.
+function stateRate(){ var v=(localStorage.getItem('lhca_state_rate')||'').trim(); return v||'27.00'; }
+function saveStateRate(){
+  var el=document.getElementById('stateRateInput'); if(!el)return;
+  var raw=(el.value||'').replace(/[^0-9.]/g,'').trim();
+  var n=parseFloat(raw);
+  var st=document.getElementById('stateRateStatus');
+  if(!raw||isNaN(n)||n<=0){ if(st){st.style.color='#c0392b';st.textContent='Enter a valid rate';} return; }
+  var val=n.toFixed(2);
+  localStorage.setItem('lhca_state_rate',val); el.value=val;
+  if(st){st.style.color='#1a7740';st.textContent='✓ Saved — $'+val+'/hr on all invoices';}
+}
 function copyMonth(){
   var bp=document.getElementById('billingPeriod').value.trim();if(!bp||bp.length<7){showAlert('Enter a billing period first (MM/YYYY).');return;}
   var pts=bp.split('/'),m=parseInt(pts[0]),y=parseInt(pts[1]);m++;if(m>12){m=1;y++;}
@@ -5189,7 +5202,7 @@ function copyMonth(){
   document.getElementById('billingPeriod').value=newBP;document.getElementById('billingPeriod2').value=newBP;
   document.getElementById('clientName').value=cn;document.getElementById('clientName2').value=cn;
   document.getElementById('medicaidId').value=mid;
-  document.getElementById('hourlyRate').value='27.00';document.getElementById('billTo').value=bt;
+  document.getElementById('hourlyRate').value=stateRate();document.getElementById('billTo').value=bt;
   document.getElementById('worker').value=wk;document.getElementById('worker2').value=wk;
   document.getElementById('dateSubmitted').value=T2;document.getElementById('sigDate1').value=T2;document.getElementById('sigDate2').value=T2;
   document.getElementById('showComplex').checked=hc;toggleComplex();
@@ -5705,18 +5718,21 @@ function loadProfilesAPI() {
         var invs = (c.invoices || []).slice().sort(function (a, b) {
           return new Date(b.saved_at || 0) - new Date(a.saved_at || 0);
         });
+        // Dedupe by billing period for DISPLAY only. NEVER delete from the DB on a read
+        // path — a same-period row may be a legitimate corrected re-issue. Hide only an
+        // EXACT duplicate (identical invoice_data); if the content differs, show both.
         var seenByPeriod = {};
         var dedupedInvs = [];
         invs.forEach(function (inv) {
           var key = (inv.billing_period || '').trim();
           if (!key) { dedupedInvs.push(inv); return; }
-          if (seenByPeriod[key]) {
-            console.warn('[invoices] Duplicate for ' + name + ' ' + key + ' — deleting old DB id ' + inv.id);
-            fetch(API_BASE + '/invoices/' + inv.id, { method: 'DELETE', headers: apiHeaders() })
-              .catch(function (e) { console.error('Failed to delete duplicate invoice:', e); });
+          var prior = seenByPeriod[key];
+          if (prior) {
+            if ((prior.invoice_data || '') === (inv.invoice_data || '')) return; // exact repeat — hide, keep DB intact
+            dedupedInvs.push(inv); // different content, same period — keep both visible
             return;
           }
-          seenByPeriod[key] = true;
+          seenByPeriod[key] = inv;
           dedupedInvs.push(inv);
         });
         var mappedInvs = dedupedInvs.map(function (inv) {
@@ -5805,26 +5821,45 @@ function saveProfileSP(name, data, quiet) {
   // "Saved" indicator already covers it. Deliberate saves keep the toast.
   return quiet ? _doSave() : trackSave(name, _doSave);
 }
+// Persist a client's invoices to SQL. New invoices (no dbId) INSERT; existing ones
+// (with dbId) send their id so the backend UPDATE branch fires — this is what makes
+// EDITS to a saved invoice (amount/status/note) actually reach the database. Every
+// save path routes through here via saveProfileSP.
 function syncNewInvoices(name, data) {
   var idMap = getIdMap(); var clientDbId = idMap[name];
   if (!clientDbId || !data.invoices) return;
-  data.invoices.forEach(function (inv, idx) {
-    if (inv.dbId) return; // already saved
+  data.invoices.forEach(function (inv) {
+    var payload = {
+      homecare_client_id: clientDbId,
+      billing_period: inv.billingPeriod || '',
+      status: inv.status || 'draft',
+      invoice_note: inv.invoiceNote || '',
+      invoice_data: inv.data ? JSON.stringify(inv.data) : null,
+    };
+    var isNew = !inv.dbId;
+    if (!isNew) payload.id = inv.dbId; // existing -> UPDATE; else INSERT
+    var period = inv.billingPeriod || '', savedAt = inv.savedAt;
     fetch(API_BASE + '/invoices', {
-      method: 'POST', headers: apiHeaders(),
-      body: JSON.stringify({
-        homecare_client_id: clientDbId, billing_period: inv.billingPeriod || '',
-        status: inv.status || 'draft', invoice_note: inv.invoiceNote || '',
-        invoice_data: inv.data ? JSON.stringify(inv.data) : null,
-      }),
-    }).then(function (r) { return r.json(); }).then(function (result) {
-      if (result.id) {
+      method: 'POST', headers: apiHeaders(), body: JSON.stringify(payload),
+    }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function (result) {
+      if (isNew && result && result.id) {
+        // Write the new dbId back by invoice IDENTITY (period + savedAt), not array
+        // index — the profile may have been re-ordered/edited during the request.
         var p2 = getProfiles();
-        if (p2[name] && p2[name].invoices && p2[name].invoices[idx]) {
-          p2[name].invoices[idx].dbId = result.id; saveProfilesLS(p2);
+        if (p2[name] && p2[name].invoices) {
+          var cand = p2[name].invoices.filter(function (x) {
+            return !x.dbId && (x.billingPeriod || '') === period && x.savedAt === savedAt;
+          });
+          if (cand.length !== 1) {
+            cand = p2[name].invoices.filter(function (x) { return !x.dbId && (x.billingPeriod || '') === period; });
+          }
+          if (cand.length === 1) { cand[0].dbId = result.id; saveProfilesLS(p2); }
         }
       }
-    }).catch(function (e) { console.error('Sync invoice error:', e); });
+    }).catch(function (e) { console.error('Sync invoice error (' + period + '):', e); });
   });
 }
 
