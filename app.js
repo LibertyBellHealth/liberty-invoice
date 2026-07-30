@@ -1306,35 +1306,64 @@ function loadHcDocs(clientId){
   .then(function(docs){renderHcDocList(clientId,docs||[]);})
   .catch(function(){renderHcDocList(clientId,[]);});
 }
-function renderHcDocList(clientId,docs){
-  var list=document.getElementById('hcDocList');if(!list)return;
-  if(!docs.length){list.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:4px 0;">No documents yet.</div>';return;}
-  list.innerHTML='';
-  var categoryLabels={SSN_Card:'SSN Card',Drivers_License:"Driver's License",Insurance_Card:'Insurance Card',Medicare_Card:'Medicare Card',Medicaid_Card:'Medicaid Card',Authorization:'Authorization',Other:'Other'};
-  docs.forEach(function(d){
-    var kb=d.size?Math.round(d.size/1024)+'KB':'';
-    var ext=(d.name||'').split('.').pop().toLowerCase();
-    var isImg=['jpg','jpeg','png','gif'].indexOf(ext)>=0;
-    var icon=(ext||"").toUpperCase().slice(0,4);
-    // parse category prefix from filename: "SSN_Card__filename.pdf"
-    var parts=d.name.split('__');
-    var cat=parts.length>1?parts[0]:'Other';
-    var displayName=parts.length>1?parts.slice(1).join('__'):d.name;
-    var catLabel=categoryLabels[cat]||cat;
-    var card=document.createElement('div');
-    card.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #e1e8f0;border-radius:6px;margin-bottom:6px;background:#fafbfc;';
-    card.innerHTML=
-      '<span style="display:inline-block;min-width:34px;padding:3px 6px;background:#e8eef5;color:#1a3a5c;border-radius:4px;font-size:10px;font-weight:600;text-align:center;letter-spacing:.3px;">'+(icon||'FILE')+'</span>'+
-      '<div style="flex:1;min-width:0;">'+
-        '<div style="font-size:12px;font-weight:600;color:#1a3a5c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><a href="'+d.url+'" target="_blank" style="color:#1a3a5c;text-decoration:none;">'+esc(displayName)+'</a></div>'+
-        '<div style="font-size:11px;color:#8ca0b4;">'+
-          '<span style="background:#dbeafe;color:#1e40af;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;margin-right:6px;">'+esc(catLabel)+'</span>'+
-          kb+
-        '</div>'+
+// ── Shared modern document grid (client / caregiver / caseworker) ──
+var DOC_CATS=[['Other','Other'],['SSN_Card','SSN Card'],['Drivers_License',"Driver's License"],['Insurance_Card','Insurance Card'],['Medicare_Card','Medicare Card'],['Medicaid_Card','Medicaid Card'],['Authorization','Authorization'],['Certification','Certification'],['Background_Check','Background Check'],['I9_W4','I-9 / W-4']];
+function _docCatLabel(c){for(var i=0;i<DOC_CATS.length;i++){if(DOC_CATS[i][0]===c)return DOC_CATS[i][1];}return c||'Other';}
+function _fmtDocSize(n){if(!n)return '';return n<1048576?Math.round(n/1024)+' KB':(n/1048576).toFixed(1)+' MB';}
+var _docEditCtx=null;
+function renderDocGrid(list,docs,opts){
+  if(!list)return; opts=opts||{};
+  if(!docs||!docs.length){list.className='';list.innerHTML='<div class="doc-empty">No documents yet.</div>';return;}
+  list.className='doc-grid';
+  _docEditCtx={docs:docs,clientType:opts.clientType,clientId:opts.clientId,refresh:opts.refresh};
+  list.innerHTML=docs.map(function(d,i){
+    var display=d.displayName||d.name||'Document';
+    var ext=(display.split('.').pop()||'').toLowerCase();
+    var isImg=['jpg','jpeg','png','gif','webp','heic','bmp'].indexOf(ext)>=0;
+    var isPdf=ext==='pdf';
+    var thumb=isImg
+      ?'<span class="doc-thumb" style="background-image:url(\''+esc(d.url)+'\')"></span>'
+      :'<span class="doc-thumb doc-thumb-'+(isPdf?'pdf':'file')+'">'+(isPdf?'PDF':(ext||'FILE').toUpperCase().slice(0,4))+'</span>';
+    return '<div class="doc-card">'+
+      '<a class="doc-card-preview" href="'+esc(d.url||'#')+'" target="_blank" rel="noopener" title="Open document">'+thumb+'</a>'+
+      '<div class="doc-card-body">'+
+        '<a class="doc-card-name" href="'+esc(d.url||'#')+'" target="_blank" rel="noopener" title="'+esc(display)+'">'+esc(display)+'</a>'+
+        '<div class="doc-card-meta"><span class="doc-cat-pill">'+esc(_docCatLabel(d.category))+'</span>'+(d.size?'<span class="doc-size">'+_fmtDocSize(d.size)+'</span>':'')+'</div>'+
       '</div>'+
-      '<button class="btn btn-danger btn-sm" style="padding:3px 10px;font-size:11px;" onclick="deleteHcDoc('+clientId+',\''+encodeURIComponent(d.name)+'\')">✕</button>';
-    list.appendChild(card);
+      '<div class="doc-card-actions">'+
+        '<button class="doc-act" title="Rename / relabel" onclick="openDocEditModal('+i+')">✎</button>'+
+        '<button class="doc-act doc-act-del" title="Delete" onclick="'+opts.deleteExpr(d.name)+'">✕</button>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+function openDocEditModal(index){
+  var ctx=_docEditCtx;if(!ctx)return; var d=ctx.docs[index];if(!d)return;
+  var ov=document.createElement('div');ov.className='modal-overlay open';
+  var cats=DOC_CATS.map(function(c){return '<option value="'+c[0]+'"'+(c[0]===d.category?' selected':'')+'>'+esc(c[1])+'</option>';}).join('');
+  ov.innerHTML='<div class="modal-box" style="max-width:380px;">'+
+    '<h3>Edit Document</h3>'+
+    '<p>Rename this document or change its category.</p>'+
+    '<label class="qc-l">Name</label><input id="de-name" class="qc-i" maxlength="120" value="'+esc(d.displayName||d.name||'')+'">'+
+    '<label class="qc-l">Category</label><select id="de-cat" class="qc-i">'+cats+'</select>'+
+    '<div class="modal-row"><button class="btn btn-primary" id="de-save">Save</button><button class="btn btn-secondary" id="de-cancel">Cancel</button></div>'+
+  '</div>';
+  document.body.appendChild(ov);
+  var close=function(){if(ov.parentNode)ov.parentNode.removeChild(ov);};
+  ov.querySelector('#de-cancel').addEventListener('click',close);
+  ov.addEventListener('mousedown',function(e){if(e.target===ov)close();});
+  ov.querySelector('#de-save').addEventListener('click',function(){
+    var name=(ov.querySelector('#de-name').value||'').trim();var cat=ov.querySelector('#de-cat').value;
+    if(!name){ov.querySelector('#de-name').focus();return;}
+    var btn=ov.querySelector('#de-save');btn.textContent='Saving…';btn.disabled=true;
+    fetch(API_BASE+'/documents/meta',{method:'PATCH',headers:apiHeaders(),body:JSON.stringify({clientType:ctx.clientType,clientId:ctx.clientId,name:d.name,displayName:name,category:cat})})
+      .then(function(r){if(!r.ok)throw new Error('Save failed ('+r.status+')');close();if(typeof ctx.refresh==='function')ctx.refresh();})
+      .catch(function(e){btn.textContent='Save';btn.disabled=false;showAlert(String(e));});
   });
+  setTimeout(function(){var n=ov.querySelector('#de-name');if(n){n.focus();}},30);
+}
+function renderHcDocList(clientId,docs){
+  renderDocGrid(document.getElementById('hcDocList'),docs,{clientType:'homecare',clientId:clientId,deleteExpr:function(name){return 'deleteHcDoc('+clientId+',\''+encodeURIComponent(name)+'\')';},refresh:function(){loadHcDocs(clientId);}});
 }
 function uploadHcDoc(){
   var clientId=getHcClientId();
@@ -2374,34 +2403,7 @@ function loadCgDocsAzure(cgId){
   .catch(function(){renderCgDocListAzure(cgId,[]);});
 }
 function renderCgDocListAzure(cgId,docs){
-  var list=document.getElementById('cgDocListAzure');if(!list)return;
-  if(!docs.length){list.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:4px 0;">No documents yet.</div>';return;}
-  list.innerHTML='';
-  var categoryLabels={SSN_Card:'SSN Card',Drivers_License:"Driver's License",Insurance_Card:'Insurance Card',Certification:'Certification',Background_Check:'Background Check',I9_W4:'I-9 / W-4',Other:'Other'};
-  docs.forEach(function(d){
-    var kb=d.size?Math.round(d.size/1024)+'KB':'';
-    var ext=(d.name||'').split('.').pop().toLowerCase();
-    var isImg=['jpg','jpeg','png','gif'].indexOf(ext)>=0;
-    var icon=(ext||"").toUpperCase().slice(0,4);
-    // parse category prefix from filename: "SSN_Card__filename.pdf"
-    var parts=d.name.split('__');
-    var cat=parts.length>1?parts[0]:'Other';
-    var displayName=parts.length>1?parts.slice(1).join('__'):d.name;
-    var catLabel=categoryLabels[cat]||cat;
-    var card=document.createElement('div');
-    card.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #e1e8f0;border-radius:6px;margin-bottom:6px;background:#fafbfc;';
-    card.innerHTML=
-      '<span style="display:inline-block;min-width:34px;padding:3px 6px;background:#e8eef5;color:#1a3a5c;border-radius:4px;font-size:10px;font-weight:600;text-align:center;letter-spacing:.3px;">'+(icon||'FILE')+'</span>'+
-      '<div style="flex:1;min-width:0;">'+
-        '<div style="font-size:12px;font-weight:600;color:#1a3a5c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><a href="'+d.url+'" target="_blank" style="color:#1a3a5c;text-decoration:none;">'+esc(displayName)+'</a></div>'+
-        '<div style="font-size:11px;color:#8ca0b4;">'+
-          '<span style="background:#dbeafe;color:#1e40af;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;margin-right:6px;">'+esc(catLabel)+'</span>'+
-          kb+
-        '</div>'+
-      '</div>'+
-      '<button class="btn btn-danger btn-sm" style="padding:3px 10px;font-size:11px;" onclick="deleteCgDocAzure(\''+cgId+'\',\''+encodeURIComponent(d.name)+'\')">✕</button>';
-    list.appendChild(card);
-  });
+  renderDocGrid(document.getElementById('cgDocListAzure'),docs,{clientType:'caregiver',clientId:cgId,deleteExpr:function(name){return 'deleteCgDocAzure(\''+cgId+'\',\''+encodeURIComponent(name)+'\')';},refresh:function(){loadCgDocsAzure(cgId);}});
 }
 function uploadCgDocAzure(){
   var input=document.getElementById('cgDocFileInput2');
@@ -6799,25 +6801,7 @@ function renderCwDocsPane(){
     .catch(function(){renderCwDocListAzure(activeCwId,[]);});
 }
 function renderCwDocListAzure(cwId,docs){
-  var list=document.getElementById('cwDocListAzure');if(!list)return;
-  if(!docs.length){list.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:4px 0;">No documents yet.</div>';return;}
-  list.innerHTML='';
-  docs.forEach(function(d){
-    var kb=d.size?Math.round(d.size/1024)+'KB':'';
-    var ext=(d.name||'').split('.').pop().toLowerCase();
-    var isImg=['jpg','jpeg','png','gif'].indexOf(ext)>=0;
-    var icon=(ext||"").toUpperCase().slice(0,4);
-    var card=document.createElement('div');
-    card.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #e1e8f0;border-radius:6px;margin-bottom:6px;background:#fafbfc;';
-    card.innerHTML=
-      '<span style="display:inline-block;min-width:34px;padding:3px 6px;background:#e8eef5;color:#1a3a5c;border-radius:4px;font-size:10px;font-weight:600;text-align:center;letter-spacing:.3px;">'+(icon||'FILE')+'</span>'+
-      '<div style="flex:1;min-width:0;">'+
-        '<div style="font-size:12px;font-weight:600;color:#1a3a5c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><a href="'+d.url+'" target="_blank" style="color:#1a3a5c;text-decoration:none;">'+esc(d.name)+'</a></div>'+
-        '<div style="font-size:11px;color:#8ca0b4;">'+kb+'</div>'+
-      '</div>'+
-      '<button class="btn btn-danger btn-sm" style="padding:3px 10px;font-size:11px;" onclick="deleteCwDoc(\''+cwId+'\',\''+encodeURIComponent(d.name)+'\')">✕</button>';
-    list.appendChild(card);
-  });
+  renderDocGrid(document.getElementById('cwDocListAzure'),docs,{clientType:'caseworker',clientId:cwId,deleteExpr:function(name){return 'deleteCwDoc(\''+cwId+'\',\''+encodeURIComponent(name)+'\')';},refresh:function(){renderCwDocsPane();}});
 }
 function uploadCwDoc(){
   var input=document.getElementById('cwDocFileInput');
