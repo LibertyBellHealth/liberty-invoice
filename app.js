@@ -8158,7 +8158,9 @@ function _autoGenBatchStatus(batch){
   var ok=0,sent=0,edited=0,missing=0;
   (batch.invoices||[]).forEach(function(rec){
     var prof=profiles[rec.clientName];if(!prof||!prof.invoices){missing++;return;}
-    var inv=prof.invoices.find(function(i){return i.id===rec.invoiceId;});
+    // Match by billing period (survives the DB round-trip, which drops the client-side
+    // 'id' in favour of 'dbId'); fall back to the original id before the first reload.
+    var inv=prof.invoices.find(function(i){return (batch.period&&i.billingPeriod===batch.period)||i.id===rec.invoiceId;});
     if(!inv){missing++;return;}
     if(inv.status&&inv.status!=='draft'){sent++;return;}
     // Compare data hash with snapshot — if user edited the invoice, refuse undo
@@ -8199,7 +8201,7 @@ function undoAutoGenBatch(batchId){
       var removed=0;
       batch.invoices.forEach(function(rec){
         var prof=profiles[rec.clientName];if(!prof||!prof.invoices)return;
-        var i=prof.invoices.findIndex(function(inv){return inv.id===rec.invoiceId;});
+        var i=prof.invoices.findIndex(function(inv){return (batch.period&&inv.billingPeriod===batch.period)||inv.id===rec.invoiceId;});
         if(i<0)return;
         var inv=prof.invoices[i];
         if(inv.status&&inv.status!=='draft')return;
