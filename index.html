@@ -528,6 +528,19 @@ function aiTrack(name, props){
     </div>
 
     <div class="settings-section">
+      <h3>State Billing Rate</h3>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <label style="font-size:13px;color:#243b53;">Government billing rate on invoices:</label>
+        <span style="font-size:14px;color:#243b53;">$</span>
+        <input id="stateRateInput" type="text" inputmode="decimal" style="width:90px;padding:7px 9px;border:1px solid #d0d8e4;border-radius:5px;font-size:14px;" placeholder="27.00">
+        <span style="font-size:13px;color:#6b8dae;">/ hour</span>
+        <button class="btn btn-primary" onclick="saveStateRate()">Save</button>
+        <span id="stateRateStatus" style="font-size:12px;color:#1a7740;"></span>
+      </div>
+      <p style="font-size:11px;color:#8ca0b4;margin-top:8px;">The hourly rate billed to the state on all invoices (default <b>$27.00</b>). This is <b>not</b> the caregiver's pay rate. Update it here whenever the state rate changes — no code change needed.</p>
+    </div>
+
+    <div class="settings-section">
       <h3>Clear Local Cache</h3>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-danger" onclick="clearAllDrafts()">Clear All Drafts</button>
