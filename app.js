@@ -1582,13 +1582,24 @@ function _doCreateClient(name,first,middle,last,nickname){
 // ============================================================
 //  CAREGIVERS
 // ============================================================
-function getCaregivers(){try{return JSON.parse(localStorage.getItem('lhca_caregivers')||'{}');}catch(e){return{};}}
+var _cgSsnMem = Object.create(null);
+function getCaregivers(){
+  try{
+    var cg=JSON.parse(localStorage.getItem('lhca_caregivers')||'{}');
+    for(var id in cg){ if(cg[id] && _cgSsnMem[id]!==undefined) cg[id].ssn=_cgSsnMem[id]; }
+    return cg;
+  }catch(e){return{};}
+}
 function saveCaregiversLS(cg){
-  // HIPAA: never persist MI Login passwords to localStorage (credential at-rest).
-  // Strip on a shallow copy so the in-memory record still has it for the API save.
+  // HIPAA/S8: never persist MI Login passwords OR SSN to localStorage. Strip on a shallow
+  // copy so the in-memory record still has them for the API save; SSN is cached in memory
+  // (_cgSsnMem) and overlaid back by getCaregivers.
   var clean={};
   Object.keys(cg).forEach(function(k){
-    var c=Object.assign({},cg[k]);delete c.miloginPassword;delete c.milogin_password;clean[k]=c;
+    var c=Object.assign({},cg[k]);
+    if(c.ssn) _cgSsnMem[k]=c.ssn;
+    delete c.miloginPassword;delete c.milogin_password;delete c.ssn;
+    clean[k]=c;
   });
   localStorage.setItem('lhca_caregivers',JSON.stringify(clean));
 }
@@ -3558,8 +3569,31 @@ function exportReportExcel(){
 // ============================================================
 //  PROFILES (localStorage + SharePoint)
 // ============================================================
-function getProfiles(){try{return JSON.parse(localStorage.getItem('lhca_profiles')||'{}');}catch(e){return{};}}
-function saveProfilesLS(p){localStorage.setItem('lhca_profiles',JSON.stringify(p));}
+// S8: SSN is kept in memory for this session only — never written to localStorage — so a
+// lost/idle device or a future XSS can't read it off disk. It's repopulated from the
+// authenticated API on load. saveProfilesLS strips ssn before persisting and caches it in
+// memory; getProfiles overlays it back for display. Saves send ssn only when present, and
+// the backend keeps the stored value when a save omits it (provided-guard).
+var _ssnMem = Object.create(null);
+function getProfiles(){
+  try{
+    var p=JSON.parse(localStorage.getItem('lhca_profiles')||'{}');
+    for(var name in p){ if(p[name] && _ssnMem[name]!==undefined) p[name].ssn=_ssnMem[name]; }
+    return p;
+  }catch(e){return{};}
+}
+function saveProfilesLS(p){
+  var out={};
+  for(var name in p){
+    var prof=p[name];
+    if(prof && typeof prof==='object'){
+      if(prof.ssn) _ssnMem[name]=prof.ssn;               // keep the in-memory copy current
+      var clone={}; for(var k in prof){ if(k!=='ssn') clone[k]=prof[k]; } // strip ssn from disk
+      out[name]=clone;
+    } else { out[name]=prof; }
+  }
+  localStorage.setItem('lhca_profiles',JSON.stringify(out));
+}
 function exportProfiles(){
   var p=getProfiles();if(!Object.keys(p).length){showConfirm('No clients yet.',function(){},{title:'Nothing to Export',okText:'OK',danger:false});return;}
   // Ask whether to include plaintext SSN (default: masked)
@@ -5656,6 +5690,9 @@ function clearPHIFromStorage() {
   phiKeys.forEach(function(k){try{localStorage.removeItem(k);}catch(e){}});
   Object.keys(localStorage).filter(function(k){return k.startsWith('lhca_draft_');})
     .forEach(function(k){try{localStorage.removeItem(k);}catch(e){}});
+  // S8: also wipe the in-memory SSN caches so nothing lingers after sign-out/idle.
+  _ssnMem = Object.create(null);
+  if (typeof _cgSsnMem !== 'undefined') _cgSsnMem = Object.create(null);
 }
 function signOut() {
   aiTrack('UserSignOut');
@@ -5857,6 +5894,10 @@ function saveProfileSP(name, data, quiet) {
     start_date: data.startDate || '', live_in: data.liveIn ? 1 : 0,
     client_notes: data.clientNotes || '', audit_json: JSON.stringify(data.auditLog || []),
   };
+  // S8: only send ssn when we actually have it in memory. Omitting it makes the backend
+  // keep the stored (encrypted) value rather than blanking it — so a save that happens
+  // before ssn has loaded (e.g. right after a reload) can never wipe it.
+  if (!data.ssn) delete body.ssn;
   var _doSave = function(){
     return fetch(API_BASE + '/homecare-clients', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(body) })
       .then(function (r) {
@@ -5997,9 +6038,7 @@ function loadCaregiversAPI() {
 }
 function saveCaregiverAPI(id, cg, quiet) {
   var _doSave = function(){
-    return fetch(API_BASE + '/caregivers', {
-      method: 'POST', headers: apiHeaders(),
-      body: JSON.stringify({
+    var body = {
         id: id, name: cg.name || '',
         first_name: cg.firstName || '', last_name: cg.lastName || '',
         middle_name: cg.middleName || '', nickname: cg.nickname || '',
@@ -6018,7 +6057,12 @@ function saveCaregiverAPI(id, cg, quiet) {
         milogin_username: cg.miloginUsername || '', milogin_password: cg.miloginPassword || '',
         // Identity (sensitive — these fields are masked in exports too)
         dob: cg.dob || '', drivers_license: cg.driversLicense || '', ssn: cg.ssn || ''
-      }),
+    };
+    // S8: only send ssn when present; omitting it makes the backend keep the stored value.
+    if (!cg.ssn) delete body.ssn;
+    return fetch(API_BASE + '/caregivers', {
+      method: 'POST', headers: apiHeaders(),
+      body: JSON.stringify(body),
     }).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();});
   };
   return quiet ? _doSave() : trackSave(cg.name||id, _doSave);
