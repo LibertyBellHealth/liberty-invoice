@@ -737,7 +737,7 @@ function renderOverviewPane(){
   pane.innerHTML='<div class="overview-grid">'+
     '<div class="ov-card"><h4>Client Info</h4>'+
       '<div class="ov-row"><span class="ov-label">Medicaid ID</span><span class="ov-value">'+esc(prof.medicaidId||'—')+'</span></div>'+
-      '<div class="ov-row"><span class="ov-label">Hourly Rate</span><span class="ov-value">'+(prof.hourlyRate?'$'+prof.hourlyRate+'/hr':'—')+'</span></div>'+
+      '<div class="ov-row"><span class="ov-label">Hourly Rate</span><span class="ov-value">'+(prof.hourlyRate?'$'+esc(prof.hourlyRate)+'/hr':'—')+'</span></div>'+
       '<div class="ov-row"><span class="ov-label">Phone</span><span class="ov-value">'+esc(prof.phone||'—')+'</span></div>'+
       (addrStr.trim()?'<div class="ov-row"><span class="ov-label">Address</span><span class="ov-value">'+esc(addrStr.trim())+'</span></div>':'')+
       '<div class="ov-row"><span class="ov-label">Caregiver</span>'+(cgName&&prof.caregiverId?'<span class="ov-value" style="color:#185FA5;cursor:pointer;text-decoration:underline;" onclick="navCaregivers();setTimeout(function(){openCgDetail(\''+esc(prof.caregiverId)+'\');},50)">'+esc(cgName)+'</span>':'<span class="ov-value">'+esc(cgName||'Unassigned')+'</span>')+'</div>'+
@@ -882,7 +882,11 @@ function renderInfoPane(){
     '<option value="Female"'+(gv==='Female'?' selected':'')+'>Female</option>'+
   '</select>';
   g.appendChild(dGender);
-  mkField('ei-rate','Hourly Rate',prof.hourlyRate||'',false);
+  // Hourly Rate: numeric-guarded (formatRate) like caregiver pay, so it can't hold
+  // free text (defense-in-depth alongside the esc() on the overview render).
+  var dRate=document.createElement('div');dRate.className='info-field';
+  dRate.innerHTML='<label>Hourly Rate</label><input id="ei-rate" value="'+esc(prof.hourlyRate||'')+'" inputmode="decimal" oninput="formatRate(this);unsavedChanges=true;">';
+  g.appendChild(dRate);
   mkField('ei-dl',"Driver's License #",prof.driversLicense||'',false);
   // SSN masked by default; reveals while the field is focused, re-masks on blur
   var dSsn=document.createElement('div');dSsn.className='info-field';
