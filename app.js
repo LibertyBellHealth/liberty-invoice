@@ -84,6 +84,9 @@ function formatRate(el){
   var parts=v.split('.');
   el.value=parts[0]+(parts.length>1 ? '.'+parts.slice(1).join('').slice(0,2) : '');
 }
+// C4: one place for CLIENT status labels — 'inactive' displays as "In Progress"
+// (onboarding, not yet billing). Keeps every client-status badge consistent.
+function clientStatusLabel(s){ s=s||'active'; return s==='inactive' ? 'In Progress' : s.charAt(0).toUpperCase()+s.slice(1); }
 
 // ============================================================
 //  NAVIGATION
@@ -201,83 +204,6 @@ document.addEventListener('click',function(e){
   }
 });
 
-// ============================================================
-//  GLOBAL SEARCH
-// ============================================================
-// Debounce wrapper — the search scans every client + invoice, so run it ~180ms
-// after typing stops instead of on every keystroke. Clearing is immediate (snappy).
-var _gsTimer=null;
-function debouncedGlobalSearch(q){
-  clearTimeout(_gsTimer);
-  if(!q||q.length<2){runGlobalSearch(q);return;}
-  _gsTimer=setTimeout(function(){runGlobalSearch(q);},180);
-}
-function runGlobalSearch(q){
-  var res=document.getElementById('globalResults');if(!q||q.length<2){res.style.display='none';return;}
-  q=q.toLowerCase();
-  var profiles=getProfiles(),cgs=getCaregivers(),todos=getTodos();
-  var sections=[];
-  // Clients
-  var clientHits=Object.keys(profiles).filter(function(n){return n.toLowerCase().includes(q)||(profiles[n].medicaidId||'').toLowerCase().includes(q);}).slice(0,5);
-  if(clientHits.length){
-    sections.push('<div class="gr-section">Clients</div>');
-    clientHits.forEach(function(n){sections.push('<div class="gr-item" onclick="closeGlobalSearch();navDetail(\''+esc(n)+'\')"><span class="gr-label">'+esc(n)+'</span><span class="gr-meta">'+(profiles[n].medicaidId||'')+'</span></div>');});
-  }
-  // Invoices
-  var invHits=[];
-  Object.keys(profiles).forEach(function(name){(profiles[name].invoices||[]).forEach(function(inv){if((inv.billingPeriod||'').includes(q.toUpperCase())||name.toLowerCase().includes(q))invHits.push({name:name,inv:inv});});});
-  invHits=invHits.slice(0,4);
-  if(invHits.length){
-    sections.push('<div class="gr-section">Invoices</div>');
-    invHits.forEach(function(r){sections.push('<div class="gr-item" onclick="closeGlobalSearch();navDetail(\''+esc(r.name)+'\',\'history\')"><span class="gr-label">'+esc(r.inv.billingPeriod)+' — '+esc(r.name)+'</span><span class="gr-meta">'+(r.inv.status||'draft')+'</span></div>');});
-  }
-  // Tasks
-  var taskHits=todos.filter(function(t){return !t.done&&(t.text||'').toLowerCase().includes(q);}).slice(0,3);
-  if(taskHits.length){
-    sections.push('<div class="gr-section">Tasks</div>');
-    taskHits.forEach(function(t){sections.push('<div class="gr-item" onclick="closeGlobalSearch();navTasks()"><span class="gr-label">'+esc(t.text)+'</span><span class="gr-meta">'+(t.client?t.client:'')+(t.due?' · '+t.due:'')+'</span></div>');});
-  }
-  // Caregivers
-  var cgHits=Object.keys(cgs).filter(function(id){return (cgs[id].name||'').toLowerCase().includes(q);}).slice(0,3);
-  if(cgHits.length){
-    sections.push('<div class="gr-section">Caregivers</div>');
-    cgHits.forEach(function(id){sections.push('<div class="gr-item" onclick="closeGlobalSearch();navCaregivers()"><span class="gr-label">'+esc(cgs[id].name)+'</span><span class="gr-meta">'+esc(cgs[id].status||'')+'</span></div>');});
-  }
-  if(!sections.length)sections.push('<div class="gr-empty">No results for "'+esc(q)+'"</div>');
-  res.innerHTML=sections.join('');res.style.display='block';
-}
-function closeGlobalSearch(){
-  var gs=document.getElementById('globalSearch');if(gs)gs.value='';
-  var res=document.getElementById('globalResults');if(res)res.style.display='none';
-}
-document.addEventListener('click',function(e){if(!e.target.closest('.global-search-wrap'))closeGlobalSearch();});
-
-// ============================================================
-//  PRINT & EMAIL INVOICE
-// ============================================================
-function printThenEmail(){
-  var prof=getProfiles()[activeProfileName]||{};
-  var cwRec3=getCaseworkers().find(function(c){return c.id===prof.caseworkerId||c.name===prof.worker;})||{};
-  var agentEmail=cwRec3.email||document.getElementById('activeAgentEmail').value||'';
-  var clientName=document.getElementById('clientName').value||activeProfileName||'Client';
-  var bp=document.getElementById('billingPeriod').value||'';
-  // Step 1: print dialog (user saves as PDF)
-  var overlay=document.createElement('div');
-  overlay.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;';
-  overlay.innerHTML='<div style="background:#fff;border-radius:8px;padding:24px 28px;max-width:400px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.2);">'+
-    '<div style="font-size:15px;font-weight:700;color:#1a2b45;margin-bottom:8px;">Step 1 of 2 — Save as PDF</div>'+
-    '<div style="font-size:13px;color:#4a6a8a;line-height:1.6;margin-bottom:16px;">The print dialog will open. Choose <strong>Save as PDF</strong> as your printer, then click OK below to open the email composer.</div>'+
-    '<button onclick="document.body.removeChild(this.closest(\'div\').parentNode.parentNode);_openEmailAfterPrint(\''+esc(agentEmail)+'\',\''+esc(clientName)+'\',\''+esc(bp)+'\')" style="background:#185FA5;color:#fff;border:none;border-radius:5px;padding:9px 20px;font-size:13px;font-family:Arial,sans-serif;font-weight:600;cursor:pointer;margin-right:8px;">OK — Open Email Composer</button>'+
-    '<button onclick="document.body.removeChild(this.closest(\'div\').parentNode.parentNode)" style="background:#f0f3f7;color:#1a2b45;border:none;border-radius:5px;padding:9px 14px;font-size:13px;font-family:Arial,sans-serif;cursor:pointer;">Cancel</button>'+
-    '</div>';
-  document.body.appendChild(overlay);
-  window.print();
-}
-function _openEmailAfterPrint(toAddr,clientName,bp){
-  var subj='Home Help Invoice'+(clientName?' — '+clientName:'')+(bp?' — '+bp:'');
-  var body='Dear Caseworker,\n\nPlease find the attached Home Help Agency Invoice'+(clientName?' for '+clientName:'')+(bp?' for the billing period '+bp:'')+'.\n\nPlease review and process at your earliest convenience. Do not hesitate to contact us with any questions.\n\nThank you,\nThomas Jaboro\nLiberty Home Care Assistance\n(248) 291-4106';
-  openEmailComposer(toAddr,subj,body);
-}
 function navNewClient(){
   showPage('new-client');bc([{l:'Clients',fn:navHome},{l:'New Client'}]);document.getElementById('topbarActions').innerHTML='';
   ['nc-first','nc-middle','nc-last','nc-nickname','nc-medicaid','nc-rate','nc-dl','nc-ssn','nc-phone','nc-cemail','nc-street','nc-city','nc-state','nc-zip','nc-county','nc-start-date','nc-worker-search','nc-worker-val','nc-caregiver-search','nc-caregiver-val'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
@@ -293,7 +219,7 @@ function navDetail(name,tab){
   document.getElementById('detailName').textContent=name+(prof.nickname?' ('+prof.nickname+')':'');
   var st=prof.clientStatus||'active';
   document.getElementById('detailMeta').innerHTML=(prof.medicaidId?'Medicaid: '+esc(prof.medicaidId):'No Medicaid ID')+(prof.phone?' &nbsp;·&nbsp; '+esc(prof.phone):'')+
-    ' &nbsp;<span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span>';
+    ' &nbsp;<span class="cs-badge cs-'+st+'">'+clientStatusLabel(st)+'</span>';
   bc([{l:'Clients',fn:navHome},{l:name}]);
   document.getElementById('topbarActions').innerHTML='';
   switchTab(tab||'overview');renderSidebarClients();
@@ -1056,7 +982,7 @@ function saveClientInfo(){
   var displayName=activeProfileName+(rec.nickname?' ('+rec.nickname+')':'');
   document.getElementById('detailName').textContent=displayName;
   var st=rec.clientStatus||'active';
-  document.getElementById('detailMeta').innerHTML=(rec.medicaidId?'Medicaid: '+esc(rec.medicaidId):'No Medicaid ID')+(rec.phone?' &nbsp;·&nbsp; '+esc(rec.phone):'')+' &nbsp;<span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span>';
+  document.getElementById('detailMeta').innerHTML=(rec.medicaidId?'Medicaid: '+esc(rec.medicaidId):'No Medicaid ID')+(rec.phone?' &nbsp;·&nbsp; '+esc(rec.phone):'')+' &nbsp;<span class="cs-badge cs-'+st+'">'+clientStatusLabel(st)+'</span>';
   renderSidebarClients();
   var btn=document.getElementById('saveInfoBtn');btn.textContent='Saved';setTimeout(function(){btn.textContent='Save Changes';},1800);
 }
@@ -1481,7 +1407,7 @@ function handleDocScan(input){
 function deleteHcDoc(clientId,encodedName){
   showConfirm('Delete this document?',function(){
     fetch(API_BASE+'/documents?clientType=homecare&clientId='+clientId+'&name='+encodedName,{method:'DELETE',headers:apiHeaders()})
-    .then(function(){loadHcDocs(clientId);}).catch(function(e){showAlert('Delete failed: '+e);});
+    .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);loadHcDocs(clientId);}).catch(function(e){showAlert('Delete failed: '+e);});
   },{title:'Delete Document',okText:'Delete'});
 }
 
@@ -1530,7 +1456,7 @@ function uploadCgDoc(cgId){
 function deleteCgDoc(cgId,encodedName){
   showConfirm('Delete this document?',function(){
     fetch(API_BASE+'/documents?clientType=caregiver&clientId='+cgId+'&name='+encodedName,{method:'DELETE',headers:apiHeaders()})
-    .then(function(){loadCgDocs(cgId);}).catch(function(e){showAlert('Delete failed: '+e);});
+    .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);loadCgDocs(cgId);}).catch(function(e){showAlert('Delete failed: '+e);});
   },{title:'Delete Document',okText:'Delete'});
 }
 
@@ -2513,7 +2439,7 @@ function uploadCgDocAzure(){
 function deleteCgDocAzure(cgId,encodedName){
   showConfirm('Delete this document?',function(){
     fetch(API_BASE+'/documents?clientType=caregiver&clientId='+cgId+'&name='+encodedName,{method:'DELETE',headers:apiHeaders()})
-    .then(function(){loadCgDocsAzure(cgId);}).catch(function(e){showAlert('Delete failed: '+e);});
+    .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);loadCgDocsAzure(cgId);}).catch(function(e){showAlert('Delete failed: '+e);});
   },{title:'Delete Document',okText:'Delete'});
 }
 function handleCgDocScan(input){
@@ -3190,14 +3116,6 @@ function addTaskForClient(clientName){
     }
   });
 }
-function sendEmailMailto(toAddr){
-  var prof=getProfiles()[activeProfileName]||{};
-  var cwRec4=getCaseworkers().find(function(c){return c.id===prof.caseworkerId||c.name===prof.worker;})||{};
-  var addr=toAddr||cwRec4.email||'';
-  var clientName=activeProfileName||'';
-  var subj='Re: '+clientName;
-  window.location.href='mailto:'+encodeURIComponent(addr)+'?subject='+encodeURIComponent(subj);
-}
 function renderTodos(filterClient){
   var todos=getTodos();
   if(filterClient)todos=todos.filter(function(t){return t.client===filterClient;});
@@ -3421,12 +3339,6 @@ function saveWorkflow(){
 // ============================================================
 //  EMAIL COMPOSER (Microsoft Graph)
 // ============================================================
-function openEmailComposer(toAddr,subject,body){
-  document.getElementById('emailTo').value=toAddr||'';
-  document.getElementById('emailSubject').value=subject||'';
-  document.getElementById('emailBody').value=body||'';
-  document.getElementById('emailComposerModal').classList.add('open');
-}
 function sendGraphEmail(){
   if(!spToken){showAlert('Please sign in with your Microsoft account to send email.');return;}
   var to=document.getElementById('emailTo').value.trim();
@@ -6962,7 +6874,7 @@ function renderCwClientsPane(){
         '<div style="font-size:13px;font-weight:600;color:#1a2b45;">'+esc(name)+'</div>'+
         '<div style="font-size:11px;color:#6b8dae;">'+esc(prof.medicaidId||'No Medicaid ID')+(prof.phone?' · '+esc(prof.phone):'')+'</div>'+
       '</div>'+
-      '<span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span>'+
+      '<span class="cs-badge cs-'+st+'">'+clientStatusLabel(st)+'</span>'+
       '<span style="font-size:11px;color:#185FA5;font-weight:500;">Open →</span>';
     row.addEventListener('mouseenter',function(){this.style.borderColor='#b0c8e8';});
     row.addEventListener('mouseleave',function(){this.style.borderColor='#e1e5ea';});
@@ -7021,7 +6933,7 @@ function uploadCwDoc(){
 function deleteCwDoc(cwId,encodedName){
   showConfirm('Delete this document?',function(){
     fetch(API_BASE+'/documents?clientType=caseworker&clientId='+cwId+'&name='+encodedName,{method:'DELETE',headers:apiHeaders()})
-      .then(function(){renderCwDocsPane();}).catch(function(e){showAlert('Delete failed: '+e);});
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);renderCwDocsPane();}).catch(function(e){showAlert('Delete failed: '+e);});
   },{title:'Delete Document',okText:'Delete'});
 }
 function handleCwDocScan(input){
@@ -7819,178 +7731,6 @@ function _dataUrlToUint8(dataUrl){
   try{var bin=atob(b64);var arr=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);return arr;}catch(e){return null;}
 }
 
-/* Helpers */
-function sfi(id,val,ph,w){
-  return '<input id="'+id+'" value="'+(val||'')+'" placeholder="'+(ph||'')+'" style="'+(w?'width:'+w+';':'width:100%;')+'border:none;border-bottom:1px solid #aaa;background:transparent;font-family:Times New Roman,Times,serif;font-size:9.5pt;outline:none;padding:1px 2px;">';
-}
-function sfcb(id){
-  return '<input type="checkbox" id="'+id+'" style="width:13px;height:13px;margin-right:4px;cursor:pointer;vertical-align:middle;">';
-}
-
-// Clean labeled field for the new split-view forms
-function sff(label,id,val,opts){
-  opts=opts||{};
-  var t=opts.type||'text';
-  var ph=opts.placeholder||'';
-  var input;
-  if(t==='date')input='<input type="date" id="'+id+'" value="'+esc(val||'')+'">';
-  else if(t==='checkbox')input='<input type="checkbox" id="'+id+'"'+(val?' checked':'')+'>';
-  else if(t==='select'){
-    var opts2=opts.options||[];
-    input='<select id="'+id+'">'+opts2.map(function(o){var s=(typeof o==='string')?{v:o,l:o}:o;return '<option value="'+esc(s.v)+'"'+(s.v===(val||'')?' selected':'')+'>'+esc(s.l)+'</option>';}).join('')+'</select>';
-  }
-  else if(t==='textarea')input='<textarea id="'+id+'" rows="'+(opts.rows||3)+'" placeholder="'+esc(ph)+'">'+esc(val||'')+'</textarea>';
-  else input='<input type="text" id="'+id+'" value="'+esc(val||'')+'" placeholder="'+esc(ph)+'"'+(opts.maxlength?' maxlength="'+opts.maxlength+'"':'')+'>';
-  return '<div class="sf-field">'+
-    (t==='checkbox'
-      ? '<label style="flex-direction:row;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:13px;font-weight:400;color:#1a2b45;">'+input+esc(label)+'</label>'
-      : '<label>'+esc(label)+'</label>'+input
-    )+
-    '</div>';
-}
-// Section heading + row helpers
-function sfh(t){return '<div class="sf-section-h">'+esc(t)+'</div>';}
-function sfr(){var args=Array.prototype.slice.call(arguments);var n=args.length;return '<div class="sf-row sf-row-'+n+'">'+args.join('')+'</div>';}
-
-/* DHS-390 */
-function buildDHS390(prof,cw){
-  var name=activeFormClientName||'';
-  var td=today();
-  return ''+
-    sfh('Section 1 — Departmental Use')+
-    sfr(sff('Case Name','dhs390_cname',name),sff('Log Number','dhs390_log',''))+
-    sfr(sff('Recipient ID','dhs390_rid',prof.medicaidId||''),sff('County','dhs390_county',prof.county||''))+
-    sfr(sff('Worker Name','dhs390_wname',cw.name||prof.worker||''),sff('Worker Phone','dhs390_wphone',cw.phone||''))+
-    sfr(sff('Date','dhs390_date',td,{type:'date'}))+
-    sfh('Section 2 — Client Information')+
-    sfr(sff('Full Name of Applicant','dhs390_fname',name))+
-    sfr(sff('Date of Birth','dhs390_dob','',{type:'date'}),sff('Medicaid / Recipient ID','dhs390_mid',prof.medicaidId||''))+
-    sfr(sff('Street Address','dhs390_addr',prof.street||prof.address||''))+
-    sfr(sff('City','dhs390_city',prof.city||''),sff('State','dhs390_st',prof.state||'MI'),sff('Zip','dhs390_zip',prof.zip||''))+
-    sfr(sff('Phone','dhs390_phone',prof.phone||''),sff('TTY','dhs390_tty',''))+
-    sfr(sff('Email','dhs390_email',prof.clientEmail||prof.cemail||''))+
-    sfh('Section 3 — Programs Requested')+
-    '<div class="sf-checks">'+
-      sff('Home Help','dhs390_hh',false,{type:'checkbox'})+
-      sff('Adult Community Placement','dhs390_acp',false,{type:'checkbox'})+
-      sff('Other Services','dhs390_os',false,{type:'checkbox'})+
-    '</div>'+
-    sfh('Section 4 — Living Arrangement')+
-    '<div class="sf-checks">'+
-      sff('Alone','dhs390_alone',false,{type:'checkbox'})+
-      sff('With spouse','dhs390_spouse',false,{type:'checkbox'})+
-      sff('With children under 18','dhs390_ch',false,{type:'checkbox'})+
-      sff('With others','dhs390_others',false,{type:'checkbox'})+
-      sff('Adult foster care','dhs390_foster',false,{type:'checkbox'})+
-    '</div>'+
-    sfr(sff('Spouse Name (if applicable)','dhs390_spname',''),sff('# Children','dhs390_chn',''))+
-    sfr(sff('Guardian Name (if any)','dhs390_guaname',''))+
-    sfh('Signature')+
-    sfr(sff('Signature Date','dhs390_sigdate',td,{type:'date'}));
-}
-
-/* DHS-4771 */
-function buildDHS4771(prof,cw){
-  var name=activeFormClientName||'';
-  var td=today();
-  var addr=[prof.street||prof.address||''].join('');
-  return ''+
-    sfh('MDHHS County Office')+
-    sfr(sff('Address line 1','dhs4771_off1','',{placeholder:'e.g. Wayne County DHHS'}))+
-    sfr(sff('Address line 2','dhs4771_off2',''))+
-    sfr(sff('City, State ZIP','dhs4771_offcity',''))+
-    sfh('Client Information')+
-    sfr(sff('Client Name','dhs4771_cn',name),sff('County','dhs4771_county',prof.county||''))+
-    sfr(sff('Case Number','dhs4771_case',''),sff('Client ID (Medicaid)','dhs4771_cid',prof.medicaidId||''))+
-    sfh('Adult Services Worker')+
-    sfr(sff('ASW Name','dhs4771_asw',cw.name||prof.worker||''),sff('ASW Phone','dhs4771_aswph',cw.phone||''))+
-    sfh('Authorization & Signature')+
-    sfr(sff('Printed Name','dhs4771_pname',name),sff('Signature Date','dhs4771_date',td))+
-    sfr(sff('Address','dhs4771_addr',addr))+
-    sfr(sff('City','dhs4771_city',prof.city||''),sff('State','dhs4771_st',prof.state||'MI'),sff('Zip','dhs4771_zip',prof.zip||''));
-}
-
-/* MDHHS-6200 */
-function buildMDHHS6200(prof,cw){
-  var name=activeFormClientName||'';
-  var td=today();
-  return ''+
-    sfh('Section 1 — Patient Information')+
-    sfr(sff("Patient's Name",'m62_pname',name),sff("Date of Birth",'m62_dob','',{type:'date'}))+
-    sfh('Section 2 — Departmental Use')+
-    sfr(sff('Case Name','m62_cname',name),sff('Log Number','m62_log',''))+
-    sfr(sff('Recipient ID','m62_rid',prof.medicaidId||''),sff('County','m62_county',prof.county||''))+
-    sfr(sff('Worker Name','m62_wname',cw.name||prof.worker||''),sff('Worker Email','m62_wemail',cw.email||''))+
-    sfr(sff('Worker Phone','m62_wphone',cw.phone||''),sff('Return Fax','m62_fax',''))+
-    sfh('Section 3 — Medical Assessment')+
-    sfr(sff('Date Last Seen','m62_lastseen','',{type:'date'}))+
-    sfr(sff('Diagnosis / Conditions','m62_diag','',{type:'textarea',rows:3}))+
-    '<div class="sf-checks">'+
-      sff('Chronic / ongoing','m62_chry',false,{type:'checkbox'})+
-      sff('Nonambulatory','m62_noamby',false,{type:'checkbox'})+
-      sff('Adaptive equipment','m62_equy',false,{type:'checkbox'})+
-    '</div>'+
-    sfr(sff('Adaptive Equipment Details','m62_equdet',''))+
-    sfr(sff('Resolved Date (if not chronic)','m62_resolved','',{type:'date'}))+
-    sfh('Provider Signature')+
-    sfr(sff('Provider Printed Name','m62_sigpname',''),sff('Signature Date','m62_sigdate',td,{type:'date'}));
-}
-
-/* MSA-4676 */
-function buildMSA4676(prof,cw){
-  var name=activeFormClientName||'';
-  var td=today();
-  return ''+
-    sfh('Beneficiary Information')+
-    sfr(sff('Client Name','msa_cname',name),sff('Medicaid ID','msa_mid',prof.medicaidId||''))+
-    sfr(sff('Address','msa_addr',prof.street||prof.address||''))+
-    sfr(sff('City','msa_city',prof.city||''),sff('State','msa_st',prof.state||'MI'),sff('Zip','msa_zip',prof.zip||''))+
-    sfr(sff('Phone','msa_phone',prof.phone||''),sff('County','msa_county',prof.county||''))+
-    sfh('Caregiver / Provider Information')+
-    sfr(sff('Caregiver Name','msa_cgname',''),sff('Caregiver Phone','msa_cgphone',''))+
-    sfr(sff('Service Start Date','msa_start','',{type:'date'}))+
-    sfh('Signature')+
-    sfr(sff('Signature Date','msa_date',td,{type:'date'}));
-}
-
-/* BPHASA-2421 — Live-In Caregiver Attestation */
-function buildBPHASA2421(prof,cw){
-  var name=activeFormClientName||'';
-  var td=today();
-  var cgs=getCaregivers();
-  var assignedCg=(prof.caregiverId&&cgs[prof.caregiverId])||{};
-  var cgFirst=assignedCg.firstName||'';
-  var cgLast=assignedCg.lastName||'';
-  if(!cgFirst&&assignedCg.name){var parts=assignedCg.name.split(' ');cgFirst=parts[0]||'';cgLast=parts.slice(1).join(' ')||'';}
-  var bFirst='',bLast='';
-  if(name){var bp=name.split(' ');bFirst=bp[0]||'';bLast=bp.slice(1).join(' ')||'';}
-  return ''+
-    sfh('Purpose of Attestation')+
-    '<div class="sf-checks">'+
-      sff('Initial Request','bp_purpose_initial',false,{type:'checkbox'})+
-      sff('Address Change','bp_purpose_addr',false,{type:'checkbox'})+
-      sff('Renewal','bp_purpose_renew',false,{type:'checkbox'})+
-    '</div>'+
-    sfh('Section 1 — Caregiver Information')+
-    sfr(sff('First Name','bp_cg_first',cgFirst),sff('Last Name','bp_cg_last',cgLast))+
-    sfr(sff('Street Address','bp_cg_addr',assignedCg.street||assignedCg.address||''))+
-    sfr(sff('City','bp_cg_city',assignedCg.city||''),sff('State','bp_cg_st',assignedCg.state||'MI'),sff('Zip','bp_cg_zip',assignedCg.zip||''))+
-    sfr(sff('Email','bp_cg_email',assignedCg.email||''),sff('Phone','bp_cg_phone',assignedCg.phone||''))+
-    sfr(sff('CHAMPS Provider ID','bp_cg_champs',''))+
-    sfh('Section 2 — Beneficiary Information')+
-    sfr(sff('First Name','bp_b_first',bFirst),sff('Last Name','bp_b_last',bLast),sff('Medicaid ID','bp_b_mid',prof.medicaidId||''))+
-    sfr(sff('Street Address','bp_b_addr',prof.street||prof.address||''))+
-    sfr(sff('City','bp_b_city',prof.city||''),sff('State','bp_b_st',prof.state||'MI'),sff('Zip','bp_b_zip',prof.zip||''))+
-    '<div class="sf-checks">'+
-      sff('Behavioral Health','bp_prog_bh',false,{type:'checkbox'})+
-      sff('Home Help','bp_prog_hh',true,{type:'checkbox'})+
-      sff('MI Choice','bp_prog_mc',false,{type:'checkbox'})+
-      sff('MI Health Link','bp_prog_mhl',false,{type:'checkbox'})+
-    '</div>'+
-    sfh('Section 3 — Caregiver Signature')+
-    sfr(sff('Signature Date','bp_sig_date',td,{type:'date'}));
-}
-
 // ============================================================
 //  SESSION 3 — MONTHLY INVOICE EMAILS
 // ============================================================
@@ -8001,8 +7741,9 @@ function openMonthlyInvModal(){
   // Force-refresh caseworkers + clients from DB so "No email on file" doesn't show against
   // a stale LS cache. Force=true bypasses the 30-sec SWR throttle since this is user-initiated.
   if(typeof revalidate==='function')revalidate(true);
-  // Default to previous month
-  var d=new Date();d.setMonth(d.getMonth()-1);
+  // Default to previous month. C2: pin the day to 1 FIRST — otherwise on the 31st,
+  // setMonth overflows (e.g. Jul 31 → "Jun 31" → Jul 1) and defaults to the wrong month.
+  var d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);
   var m=String(d.getMonth()+1).padStart(2,'0'),y=d.getFullYear();
   var inp=document.getElementById('monthlyInvPeriod');
   if(inp&&!inp.value)inp.value=m+'/'+y;
