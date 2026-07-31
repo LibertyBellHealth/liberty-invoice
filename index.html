@@ -395,7 +395,7 @@ function aiTrack(name, props){
             </div>
           </div>
           <div class="ff-row">
-            <div class="ff"><label>Pay Rate ($/hr)</label><input id="cg-pay" placeholder="0.00" maxlength="10"></div>
+            <div class="ff"><label>Pay Rate ($/hr)</label><input id="cg-pay" placeholder="0.00" maxlength="10" inputmode="decimal" oninput="formatRate(this)"></div>
             <div class="ff"></div>
           </div>
           <div class="ff-row">
