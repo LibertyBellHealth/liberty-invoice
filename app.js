@@ -275,7 +275,7 @@ function navDetail(name,tab){
   document.getElementById('detailAvatar').textContent=ini;
   document.getElementById('detailName').textContent=name+(prof.nickname?' ('+prof.nickname+')':'');
   var st=prof.clientStatus||'active';
-  document.getElementById('detailMeta').innerHTML=(prof.medicaidId?'Medicaid: '+prof.medicaidId:'No Medicaid ID')+(prof.phone?' &nbsp;·&nbsp; '+prof.phone:'')+
+  document.getElementById('detailMeta').innerHTML=(prof.medicaidId?'Medicaid: '+esc(prof.medicaidId):'No Medicaid ID')+(prof.phone?' &nbsp;·&nbsp; '+esc(prof.phone):'')+
     ' &nbsp;<span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span>';
   bc([{l:'Clients',fn:navHome},{l:name}]);
   document.getElementById('topbarActions').innerHTML='';
@@ -412,7 +412,7 @@ function renderSidebarClients(){
     row.href=buildClientUrl(name);
     row.style.textDecoration='none';
     var sbDisplay=name+(profiles[name].nickname?' ('+profiles[name].nickname+')':'');
-    row.innerHTML='<div class="sb-avatar">'+ini+'</div><div class="sb-client-info"><div class="sb-client-name">'+esc(sbDisplay)+'</div><div class="sb-client-meta">'+(profiles[name].medicaidId||'No ID')+'</div></div>';
+    row.innerHTML='<div class="sb-avatar">'+ini+'</div><div class="sb-client-info"><div class="sb-client-name">'+esc(sbDisplay)+'</div><div class="sb-client-meta">'+esc(profiles[name].medicaidId||'No ID')+'</div></div>';
     list.appendChild(row);
   });
   if(keys.length>15){
@@ -653,7 +653,7 @@ function renderClientTable(forceStatus){
     var hrefCl=buildClientUrl(name);
     tr.innerHTML=
       '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" '+checked+' onchange="toggleBulkClient(\''+esc(name)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
-      '<td><a href="'+hrefCl+'" class="link-plain" style="display:block;"><div class="ct-name">'+esc(name)+(prof.nickname?'<span style="font-weight:normal;color:var(--text-subtle);"> ('+esc(prof.nickname)+')</span>':'')+'</div><div class="ct-id">'+(prof.medicaidId||'No Medicaid ID')+'</div></a></td>'+
+      '<td><a href="'+hrefCl+'" class="link-plain" style="display:block;"><div class="ct-name">'+esc(name)+(prof.nickname?'<span style="font-weight:normal;color:var(--text-subtle);"> ('+esc(prof.nickname)+')</span>':'')+'</div><div class="ct-id">'+esc(prof.medicaidId||'No Medicaid ID')+'</div></a></td>'+
       '<td><span class="status-inline"><span class="status-dot '+st+'"></span>'+stLabel+'</span></td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(phone)+'</td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cgName)+'</td>'+
@@ -706,7 +706,7 @@ function bulkDelete(){
       var p=getProfiles(),deleted=0;
       names.forEach(function(name){
         if(!p[name])return;
-        try{deleteProfileSP(name);}catch(e){console.error('Backend delete failed for '+name,e);}
+        try{deleteProfileSP(name);}catch(e){console.error('Backend delete failed',e);}
         delete p[name];
         try{localStorage.removeItem('lhca_draft_'+name);}catch(e){}
         deleted++;
@@ -793,9 +793,9 @@ function renderOverviewPane(){
   });}
   pane.innerHTML='<div class="overview-grid">'+
     '<div class="ov-card"><h4>Client Info</h4>'+
-      '<div class="ov-row"><span class="ov-label">Medicaid ID</span><span class="ov-value">'+(prof.medicaidId||'—')+'</span></div>'+
+      '<div class="ov-row"><span class="ov-label">Medicaid ID</span><span class="ov-value">'+esc(prof.medicaidId||'—')+'</span></div>'+
       '<div class="ov-row"><span class="ov-label">Hourly Rate</span><span class="ov-value">'+(prof.hourlyRate?'$'+prof.hourlyRate+'/hr':'—')+'</span></div>'+
-      '<div class="ov-row"><span class="ov-label">Phone</span><span class="ov-value">'+(prof.phone||'—')+'</span></div>'+
+      '<div class="ov-row"><span class="ov-label">Phone</span><span class="ov-value">'+esc(prof.phone||'—')+'</span></div>'+
       (addrStr.trim()?'<div class="ov-row"><span class="ov-label">Address</span><span class="ov-value">'+esc(addrStr.trim())+'</span></div>':'')+
       '<div class="ov-row"><span class="ov-label">Caregiver</span>'+(cgName&&prof.caregiverId?'<span class="ov-value" style="color:#185FA5;cursor:pointer;text-decoration:underline;" onclick="navCaregivers();setTimeout(function(){openCgDetail(\''+esc(prof.caregiverId)+'\');},50)">'+esc(cgName)+'</span>':'<span class="ov-value">'+esc(cgName||'Unassigned')+'</span>')+'</div>'+
       (prof.liveIn?'<div class="ov-row"><span class="ov-label">Live-In</span><span class="ov-value" style="display:inline-block;background:#fff3cd;color:#856404;font-size:11px;font-weight:600;padding:2px 10px;border-radius:10px;border:1px solid #ffeaa7;">YES</span></div>':'')+
@@ -1039,7 +1039,7 @@ function saveClientInfo(){
   var displayName=activeProfileName+(rec.nickname?' ('+rec.nickname+')':'');
   document.getElementById('detailName').textContent=displayName;
   var st=rec.clientStatus||'active';
-  document.getElementById('detailMeta').innerHTML=(rec.medicaidId?'Medicaid: '+rec.medicaidId:'No Medicaid ID')+(rec.phone?' &nbsp;·&nbsp; '+rec.phone:'')+' &nbsp;<span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span>';
+  document.getElementById('detailMeta').innerHTML=(rec.medicaidId?'Medicaid: '+esc(rec.medicaidId):'No Medicaid ID')+(rec.phone?' &nbsp;·&nbsp; '+esc(rec.phone):'')+' &nbsp;<span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span>';
   renderSidebarClients();
   var btn=document.getElementById('saveInfoBtn');btn.textContent='Saved';setTimeout(function(){btn.textContent='Save Changes';},1800);
 }
@@ -1488,7 +1488,7 @@ function loadCgDocs(cgId){
       var kb=d.size?Math.round(d.size/1024)+'KB':'';
       var div=document.createElement('div');
       div.style.cssText='display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #f0f0f0;font-size:12px;';
-      div.innerHTML='<a href="'+d.url+'" target="_blank" style="flex:1;color:#1a3a5c;text-decoration:none;word-break:break-all;">'+esc(d.name)+'</a>'+
+      div.innerHTML='<a href="'+esc(d.url)+'" target="_blank" style="flex:1;color:#1a3a5c;text-decoration:none;word-break:break-all;">'+esc(d.name)+'</a>'+
         '<span style="color:#8ca0b4;font-size:11px;">'+kb+'</span>'+
         '<button class="btn btn-danger btn-sm" style="padding:2px 8px;font-size:10px;" onclick="deleteCgDoc(\''+cgId+'\',\''+encodeURIComponent(d.name)+'\')">✕</button>';
       list.appendChild(div);
@@ -1687,7 +1687,7 @@ function renderCaregiverGrid(){
     var checked=cgBulkSelected[id]?'checked':'';
     tr.innerHTML=
       '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" class="cg-select" data-id="'+esc(id)+'" '+checked+' onchange="toggleBulkCaregiver(\''+esc(id)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
-      '<td><a href="'+hrefCg+'" class="link-plain" style="display:block;"><div class="ct-name">'+esc(displayName)+(cg.nickname?'<span style="font-weight:normal;color:var(--text-subtle);"> ('+esc(cg.nickname)+')</span>':'')+'</div><div class="ct-id">'+(cg.email||'No email')+'</div></a></td>'+
+      '<td><a href="'+hrefCg+'" class="link-plain" style="display:block;"><div class="ct-name">'+esc(displayName)+(cg.nickname?'<span style="font-weight:normal;color:var(--text-subtle);"> ('+esc(cg.nickname)+')</span>':'')+'</div><div class="ct-id">'+esc(cg.email||'No email')+'</div></a></td>'+
       '<td><span class="status-inline"><span class="status-dot '+st+'"></span>'+stLabel+'</span></td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cg.phone||'—')+'</td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cg.emptype||'—')+'</td>'+
@@ -2441,7 +2441,7 @@ function renderCgClientsPane(){
     row.innerHTML='<div class="cc-avatar" style="width:36px;height:36px;font-size:13px;">'+ini+'</div>'+
       '<div style="flex:1;min-width:0;">'+
         '<div style="font-size:13px;font-weight:600;color:#1a2b45;">'+esc(name)+liveBadge+'</div>'+
-        '<div style="font-size:11px;color:#6b8dae;">'+(prof.medicaidId||'No Medicaid ID')+(prof.phone?' · '+prof.phone:'')+'</div>'+
+        '<div style="font-size:11px;color:#6b8dae;">'+esc(prof.medicaidId||'No Medicaid ID')+(prof.phone?' · '+esc(prof.phone):'')+'</div>'+
       '</div>'+
       '<span style="font-size:11px;color:#185FA5;font-weight:500;">Open →</span>';
     row.addEventListener('mouseenter',function(){this.style.borderColor='#b0c8e8';});
@@ -3924,7 +3924,7 @@ async function _doExportClientsAsPDFFolders(clientsWithInvoices,profiles){
           for(var k=0;k<bin.length;k++)bytes[k]=bin.charCodeAt(k);
           var pdfName=(inv.billingPeriod||'invoice').replace(/\//g,'_')+'.pdf';
           clientFolder.file(pdfName,bytes);
-        }catch(e){console.error('PDF gen failed for '+name+' '+inv.billingPeriod,e);}
+        }catch(e){console.error('PDF gen failed for period '+inv.billingPeriod,e);}
       }
     }
     if(btn)btn.textContent='Building ZIP…';
@@ -3966,7 +3966,7 @@ function importProfiles(ev){
         saveProfilesLS(merged);
         // Persist each imported client to the backend so the data isn't just local
         keys.forEach(function(name){
-          try{saveProfileSP(name,merged[name]);}catch(e){console.error('Failed to sync imported client to DB: '+name,e);}
+          try{saveProfileSP(name,merged[name]);}catch(e){console.error('Failed to sync an imported client to DB',e);}
         });
         renderSidebarClients();renderClientGrid();updateStats();
         showConfirm('Imported '+keys.length+' client'+(keys.length>1?'s':'')+'.',function(){},{title:'Import Complete',okText:'OK',danger:false});
@@ -6869,7 +6869,7 @@ function saveCwInfoPane(){
   var cwiSup=document.getElementById('cwi-supervisor');if(cwiSup)cw.supervisor_id=cwiSup.value||'';
   saveCaseworkersLS(arr);saveCaseworkerAPI(cw);
   document.getElementById('cwDetailName').textContent=cw.name;
-  document.getElementById('cwDetailMeta').innerHTML=esc(cw.agency||'')+(cw.phone?' · '+cw.phone:'');
+  document.getElementById('cwDetailMeta').innerHTML=esc(cw.agency||'')+(cw.phone?' · '+esc(cw.phone):'');
   var btn=document.getElementById('cwSaveInfoBtn');if(btn){btn.textContent='Saved ✓';setTimeout(function(){btn.textContent='Save Changes';},1800);}
   addAuditEntry(cw.name,'Caseworker profile updated');
   cwUnsavedChanges=false;
@@ -6899,7 +6899,7 @@ function renderCwClientsPane(){
     row.innerHTML='<div class="cc-avatar" style="width:36px;height:36px;font-size:13px;">'+ini+'</div>'+
       '<div style="flex:1;min-width:0;">'+
         '<div style="font-size:13px;font-weight:600;color:#1a2b45;">'+esc(name)+'</div>'+
-        '<div style="font-size:11px;color:#6b8dae;">'+(prof.medicaidId||'No Medicaid ID')+(prof.phone?' · '+prof.phone:'')+'</div>'+
+        '<div style="font-size:11px;color:#6b8dae;">'+esc(prof.medicaidId||'No Medicaid ID')+(prof.phone?' · '+esc(prof.phone):'')+'</div>'+
       '</div>'+
       '<span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span>'+
       '<span style="font-size:11px;color:#185FA5;font-weight:500;">Open →</span>';
@@ -8670,7 +8670,7 @@ async function sendMonthlyEmail(email,workerName,clients,period){
 var _monthlyEmailSendInProgress=false;
 async function _doMonthlyEmailSend(email,workerName,period,readyToSend,alreadySentCount,hasIssues,missingInvoice){
   if(_monthlyEmailSendInProgress){
-    console.warn('Monthly email send already in progress — refusing to start a parallel send to '+workerName);
+    console.warn('Monthly email send already in progress — refusing to start a parallel send');
     showAlert('Another email send is already running. Please wait for it to finish before sending again.');
     return {ok:false,err:'concurrent_send_blocked'};
   }
@@ -8713,7 +8713,7 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
       var base64=await captureInvoicePDF();
       var fname=c.name.replace(/[^a-z0-9]/gi,'_')+'_'+period.replace('/','_')+'.pdf';
       attachments.push({name:fname,base64:base64,clientName:c.name});
-    }catch(e){console.error('PDF capture failed for '+c.name,e);}
+    }catch(e){console.error('PDF capture failed',e);}
   }
 
   // Restore page state
