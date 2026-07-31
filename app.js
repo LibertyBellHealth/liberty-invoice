@@ -5997,7 +5997,7 @@ function loadTasksAPI() {
         // If id is a number, all task button click handlers (deleteTodo / toggleTodo / etc.)
         // fail their strict-equality lookup and silently do nothing.
         return {
-          id: String(t.id), dbId: t.id, text: t.task_text, done: !!t.done,
+          id: String(t.id), dbId: t.id, text: t.task_text, done: !!t.done, doneAt: t.done_at || null,
           due: t.due_date ? t.due_date.split('T')[0] : '', client: t.client_name || '',
           priority: t.priority || 'normal', note: t.note || '',
           parentId: t.parent_id ? String(t.parent_id) : null,
@@ -6017,7 +6017,7 @@ function saveTaskAPI(todo) {
       body: JSON.stringify({
         id: todo.dbId || undefined, text: todo.text, done: todo.done ? 1 : 0,
         due: todo.due || null, client: todo.client || '', priority: todo.priority || 'normal', source: 'homecare',
-        parent_id: todo.parentId || null, note: todo.note || null,
+        parent_id: todo.parentId || null, note: todo.note || null, done_at: todo.doneAt || null,
       }),
     }).then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
