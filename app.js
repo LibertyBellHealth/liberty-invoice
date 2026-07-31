@@ -76,6 +76,14 @@ function formatSSN(el){
   else if(d.length>3) el.value=d.slice(0,3)+'-'+d.slice(3);
   else el.value=d;
 }
+// DB2: keep a money field numeric — digits + a single decimal point, max 2 decimals.
+// So "$27/hr" or "twenty" can't be typed into pay_rate. Wired to oninput on rate fields.
+function formatRate(el){
+  if(!el)return;
+  var v=(el.value||'').replace(/[^0-9.]/g,'');
+  var parts=v.split('.');
+  el.value=parts[0]+(parts.length>1 ? '.'+parts.slice(1).join('').slice(0,2) : '');
+}
 
 // ============================================================
 //  NAVIGATION
@@ -2393,7 +2401,7 @@ function renderCgInfoPane(){
   mkDiv('Employment');
   mkRow('<div class="info-field"><label>Hire Date</label><input id="cgi-hire" type="date" value="'+esc(cg.hireDate||'')+'"></div>'+
     '<div class="info-field"><label>Employment Type</label><select id="cgi-emptype"><option value="full-time"'+(cg.emptype==='full-time'?' selected':'')+'>Full-Time</option><option value="part-time"'+(cg.emptype==='part-time'?' selected':'')+'>Part-Time</option><option value="per-diem"'+(cg.emptype==='per-diem'?' selected':'')+'>Per Diem</option></select></div>');
-  mkRow('<div class="info-field"><label>Pay Rate ($/hr)</label><input id="cgi-pay" value="'+esc(cg.payRate||'')+'"></div>');
+  mkRow('<div class="info-field"><label>Pay Rate ($/hr)</label><input id="cgi-pay" value="'+esc(cg.payRate||'')+'" inputmode="decimal" oninput="formatRate(this)"></div>');
 
   // Save + Delete buttons
   var actions=document.createElement('div');actions.style.cssText='margin-top:16px;display:flex;gap:8px;';
