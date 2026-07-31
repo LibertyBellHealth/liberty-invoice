@@ -67,6 +67,15 @@ async function refreshApiToken() {
 function getIdMap() {
   try { return JSON.parse(localStorage.getItem('lhca_id_map') || '{}'); } catch(e) { return {}; }
 }
+// Live-format an SSN input as the user types: digits only, capped at 9, auto-dashed
+// to XXX-XX-XXXX. Wired to oninput on every SSN field.
+function formatSSN(el){
+  if(!el)return;
+  var d=(el.value||'').replace(/\D/g,'').slice(0,9);
+  if(d.length>5) el.value=d.slice(0,3)+'-'+d.slice(3,5)+'-'+d.slice(5);
+  else if(d.length>3) el.value=d.slice(0,3)+'-'+d.slice(3);
+  else el.value=d;
+}
 
 // ============================================================
 //  NAVIGATION
@@ -944,7 +953,7 @@ function renderInfoPane(){
   // SSN masked by default; reveals while the field is focused, re-masks on blur
   var dSsn=document.createElement('div');dSsn.className='info-field';
   dSsn.innerHTML='<label>Social Security #</label>'+
-    '<input id="ei-ssn" type="password" autocomplete="off" value="'+esc(prof.ssn||'')+'" oninput="unsavedChanges=true;" onfocus="this.type=\'text\'" onblur="this.type=\'password\'">';
+    '<input id="ei-ssn" type="password" autocomplete="off" maxlength="11" placeholder="XXX-XX-XXXX" value="'+esc(prof.ssn||'')+'" oninput="formatSSN(this);unsavedChanges=true;" onfocus="this.type=\'text\'" onblur="this.type=\'password\'">';
   g.appendChild(dSsn);
   mkField('ei-phone','Client Phone',prof.phone||'',false);
   mkField('ei-cemail','Client Email',prof.clientEmail||'',false);
@@ -2362,7 +2371,7 @@ function renderCgInfoPane(){
   // SSN masked; reveals while the field is focused, re-masks on blur
   var cgSsnDiv=document.createElement('div');cgSsnDiv.className='info-field';
   cgSsnDiv.innerHTML='<label>Social Security #</label>'+
-    '<input id="cgi-ssn" type="password" autocomplete="off" value="'+esc(cg.ssn||'')+'" onfocus="this.type=\'text\'" onblur="this.type=\'password\'">';
+    '<input id="cgi-ssn" type="password" autocomplete="off" maxlength="11" placeholder="XXX-XX-XXXX" value="'+esc(cg.ssn||'')+'" oninput="formatSSN(this);" onfocus="this.type=\'text\'" onblur="this.type=\'password\'">';
   g.appendChild(cgSsnDiv);
   mkF('cgi-street','Street',cg.street||cg.address,true);
   mkRow('<div class="info-field"><label>City</label><input id="cgi-city" value="'+esc(cg.city||'')+'"></div>'+

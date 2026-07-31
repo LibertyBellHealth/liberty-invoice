@@ -241,7 +241,7 @@ function aiTrack(name, props){
       <div class="ff-row">
         <div class="ff"><label>Driver's License #</label><input id="nc-dl" placeholder="DL number" maxlength="40"></div>
         <div class="ff"><label>Social Security #</label>
-          <input id="nc-ssn" type="password" placeholder="XXX-XX-XXXX" maxlength="20" autocomplete="off" onfocus="this.type='text'" onblur="this.type='password'"></div>
+          <input id="nc-ssn" type="password" placeholder="XXX-XX-XXXX" maxlength="11" autocomplete="off" oninput="formatSSN(this)" onfocus="this.type='text'" onblur="this.type='password'"></div>
       </div>
       <div class="ff-row">
         <div class="ff"><label>Phone #</label><input id="nc-phone" placeholder="(555) 555-5555" maxlength="20"></div>
@@ -375,7 +375,7 @@ function aiTrack(name, props){
           <div class="ff-row">
             <div class="ff"><label>Driver's License #</label><input id="cg-dl" placeholder="DL number" maxlength="40"></div>
             <div class="ff"><label>Social Security #</label>
-              <input id="cg-ssn" type="password" placeholder="XXX-XX-XXXX" maxlength="20" autocomplete="off" onfocus="this.type='text'" onblur="this.type='password'"></div>
+              <input id="cg-ssn" type="password" placeholder="XXX-XX-XXXX" maxlength="11" autocomplete="off" oninput="formatSSN(this)" onfocus="this.type='text'" onblur="this.type='password'"></div>
           </div>
           <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Address</div>
           <div class="ff"><label>Street</label><input id="cg-street" placeholder="Street address" maxlength="120"></div>
