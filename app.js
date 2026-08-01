@@ -21,6 +21,7 @@ var API_BASE    = _IS_LOCAL
   : 'https://liberty-crm-api-cyb3dkhnd2e7a3cy.centralus-01.azurewebsites.net/api';
 var API_APP_ID  = '0c1627c1-c186-4e46-b919-e4a12f2f3952'; // Easy Auth app registration
 var _apiToken   = null; // cached Bearer token, refreshed automatically
+var _apiTokenTimer = null; // handle for the self-rescheduling refresh; cleared on sign-out/idle
 
 // Microsoft identity — kept for Sign In and Outlook email
 var SP_CLIENT_ID = (window._SP_CLIENT_ID || '1be40fcb-4db4-45b0-8c12-99d945eb78e7');
@@ -63,7 +64,7 @@ async function refreshApiToken() {
     _apiToken = res.accessToken;
     // Auto-refresh 10 min before expiry (tokens last ~1 hour)
     var ttl = res.expiresOn ? (res.expiresOn.getTime() - Date.now() - 600000) : 3000000;
-    setTimeout(refreshApiToken, Math.max(ttl, 60000));
+    _apiTokenTimer = setTimeout(refreshApiToken, Math.max(ttl, 60000));
   } catch(e) {
     console.warn('API token silent refresh failed, falling back to redirect:', e);
     // Redirect works on mobile (popup is blocked on iOS Safari)
@@ -603,7 +604,7 @@ function renderClientTable(forceStatus){
     var tr=document.createElement('tr');
     var hrefCl=buildClientUrl(name);
     tr.innerHTML=
-      '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" '+checked+' onchange="toggleBulkClient(\''+esc(name)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
+      '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" '+checked+' onchange="toggleBulkClient(\''+escJsAttr(name)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
       '<td><a href="'+hrefCl+'" class="link-plain" style="display:block;"><div class="ct-name">'+esc(name)+(prof.nickname?'<span style="font-weight:normal;color:var(--text-subtle);"> ('+esc(prof.nickname)+')</span>':'')+'</div><div class="ct-id">'+esc(prof.medicaidId||'No Medicaid ID')+'</div></a></td>'+
       '<td><span class="status-inline"><span class="status-dot '+st+'"></span>'+stLabel+'</span></td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(phone)+'</td>'+
@@ -748,9 +749,9 @@ function renderOverviewPane(){
       '<div class="ov-row"><span class="ov-label">Hourly Rate</span><span class="ov-value">'+(prof.hourlyRate?'$'+esc(prof.hourlyRate)+'/hr':'—')+'</span></div>'+
       '<div class="ov-row"><span class="ov-label">Phone</span><span class="ov-value">'+esc(prof.phone||'—')+'</span></div>'+
       (addrStr.trim()?'<div class="ov-row"><span class="ov-label">Address</span><span class="ov-value">'+esc(addrStr.trim())+'</span></div>':'')+
-      '<div class="ov-row"><span class="ov-label">Caregiver</span>'+(cgName&&prof.caregiverId?'<span class="ov-value" style="color:#185FA5;cursor:pointer;text-decoration:underline;" onclick="navCaregivers();setTimeout(function(){openCgDetail(\''+esc(prof.caregiverId)+'\');},50)">'+esc(cgName)+'</span>':'<span class="ov-value">'+esc(cgName||'Unassigned')+'</span>')+'</div>'+
+      '<div class="ov-row"><span class="ov-label">Caregiver</span>'+(cgName&&prof.caregiverId?'<span class="ov-value" style="color:#185FA5;cursor:pointer;text-decoration:underline;" onclick="navCaregivers();setTimeout(function(){openCgDetail(\''+escJsAttr(prof.caregiverId)+'\');},50)">'+esc(cgName)+'</span>':'<span class="ov-value">'+esc(cgName||'Unassigned')+'</span>')+'</div>'+
       (prof.liveIn?'<div class="ov-row"><span class="ov-label">Live-In</span><span class="ov-value" style="display:inline-block;background:#fff3cd;color:#856404;font-size:11px;font-weight:600;padding:2px 10px;border-radius:10px;border:1px solid #ffeaa7;">YES</span></div>':'')+
-      '<div class="ov-row"><span class="ov-label">Caseworker</span>'+(cwRec?'<span class="ov-value" style="color:#185FA5;cursor:pointer;text-decoration:underline;" onclick="navCaseworkers();setTimeout(function(){openCwDetail(\''+esc(cwRec.id)+'\');},50)">'+esc(cwName)+'</span>':'<span class="ov-value">'+esc(cwName||'—')+'</span>')+'</div>'+
+      '<div class="ov-row"><span class="ov-label">Caseworker</span>'+(cwRec?'<span class="ov-value" style="color:#185FA5;cursor:pointer;text-decoration:underline;" onclick="navCaseworkers();setTimeout(function(){openCwDetail(\''+escJsAttr(cwRec.id)+'\');},50)">'+esc(cwName)+'</span>':'<span class="ov-value">'+esc(cwName||'—')+'</span>')+'</div>'+
       (prof.startDate?'<div class="ov-row"><span class="ov-label">Service Start</span><span class="ov-value">'+esc(prof.startDate)+'</span></div>':'')+
     '</div>'+
     '<div class="ov-card"><h4>Invoice Summary</h4>'+
@@ -762,7 +763,7 @@ function renderOverviewPane(){
     '</div>'+
     '<div class="ov-card"><h4>Tasks <span style="font-size:10px;color:#8ca0b4;font-weight:normal;text-transform:none;letter-spacing:0;">('+clientTasks.length+' open)</span>'+
       '<div style="margin-left:auto;display:flex;gap:6px;">'+
-        '<button class="btn btn-secondary btn-sm" style="font-size:10px;" onclick="addTaskForClient(\''+esc(activeProfileName)+'\')">+ Add Task</button>'+
+        '<button class="btn btn-secondary btn-sm" style="font-size:10px;" onclick="addTaskForClient(\''+escJsAttr(activeProfileName)+'\')">+ Add Task</button>'+
         '<button class="btn btn-secondary btn-sm" style="font-size:10px;" onclick="openWorkflowModal()">Workflow</button>'+
       '</div></h4>'+
       tasksHtml+
@@ -801,8 +802,8 @@ function openAllInvoicesModal(filter){
       '</div>'+
       '<div class="inv-file-actions">'+
         '<span class="status-select st-'+st+'" style="cursor:default;">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span>'+
-        '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();navDetail(\''+esc(r.client)+'\')">Profile</button>'+
-        '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();openInvFromModal(\''+esc(r.client)+'\','+r.idx+')">Open Invoice →</button>'+
+        '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();navDetail(\''+escJsAttr(r.client)+'\')">Profile</button>'+
+        '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();openInvFromModal(\''+escJsAttr(r.client)+'\','+r.idx+')">Open Invoice →</button>'+
       '</div>';
     list.appendChild(row);
   });
@@ -910,7 +911,7 @@ function renderInfoPane(){
           '<input type="hidden" id="ei-caregiver-val" value="'+esc(prof.caregiverId||'')+'">'+
           '<div id="ei-caregiver-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>'+
         '</div>'+
-        (prof.caregiverId?'<button class="btn-open" onclick="navCaregivers();setTimeout(function(){openCgDetail(\''+esc(prof.caregiverId)+'\');},50)">Open ↗</button>':'')+
+        (prof.caregiverId?'<button class="btn-open" onclick="navCaregivers();setTimeout(function(){openCgDetail(\''+escJsAttr(prof.caregiverId)+'\');},50)">Open ↗</button>':'')+
       '</div>'+
     '</div>'+
     '<div class="info-field" style="display:flex;align-items:flex-end;padding-bottom:8px;">'+
@@ -928,7 +929,7 @@ function renderInfoPane(){
         '<input type="hidden" id="ei-worker-val" value="'+esc(prof.caseworkerId||'')+'">'+
         '<div id="ei-worker-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>'+
       '</div>'+
-      (prof.caseworkerId?'<button class="btn-open" onclick="navCaseworkers();setTimeout(function(){openCwDetail(\''+esc(prof.caseworkerId)+'\');},50)">Open ↗</button>':'')+
+      (prof.caseworkerId?'<button class="btn-open" onclick="navCaseworkers();setTimeout(function(){openCwDetail(\''+escJsAttr(prof.caseworkerId)+'\');},50)">Open ↗</button>':'')+
     '</div>';
   g.appendChild(dCw);
 }
@@ -1213,7 +1214,7 @@ function renderDocGrid(list,docs,opts){
     var isImg=['jpg','jpeg','png','gif','webp','heic','bmp'].indexOf(ext)>=0;
     var isPdf=ext==='pdf';
     var thumb=isImg
-      ?'<span class="doc-thumb" style="background-image:url(\''+esc(d.url)+'\')"></span>'
+      ?'<span class="doc-thumb" style="background-image:url(\''+escJsAttr(d.url)+'\')"></span>'
       :'<span class="doc-thumb doc-thumb-file">'+_docFileIcon(ext)+'</span>';
     return '<div class="doc-card">'+
       '<a class="doc-card-preview" href="'+esc(d.url||'#')+'" target="_blank" rel="noopener" onclick="return openDocPreview('+i+')" title="Preview">'+thumb+'</a>'+
@@ -1610,7 +1611,7 @@ function renderCaregiverGrid(){
     var hrefCg=buildCaregiverUrl(id);
     var checked=cgBulkSelected[id]?'checked':'';
     tr.innerHTML=
-      '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" class="cg-select" data-id="'+esc(id)+'" '+checked+' onchange="toggleBulkCaregiver(\''+esc(id)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
+      '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" class="cg-select" data-id="'+esc(id)+'" '+checked+' onchange="toggleBulkCaregiver(\''+escJsAttr(id)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
       '<td><a href="'+hrefCg+'" class="link-plain" style="display:block;"><div class="ct-name">'+esc(displayName)+(cg.nickname?'<span style="font-weight:normal;color:var(--text-subtle);"> ('+esc(cg.nickname)+')</span>':'')+'</div><div class="ct-id">'+esc(cg.email||'No email')+'</div></a></td>'+
       '<td><span class="status-inline"><span class="status-dot '+st+'"></span>'+stLabel+'</span></td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cg.phone||'—')+'</td>'+
@@ -2067,13 +2068,13 @@ async function doSendForSignature(){
       var emailResp=await sendMailWithPDF(cg.email,subject,body,[]);
       if(!emailResp.ok){
         // Backend already created the request — show the URL so admin can copy/paste
-        errEl.innerHTML='Created the request, but email failed to send: '+esc(emailResp.err||emailResp.status||'unknown')+'<br><br>You can manually share this link:<br><a href="'+data.signUrl+'" target="_blank">'+esc(data.signUrl)+'</a>';
+        errEl.innerHTML='Created the request, but email failed to send: '+esc(emailResp.err||emailResp.status||'unknown')+'<br><br>You can manually share this link:<br><a href="'+esc(data.signUrl)+'" target="_blank">'+esc(data.signUrl)+'</a>';
         errEl.style.display='block';
         btn.textContent='Send Link';btn.disabled=false;
         return;
       }
     } else {
-      errEl.innerHTML='Sign in with Microsoft first to email the link automatically.<br><br>For now, you can manually share this link:<br><a href="'+data.signUrl+'" target="_blank">'+esc(data.signUrl)+'</a>';
+      errEl.innerHTML='Sign in with Microsoft first to email the link automatically.<br><br>For now, you can manually share this link:<br><a href="'+esc(data.signUrl)+'" target="_blank">'+esc(data.signUrl)+'</a>';
       errEl.style.display='block';
       btn.textContent='Send Link';btn.disabled=false;
       return;
@@ -2266,7 +2267,7 @@ function renderCgInfoPane(){
     '<div class="info-field"><label>MI Login Password</label>'+
       '<div style="display:flex;gap:4px;align-items:center;">'+
         '<input id="cgi-milogin-pass" type="password" value="" placeholder="•••••• (click Show)" autocomplete="off" style="flex:1;">'+
-        '<button type="button" class="btn btn-secondary btn-sm" onclick="revealMilogin(\'cgi-milogin-pass\',this,\''+esc(activeCgId)+'\')" style="padding:4px 8px;font-size:11px;white-space:nowrap;">Show</button>'+
+        '<button type="button" class="btn btn-secondary btn-sm" onclick="revealMilogin(\'cgi-milogin-pass\',this,\''+escJsAttr(activeCgId)+'\')" style="padding:4px 8px;font-size:11px;white-space:nowrap;">Show</button>'+
       '</div>'+
     '</div>'
   );
@@ -3063,7 +3064,7 @@ function renderTodos(filterClient){
             (t.note?'<div style="font-size:11px;color:#4a6a8a;margin-top:4px;padding:4px 6px;background:#e8f0fb;border-radius:3px;white-space:pre-wrap;">'+esc(t.note)+'</div>':'')+
             '<div class="todo-meta">'+
               (t.due?'<span class="'+(overdue?'todo-due-overdue':'')+'">Due: '+t.due+'</span>':'')+
-              (!filterClient&&t.client?'<span class="todo-link" onclick="navDetail(\''+esc(t.client)+'\')">'+esc(t.client)+'</span>':'')+
+              (!filterClient&&t.client?'<span class="todo-link" onclick="navDetail(\''+escJsAttr(t.client)+'\')">'+esc(t.client)+'</span>':'')+
             '</div>'+
           '</div>'+
           '<button class="btn btn-secondary btn-sm" onclick="editTodoTask(\''+t.id+'\')" style="padding:3px 7px;font-size:11px;" title="Edit task name, due date, or note">Edit</button>'+
@@ -3294,7 +3295,7 @@ function renderReports(){
   s2.innerHTML='<h3>Per-Client Invoice Breakdown</h3>'+
     (clientRows.length?'<table class="report-table"><thead><tr><th>Client</th><th>Total</th><th>Paid</th><th>Open</th></tr></thead><tbody>'+
     clientRows.map(function(r){
-      return '<tr><td style="cursor:pointer;color:#185FA5;" onclick="navDetail(\''+esc(r.name)+'\')">'+esc(r.name)+'</td><td>'+r.total+'</td>'+
+      return '<tr><td style="cursor:pointer;color:#185FA5;" onclick="navDetail(\''+escJsAttr(r.name)+'\')">'+esc(r.name)+'</td><td>'+r.total+'</td>'+
         '<td style="color:#1e7e34;font-weight:600;">'+r.paid+'</td><td style="color:'+(r.open?'#b07800':'#aaa')+';font-weight:600;">'+r.open+'</td></tr>';
     }).join('')+'</tbody></table>':'<div style="color:#8ca0b4;font-size:13px;">No client data yet.</div>');
   c.appendChild(s2);
@@ -3356,8 +3357,8 @@ function updateMissingReport(useCustom){
   list.innerHTML='<div style="font-size:12px;color:#b07800;font-weight:600;margin-bottom:8px;">'+missing.length+' client'+(missing.length>1?'s':'')+' missing invoice for '+esc(period)+':</div>'+
     missing.map(function(name){
       return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #f0f3f7;">'+
-        '<span style="cursor:pointer;color:#185FA5;font-size:13px;" onclick="navDetail(\''+esc(name)+'\')">'+esc(name)+'</span>'+
-        '<button class="btn btn-primary btn-sm" style="font-size:11px;" onclick="activeProfileName=\''+esc(name)+'\';navInvoice()">+ Create Invoice</button>'+
+        '<span style="cursor:pointer;color:#185FA5;font-size:13px;" onclick="navDetail(\''+escJsAttr(name)+'\')">'+esc(name)+'</span>'+
+        '<button class="btn btn-primary btn-sm" style="font-size:11px;" onclick="activeProfileName=\''+escJsAttr(name)+'\';navInvoice()">+ Create Invoice</button>'+
       '</div>';
     }).join('');
 }
@@ -3867,6 +3868,18 @@ function importProfiles(ev){
   };r.readAsText(file);
 }
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+// Escape a value that goes inside a JS single-quoted string which itself sits inside an
+// HTML attribute — e.g. onclick="fn('<HERE>')". esc() ALONE IS UNSAFE there: the HTML
+// parser decodes &#39; back to ' before the JS runs, so a quote in the data breaks out of
+// the string and injects code. Fix: backslash-escape the JS-significant chars FIRST, then
+// HTML-escape. A "'" becomes "\&#39;", which the HTML parser decodes to "\'" — an escaped
+// quote the JS engine sees safely. Use this for ALL data in on* handler arguments.
+function escJsAttr(v){
+  return esc(String(v==null?'':v)
+    .replace(/\\/g,'\\\\')
+    .replace(/'/g,"\\'")
+    .replace(/[\r\n\u2028\u2029]/g,' '));
+}
 
 // ============================================================
 //  INVOICE FORM
@@ -4155,8 +4168,8 @@ function checkDuplicatePeriod(bp){
   if(ex){
     var st=ex.status||'draft';
     var msg=st==='paid'?
-      '[Locked] A <strong>Paid</strong> invoice already exists for '+bp+'. It is locked and cannot be overwritten.':
-      'Warning: An invoice for '+bp+' already exists (status: '+st+'). Saving will overwrite it.';
+      '[Locked] A <strong>Paid</strong> invoice already exists for '+esc(bp)+'. It is locked and cannot be overwritten.':
+      'Warning: An invoice for '+esc(bp)+' already exists (status: '+esc(st)+'). Saving will overwrite it.';
     warn.innerHTML=msg;warn.style.display='block';
   } else {warn.style.display='none';}
 }
@@ -5466,7 +5479,7 @@ function initMSAL() {
         if (isApiToken) {
           _apiToken = r.accessToken;
           var ttl = r.expiresOn ? (r.expiresOn.getTime() - Date.now() - 600000) : 3000000;
-          setTimeout(refreshApiToken, Math.max(ttl, 60000));
+          _apiTokenTimer = setTimeout(refreshApiToken, Math.max(ttl, 60000));
           // Now also need Graph token for email — try silent
           msalInstance.acquireTokenSilent({ scopes: GRAPH_SCOPES, account: r.account })
             .then(function(g){ spToken = g.accessToken; setTimeout(maybeAutoBackupOneDrive,8000); }).catch(function(){});
@@ -5505,12 +5518,15 @@ function signIn() {
   });
 }
 function clearPHIFromStorage() {
-  // Remove all PHI/PII from localStorage — required for HIPAA compliance
-  var phiKeys = ['lhca_profiles','lhca_caregivers','lhca_signatures','lhca_sig',
-    'lhca_caseworkers','lhca_todos','lhca_activity','lhca_audit','lhca_id_map'];
-  phiKeys.forEach(function(k){try{localStorage.removeItem(k);}catch(e){}});
-  Object.keys(localStorage).filter(function(k){return k.startsWith('lhca_draft_');})
-    .forEach(function(k){try{localStorage.removeItem(k);}catch(e){}});
+  // Remove ALL PHI/PII from localStorage (HIPAA idle-wipe / sign-out). Wipe every lhca_*
+  // key EXCEPT an explicit whitelist of non-PHI *settings*, so a PHI key added later is
+  // covered automatically instead of silently surviving. (The old fixed list missed
+  // lhca_email_audit, lhca_supervisors, and lhca_autogen_undo — all client-identifying.)
+  // KEEP = column widths, page sizes, the state billing rate, and PDF-mode preference.
+  var KEEP = /(_col_widths|_page_size)$|^lhca_state_rate$|^lhca_pdf_mode$/;
+  Object.keys(localStorage)
+    .filter(function(k){ return k.indexOf('lhca_') === 0 && !KEEP.test(k); })
+    .forEach(function(k){ try{ localStorage.removeItem(k); }catch(e){} });
   // S8: also wipe the in-memory SSN caches so nothing lingers after sign-out/idle.
   _ssnMem = Object.create(null);
   if (typeof _cgSsnMem !== 'undefined') _cgSsnMem = Object.create(null);
@@ -5520,6 +5536,7 @@ function signOut() {
   clearPHIFromStorage();
   spToken = null;
   _apiToken = null;
+  clearTimeout(_apiTokenTimer); _apiTokenTimer = null;
   msalInstance.logoutPopup({ redirectUri: REDIRECT_URI });
 }
 function updateAuthUI(on) {
@@ -6112,7 +6129,7 @@ function _openSupervisorModal(editId){
       '<div class="ff" style="margin-top:8px;"><label>Phone</label><input id="sup-phone" value="'+esc(sup.phone||'')+'" placeholder="(555) 555-5555" maxlength="30"></div>'+
       '<div class="ff" style="margin-top:8px;"><label>Email <span style="font-weight:400;font-size:10px;color:#8ca0b4;">(used for CC on monthly invoice emails)</span></label><input id="sup-email" type="email" value="'+esc(sup.email||'')+'" placeholder="supervisor@michigan.gov" maxlength="120"></div>'+
       '<div class="modal-row" style="justify-content:space-between;">'+
-        (editId?'<button class="btn btn-danger btn-sm" onclick="_deleteSupervisorFromModal(\''+esc(editId)+'\')">Delete</button>':'<span></span>')+
+        (editId?'<button class="btn btn-danger btn-sm" onclick="_deleteSupervisorFromModal(\''+escJsAttr(editId)+'\')">Delete</button>':'<span></span>')+
         '<div style="display:flex;gap:8px;">'+
           '<button class="btn btn-secondary" onclick="document.getElementById(\'supModal\').remove()">Cancel</button>'+
           '<button class="btn btn-primary" onclick="_saveSupervisorFromModal(\''+(editId||'')+'\')">Save</button>'+
@@ -6308,7 +6325,7 @@ function renderSupervisorList(){
     var tr=document.createElement('tr');
     var checked=supBulkSelected[id]?'checked':'';
     tr.innerHTML=
-      '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" class="sup-select" data-id="'+esc(id)+'" '+checked+' onchange="toggleBulkSupervisor(\''+esc(id)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
+      '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" class="sup-select" data-id="'+esc(id)+'" '+checked+' onchange="toggleBulkSupervisor(\''+escJsAttr(id)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
       '<td><div class="ct-name">'+esc(s.name||'')+'</div></td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(s.phone||'—')+'</td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(s.email||'—')+'</td>'+
@@ -6580,7 +6597,7 @@ function renderCaseworkerList(){
     var tr=document.createElement('tr');
     var checked=cwBulkSelected[cw.id]?'checked':'';
     tr.innerHTML=
-      '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" class="cw-select" data-id="'+esc(cw.id)+'" '+checked+' onchange="toggleBulkCaseworker(\''+esc(cw.id)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
+      '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" class="cw-select" data-id="'+esc(cw.id)+'" '+checked+' onchange="toggleBulkCaseworker(\''+escJsAttr(cw.id)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
       '<td><a href="'+hrefCw+'" class="link-plain" style="display:block;"><div class="ct-name">'+esc(cw.name||'')+'</div><div class="ct-id">'+esc(cw.agency||'No agency')+'</div></a></td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cw.phone||'—')+'</td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cw.email||'—')+'</td>'+
@@ -6702,7 +6719,7 @@ function renderCwOverviewPane(){
         var p=profiles[name]||{};
         var st=p.clientStatus||'active';
         var stColor=st==='active'?'#1e7e34':st==='inactive'?'#888':'#a83232';
-        return '<div onclick="navDetail(\''+esc(name).replace(/'/g,"\\'")+'\')" style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#f7faff;border:1px solid #e1e5ea;border-radius:5px;cursor:pointer;font-size:12px;" onmouseover="this.style.borderColor=\'#b0c8e8\'" onmouseout="this.style.borderColor=\'#e1e5ea\'">'+
+        return '<div onclick="navDetail(\''+escJsAttr(name)+'\')" style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#f7faff;border:1px solid #e1e5ea;border-radius:5px;cursor:pointer;font-size:12px;" onmouseover="this.style.borderColor=\'#b0c8e8\'" onmouseout="this.style.borderColor=\'#e1e5ea\'">'+
           '<span style="flex:1;color:#185FA5;font-weight:500;">'+esc(name)+'</span>'+
           (p.medicaidId?'<span style="color:#8ca0b4;">'+esc(p.medicaidId)+'</span>':'')+
           '<span style="color:'+stColor+';font-size:10px;font-weight:600;text-transform:uppercase;">'+(st==='inactive'?'In Progress':st)+'</span>'+
@@ -6966,6 +6983,10 @@ function resetSessionTimer(){
     aiTrack('SessionTimeout',{reason:'inactivity'});
     clearPHIFromStorage();
     spToken = null;
+    // Kill the API bearer token AND stop its auto-refresh, otherwise the pending
+    // refresh timer silently re-acquires it and the "sign-out" isn't real.
+    _apiToken = null;
+    clearTimeout(_apiTokenTimer); _apiTokenTimer = null;
     updateAuthUI(false);
     showToast('Signed out automatically due to inactivity.', 5000);
   }, SESSION_TIMEOUT_MS);
@@ -7808,8 +7829,8 @@ function _previewMonthlyInvoicesRender(period){
     (totalSent?'<span style="color:#1565a0;">✓ '+totalSent+' already sent</span>':'')+
     (totalEmpty?'<span style="color:#888;">— '+totalEmpty+' missing</span>':'')+
     '<div style="margin-left:auto;display:flex;gap:8px;">'+
-      (eligibleAutoGen>0?'<button class="btn btn-secondary btn-sm" onclick="autoGenerateMonthlyInvoices(\''+esc(period)+'\')" style="white-space:nowrap;" title="Copy each missing client\'s last invoice into '+esc(period)+' with day-shifted patterns">🔄 Auto-Generate '+eligibleAutoGen+'</button>':'')+
-      (totalCaseworkersSendable>1?'<button class="btn btn-primary btn-sm" id="sendAllCwBtn" onclick="sendAllCaseworkerEmails(\''+esc(period)+'\')" style="white-space:nowrap;">Send All ('+totalCaseworkersSendable+' caseworkers)</button>':'')+
+      (eligibleAutoGen>0?'<button class="btn btn-secondary btn-sm" onclick="autoGenerateMonthlyInvoices(\''+escJsAttr(period)+'\')" style="white-space:nowrap;" title="Copy each missing client\'s last invoice into '+esc(period)+' with day-shifted patterns">🔄 Auto-Generate '+eligibleAutoGen+'</button>':'')+
+      (totalCaseworkersSendable>1?'<button class="btn btn-primary btn-sm" id="sendAllCwBtn" onclick="sendAllCaseworkerEmails(\''+escJsAttr(period)+'\')" style="white-space:nowrap;">Send All ('+totalCaseworkersSendable+' caseworkers)</button>':'')+
     '</div>'+
   '</div>';
   groupKeys.forEach(function(gk){
@@ -7831,7 +7852,7 @@ function _previewMonthlyInvoicesRender(period){
     if(missingInv>0)html+='<span style="font-size:11px;color:#c07000;font-weight:600;margin-right:8px;">'+missingInv+' missing invoice'+(missingInv>1?'s':'')+'</span>';
     if(email){
       var clientsJson=JSON.stringify(g.clients.map(function(c){return {name:c.name,medicaidId:c.prof.medicaidId||'',invStatus:c.inv?(c.inv.status||'draft'):'none',hasIssues:(c.issues||[]).length>0,issues:c.issues||[]};}));
-      html+='<button class="btn btn-primary btn-sm" style="white-space:nowrap;" onclick=\'sendMonthlyEmail('+JSON.stringify(email)+','+JSON.stringify(wname)+','+clientsJson+','+JSON.stringify(period)+')\'>Send Email</button>';
+      html+='<button class="btn btn-primary btn-sm" style="white-space:nowrap;" onclick=\'sendMonthlyEmail('+esc(JSON.stringify(email))+','+esc(JSON.stringify(wname))+','+esc(clientsJson)+','+esc(JSON.stringify(period))+')\'>Send Email</button>';
     } else {
       html+='<span style="font-size:11px;color:#b03030;font-style:italic;margin-right:8px;">No email on file</span>';
       html+='<button class="btn btn-secondary btn-sm" onclick="closeMonthlyInvModal();navCaseworkers()">Add Email</button>';
@@ -7858,7 +7879,7 @@ function _previewMonthlyInvoicesRender(period){
         (c.prof.medicaidId?'<span style="color:#8ca0b4;font-size:11px;margin-right:6px;">ID: '+esc(c.prof.medicaidId)+'</span>':'');
       // Preview button (only if invoice exists)
       if(c.inv){
-        html+='<button class="btn btn-secondary btn-sm" style="font-size:10px;padding:2px 8px;margin-right:6px;" onclick=\'previewClientInvoice('+JSON.stringify(c.name)+','+JSON.stringify(period)+')\'>Preview</button>';
+        html+='<button class="btn btn-secondary btn-sm" style="font-size:10px;padding:2px 8px;margin-right:6px;" onclick=\'previewClientInvoice('+esc(JSON.stringify(c.name))+','+esc(JSON.stringify(period))+')\'>Preview</button>';
       }
       html+='<span style="font-size:11px;font-weight:600;color:'+stColor+';min-width:80px;text-align:right;">'+stLabel+'</span>';
       html+='</div>';
@@ -7938,7 +7959,7 @@ function showMissingInvoicesModal(period){
     var prof=profiles[name];
     return '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);">'+
       '<a href="'+buildClientUrl(name)+'" class="link-plain" style="font-size:13px;font-weight:600;" onclick="closeMissingInvModal()">'+esc(name)+(prof.medicaidId?' <span style="font-weight:400;color:var(--text-muted);font-size:11px;">'+esc(prof.medicaidId)+'</span>':'')+'</a>'+
-      '<button class="btn btn-primary btn-sm" style="font-size:11px;padding:4px 10px;white-space:nowrap;" onclick="activeProfileName=\''+esc(name).replace(/'/g,"\\'")+'\';closeMissingInvModal();navInvoice()">+ Invoice</button>'+
+      '<button class="btn btn-primary btn-sm" style="font-size:11px;padding:4px 10px;white-space:nowrap;" onclick="activeProfileName=\''+escJsAttr(name)+'\';closeMissingInvModal();navInvoice()">+ Invoice</button>'+
     '</div>';
   }).join('');
   ov.innerHTML='<div class="modal-box" style="max-width:520px;">'+
@@ -8116,8 +8137,8 @@ function renderUndoBanner(){
         '<b>'+(b.invoices||[]).length+' invoice'+((b.invoices||[]).length!==1?'s':'')+'</b> auto-generated for <b>'+esc(b.period)+'</b> · '+ageLabel+
         (canUndo?'':'<div style="font-size:11px;color:#8a6f1a;margin-top:2px;">'+esc(tooltip)+'</div>')+
       '</div>'+
-      (canUndo?'<button class="btn btn-secondary btn-sm" title="'+esc(tooltip)+'" onclick="undoAutoGenBatch(\''+esc(b.id)+'\')">Undo</button>':'')+
-      '<button class="btn btn-secondary btn-sm" onclick="dismissAutoGenUndoBatch(\''+esc(b.id)+'\')" title="Dismiss this undo entry">&times;</button>'+
+      (canUndo?'<button class="btn btn-secondary btn-sm" title="'+esc(tooltip)+'" onclick="undoAutoGenBatch(\''+escJsAttr(b.id)+'\')">Undo</button>':'')+
+      '<button class="btn btn-secondary btn-sm" onclick="dismissAutoGenUndoBatch(\''+escJsAttr(b.id)+'\')" title="Dismiss this undo entry">&times;</button>'+
     '</div>';
   }).join('');
 }
