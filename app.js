@@ -1047,7 +1047,10 @@ function changeInvStatus(sel){
     sel.className='status-select st-'+next;
     var p2=getProfiles();var inv2=p2[activeProfileName].invoices[idx];if(!inv2)return;
     inv2.status=next;
-    saveProfilesLS(p2);saveProfileSP(activeProfileName,p2[activeProfileName]);updateInvoiceStatusAPI(inv2.dbId, next);
+    // saveProfileSP already persists status via the invoice upsert; a separate status
+    // PATCH here would write the same row twice and (with optimistic concurrency) make
+    // the save conflict with itself, so it was removed.
+    saveProfilesLS(p2);saveProfileSP(activeProfileName,p2[activeProfileName]);
     logActivity('status','Invoice '+period+' for '+activeProfileName+' marked '+next);
     updateStats();renderOverviewPane();
   }
@@ -5647,6 +5650,9 @@ function loadProfilesAPI() {
             dbId: inv.id, billingPeriod: inv.billing_period || '',
             status: inv.status || 'draft', invoiceNote: inv.invoice_note || '',
             savedAt: inv.saved_at ? new Date(inv.saved_at).toLocaleString() : '', data: data,
+            // Optimistic-concurrency token: sent back on save so a stale write is rejected
+            // (409) instead of clobbering another user's edit.
+            rowVersion: inv.row_version || null,
           };
         });
         profiles[name] = {
@@ -5736,13 +5742,18 @@ function saveProfileSP(name, data, quiet) {
 // (with dbId) send their id so the backend UPDATE branch fires — this is what makes
 // EDITS to a saved invoice (amount/status/note) actually reach the database. Every
 // save path routes through here via saveProfileSP.
-// Returns a Promise that resolves only when EVERY invoice write succeeds and REJECTS if
-// any one fails — so the caller (saveProfileSP) can report a real "Save failed" instead
-// of a false "Saved ✓". Previously each POST swallowed its error in a .catch, so a lost
-// invoice looked identical to a successful save.
+// Persist a client's invoices to SQL. Resolves only when EVERY write succeeds and REJECTS
+// otherwise — so the caller (saveProfileSP) reports a real "Save failed" instead of a
+// false "Saved ✓". For existing invoices it sends the row_version last seen; the backend
+// rejects a stale write with 409 (optimistic concurrency) instead of clobbering another
+// user's edit. Fresh row_versions and new dbIds are written back to LS in one pass so the
+// next save carries the current token. All items settle first, then we decide the outcome.
 function syncNewInvoices(name, data) {
   var idMap = getIdMap(); var clientDbId = idMap[name];
   if (!clientDbId || !data.invoices) return Promise.resolve();
+  var writeBacks = [];   // {isNew, dbId, period, savedAt, newId, newVersion}
+  var conflicts = [];    // billing periods the server rejected as stale (409)
+  var hardError = null;  // first non-conflict failure (network / 5xx)
   return Promise.all(data.invoices.map(function (inv) {
     var payload = {
       homecare_client_id: clientDbId,
@@ -5752,35 +5763,55 @@ function syncNewInvoices(name, data) {
       invoice_data: inv.data ? JSON.stringify(inv.data) : null,
     };
     var isNew = !inv.dbId;
-    if (!isNew) payload.id = inv.dbId; // existing -> UPDATE; else INSERT
+    if (!isNew) {
+      payload.id = inv.dbId; // existing -> UPDATE; else INSERT
+      // Send the concurrency token when we have one; omit for invoices loaded before this
+      // feature (the backend then does an unconditional update and returns a fresh token).
+      if (inv.rowVersion) payload.expected_version = inv.rowVersion;
+    }
     var period = inv.billingPeriod || '', savedAt = inv.savedAt;
     return fetch(API_BASE + '/invoices', {
       method: 'POST', headers: apiHeaders(), body: JSON.stringify(payload),
     }).then(function (r) {
+      if (r.status === 409) { conflicts.push(period || '(no period)'); return null; }
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(function (result) {
-      if (isNew && result && result.id) {
-        // Write the new dbId back by invoice IDENTITY (period + savedAt), not array
-        // index — the profile may have been re-ordered/edited during the request.
-        var p2 = getProfiles();
-        if (p2[name] && p2[name].invoices) {
-          var cand = p2[name].invoices.filter(function (x) {
-            return !x.dbId && (x.billingPeriod || '') === period && x.savedAt === savedAt;
-          });
-          if (cand.length !== 1) {
-            cand = p2[name].invoices.filter(function (x) { return !x.dbId && (x.billingPeriod || '') === period; });
-          }
-          if (cand.length === 1) { cand[0].dbId = result.id; saveProfilesLS(p2); }
-        }
-      }
+      if (result) writeBacks.push({ isNew: isNew, dbId: inv.dbId, period: period, savedAt: savedAt, newId: result.id, newVersion: result.row_version });
     }).catch(function (e) {
-      // Keep the per-invoice context for debugging, but RE-THROW so Promise.all rejects
-      // and the overall save is reported as failed (retryable) instead of silently lost.
       console.error('Sync invoice error (' + period + '):', e);
-      throw e;
+      if (!hardError) hardError = e;
     });
-  }));
+  })).then(function () {
+    // One LS pass: persist new dbIds + fresh row_versions by invoice IDENTITY (dbId for
+    // existing; period + savedAt for brand-new) so the next save carries the right token.
+    if (writeBacks.length) {
+      var p2 = getProfiles();
+      if (p2[name] && p2[name].invoices) {
+        writeBacks.forEach(function (w) {
+          var cand;
+          if (w.isNew) {
+            cand = p2[name].invoices.filter(function (x) { return !x.dbId && (x.billingPeriod || '') === w.period && x.savedAt === w.savedAt; });
+            if (cand.length !== 1) cand = p2[name].invoices.filter(function (x) { return !x.dbId && (x.billingPeriod || '') === w.period; });
+            if (cand.length === 1 && w.newId) { cand[0].dbId = w.newId; if (w.newVersion) cand[0].rowVersion = w.newVersion; }
+          } else {
+            cand = p2[name].invoices.filter(function (x) { return x.dbId === w.dbId; });
+            if (cand.length === 1 && w.newVersion) cand[0].rowVersion = w.newVersion;
+          }
+        });
+        saveProfilesLS(p2);
+      }
+    }
+    if (conflicts.length) {
+      // Another user changed these invoices since we loaded them. The stale write was
+      // REJECTED (not clobbered) — surface it so the user reloads + re-applies rather than
+      // losing their edit or silently overwriting the other person's.
+      var ce = new Error('Invoice ' + conflicts.join(', ') + ' was changed by someone else. Reload to get the latest, then re-apply your edit.');
+      ce.isConflict = true;
+      throw ce;
+    }
+    if (hardError) throw hardError;
+  });
 }
 
 // ── DELETE client from Azure SQL ─────────────────────────────
@@ -5795,15 +5826,10 @@ function deleteProfileSP(name) {
 }
 
 // ── INVOICE status update via API ───────────────────────────
-function updateInvoiceStatusAPI(dbId, status) {
-  if (!dbId) return;
-  // D10: surface a failure/retry so a status change can't silently miss the DB.
-  var doSave=function(){return surfaceSaveFailure(
-    fetch(API_BASE + '/invoices/' + dbId + '/status', { method: 'PATCH', headers: apiHeaders(), body: JSON.stringify({ status: status }) })
-      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r;}),
-    'Invoice status',doSave);};
-  doSave();
-}
+// (updateInvoiceStatusAPI removed — status now persists through the invoice upsert in
+// saveProfileSP/syncNewInvoices; a separate status PATCH double-wrote the row and
+// self-conflicted under optimistic concurrency. The PATCH /invoices/{id}/status backend
+// route still exists but is no longer called from the client.)
 function deleteInvoiceAPI(dbId, clientName, billingPeriod) {
   if (!dbId) return;
   aiTrack('InvoiceDeleted',{invoiceDbId:dbId,clientName:clientName||'',billingPeriod:billingPeriod||''});
