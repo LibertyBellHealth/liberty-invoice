@@ -3791,6 +3791,18 @@ async function _doExportClientsAsPDFFolders(clientsWithInvoices,profiles){
     if(btn){btn.disabled=false;btn.textContent=oldText||'Export Clients + Invoices (PDFs)';}
   }
 }
+// Union two invoice arrays by stable identity (dbId, else billing-period + savedAt).
+// Imported invoices win on conflict (the user confirmed "overwrite"), but any existing
+// invoice the import DOESN'T contain is KEPT — so a stale/older backup can't silently
+// drop invoices that were added locally after that backup was exported.
+function mergeInvoiceLists(existingInvs, importedInvs){
+  existingInvs = existingInvs || []; importedInvs = importedInvs || [];
+  var keyOf=function(inv){ return inv&&inv.dbId ? ('db:'+inv.dbId) : ('bp:'+((inv&&inv.billingPeriod)||'')+'|'+((inv&&inv.savedAt)||'')); };
+  var seen={}, out=[];
+  importedInvs.forEach(function(inv){ seen[keyOf(inv)]=true; out.push(inv); });
+  existingInvs.forEach(function(inv){ if(!seen[keyOf(inv)]) out.push(inv); });
+  return out;
+}
 function importProfiles(ev){
   var file=ev.target.files[0];if(!file)return;
   var r=new FileReader();r.onload=function(e){
@@ -3811,7 +3823,21 @@ function importProfiles(ev){
       });
       var conf=keys.filter(function(k){return ex[k];});
       function doImport(){
-        var merged=Object.assign({},ex,imp);
+        // Merge per-client: imported scalar fields overwrite existing, but UNION the
+        // invoices arrays (see mergeInvoiceLists) so an older backup can't drop invoices
+        // added locally since. Previously Object.assign replaced the whole record incl.
+        // its invoices array.
+        var merged=Object.assign({},ex);
+        keys.forEach(function(name){
+          var incoming=imp[name],existing=ex[name];
+          if(existing){
+            var rec=Object.assign({},existing,incoming);
+            rec.invoices=mergeInvoiceLists(existing.invoices, incoming&&incoming.invoices);
+            merged[name]=rec;
+          } else {
+            merged[name]=incoming;
+          }
+        });
         saveProfilesLS(merged);
         // Persist each imported client to the backend so the data isn't just local
         keys.forEach(function(name){
@@ -5696,9 +5722,10 @@ function saveProfileSP(name, data, quiet) {
         aiTrack('ClientInfoUpdated',{clientName:name,clientStatus:body.client_status});
         var now = new Date().toLocaleString(); localStorage.setItem('lhca_last_synced', now);
         var lsl = document.getElementById('lastSyncedLabel'); if (lsl) lsl.textContent = 'Last synced: ' + now;
-        // Sync any invoices not yet in DB
-        syncNewInvoices(name, data);
-        return result;
+        // Sync any invoices not yet in DB. CHAIN it (was fire-and-forget) so a failed
+        // invoice write rejects the whole save → trackSave shows "Save failed [Retry]"
+        // instead of a false "Saved ✓" while the invoice is silently lost.
+        return syncNewInvoices(name, data).then(function () { return result; });
       });
   };
   // quiet = auto-save (notes typing): persist without the corner toast — the inline
@@ -5709,10 +5736,14 @@ function saveProfileSP(name, data, quiet) {
 // (with dbId) send their id so the backend UPDATE branch fires — this is what makes
 // EDITS to a saved invoice (amount/status/note) actually reach the database. Every
 // save path routes through here via saveProfileSP.
+// Returns a Promise that resolves only when EVERY invoice write succeeds and REJECTS if
+// any one fails — so the caller (saveProfileSP) can report a real "Save failed" instead
+// of a false "Saved ✓". Previously each POST swallowed its error in a .catch, so a lost
+// invoice looked identical to a successful save.
 function syncNewInvoices(name, data) {
   var idMap = getIdMap(); var clientDbId = idMap[name];
-  if (!clientDbId || !data.invoices) return;
-  data.invoices.forEach(function (inv) {
+  if (!clientDbId || !data.invoices) return Promise.resolve();
+  return Promise.all(data.invoices.map(function (inv) {
     var payload = {
       homecare_client_id: clientDbId,
       billing_period: inv.billingPeriod || '',
@@ -5723,7 +5754,7 @@ function syncNewInvoices(name, data) {
     var isNew = !inv.dbId;
     if (!isNew) payload.id = inv.dbId; // existing -> UPDATE; else INSERT
     var period = inv.billingPeriod || '', savedAt = inv.savedAt;
-    fetch(API_BASE + '/invoices', {
+    return fetch(API_BASE + '/invoices', {
       method: 'POST', headers: apiHeaders(), body: JSON.stringify(payload),
     }).then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -5743,8 +5774,13 @@ function syncNewInvoices(name, data) {
           if (cand.length === 1) { cand[0].dbId = result.id; saveProfilesLS(p2); }
         }
       }
-    }).catch(function (e) { console.error('Sync invoice error (' + period + '):', e); });
-  });
+    }).catch(function (e) {
+      // Keep the per-invoice context for debugging, but RE-THROW so Promise.all rejects
+      // and the overall save is reported as failed (retryable) instead of silently lost.
+      console.error('Sync invoice error (' + period + '):', e);
+      throw e;
+    });
+  }));
 }
 
 // ── DELETE client from Azure SQL ─────────────────────────────
@@ -5948,9 +5984,13 @@ function saveCaseworkerAPI(cw, quiet){
   return quiet ? _doSave() : trackSave(cw.name||cw.id||'caseworker', _doSave);
 }
 function deleteCaseworkerAPI(id){
-  return fetch(API_BASE + '/caseworkers/' + encodeURIComponent(id), {
-    method: 'DELETE', headers: apiHeaders(),
-  }).catch(function(e){ console.error('Delete caseworker error:', e); });
+  // Surface a failure/retry (parity with deleteCaregiverAPI) so a "deleted" caseworker
+  // can't silently reappear on the next sync while the UI showed it gone.
+  var doDel=function(){return surfaceSaveFailure(
+    fetch(API_BASE + '/caseworkers/' + encodeURIComponent(id), { method: 'DELETE', headers: apiHeaders() })
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r;}),
+    'Delete caseworker',doDel);};
+  return doDel();
 }
 function cwId(){return 'cw_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);}
 
@@ -5985,9 +6025,13 @@ function saveSupervisorAPI(sup){
   });
 }
 function deleteSupervisorAPI(id){
-  return fetch(API_BASE+'/supervisors/'+encodeURIComponent(id),{
-    method:'DELETE',headers:apiHeaders()
-  }).catch(function(e){console.error('Delete supervisor error:',e);});
+  // Surface a failure/retry (parity with deleteCaregiverAPI) so a "deleted" supervisor
+  // can't silently reappear on the next sync while the UI showed it gone.
+  var doDel=function(){return surfaceSaveFailure(
+    fetch(API_BASE+'/supervisors/'+encodeURIComponent(id),{ method:'DELETE', headers:apiHeaders() })
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r;}),
+    'Delete supervisor',doDel);};
+  return doDel();
 }
 function populateSupervisorDropdown(selectEl,currentId){
   if(!selectEl)return;
