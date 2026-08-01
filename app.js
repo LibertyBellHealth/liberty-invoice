@@ -5695,7 +5695,11 @@ function loadProfilesAPI() {
           driversLicense: c.drivers_license || '', ssn: c.ssn || '',
           startDate: c.start_date || '', liveIn: !!c.live_in,
           clientStatus: c.client_status || 'active', hasComplex: !!c.has_complex,
-          clientNotes: c.client_notes || '', auditLog: [], _dbId: c.id, invoices: mappedInvs,
+          clientNotes: c.client_notes || '', auditLog: [], _dbId: c.id,
+          // Optimistic-concurrency token (see saveProfileSP). Tolerant of both the bundled
+          // (row_version_hex) and plain (/homecare-clients) endpoints.
+          _rowVersion: c.row_version_hex || (typeof c.row_version === 'string' ? c.row_version : null),
+          invoices: mappedInvs,
         };
       });
       saveProfilesLS(profiles);
@@ -5742,9 +5746,21 @@ function saveProfileSP(name, data, quiet) {
   // keep the stored (encrypted) value rather than blanking it — so a save that happens
   // before ssn has loaded (e.g. right after a reload) can never wipe it.
   if (!data.ssn) delete body.ssn;
+  // Optimistic concurrency: send the row_version we last read for an EXISTING client so a
+  // stale save is rejected (409) instead of clobbering another user's edit. Omitted for a
+  // new client, or one loaded before this feature (backend then updates unconditionally).
+  if (dbId && data._rowVersion) body.expected_version = data._rowVersion;
   var _doSave = function(){
     return fetch(API_BASE + '/homecare-clients', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(body) })
       .then(function (r) {
+        if (r.status === 409) {
+          // Someone else changed this client since we loaded it. The stale write was
+          // REJECTED (not clobbered) — surface it so the user reloads + re-applies rather
+          // than silently overwriting the other person's change.
+          var ce = new Error("This client's info was changed by someone else. Reload to get the latest, then re-apply your edit.");
+          ce.isConflict = true;
+          throw ce;
+        }
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
       })
@@ -5752,6 +5768,12 @@ function saveProfileSP(name, data, quiet) {
         if (!dbId && result.id) {
           idMap[name] = result.id; localStorage.setItem('lhca_id_map', JSON.stringify(idMap));
           var p = getProfiles(); if (p[name]) { p[name]._dbId = result.id; saveProfilesLS(p); }
+        }
+        // Refresh the concurrency token so the NEXT save carries the current one (both in
+        // memory and in the stored profile), otherwise the next edit would falsely 409.
+        if (result.row_version) {
+          data._rowVersion = result.row_version;
+          var pv = getProfiles(); if (pv[name]) { pv[name]._rowVersion = result.row_version; saveProfilesLS(pv); }
         }
         aiTrack('ClientInfoUpdated',{clientName:name,clientStatus:body.client_status});
         var now = new Date().toLocaleString(); localStorage.setItem('lhca_last_synced', now);
