@@ -5659,8 +5659,11 @@ function loadProfilesAPI() {
             status: inv.status || 'draft', invoiceNote: inv.invoice_note || '',
             savedAt: inv.saved_at ? new Date(inv.saved_at).toLocaleString() : '', data: data,
             // Optimistic-concurrency token: sent back on save so a stale write is rejected
-            // (409) instead of clobbering another user's edit.
-            rowVersion: inv.row_version || null,
+            // (409) instead of clobbering another user's edit. The bundled load endpoint
+            // returns it as row_version_hex; the /invoices endpoint as a hex row_version
+            // string. A raw binary row_version (SELECT *) is NOT a usable token, so ignore
+            // that shape.
+            rowVersion: inv.row_version_hex || (typeof inv.row_version === 'string' ? inv.row_version : null),
           };
         });
         profiles[name] = {
