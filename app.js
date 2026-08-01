@@ -10,7 +10,15 @@ var unsavedChanges=false;
 // ============================================================
 //  AZURE FUNCTIONS API CONFIG
 // ============================================================
-var API_BASE    = 'https://liberty-crm-api-cyb3dkhnd2e7a3cy.centralus-01.azurewebsites.net/api';
+// Dev sandbox: when served from localhost, talk to the DEV backend (liberty-crm-db-dev,
+// fake data) so local testing never touches production. Every DEPLOYED hostname (the SWA
+// prod site + PR previews) always uses the prod backend — this switch is localhost-only,
+// so it is safe to ship. Run locally on a FIXED port (4280) that is registered as an
+// Azure AD redirect URI, e.g.:  cd liberty-invoice-site && python3 -m http.server 4280
+var _IS_LOCAL   = (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+var API_BASE    = _IS_LOCAL
+  ? 'https://liberty-crm-api-dev.azurewebsites.net/api'
+  : 'https://liberty-crm-api-cyb3dkhnd2e7a3cy.centralus-01.azurewebsites.net/api';
 var API_APP_ID  = '0c1627c1-c186-4e46-b919-e4a12f2f3952'; // Easy Auth app registration
 var _apiToken   = null; // cached Bearer token, refreshed automatically
 
