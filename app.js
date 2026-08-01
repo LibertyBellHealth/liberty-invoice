@@ -766,30 +766,6 @@ function renderOverviewPane(){
   '</div>';
 }
 
-function cycleStatus(period,el){
-  var states=['draft','submitted','paid'];
-  var p=getProfiles();if(!p[activeProfileName])return;
-  var inv=p[activeProfileName].invoices.find(function(i){return i.billingPeriod===period;});
-  if(!inv)return;
-  var cur=inv.status||'draft',idx=states.indexOf(cur),next=states[(idx+1)%states.length];
-  inv.status=next;
-  el.textContent=next.charAt(0).toUpperCase()+next.slice(1);
-  el.className='inv-status inv-status-'+next;
-  saveProfilesLS(p);saveProfileSP(activeProfileName,p[activeProfileName]);
-  logActivity('status','Invoice '+period+' for '+activeProfileName+' marked '+next);
-  updateStats();
-}
-function cycleStatusOverview(sel){
-  var period=sel.dataset.period,next=sel.value;
-  sel.className='status-select st-'+next;
-  var p=getProfiles();if(!p[activeProfileName])return;
-  var inv=p[activeProfileName].invoices.find(function(i){return i.billingPeriod===period;});
-  if(!inv)return;
-  inv.status=next;
-  saveProfilesLS(p);saveProfileSP(activeProfileName,p[activeProfileName]);
-  logActivity('status','Invoice '+period+' for '+activeProfileName+' marked '+next);
-  updateStats();
-}
 function openAllInvoicesModal(filter){
   var p=getProfiles(),rows=[];
   Object.keys(p).forEach(function(name){
@@ -1089,27 +1065,6 @@ function promptInvNote(idx){
     p2[activeProfileName].invoices[idx].invoiceNote=note||'';
     saveProfilesLS(p2);saveProfileSP(activeProfileName,p2[activeProfileName]);renderInvHistory();renderOverviewPane();
   },{title:'Invoice Note',okText:'Save Note'});
-}
-function cycleStatusByIdx(idx,el){
-  var states=['draft','submitted','paid'];
-  var p=getProfiles();if(!p[activeProfileName]||!p[activeProfileName].invoices[idx])return;
-  var cur=p[activeProfileName].invoices[idx].status||'draft',next=states[(states.indexOf(cur)+1)%states.length];
-  var period=p[activeProfileName].invoices[idx].billingPeriod;
-  function apply(){
-    var p2=getProfiles();if(!p2[activeProfileName]||!p2[activeProfileName].invoices[idx])return;
-    p2[activeProfileName].invoices[idx].status=next;
-    el.textContent=next.charAt(0).toUpperCase()+next.slice(1);el.className='inv-status inv-status-'+next;
-    saveProfilesLS(p2);saveProfileSP(activeProfileName,p2[activeProfileName]);
-    logActivity('status','Invoice '+period+' for '+activeProfileName+' marked '+next);
-    updateStats();
-  }
-  if(next==='paid'){
-    showConfirm('Mark invoice '+period+' as PAID?\n\nPaid invoices are locked from edits. Only mark Paid after payment is actually received.',apply,{title:'Mark as Paid?',okText:'Mark as Paid'});
-  } else if(next==='submitted'&&cur==='draft'){
-    showConfirm('Mark invoice '+period+' as SUBMITTED?\n\nThis indicates the invoice has been sent. Only do this if you have actually emailed/delivered it.',apply,{title:'Mark as Submitted?',okText:'Mark as Submitted'});
-  } else {
-    apply();
-  }
 }
 function saveInvNote(input){
   var p=getProfiles(),idx=parseInt(input.dataset.idx);
@@ -1812,31 +1767,7 @@ function hideCgForm(){
     renderCaregiverGrid();
   }
 }
-function populateCaregiverSelect(selId,selectedId){
-  var sel=document.getElementById(selId);if(!sel)return;
-  sel.innerHTML='<option value="">— None assigned —</option>';
-  var cgs=getCaregivers();
-  Object.keys(cgs).forEach(function(id){
-    var o=document.createElement('option');o.value=id;o.textContent=cgs[id].name+(cgs[id].status!=='active'?' ('+cgs[id].status+')':'');
-    if(id===selectedId)o.selected=true;
-    sel.appendChild(o);
-  });
-}
 
-function populateCaseworkerSelect(selId, selectedName){
-  var sel=document.getElementById(selId);if(!sel)return;
-  sel.innerHTML='<option value="">— None assigned —</option>';
-  getCaseworkers().forEach(function(cw){
-    var o=document.createElement('option');
-    o.value=cw.name;o.textContent=cw.name+(cw.agency?' ('+cw.agency+')':'');
-    if(cw.name===selectedName)o.selected=true;
-    sel.appendChild(o);
-  });
-  // allow typing a custom name if not in list
-  if(selectedName&&!getCaseworkers().find(function(c){return c.name===selectedName;})){
-    var o=document.createElement('option');o.value=selectedName;o.textContent=selectedName+' (custom)';o.selected=true;sel.appendChild(o);
-  }
-}
 
 // --- Caregiver detail view ---
 var activeCgId=null;
@@ -2144,16 +2075,6 @@ async function doSendForSignature(){
     errEl.style.display='block';
     btn.textContent='Send Link';btn.disabled=false;
   }
-}
-function editCaregiverFromDetail(){
-  if(!activeCgId)return;
-  document.getElementById('cgDetailView').style.display='none';
-  document.getElementById('cgGridView').style.display='none';
-  editCaregiver(activeCgId);
-  setTimeout(function(){
-    var form=document.getElementById('cgFormWrap');
-    if(form){form.style.display='block';form.scrollIntoView({behavior:'smooth'});}
-  },50);
 }
 function deleteCaregiverFromDetail(){
   var cg=getCaregivers()[activeCgId];
@@ -2659,37 +2580,6 @@ function clearAllData(){
 // ============================================================
 //  EMAIL AUTOCOMPLETE
 // ============================================================
-function emailSuggest(input,suggestId){
-  var val=input.value,at=val.indexOf('@'),suggest=document.getElementById(suggestId);
-  if(!suggest)return;
-  if(at===-1||val.slice(at+1).length===0){
-    // Show domain suggestions after @
-    if(at!==-1){
-      var domains=['michigan.gov','mdhhs.mi.gov','gmail.com'];
-      var prefix=val.slice(0,at+1);
-      suggest.innerHTML='';
-      domains.forEach(function(d){
-        var div=document.createElement('div');div.textContent=prefix+d;
-        div.addEventListener('mousedown',function(e){e.preventDefault();input.value=prefix+d;suggest.style.display='none';});
-        suggest.appendChild(div);
-      });
-      suggest.style.display='block';
-    } else {suggest.style.display='none';}
-  } else {
-    // partial domain typed
-    var typed=val.slice(at+1);
-    var domains=['michigan.gov','mdhhs.mi.gov','gmail.com'].filter(function(d){return d.startsWith(typed)&&d!==typed;});
-    var prefix=val.slice(0,at+1);
-    suggest.innerHTML='';
-    domains.forEach(function(d){
-      var div=document.createElement('div');div.textContent=prefix+d;
-      div.addEventListener('mousedown',function(e){e.preventDefault();input.value=prefix+d;suggest.style.display='none';});
-      suggest.appendChild(div);
-    });
-    suggest.style.display=domains.length?'block':'none';
-  }
-}
-function hideEmailSuggest(id){setTimeout(function(){var el=document.getElementById(id);if(el)el.style.display='none';},150);}
 
 // ============================================================
 //  ZIP LOOKUP
@@ -2807,7 +2697,6 @@ function cgSearch(input, hiddenId, dropId) {
   drop.style.display = 'block';
 }
 // Focus handler — opens the dropdown showing all options
-function cgSearchFocus(input, hiddenId, dropId){ cgSearch(input, hiddenId, dropId); }
 
 // Inline "quick create" popup for a new caregiver/caseworker from an assignment
 // field. Captures just the essentials (name + contact); the full record is
@@ -3222,13 +3111,6 @@ function renderTodos(filterClient){
       doneC.appendChild(row);
     });
   }
-}
-function editTodoNote(id){
-  var todos=getTodos(),t=todos.find(function(x){return String(x.id)===String(id);});if(!t)return;
-  showPrompt('Note for this task:',t.note||'',function(note){
-    var todos2=getTodos(),t2=todos2.find(function(x){return String(x.id)===String(id);});if(!t2)return;
-    t2.note=note||'';saveTodos(todos2);saveTaskAPI(t2);renderTodos();
-  },{title:'Task Note',okText:'Save Note'});
 }
 function updateTaskBadge(){
   var overdue=getTodos().filter(function(t){
@@ -4229,17 +4111,6 @@ function syncBillingPeriodFields(){
   var bp=document.getElementById('billingPeriod').value;
   document.getElementById('billingPeriod2').value=bp||'';
 }
-function onMonthPickerChange(el){
-  // Legacy — kept for compatibility if ever re-added
-  var val=el.value;if(!val)return;
-  var parts=val.split('-'),y=parts[0],m=parts[1];
-  var formatted=m+'/'+y;
-  document.getElementById('billingPeriod').value=formatted;
-  document.getElementById('billingPeriod2').value=formatted;
-  rebuild(daysIn(m,y));
-  checkDuplicatePeriod(formatted);
-}
-function syncMonthPickerFromHidden(){syncBillingPeriodFields();}
 function checkDuplicatePeriod(bp){
   var warn=document.getElementById('dupWarning');if(!warn||!activeProfileName)return;
   var p=getProfiles();if(!p[activeProfileName])return;
@@ -4252,7 +4123,6 @@ function checkDuplicatePeriod(bp){
     warn.innerHTML=msg;warn.style.display='block';
   } else {warn.style.display='none';}
 }
-function onBillingInput(el){onBillingTextInput(el);}
 function syncFields(){document.getElementById('clientName2').value=document.getElementById('clientName').value;document.getElementById('worker2').value=document.getElementById('worker').value;}
 function toggleComplex(){document.getElementById('complexSection').style.display=document.getElementById('showComplex').checked?'block':'none';}
 function captureStates(){
@@ -5317,7 +5187,6 @@ function confirmSig(){
 }
 function clearSigPad(){if(sigCtx)sigCtx.clearRect(0,0,sigCanvas.width,sigCanvas.height);}
 function closeSigModal(){document.getElementById('sigModal').classList.remove('open');}
-function changeSignature(){placeSignature(1);}// Alias for topbar button
 
 // ── Signature modal tab switching ────────────────────────────────
 function switchSigTab(tab){
@@ -6852,12 +6721,6 @@ function saveCwInfoPane(){
   cwUnsavedChanges=false;
   renderCaseworkerList();
 }
-function showCwEditForm(){
-  if(!activeCwId)return;
-  document.getElementById('cwDetailView').style.display='none';
-  document.getElementById('cwGridView').style.display='none';
-  showCaseworkerForm(activeCwId);
-}
 function renderCwClientsPane(){
   if(!activeCwId)return;
   var cw=getCaseworkers().find(function(c){return c.id===activeCwId;});
@@ -7135,14 +6998,6 @@ function changeStateFormClient(name){
 
 // Re-render the PDF in the iframe whenever an input changes (debounced)
 var _sfPreviewTimer=null,_sfPreviewBlobUrl=null,_sfPreviewBytes=null;
-function hookStateFormLivePreview(){
-  var formEl=document.querySelector('.sf-form');
-  if(!formEl)return;
-  formEl.addEventListener('input',scheduleSfPreview);
-  formEl.addEventListener('change',scheduleSfPreview);
-  // Initial render
-  scheduleSfPreview(0);
-}
 function scheduleSfPreview(delay){
   clearTimeout(_sfPreviewTimer);
   var ms=(delay==null||typeof delay==='object')?350:delay;
