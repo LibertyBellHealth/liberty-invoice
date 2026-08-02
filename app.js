@@ -828,7 +828,9 @@ function renderInfoPane(){
   // Helper to create simple text field
   function mkField(id,label,val,full){
     var d=document.createElement('div');d.className='info-field'+(full?' full':'');
-    d.innerHTML='<label>'+label+'</label><input id="'+id+'" value="'+esc(val)+'" oninput="unsavedChanges=true;">';
+    // autocomplete=off: keep PHI (DL, phone, email, address, medicaid id) out of the
+    // browser's form-autofill store, which lives outside the app and survives the idle-wipe.
+    d.innerHTML='<label>'+label+'</label><input id="'+id+'" value="'+esc(val)+'" autocomplete="off" oninput="unsavedChanges=true;">';
     g.appendChild(d);
   }
   // Helper for divider
@@ -854,7 +856,7 @@ function renderInfoPane(){
   mkField('ei-medicaid','Medicaid ID',prof.medicaidId||'',false);
   // Date of Birth — needed on DHS-390 / MDHHS-6200 / MSA-4676 state forms
   var dDob=document.createElement('div');dDob.className='info-field';
-  dDob.innerHTML='<label>Date of Birth</label><input id="ei-dob" type="date" value="'+esc(prof.dob||'')+'" oninput="unsavedChanges=true;">';
+  dDob.innerHTML='<label>Date of Birth</label><input id="ei-dob" type="date" value="'+esc(prof.dob||'')+'" autocomplete="off" oninput="unsavedChanges=true;">';
   g.appendChild(dDob);
   var dGender=document.createElement('div');dGender.className='info-field';
   var gv=prof.gender||'';
@@ -2228,7 +2230,7 @@ function renderCgInfoPane(){
   g.appendChild(dName);
 
   // DOB + Gender row (moved up — needed for state forms / identity)
-  mkRow('<div class="info-field"><label>Date of Birth</label><input id="cgi-dob" type="date" value="'+esc(cg.dob||cg.dateOfBirth||'')+'"></div>'+
+  mkRow('<div class="info-field"><label>Date of Birth</label><input id="cgi-dob" type="date" value="'+esc(cg.dob||cg.dateOfBirth||'')+'" autocomplete="off"></div>'+
     '<div class="info-field"><label>Gender</label><select id="cgi-gender"><option value=""'+(!cg.gender?' selected':'')+'>—</option><option value="Male"'+(cg.gender==='Male'?' selected':'')+'>Male</option><option value="Female"'+(cg.gender==='Female'?' selected':'')+'>Female</option></select></div>');
 
   // Nickname + Status row
