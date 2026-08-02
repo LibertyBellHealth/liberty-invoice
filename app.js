@@ -1395,7 +1395,7 @@ function handleDocScan(input){
 }
 function deleteHcDoc(clientId,encodedName){
   showConfirm('Delete this document?',function(){
-    fetch(API_BASE+'/documents?clientType=homecare&clientId='+clientId+'&name='+encodedName,{method:'DELETE',headers:apiHeaders()})
+    fetch(API_BASE+'/documents?clientType=homecare&clientId='+clientId,{method:'DELETE',headers:apiHeaders(),body:JSON.stringify({name:decodeURIComponent(encodedName)})})
     .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);loadHcDocs(clientId);}).catch(function(e){showAlert('Delete failed: '+e);});
   },{title:'Delete Document',okText:'Delete'});
 }
@@ -1444,7 +1444,7 @@ function uploadCgDoc(cgId){
 }
 function deleteCgDoc(cgId,encodedName){
   showConfirm('Delete this document?',function(){
-    fetch(API_BASE+'/documents?clientType=caregiver&clientId='+cgId+'&name='+encodedName,{method:'DELETE',headers:apiHeaders()})
+    fetch(API_BASE+'/documents?clientType=caregiver&clientId='+cgId,{method:'DELETE',headers:apiHeaders(),body:JSON.stringify({name:decodeURIComponent(encodedName)})})
     .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);loadCgDocs(cgId);}).catch(function(e){showAlert('Delete failed: '+e);});
   },{title:'Delete Document',okText:'Delete'});
 }
@@ -2363,7 +2363,7 @@ function uploadCgDocAzure(){
 }
 function deleteCgDocAzure(cgId,encodedName){
   showConfirm('Delete this document?',function(){
-    fetch(API_BASE+'/documents?clientType=caregiver&clientId='+cgId+'&name='+encodedName,{method:'DELETE',headers:apiHeaders()})
+    fetch(API_BASE+'/documents?clientType=caregiver&clientId='+cgId,{method:'DELETE',headers:apiHeaders(),body:JSON.stringify({name:decodeURIComponent(encodedName)})})
     .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);loadCgDocsAzure(cgId);}).catch(function(e){showAlert('Delete failed: '+e);});
   },{title:'Delete Document',okText:'Delete'});
 }
@@ -6985,7 +6985,7 @@ function uploadCwDoc(){
 }
 function deleteCwDoc(cwId,encodedName){
   showConfirm('Delete this document?',function(){
-    fetch(API_BASE+'/documents?clientType=caseworker&clientId='+cwId+'&name='+encodedName,{method:'DELETE',headers:apiHeaders()})
+    fetch(API_BASE+'/documents?clientType=caseworker&clientId='+cwId,{method:'DELETE',headers:apiHeaders(),body:JSON.stringify({name:decodeURIComponent(encodedName)})})
       .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);renderCwDocsPane();}).catch(function(e){showAlert('Delete failed: '+e);});
   },{title:'Delete Document',okText:'Delete'});
 }
