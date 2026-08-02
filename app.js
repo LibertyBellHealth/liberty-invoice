@@ -21,6 +21,7 @@ var API_BASE    = _IS_LOCAL
   : 'https://liberty-crm-api-cyb3dkhnd2e7a3cy.centralus-01.azurewebsites.net/api';
 var API_APP_ID  = '0c1627c1-c186-4e46-b919-e4a12f2f3952'; // Easy Auth app registration
 var _apiToken   = null; // cached Bearer token, refreshed automatically
+var _savesInFlight = 0; // count of in-flight client saves; blocks a background reload from clobbering them
 var _apiTokenTimer = null; // handle for the self-rescheduling refresh; cleared on sign-out/idle
 
 // Microsoft identity — kept for Sign In and Outlook email
@@ -1080,14 +1081,23 @@ function promptInvNote(idx){
 }
 function saveInvNote(input){
   var p=getProfiles(),idx=parseInt(input.dataset.idx);
-  if(p[activeProfileName]&&p[activeProfileName].invoices&&p[activeProfileName].invoices[idx]){
-    p[activeProfileName].invoices[idx].invoiceNote=input.value;
+  var clientName=activeProfileName; // capture the client now; activeProfileName may change before the flush
+  if(p[clientName]&&p[clientName].invoices&&p[clientName].invoices[idx]){
+    p[clientName].invoices[idx].invoiceNote=input.value;
     saveProfilesLS(p);
-    // Debounce backend save so we don't slam the API on every keystroke
-    clearTimeout(saveInvNote._t);
-    saveInvNote._t=setTimeout(function(){
+    // Debounce backend save so we don't slam the API on every keystroke.
+    // Key the timer PER CLIENT: a single shared handle meant that typing a note on client A
+    // then switching to client B within 600ms would clearTimeout A's pending flush, so A's
+    // note reached LS but never the backend and a later reload dropped it.
+    saveInvNote._t=saveInvNote._t||{};
+    clearTimeout(saveInvNote._t[clientName]);
+    saveInvNote._t[clientName]=setTimeout(function(){
+      // Re-read the CURRENT store at flush time (not the keystroke-time snapshot) so a
+      // concurrent status/note/reload write in the 600ms window isn't reverted, and use the
+      // captured clientName in case the user navigated away.
+      var pNow=getProfiles(); if(!pNow[clientName])return;
       // D8: surface a failure toast instead of silently saving to LS only.
-      var doSave=function(){return surfaceSaveFailure(saveProfileSP(activeProfileName,p[activeProfileName],true),'Invoice note',doSave);};
+      var doSave=function(){return surfaceSaveFailure(saveProfileSP(clientName,pNow[clientName],true),'Invoice note',doSave);};
       doSave();
     },600);
   }
@@ -1100,8 +1110,20 @@ function deleteInv(idx){
 function doDeleteInv(idx){
   var p=getProfiles(),inv=p[activeProfileName].invoices[idx];
   if(!inv)return;
-  deleteInvoiceAPI(inv.dbId,activeProfileName,inv.billingPeriod);
-  p[activeProfileName].invoices.splice(idx,1);saveProfilesLS(p);saveProfileSP(activeProfileName,p[activeProfileName]);renderInvHistory();
+  var clientName=activeProfileName;
+  // Remove from LS by INVOICE IDENTITY (dbId, else period+savedAt) — the array index can
+  // shift, and this runs later (after the server delete confirms).
+  var removeLocally=function(){
+    var p2=getProfiles(); if(!p2[clientName]||!p2[clientName].invoices)return;
+    var i = inv.dbId
+      ? p2[clientName].invoices.findIndex(function(x){return x.dbId===inv.dbId;})
+      : p2[clientName].invoices.findIndex(function(x){return !x.dbId && (x.billingPeriod||'')===(inv.billingPeriod||'') && x.savedAt===inv.savedAt;});
+    if(i>=0){ p2[clientName].invoices.splice(i,1); saveProfilesLS(p2); }
+    renderInvHistory();
+  };
+  // Delete server-side FIRST; remove locally ONLY on a confirmed delete. A no-dbId invoice
+  // was never synced, so just remove it locally.
+  deleteInvoiceAPI(inv.dbId,clientName,inv.billingPeriod,removeLocally);
 }
 async function downloadInvoice(idx){
   var inv=getProfiles()[activeProfileName].invoices[idx];if(!inv)return;
@@ -4981,15 +5003,11 @@ function markInvoiceSubmitted(clientName,period){
   if(!inv||inv.status==='paid')return;
   inv.status='submitted';
   saveProfilesLS(p);
+  // saveProfileSP persists the status via the invoice upsert (the changed invoice is now
+  // dirty and gets sent). The separate /status PATCH that used to run here double-wrote the
+  // row AND discarded the fresh row_version it returned — leaving a stale token that could
+  // spuriously 409 the invoice's next save — so it was removed.
   saveProfileSP(clientName,p[clientName]);
-  if(inv.dbId){
-    // D10: check r.ok so a 4xx/5xx doesn't leave the LS status ahead of the DB silently.
-    var doSave=function(){return surfaceSaveFailure(
-      fetch(API_BASE+'/invoices/'+inv.dbId+'/status',{method:'PATCH',headers:apiHeaders(),body:JSON.stringify({status:'submitted'})})
-        .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r;}),
-      'Invoice status',doSave);};
-    doSave();
-  }
 }
 
 // ── Send single invoice email ─────────────────────────────────
@@ -5609,6 +5627,11 @@ function revalidate(force){
   if(typeof unsavedChanges!=='undefined'&&unsavedChanges)return;
   if(typeof cgUnsavedChanges!=='undefined'&&cgUnsavedChanges)return;
   if(typeof cwUnsavedChanges!=='undefined'&&cwUnsavedChanges)return;
+  // Guard 1b: never reload while a save is still in flight. unsavedChanges is cleared
+  // synchronously (before the async save resolves) and invoice-only saves don't set it at
+  // all — so this counter is what actually prevents a background reload from reverting a
+  // pending save's writes (dbId/rowVersion writebacks + saved content).
+  if(_savesInFlight>0)return;
   // Guard 2: throttle to once per 30 sec unless forced
   var now=Date.now();
   if(!force&&(now-_lastRevalidate)<REVALIDATE_THROTTLE_MS)return;
@@ -5671,7 +5694,7 @@ function loadProfilesAPI() {
         });
         var mappedInvs = dedupedInvs.map(function (inv) {
           var data = null; try { data = JSON.parse(inv.invoice_data || 'null'); } catch (e) {}
-          return {
+          var m = {
             dbId: inv.id, billingPeriod: inv.billing_period || '',
             status: inv.status || 'draft', invoiceNote: inv.invoice_note || '',
             savedAt: inv.saved_at ? new Date(inv.saved_at).toLocaleString() : '', data: data,
@@ -5682,6 +5705,9 @@ function loadProfilesAPI() {
             // that shape.
             rowVersion: inv.row_version_hex || (typeof inv.row_version === 'string' ? inv.row_version : null),
           };
+          // Dirty-tracking baseline: this is the server-confirmed state, so mark it synced.
+          m._synced = _invoiceSig(m);
+          return m;
         });
         profiles[name] = {
           clientName: name, firstName: c.first_name || '', lastName: c.last_name || '',
@@ -5701,7 +5727,14 @@ function loadProfilesAPI() {
           _rowVersion: c.row_version_hex || (typeof c.row_version === 'string' ? c.row_version : null),
           invoices: mappedInvs,
         };
+        // Client-record dirty-tracking baseline (server-confirmed state) — mirror of the
+        // per-invoice _synced above. saveProfileSP skips the client POST while this matches.
+        profiles[name]._clientSynced = _clientSig(profiles[name]);
       });
+      // A save may have started DURING this fetch (the round-trip is async). If so, abort
+      // the destructive full-store replace — otherwise it reverts the pending save's local
+      // writes (content + dbId/rowVersion writebacks). A later revalidate will refresh.
+      if (_savesInFlight > 0) { syncEnd(); return; }
       saveProfilesLS(profiles);
       localStorage.setItem('lhca_id_map', JSON.stringify(idMap));
       hideDbError(); // fresh data arrived — clear any stale connection-error banner
@@ -5750,7 +5783,19 @@ function saveProfileSP(name, data, quiet) {
   // stale save is rejected (409) instead of clobbering another user's edit. Omitted for a
   // new client, or one loaded before this feature (backend then updates unconditionally).
   if (dbId && data._rowVersion) body.expected_version = data._rowVersion;
+  // Client-record dirty-tracking: if this is an EXISTING client whose own fields are
+  // unchanged since the last confirmed save, skip the client POST entirely. That POST
+  // otherwise re-writes the row and bumps its row_version on EVERY save (even an invoice-
+  // only one), which made a concurrent invoice edit falsely 409 at the client level. The
+  // invoices still sync (they have their own dirty-tracking + version check).
+  var _clientSigNow = _clientSig(data);
+  var _clientUnchanged = dbId && data._clientSynced === _clientSigNow;
   var _doSave = function(){
+    if (_clientUnchanged) {
+      var now0 = new Date().toLocaleString(); localStorage.setItem('lhca_last_synced', now0);
+      var lsl0 = document.getElementById('lastSyncedLabel'); if (lsl0) lsl0.textContent = 'Last synced: ' + now0;
+      return syncNewInvoices(name, data).then(function(){ return { skipped: true }; });
+    }
     return fetch(API_BASE + '/homecare-clients', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(body) })
       .then(function (r) {
         if (r.status === 409) {
@@ -5775,6 +5820,10 @@ function saveProfileSP(name, data, quiet) {
           data._rowVersion = result.row_version;
           var pv = getProfiles(); if (pv[name]) { pv[name]._rowVersion = result.row_version; saveProfilesLS(pv); }
         }
+        // Client write confirmed — advance the dirty-tracking baseline to the state we just
+        // sent, so the NEXT save skips the client POST if nothing changes.
+        data._clientSynced = _clientSigNow;
+        var pcs = getProfiles(); if (pcs[name]) { pcs[name]._clientSynced = _clientSigNow; saveProfilesLS(pcs); }
         aiTrack('ClientInfoUpdated',{clientName:name,clientStatus:body.client_status});
         var now = new Date().toLocaleString(); localStorage.setItem('lhca_last_synced', now);
         var lsl = document.getElementById('lastSyncedLabel'); if (lsl) lsl.textContent = 'Last synced: ' + now;
@@ -5786,7 +5835,16 @@ function saveProfileSP(name, data, quiet) {
   };
   // quiet = auto-save (notes typing): persist without the corner toast — the inline
   // "Saved" indicator already covers it. Deliberate saves keep the toast.
-  return quiet ? _doSave() : trackSave(name, _doSave);
+  // Track in-flight so a background reload can't clobber this save (see revalidate/
+  // loadProfilesAPI guards). Decrement on settle (success OR failure).
+  _savesInFlight++;
+  var _p;
+  // try/finally so a SYNCHRONOUS throw (before _p is assigned) still schedules the
+  // decrement — otherwise the counter would stick >0 and block every future background
+  // reload permanently.
+  try { _p = quiet ? _doSave() : trackSave(name, _doSave); }
+  finally { Promise.resolve(_p).then(function(){ _savesInFlight--; }, function(){ _savesInFlight--; }); }
+  return _p;
 }
 // Persist a client's invoices to SQL. New invoices (no dbId) INSERT; existing ones
 // (with dbId) send their id so the backend UPDATE branch fires — this is what makes
@@ -5798,13 +5856,45 @@ function saveProfileSP(name, data, quiet) {
 // rejects a stale write with 409 (optimistic concurrency) instead of clobbering another
 // user's edit. Fresh row_versions and new dbIds are written back to LS in one pass so the
 // next save carries the current token. All items settle first, then we decide the outcome.
+// Signature of an invoice's PERSISTED fields (exactly what syncNewInvoices sends). Used
+// for dirty-tracking so an invoice is re-sent only when it actually changed since its last
+// server-confirmed save (or it has no dbId yet). Deliberately covers billing period,
+// status, note, AND the data blob — a status-only or note-only edit must count as dirty.
+function _invoiceSig(inv) {
+  return JSON.stringify([
+    inv.billingPeriod || '', inv.status || 'draft', inv.invoiceNote || '',
+    inv.data ? JSON.stringify(inv.data) : '',
+  ]);
+}
+// Signature of a client's OWN persisted fields (everything saveProfileSP sends EXCEPT the
+// invoices, which have their own dirty-tracking). Lets an invoice-only save skip re-POSTing
+// the client record — which otherwise bumps the client row_version on every save and made a
+// concurrent invoice edit falsely 409 at the CLIENT level. auditLog is excluded on purpose:
+// it's the vestigial audit_json blob and changes on every action, which would defeat the
+// skip. ssn IS included so an ssn-only edit is never skipped (never lost); the cost is only a
+// harmless re-send if ssn lazy-loads into memory after the load-time baseline.
+function _clientSig(d) {
+  return JSON.stringify([
+    d.firstName||'', d.lastName||'', d.middleName||'', d.nickname||'', d.medicaidId||'',
+    d.hourlyRate||'', d.worker||'', d.caseworkerId||'', d.street||'', d.city||'', d.state||'',
+    d.zip||'', d.county||'', d.phone||'', d.clientEmail||'', d.caregiverId||'',
+    d.clientStatus||'active', d.hasComplex?1:0, d.dob||'', d.gender||'', d.driversLicense||'',
+    d.ssn||'', d.startDate||'', d.liveIn?1:0, d.clientNotes||'',
+  ]);
+}
 function syncNewInvoices(name, data) {
   var idMap = getIdMap(); var clientDbId = idMap[name];
   if (!clientDbId || !data.invoices) return Promise.resolve();
-  var writeBacks = [];   // {isNew, dbId, period, savedAt, newId, newVersion}
+  var writeBacks = [];   // {isNew, dbId, period, savedAt, newId, newVersion, sig}
   var conflicts = [];    // billing periods the server rejected as stale (409)
   var hardError = null;  // first non-conflict failure (network / 5xx)
   return Promise.all(data.invoices.map(function (inv) {
+    // Dirty-tracking: an existing invoice (has dbId) whose persisted fields are unchanged
+    // since its last confirmed save is SKIPPED — so editing a client field or a note no
+    // longer re-pushes every invoice (which caused write amplification and false conflicts
+    // on rows the user never touched). A brand-new invoice (no dbId) is always sent.
+    var sig = _invoiceSig(inv);
+    if (inv.dbId && inv._synced === sig) return Promise.resolve();
     var payload = {
       homecare_client_id: clientDbId,
       billing_period: inv.billingPeriod || '',
@@ -5813,6 +5903,13 @@ function syncNewInvoices(name, data) {
       invoice_data: inv.data ? JSON.stringify(inv.data) : null,
     };
     var isNew = !inv.dbId;
+    // HIGH#2 defense: an invoice with a server rowVersion but NO dbId lost its id (e.g. a
+    // dropped writeback). Sending it as "new" would hit the backend's no-id MERGE, which
+    // overwrites the matching (client, period) row UNCONDITIONALLY — bypassing the 409
+    // concurrency guard that only the id-UPDATE branch enforces. Refuse to send it as new;
+    // surface a conflict so the user reloads (which restores the dbId) instead of silently
+    // clobbering whatever is on the server for that period.
+    if (isNew && inv.rowVersion) { conflicts.push(inv.billingPeriod || '(no period)'); return Promise.resolve(); }
     if (!isNew) {
       payload.id = inv.dbId; // existing -> UPDATE; else INSERT
       // Send the concurrency token when we have one; omit for invoices loaded before this
@@ -5827,7 +5924,7 @@ function syncNewInvoices(name, data) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(function (result) {
-      if (result) writeBacks.push({ isNew: isNew, dbId: inv.dbId, period: period, savedAt: savedAt, newId: result.id, newVersion: result.row_version });
+      if (result) writeBacks.push({ isNew: isNew, dbId: inv.dbId, period: period, savedAt: savedAt, newId: result.id, newVersion: result.row_version, sig: sig });
     }).catch(function (e) {
       console.error('Sync invoice error (' + period + '):', e);
       if (!hardError) hardError = e;
@@ -5843,10 +5940,10 @@ function syncNewInvoices(name, data) {
           if (w.isNew) {
             cand = p2[name].invoices.filter(function (x) { return !x.dbId && (x.billingPeriod || '') === w.period && x.savedAt === w.savedAt; });
             if (cand.length !== 1) cand = p2[name].invoices.filter(function (x) { return !x.dbId && (x.billingPeriod || '') === w.period; });
-            if (cand.length === 1 && w.newId) { cand[0].dbId = w.newId; if (w.newVersion) cand[0].rowVersion = w.newVersion; }
+            if (cand.length === 1 && w.newId) { cand[0].dbId = w.newId; if (w.newVersion) cand[0].rowVersion = w.newVersion; cand[0]._synced = w.sig; }
           } else {
             cand = p2[name].invoices.filter(function (x) { return x.dbId === w.dbId; });
-            if (cand.length === 1 && w.newVersion) cand[0].rowVersion = w.newVersion;
+            if (cand.length === 1) { if (w.newVersion) cand[0].rowVersion = w.newVersion; cand[0]._synced = w.sig; }
           }
         });
         saveProfilesLS(p2);
@@ -5880,13 +5977,16 @@ function deleteProfileSP(name) {
 // saveProfileSP/syncNewInvoices; a separate status PATCH double-wrote the row and
 // self-conflicted under optimistic concurrency. The PATCH /invoices/{id}/status backend
 // route still exists but is no longer called from the client.)
-function deleteInvoiceAPI(dbId, clientName, billingPeriod) {
-  if (!dbId) return;
+function deleteInvoiceAPI(dbId, clientName, billingPeriod, onDeleted) {
+  if (!dbId) { if (onDeleted) onDeleted(); return; }
   aiTrack('InvoiceDeleted',{invoiceDbId:dbId,clientName:clientName||'',billingPeriod:billingPeriod||''});
   // D10: surface a failure/retry so a "deleted" invoice can't reappear on next sync.
+  // onDeleted runs ONLY on a confirmed 2xx — so the local removal happens after the server
+  // delete succeeds, never before (a failed delete must not leave the row gone locally but
+  // alive on the server, where the next load would resurrect it).
   var doDel=function(){return surfaceSaveFailure(
     fetch(API_BASE + '/invoices/' + dbId, { method: 'DELETE', headers: apiHeaders() })
-      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r;}),
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status); if(onDeleted) onDeleted(); return r;}),
     'Delete invoice',doDel);};
   doDel();
 }
