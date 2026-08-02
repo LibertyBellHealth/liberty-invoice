@@ -700,7 +700,7 @@ function _doSwitchTab(tab){
   ['overview','info','history','notes','docs','audit'].forEach(function(t){
     var dtab=document.getElementById('dtab-'+t);
     var dpane=document.getElementById('dpane-'+t);
-    if(dtab)dtab.classList.toggle('active',t===tab);
+    if(dtab){dtab.classList.toggle('active',t===tab);dtab.setAttribute('aria-selected',t===tab?'true':'false');}
     if(dpane)dpane.classList.toggle('active',t===tab);
   });
   if(tab==='overview')renderOverviewPane();
@@ -734,15 +734,15 @@ function renderOverviewPane(){
       var overdue=t.due&&new Date(t.due)<new Date();
       return '<div class="ov-inv-row" style="cursor:pointer;" onclick="navTasks()" title="Go to Tasks">'+
         '<span style="font-size:11px;'+(overdue?'color:#b03030;font-weight:600;':'color:#1a2b45;')+'">'+esc(t.text)+'</span>'+
-        (t.due?'<span style="font-size:10px;color:'+(overdue?'#b03030':'#8ca0b4')+';">'+t.due+'</span>':'')+
+        (t.due?'<span style="font-size:10px;color:'+(overdue?'#b03030':'#5c7590')+';">'+t.due+'</span>':'')+
       '</div>';
     }).join('');
   } else {
-    tasksHtml='<div style="color:#8ca0b4;font-size:12px;padding:4px 0;">No open tasks.</div>';
+    tasksHtml='<div style="color:#5c7590;font-size:12px;padding:4px 0;">No open tasks.</div>';
   }
   // Recent invoices — read-only badges
   var recentInvHtmlRO='';
-  if(!invoices.length){recentInvHtmlRO='<div style="color:#8ca0b4;font-size:12px;padding:6px 0;">No invoices yet.</div>';}
+  if(!invoices.length){recentInvHtmlRO='<div style="color:#5c7590;font-size:12px;padding:6px 0;">No invoices yet.</div>';}
   else{invoices.slice(0,4).forEach(function(inv){
     var st=inv.status||'draft';
     var daysSince=Math.floor((Date.now()-new Date(inv.savedAt))/86400000);
@@ -750,8 +750,8 @@ function renderOverviewPane(){
     recentInvHtmlRO+='<div class="ov-inv-row" style="cursor:pointer;" onclick="switchTab(\'history\')" title="Open Invoices tab">'+
       '<span class="inv-badge" style="min-width:60px;text-align:center;">'+esc(inv.billingPeriod)+'</span>'+
       '<span class="inv-badge st-'+st+'" style="min-width:70px;text-align:center;">'+st.charAt(0).toUpperCase()+st.slice(1)+overdueFlag+'</span>'+
-      '<span style="flex:1;color:#8ca0b4;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(inv.invoiceNote||'')+'</span>'+
-      '<span style="font-size:11px;color:#6b8dae;white-space:nowrap;">'+esc(inv.savedAt.split(',')[0])+'</span></div>';
+      '<span style="flex:1;color:#5c7590;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(inv.invoiceNote||'')+'</span>'+
+      '<span style="font-size:11px;color:#4d6c88;white-space:nowrap;">'+esc(inv.savedAt.split(',')[0])+'</span></div>';
   });}
   pane.innerHTML='<div class="overview-grid">'+
     '<div class="ov-card"><h4>Client Info</h4>'+
@@ -771,7 +771,7 @@ function renderOverviewPane(){
       '<div class="ov-row"><span class="ov-label">Draft / Unsent</span><span class="ov-value" style="color:#666;">'+draft+'</span></div>'+
       '<div style="margin-top:10px;border-top:1px solid #f0f3f7;padding-top:10px;">'+recentInvHtmlRO+'</div>'+
     '</div>'+
-    '<div class="ov-card"><h4>Tasks <span style="font-size:10px;color:#8ca0b4;font-weight:normal;text-transform:none;letter-spacing:0;">('+clientTasks.length+' open)</span>'+
+    '<div class="ov-card"><h4>Tasks <span style="font-size:10px;color:#5c7590;font-weight:normal;text-transform:none;letter-spacing:0;">('+clientTasks.length+' open)</span>'+
       '<div style="margin-left:auto;display:flex;gap:6px;">'+
         '<button class="btn btn-secondary btn-sm" style="font-size:10px;" onclick="addTaskForClient(\''+escJsAttr(activeProfileName)+'\')">+ Add Task</button>'+
         '<button class="btn btn-secondary btn-sm" style="font-size:10px;" onclick="openWorkflowModal()">Workflow</button>'+
@@ -910,7 +910,7 @@ function renderInfoPane(){
 
   // Service Start Date — moved ABOVE caregiver per user
   var dStart=document.createElement('div');dStart.className='info-field full';
-  dStart.innerHTML='<label for="ei-start-date">Service Start Date <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(prevents missing-invoice warnings for months before this date)</span></label><input type="date" id="ei-start-date" value="'+esc(prof.startDate||'')+'" oninput="unsavedChanges=true;">';
+  dStart.innerHTML='<label for="ei-start-date">Service Start Date <span style="font-weight:400;font-size:11px;color:#5c7590;">(prevents missing-invoice warnings for months before this date)</span></label><input type="date" id="ei-start-date" value="'+esc(prof.startDate||'')+'" oninput="unsavedChanges=true;">';
   g.appendChild(dStart);
 
   // Caregiver + Live-In side by side
@@ -1008,7 +1008,7 @@ function renderInvHistory(){
     c.innerHTML='<div class="empty-state"><h3>No invoices yet</h3><p style="font-size:13px;">Click "+ New Invoice" to create one.</p></div>';
     return;
   }
-  c.innerHTML='<div style="margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;"><span style="font-size:13px;color:#6b8dae;">'+invoices.length+' invoice'+(invoices.length!==1?'s':'')+' saved</span></div>';
+  c.innerHTML='<div style="margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;"><span style="font-size:13px;color:#4d6c88;">'+invoices.length+' invoice'+(invoices.length!==1?'s':'')+' saved</span></div>';
   invoices.forEach(function(inv,idx){
     var st=inv.status||'draft';
     var daysSince=Math.floor((Date.now()-new Date(inv.savedAt))/86400000);
@@ -1188,7 +1188,7 @@ function renderNotesPane(){
   },600);};
   ta.addEventListener('input',ta._nl);
   var c=document.getElementById('invNotesContent'),invoices=(prof&&prof.invoices)?prof.invoices:[];
-  if(!invoices.length){c.innerHTML='<div style="color:#8ca0b4;font-size:13px;">No saved invoices yet.</div>';return;}
+  if(!invoices.length){c.innerHTML='<div style="color:#5c7590;font-size:13px;">No saved invoices yet.</div>';return;}
   c.innerHTML='';
   invoices.forEach(function(inv,idx){
     var row=document.createElement('div');row.style.cssText='display:flex;align-items:center;gap:10px;margin-bottom:8px;';
@@ -1223,7 +1223,7 @@ function renderDocsPane(){
   var clientId=getHcClientId();
   c.innerHTML=docUploaderHtml({title:'Client Documents',subtitle:"SSN cards, driver's licenses, insurance cards, authorizations, etc.",hasCategory:true,catId:'hcDocCategory',fileId:'hcDocFileInput',scanId:'docScanInput',scanFn:'handleDocScan(this)',uploadFn:'uploadHcDoc()',statusId:'hcDocStatus',listId:'hcDocList'});
   if(clientId){loadHcDocs(clientId);}
-  else{document.getElementById('hcDocList').innerHTML='<div style="color:#8ca0b4;font-size:12px;">Save this client to the database first before uploading documents.</div>';}
+  else{document.getElementById('hcDocList').innerHTML='<div style="color:#5c7590;font-size:12px;">Save this client to the database first before uploading documents.</div>';}
 }
 function loadHcDocs(clientId){
   fetch(API_BASE+'/documents?clientType=homecare&clientId='+clientId,{headers:apiHeaders()})
@@ -1418,8 +1418,8 @@ function deleteHcDoc(clientId,encodedName){
 // ── CAREGIVER DOCUMENTS ──────────────────────────────────────
 function loadCgDocs(cgId){
   var sec=document.getElementById('cgDocsSection');if(!sec)return;
-  sec.innerHTML='<div style="font-weight:600;font-size:12px;margin-bottom:8px;color:#1a3a5c;">Documents <span style="font-weight:normal;color:#8ca0b4;font-size:11px;">(SSN card, license, certs)</span></div>'+
-    '<div id="cgDocList" style="margin-bottom:8px;"><div style="color:#8ca0b4;font-size:12px;">Loading...</div></div>'+
+  sec.innerHTML='<div style="font-weight:600;font-size:12px;margin-bottom:8px;color:#1a3a5c;">Documents <span style="font-weight:normal;color:#5c7590;font-size:11px;">(SSN card, license, certs)</span></div>'+
+    '<div id="cgDocList" style="margin-bottom:8px;"><div style="color:#5c7590;font-size:12px;">Loading...</div></div>'+
     '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'+
     '<input type="file" id="cgDocFileInput" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple style="font-size:11px;flex:1;min-width:0;">'+
     '<button class="btn btn-primary btn-sm" onclick="uploadCgDoc(\''+cgId+'\')">Upload</button>'+
@@ -1429,14 +1429,14 @@ function loadCgDocs(cgId){
   .then(function(r){return r.json();})
   .then(function(docs){
     var list=document.getElementById('cgDocList');if(!list)return;
-    if(!docs||!docs.length){list.innerHTML='<div style="color:#8ca0b4;font-size:12px;">No documents yet.</div>';return;}
+    if(!docs||!docs.length){list.innerHTML='<div style="color:#5c7590;font-size:12px;">No documents yet.</div>';return;}
     list.innerHTML='';
     docs.forEach(function(d){
       var kb=d.size?Math.round(d.size/1024)+'KB':'';
       var div=document.createElement('div');
       div.style.cssText='display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #f0f0f0;font-size:12px;';
       div.innerHTML='<a href="'+esc(d.url)+'" target="_blank" style="flex:1;color:#1a3a5c;text-decoration:none;word-break:break-all;">'+esc(d.name)+'</a>'+
-        '<span style="color:#8ca0b4;font-size:11px;">'+kb+'</span>'+
+        '<span style="color:#5c7590;font-size:11px;">'+kb+'</span>'+
         '<button class="btn btn-danger btn-sm" style="padding:2px 8px;font-size:10px;" onclick="deleteCgDoc(\''+cgId+'\',\''+encodeURIComponent(d.name)+'\')">✕</button>';
       list.appendChild(div);
     });
@@ -1818,13 +1818,13 @@ async function loadSigningTemplates(){
     var resp=await fetch(API_BASE+'/signing/templates',{headers:apiHeaders()});
     if(!resp.ok)throw new Error('HTTP '+resp.status);
     var arr=await resp.json();
-    if(!arr.length){host.innerHTML='<div style="padding:14px;color:#8ca0b4;text-align:center;">No templates uploaded yet. Pick a PDF above to add your first one.</div>';return;}
+    if(!arr.length){host.innerHTML='<div style="padding:14px;color:#5c7590;text-align:center;">No templates uploaded yet. Pick a PDF above to add your first one.</div>';return;}
     host.innerHTML=arr.map(function(t){
       var when=new Date(t.created_at).toLocaleDateString();
       return '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #f0f3f7;">'+
         '<div style="flex:1;min-width:0;">'+
-          '<div style="font-weight:600;color:#1a2b45;">'+esc(t.name)+(t.version?' <span style="color:#8ca0b4;font-weight:400;font-size:11px;">('+esc(t.version)+')</span>':'')+'</div>'+
-          '<div style="font-size:11px;color:#8ca0b4;">Uploaded '+when+(t.is_active?'':' · Inactive')+'</div>'+
+          '<div style="font-weight:600;color:#1a2b45;">'+esc(t.name)+(t.version?' <span style="color:#5c7590;font-weight:400;font-size:11px;">('+esc(t.version)+')</span>':'')+'</div>'+
+          '<div style="font-size:11px;color:#5c7590;">Uploaded '+when+(t.is_active?'':' · Inactive')+'</div>'+
         '</div>'+
       '</div>';
     }).join('');
@@ -1864,12 +1864,12 @@ async function uploadSigningTemplate(){
 // ── SIGNING REQUESTS (per-caregiver panel) ──────────────────────
 async function loadCgSigningRequests(){
   var host=document.getElementById('cgSigList');if(!host||!activeCgId)return;
-  host.innerHTML='<div style="padding:14px;color:#8ca0b4;text-align:center;font-size:12px;">Loading…</div>';
+  host.innerHTML='<div style="padding:14px;color:#5c7590;text-align:center;font-size:12px;">Loading…</div>';
   try{
     var resp=await fetch(API_BASE+'/signing/list?caregiverId='+encodeURIComponent(activeCgId),{headers:apiHeaders()});
     if(!resp.ok)throw new Error('HTTP '+resp.status);
     var arr=await resp.json();
-    if(!arr.length){host.innerHTML='<div style="padding:14px;color:#8ca0b4;text-align:center;font-size:12px;">No signing requests yet. Use the Send for Signature button above to create one.</div>';return;}
+    if(!arr.length){host.innerHTML='<div style="padding:14px;color:#5c7590;text-align:center;font-size:12px;">No signing requests yet. Use the Send for Signature button above to create one.</div>';return;}
     var now=Date.now();
     host.innerHTML=arr.map(function(r){
       var status=r.status||'sent';
@@ -1890,7 +1890,7 @@ async function loadCgSigningRequests(){
       actions+='<button class="btn btn-secondary btn-sm" style="font-size:11px;padding:3px 8px;" onclick="viewSigningAudit('+r.id+')">Audit</button>';
       return '<div style="padding:10px 14px;border-bottom:1px solid #f0f3f7;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'+
         '<div style="flex:1;min-width:200px;">'+
-          '<div style="font-weight:600;font-size:12px;color:#1a2b45;">'+esc(r.template_name||'Document')+(r.template_version?' <span style="color:#8ca0b4;font-weight:400;">('+esc(r.template_version)+')</span>':'')+'</div>'+
+          '<div style="font-weight:600;font-size:12px;color:#1a2b45;">'+esc(r.template_name||'Document')+(r.template_version?' <span style="color:#5c7590;font-weight:400;">('+esc(r.template_version)+')</span>':'')+'</div>'+
           '<div style="font-size:11px;color:#5a7296;">'+esc(expText)+(locked?' · '+(r.verification_attempts||0)+' failed DOB attempts':'')+'</div>'+
         '</div>'+
         '<span style="font-size:10px;font-weight:700;color:#fff;background:'+color+';padding:2px 7px;border-radius:3px;">'+label+'</span>'+
@@ -2022,11 +2022,11 @@ async function openSendForSignatureModal(){
   ov.innerHTML='<div class="modal-box" style="max-width:540px;">'+
     '<h3>📝 Send for Signature</h3>'+
     '<div style="font-size:13px;color:#4a5d7a;margin:8px 0 14px;">Sends <b>'+esc(cg.name||'')+'</b> a secure link to '+esc(cg.email)+'. They verify their DOB, then sign — no CRM login needed.</div>'+
-    '<label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;" for="sendSigTemplate">Document</label>'+
+    '<label style="display:block;font-size:11px;color:#4d6c88;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;" for="sendSigTemplate">Document</label>'+
     '<select id="sendSigTemplate" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;outline:none;background:#fff;margin-bottom:12px;">'+tplOptions+'</select>'+
-    '<label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;" for="sendSigDob">Recipient Date of Birth <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#a05a00;">(used to verify identity at signing — 3 wrong attempts locks the link)</span></label>'+
+    '<label style="display:block;font-size:11px;color:#4d6c88;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;" for="sendSigDob">Recipient Date of Birth <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#a05a00;">(used to verify identity at signing — 3 wrong attempts locks the link)</span></label>'+
     '<input id="sendSigDob" type="date" value="'+esc(prefillDob)+'" style="width:200px;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;outline:none;margin-bottom:14px;">'+
-    '<div style="font-size:11px;color:#8ca0b4;margin-bottom:14px;">Link expires in 14 days. A copy of every signed document is auto-CC\'d to <b>tommy@mybellcare.com</b>.</div>'+
+    '<div style="font-size:11px;color:#5c7590;margin-bottom:14px;">Link expires in 14 days. A copy of every signed document is auto-CC\'d to <b>tommy@mybellcare.com</b>.</div>'+
     '<div id="sendSigError" style="display:none;background:#fdeaea;border:1px solid #e7a8a8;border-radius:5px;padding:10px;font-size:12px;color:#7a1f1f;margin-bottom:12px;"></div>'+
     '<div class="modal-row" style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">'+
       '<button class="btn btn-secondary" onclick="closeSendSigModal()">Cancel</button>'+
@@ -2157,7 +2157,7 @@ function renderCgOverviewPane(){
         '<span class="ov-label">Clients</span>'+
         '<span class="ov-value" style="color:#185FA5;font-size:18px;font-weight:700;">'+assigned.length+'</span>'+
       '</div>'+
-      (assigned.length?'<div style="font-size:12px;color:#4a6a8a;margin-top:6px;">'+assigned.slice(0,3).map(function(n){return esc(n);}).join(', ')+(assigned.length>3?' + '+(assigned.length-3)+' more':'')+'</div>':'<div style="font-size:12px;color:#8ca0b4;">No clients assigned.</div>')+
+      (assigned.length?'<div style="font-size:12px;color:#4a6a8a;margin-top:6px;">'+assigned.slice(0,3).map(function(n){return esc(n);}).join(', ')+(assigned.length>3?' + '+(assigned.length-3)+' more':'')+'</div>':'<div style="font-size:12px;color:#5c7590;">No clients assigned.</div>')+
     '</div>'+
   '</div>';
 }
@@ -2165,7 +2165,7 @@ function renderCgNotesPane(){
   var cg=getCaregivers()[activeCgId];
   var c=document.getElementById('cgNotesContent');
   if(!c||!cg)return;
-  c.innerHTML='<div style="margin-bottom:6px;font-size:11px;color:#8ca0b4;">Auto-saves as you type <span id="cgNotesSavedFlash" style="display:none;color:#1a7740;font-weight:600;">· Saved ✓</span></div>'+
+  c.innerHTML='<div style="margin-bottom:6px;font-size:11px;color:#5c7590;">Auto-saves as you type <span id="cgNotesSavedFlash" style="display:none;color:#1a7740;font-weight:600;">· Saved ✓</span></div>'+
     '<textarea id="cgNotesArea" style="width:100%;min-height:200px;padding:12px;border:1px solid #d0d8e4;border-radius:6px;font-size:13px;font-family:Arial,sans-serif;outline:none;resize:vertical;max-width:620px;">'+esc(cg.notes||'')+'</textarea>';
   var ta=document.getElementById('cgNotesArea');
   var t=null;
@@ -2186,13 +2186,13 @@ function renderCgAuditPane(){
   var pane=document.getElementById('cgpane-audit');
   var cg=getCaregivers()[activeCgId];
   if(!pane||!cg)return;
-  pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:8px 0;">Loading…</div>';
+  pane.innerHTML='<div style="color:#5c7590;font-size:13px;padding:8px 0;">Loading…</div>';
   if(spToken){
     fetch(API_BASE+'/audit/search',{method:'POST',headers:apiHeaders(),body:JSON.stringify({client:cg.name||activeCgId,limit:100})})
       .then(function(r){return r.ok?r.json():Promise.reject();})
       .then(function(rows){
         pane.innerHTML='';
-        if(!rows.length){pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:16px 0;">No audit entries yet.</div>';return;}
+        if(!rows.length){pane.innerHTML='<div style="color:#5c7590;font-size:13px;padding:16px 0;">No audit entries yet.</div>';return;}
         var wrap=document.createElement('div');wrap.style.cssText='max-width:600px;';
         rows.forEach(function(e){
           var row=document.createElement('div');row.className='audit-row';
@@ -2202,9 +2202,9 @@ function renderCgAuditPane(){
         });
         pane.appendChild(wrap);
       })
-      .catch(function(){pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:16px 0;">No audit entries yet.</div>';});
+      .catch(function(){pane.innerHTML='<div style="color:#5c7590;font-size:13px;padding:16px 0;">No audit entries yet.</div>';});
   } else {
-    pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:16px 0;">Sign in to view audit log.</div>';
+    pane.innerHTML='<div style="color:#5c7590;font-size:13px;padding:16px 0;">Sign in to view audit log.</div>';
   }
 }
 function renderCgInfoPane(){
@@ -2264,9 +2264,9 @@ function renderCgInfoPane(){
   mkRow('<div class="info-field"><label for="cgi-zip">ZIP</label><input id="cgi-zip" value="'+esc(cg.zip||'')+'" oninput="lookupZip(\'cgi-zip\',\'cgi-city\',\'cgi-state\',\'cgi-county\')"></div>'+
     '<div class="info-field"><label for="cgi-county">County</label><input id="cgi-county" value="'+esc(cg.county||'')+'"></div>');
 
-  mkRow('<div class="info-field full"><label for="cgi-champs">CHAMPS Provider ID <span style="font-weight:400;color:#8ca0b4;">(used on BPHASA-2421)</span></label><input id="cgi-champs" value="'+esc(cg.champsId||cg.champs_id||'')+'" placeholder="e.g. 6221933"></div>');
+  mkRow('<div class="info-field full"><label for="cgi-champs">CHAMPS Provider ID <span style="font-weight:400;color:#5c7590;">(used on BPHASA-2421)</span></label><input id="cgi-champs" value="'+esc(cg.champsId||cg.champs_id||'')+'" placeholder="e.g. 6221933"></div>');
   mkRow(
-    '<div class="info-field"><label for="cgi-milogin-user">MI Login Username <span style="font-weight:400;color:#8ca0b4;">(state portal)</span></label><input id="cgi-milogin-user" value="'+esc(cg.miloginUsername||cg.milogin_username||'')+'" placeholder="username" autocomplete="off"></div>'+
+    '<div class="info-field"><label for="cgi-milogin-user">MI Login Username <span style="font-weight:400;color:#5c7590;">(state portal)</span></label><input id="cgi-milogin-user" value="'+esc(cg.miloginUsername||cg.milogin_username||'')+'" placeholder="username" autocomplete="off"></div>'+
     '<div class="info-field"><label for="cgi-milogin-pass">MI Login Password</label>'+
       '<div style="display:flex;gap:4px;align-items:center;">'+
         '<input id="cgi-milogin-pass" type="password" value="" placeholder="•••••• (click Show)" autocomplete="off" style="flex:1;">'+
@@ -2335,7 +2335,7 @@ function renderCgClientsPane(){
     row.innerHTML='<div class="cc-avatar" style="width:36px;height:36px;font-size:13px;">'+ini+'</div>'+
       '<div style="flex:1;min-width:0;">'+
         '<div style="font-size:13px;font-weight:600;color:#1a2b45;">'+esc(name)+liveBadge+'</div>'+
-        '<div style="font-size:11px;color:#6b8dae;">'+esc(prof.medicaidId||'No Medicaid ID')+(prof.phone?' · '+esc(prof.phone):'')+'</div>'+
+        '<div style="font-size:11px;color:#4d6c88;">'+esc(prof.medicaidId||'No Medicaid ID')+(prof.phone?' · '+esc(prof.phone):'')+'</div>'+
       '</div>'+
       '<span style="font-size:11px;color:#185FA5;font-weight:500;">Open →</span>';
     row.addEventListener('mouseenter',function(){this.style.borderColor='#b0c8e8';});
@@ -2419,7 +2419,7 @@ function loadSignaturesAPI(){
 }
 function renderSigSettings(){
   var sigs=getSigs(),list=document.getElementById('sigStoredList');list.innerHTML='';
-  if(!sigs.length){list.innerHTML='<div style="color:#8ca0b4;font-size:13px;">No signatures saved yet.</div>';return;}
+  if(!sigs.length){list.innerHTML='<div style="color:#5c7590;font-size:13px;">No signatures saved yet.</div>';return;}
   sigs.forEach(function(s,i){
     var item=document.createElement('div');item.className='sig-stored-item';
     // Build via DOM API so quoted IDs don't break the onclick attribute
@@ -2661,7 +2661,7 @@ function cwSearch(input, hiddenId, dropId) {
     drop.appendChild(addItem);
   }
   if(!matches.length && !val){
-    var noItem=document.createElement('div');noItem.style.cssText='padding:8px 12px;font-size:13px;color:#8ca0b4;';noItem.textContent='No caseworkers yet';drop.appendChild(noItem);
+    var noItem=document.createElement('div');noItem.style.cssText='padding:8px 12px;font-size:13px;color:#5c7590;';noItem.textContent='No caseworkers yet';drop.appendChild(noItem);
   }
   drop.style.display = 'block';
 }
@@ -2705,7 +2705,7 @@ function cgSearch(input, hiddenId, dropId) {
   }
   if (!ids.length && !val) {
     var noItem = document.createElement('div');
-    noItem.style.cssText = 'padding:8px 12px;font-size:13px;color:#8ca0b4;';
+    noItem.style.cssText = 'padding:8px 12px;font-size:13px;color:#5c7590;';
     noItem.textContent = 'No caregivers yet';
     drop.appendChild(noItem);
   }
@@ -2838,12 +2838,12 @@ function renderAuditPane(){
   var pane=document.getElementById('dpane-audit');pane.innerHTML='';
   if(spToken){
     // Load from DB for the active client
-    pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:8px 0;">Loading audit history…</div>';
+    pane.innerHTML='<div style="color:#5c7590;font-size:13px;padding:8px 0;">Loading audit history…</div>';
     fetch(API_BASE+'/audit/search',{method:'POST',headers:apiHeaders(),body:JSON.stringify({client:activeProfileName,limit:100})})
       .then(function(r){return r.ok?r.json():Promise.reject(r.status);})
       .then(function(rows){
         pane.innerHTML='';
-        if(!rows.length){pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:16px 0;">No audit entries for this client yet.</div>';return;}
+        if(!rows.length){pane.innerHTML='<div style="color:#5c7590;font-size:13px;padding:16px 0;">No audit entries for this client yet.</div>';return;}
         var wrap=document.createElement('div');wrap.style.cssText='max-width:600px;';
         rows.forEach(function(e){
           var row=document.createElement('div');row.className='audit-row';
@@ -2863,7 +2863,7 @@ function renderAuditPane(){
 }
 function _renderAuditPaneLocal(pane){
   var log=getAuditLog().filter(function(e){return e.client===activeProfileName;});
-  if(!log.length){pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:16px 0;">No audit entries for this client yet.</div>';return;}
+  if(!log.length){pane.innerHTML='<div style="color:#5c7590;font-size:13px;padding:16px 0;">No audit entries for this client yet.</div>';return;}
   var wrap=document.createElement('div');wrap.style.cssText='max-width:600px;';
   log.forEach(function(e){
     var row=document.createElement('div');row.className='audit-row';
@@ -3037,7 +3037,7 @@ function renderTodos(filterClient){
   var openC=document.getElementById('todoList');
   if(openC){
     openC.innerHTML='';
-    if(!open.length){openC.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:8px 0;">No open tasks.</div>';}
+    if(!open.length){openC.innerHTML='<div style="color:#5c7590;font-size:13px;padding:8px 0;">No open tasks.</div>';}
     else {
       // Group: parents (no parentId) + follow-ups attached to them
       var parents=open.filter(function(t){return !t.parentId;});
@@ -3062,7 +3062,7 @@ function renderTodos(filterClient){
         item.innerHTML=
           '<input type="checkbox" class="todo-cb" onchange="toggleTodo(\''+t.id+'\')" style="margin-top:3px;">'+
           '<div class="todo-body">'+
-            (isFollowUp?'<div style="font-size:10px;color:#8ca0b4;margin-bottom:2px;">↳ Follow-up</div>':'')+
+            (isFollowUp?'<div style="font-size:10px;color:#5c7590;margin-bottom:2px;">↳ Follow-up</div>':'')+
             '<div class="todo-text" style="font-weight:600;">'+esc(t.text)+'</div>'+
             (t.note?'<div style="font-size:11px;color:#4a6a8a;margin-top:4px;padding:4px 6px;background:#e8f0fb;border-radius:3px;white-space:pre-wrap;">'+esc(t.note)+'</div>':'')+
             '<div class="todo-meta">'+
@@ -3087,7 +3087,7 @@ function renderTodos(filterClient){
           var toggleLabel=document.createElement('span');
           toggleLabel.style.cssText='display:flex;align-items:center;gap:8px;';
           toggleLabel.innerHTML='<span class="fup-arrow" style="display:inline-block;font-size:14px;transition:transform 0.18s;">▶</span><span>'+fups.length+' follow-up'+(fups.length>1?'s':'')+'</span>';
-          var clearBtn=document.createElement('span');clearBtn.style.cssText='font-size:11px;color:#8ca0b4;font-weight:400;';clearBtn.textContent='click to expand';
+          var clearBtn=document.createElement('span');clearBtn.style.cssText='font-size:11px;color:#5c7590;font-weight:400;';clearBtn.textContent='click to expand';
           toggleBar.appendChild(toggleLabel);toggleBar.appendChild(clearBtn);
           toggleBar.addEventListener('mouseenter',function(){this.style.background='#dde8f5';});
           toggleBar.addEventListener('mouseleave',function(){this.style.background='#eef3fb';});
@@ -3115,7 +3115,7 @@ function renderTodos(filterClient){
   var doneC=document.getElementById('todoListDone');
   if(doneC){
     doneC.innerHTML='';
-    if(!done.length){doneC.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:8px 0;">Nothing completed yet.</div>';return;}
+    if(!done.length){doneC.innerHTML='<div style="color:#5c7590;font-size:13px;padding:8px 0;">Nothing completed yet.</div>';return;}
     done.forEach(function(t){
       var row=document.createElement('div');row.className='todo-item';row.style.opacity='0.6';
       row.innerHTML='<input type="checkbox" class="todo-cb" checked onchange="toggleTodo(\''+t.id+'\')">'+
@@ -3283,7 +3283,7 @@ function renderReports(){
       var pct=Math.round(n/total*100);
       var color=st==='paid'?'#2a9a5a':st==='submitted'?'#185FA5':'#aaa';
       return '<tr><td style="text-transform:capitalize;">'+st+'</td><td style="font-weight:600;">'+n+'</td>'+
-        '<td style="width:200px;"><div class="report-bar"><div class="report-bar-fill" style="width:'+pct+'%;background:'+color+';"></div></div><span style="font-size:10px;color:#8ca0b4;">'+pct+'%</span></td></tr>';
+        '<td style="width:200px;"><div class="report-bar"><div class="report-bar-fill" style="width:'+pct+'%;background:'+color+';"></div></div><span style="font-size:10px;color:#5c7590;">'+pct+'%</span></td></tr>';
     }).join('')+
     '<tr class="total-row"><td>Total</td><td>'+allInvoices.length+'</td><td></td></tr></tbody></table>';
   c.appendChild(s1);
@@ -3300,7 +3300,7 @@ function renderReports(){
     clientRows.map(function(r){
       return '<tr><td style="cursor:pointer;color:#185FA5;" onclick="navDetail(\''+escJsAttr(r.name)+'\')">'+esc(r.name)+'</td><td>'+r.total+'</td>'+
         '<td style="color:#1e7e34;font-weight:600;">'+r.paid+'</td><td style="color:'+(r.open?'#b07800':'#aaa')+';font-weight:600;">'+r.open+'</td></tr>';
-    }).join('')+'</tbody></table>':'<div style="color:#8ca0b4;font-size:13px;">No client data yet.</div>');
+    }).join('')+'</tbody></table>':'<div style="color:#5c7590;font-size:13px;">No client data yet.</div>');
   c.appendChild(s2);
   // --- Monthly Invoice Volume ---
   var byMonth={};
@@ -3312,13 +3312,13 @@ function renderReports(){
   }).slice(0,12);
   var s3=document.createElement('div');s3.className='report-section';
   var maxV=months.reduce(function(m,k){return Math.max(m,byMonth[k]);},1);
-  s3.innerHTML='<h3>Monthly Invoice Volume <span style="font-size:11px;font-weight:normal;color:#8ca0b4;">(last 12 months)</span></h3>'+
+  s3.innerHTML='<h3>Monthly Invoice Volume <span style="font-size:11px;font-weight:normal;color:#5c7590;">(last 12 months)</span></h3>'+
     (months.length?'<table class="report-table"><thead><tr><th>Period</th><th>Count</th><th>Visual</th></tr></thead><tbody>'+
     months.map(function(m){
       var n=byMonth[m],pct=Math.round(n/maxV*100);
       return '<tr><td style="font-weight:500;">'+esc(m)+'</td><td>'+n+'</td>'+
         '<td style="width:200px;"><div class="report-bar"><div class="report-bar-fill" style="width:'+pct+'%;"></div></div></td></tr>';
-    }).join('')+'</tbody></table>':'<div style="color:#8ca0b4;font-size:13px;">No invoices yet.</div>');
+    }).join('')+'</tbody></table>':'<div style="color:#5c7590;font-size:13px;">No invoices yet.</div>');
   c.appendChild(s3);
   // --- Missing Invoices for Month ---
   var s4=document.createElement('div');s4.className='report-section';
@@ -3340,7 +3340,7 @@ function renderReports(){
   });
   s4.innerHTML='<h3>Clients Missing Invoice for Month</h3>'+
     '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">'+
-      '<label style="font-size:12px;color:#6b8dae;" for="missingPeriodSelect">Check period:</label>'+
+      '<label style="font-size:12px;color:#4d6c88;" for="missingPeriodSelect">Check period:</label>'+
       '<select id="missingPeriodSelect" onchange="updateMissingReport()" style="padding:5px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:12px;font-family:Arial,sans-serif;">'+periodOpts+'</select>'+
       '<input id="missingPeriodCustom" placeholder="or type MM/YYYY" maxlength="7" style="padding:5px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:12px;font-family:Arial,sans-serif;width:120px;" onblur="updateMissingReport(true)" onkeydown="if(event.key===\'Enter\')updateMissingReport(true)">'+
     '</div>'+
@@ -4885,7 +4885,7 @@ function renderEmailAuditTable(){
 }
 function _renderEmailAuditTableFromArray(arr){
   var wrap=document.getElementById('emailAuditTableWrap');if(!wrap)return;
-  if(!arr.length){wrap.innerHTML='<div style="padding:14px;color:#8ca0b4;text-align:center;">No log entries yet.</div>';return;}
+  if(!arr.length){wrap.innerHTML='<div style="padding:14px;color:#5c7590;text-align:center;">No log entries yet.</div>';return;}
   // Newest first
   var rows=arr.slice().reverse().map(function(r){
     var dt=new Date(r.timestamp);var when=dt.toLocaleDateString()+' '+dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
@@ -6245,7 +6245,7 @@ function _openSupervisorModal(editId){
       '<h3>'+(editId?'Edit Supervisor':'New Supervisor')+'</h3>'+
       '<div class="ff" style="margin-top:8px;"><label for="sup-name">Name *</label><input id="sup-name" value="'+esc(sup.name||'')+'" placeholder="Full name" maxlength="120"></div>'+
       '<div class="ff" style="margin-top:8px;"><label for="sup-phone">Phone</label><input id="sup-phone" value="'+esc(sup.phone||'')+'" placeholder="(555) 555-5555" maxlength="30"></div>'+
-      '<div class="ff" style="margin-top:8px;"><label for="sup-email">Email <span style="font-weight:400;font-size:10px;color:#8ca0b4;">(used for CC on monthly invoice emails)</span></label><input id="sup-email" type="email" value="'+esc(sup.email||'')+'" placeholder="supervisor@michigan.gov" maxlength="120"></div>'+
+      '<div class="ff" style="margin-top:8px;"><label for="sup-email">Email <span style="font-weight:400;font-size:10px;color:#5c7590;">(used for CC on monthly invoice emails)</span></label><input id="sup-email" type="email" value="'+esc(sup.email||'')+'" placeholder="supervisor@michigan.gov" maxlength="120"></div>'+
       '<div class="modal-row" style="justify-content:space-between;">'+
         (editId?'<button class="btn btn-danger btn-sm" onclick="_deleteSupervisorFromModal(\''+escJsAttr(editId)+'\')">Delete</button>':'<span></span>')+
         '<div style="display:flex;gap:8px;">'+
@@ -6839,13 +6839,13 @@ function renderCwOverviewPane(){
         var stColor=st==='active'?'#1e7e34':st==='inactive'?'#888':'#a83232';
         return '<div onclick="navDetail(\''+escJsAttr(name)+'\')" style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#f7faff;border:1px solid #e1e5ea;border-radius:5px;cursor:pointer;font-size:12px;" onmouseover="this.style.borderColor=\'#b0c8e8\'" onmouseout="this.style.borderColor=\'#e1e5ea\'">'+
           '<span style="flex:1;color:#185FA5;font-weight:500;">'+esc(name)+'</span>'+
-          (p.medicaidId?'<span style="color:#8ca0b4;">'+esc(p.medicaidId)+'</span>':'')+
+          (p.medicaidId?'<span style="color:#5c7590;">'+esc(p.medicaidId)+'</span>':'')+
           '<span style="color:'+stColor+';font-size:10px;font-weight:600;text-transform:uppercase;">'+(st==='inactive'?'In Progress':st)+'</span>'+
         '</div>';
       }).join('')+
     '</div>';
   } else {
-    clientListHtml='<div style="font-size:12px;color:#8ca0b4;margin-top:6px;">No clients assigned.</div>';
+    clientListHtml='<div style="font-size:12px;color:#5c7590;margin-top:6px;">No clients assigned.</div>';
   }
   pane.innerHTML='<div class="overview-grid">'+
     '<div class="ov-card"><h4>Contact Info</h4>'+
@@ -6893,7 +6893,7 @@ function renderCwInfoPane(){
   mkF('cwi-email','Email',cw.email,true);
   // Supervisor dropdown + Add/Edit buttons (CC'd on monthly invoice emails when set)
   var supDiv=document.createElement('div');supDiv.className='info-field full';
-  supDiv.innerHTML='<label for="cwi-supervisor">Supervisor <span style="font-weight:400;font-size:10px;color:#8ca0b4;">(CC\'d on monthly invoice emails when set)</span></label>'+
+  supDiv.innerHTML='<label for="cwi-supervisor">Supervisor <span style="font-weight:400;font-size:10px;color:#5c7590;">(CC\'d on monthly invoice emails when set)</span></label>'+
     '<div style="display:flex;gap:6px;align-items:center;">'+
       '<select id="cwi-supervisor" style="flex:1;"></select>'+
       '<button type="button" class="btn btn-secondary btn-sm" onclick="openSupervisorModal()" style="white-space:nowrap;">+ Add</button>'+
@@ -6955,7 +6955,7 @@ function renderCwClientsPane(){
     row.innerHTML='<div class="cc-avatar" style="width:36px;height:36px;font-size:13px;">'+ini+'</div>'+
       '<div style="flex:1;min-width:0;">'+
         '<div style="font-size:13px;font-weight:600;color:#1a2b45;">'+esc(name)+'</div>'+
-        '<div style="font-size:11px;color:#6b8dae;">'+esc(prof.medicaidId||'No Medicaid ID')+(prof.phone?' · '+esc(prof.phone):'')+'</div>'+
+        '<div style="font-size:11px;color:#4d6c88;">'+esc(prof.medicaidId||'No Medicaid ID')+(prof.phone?' · '+esc(prof.phone):'')+'</div>'+
       '</div>'+
       '<span class="cs-badge cs-'+st+'">'+clientStatusLabel(st)+'</span>'+
       '<span style="font-size:11px;color:#185FA5;font-weight:500;">Open →</span>';
@@ -6970,7 +6970,7 @@ function renderCwNotesPane(){
   var cw=getCaseworkers().find(function(c){return c.id===activeCwId;});
   var c=document.getElementById('cwNotesContent');
   if(!c||!cw)return;
-  c.innerHTML='<div style="margin-bottom:6px;font-size:11px;color:#8ca0b4;">Auto-saves as you type <span id="cwNotesSavedFlash" style="display:none;color:#1a7740;font-weight:600;">· Saved ✓</span></div>'+
+  c.innerHTML='<div style="margin-bottom:6px;font-size:11px;color:#5c7590;">Auto-saves as you type <span id="cwNotesSavedFlash" style="display:none;color:#1a7740;font-weight:600;">· Saved ✓</span></div>'+
     '<textarea id="cwNotesArea" style="width:100%;min-height:200px;padding:12px;border:1px solid #d0d8e4;border-radius:6px;font-size:13px;font-family:Arial,sans-serif;outline:none;resize:vertical;max-width:620px;">'+esc(cw.notes||'')+'</textarea>';
   var ta=document.getElementById('cwNotesArea');
   var t=null;
@@ -7036,13 +7036,13 @@ function renderCwAuditPane(){
   var pane=document.getElementById('cwpane-audit');
   var cw=getCaseworkers().find(function(c){return c.id===activeCwId;});
   if(!pane||!cw)return;
-  pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:8px 0;">Loading…</div>';
+  pane.innerHTML='<div style="color:#5c7590;font-size:13px;padding:8px 0;">Loading…</div>';
   if(spToken){
     fetch(API_BASE+'/audit/search',{method:'POST',headers:apiHeaders(),body:JSON.stringify({client:cw.name||activeCwId,limit:100})})
       .then(function(r){return r.ok?r.json():Promise.reject();})
       .then(function(rows){
         pane.innerHTML='';
-        if(!rows.length){pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:16px 0;">No audit entries yet.</div>';return;}
+        if(!rows.length){pane.innerHTML='<div style="color:#5c7590;font-size:13px;padding:16px 0;">No audit entries yet.</div>';return;}
         var wrap=document.createElement('div');wrap.style.cssText='max-width:600px;';
         rows.forEach(function(e){
           var row=document.createElement('div');row.className='audit-row';
@@ -7052,9 +7052,9 @@ function renderCwAuditPane(){
         });
         pane.appendChild(wrap);
       })
-      .catch(function(){pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:16px 0;">No audit entries yet.</div>';});
+      .catch(function(){pane.innerHTML='<div style="color:#5c7590;font-size:13px;padding:16px 0;">No audit entries yet.</div>';});
   } else {
-    pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:16px 0;">Sign in to view audit log.</div>';
+    pane.innerHTML='<div style="color:#5c7590;font-size:13px;padding:16px 0;">Sign in to view audit log.</div>';
   }
 }
 
@@ -7196,7 +7196,7 @@ function openStateForm(type){
           '<select id="sfClientPicker" onchange="changeStateFormClient(this.value)" style="padding:5px 8px;border:1px solid #d0d8e4;border-radius:5px;font-size:12px;background:#fff;min-width:220px;">'+clientOpts+'</select>'+
           (activeFormClientName?'<span style="color:#1a7740;font-size:11px;">✓ pre-filled</span>':'<span style="color:#a05a00;font-size:11px;">type directly, or pick a client to auto-fill</span>')+
         '</div>'+
-        '<span id="sfPreviewStatusText" style="font-size:11px;color:#6b8dae;">Loading…</span>'+
+        '<span id="sfPreviewStatusText" style="font-size:11px;color:#4d6c88;">Loading…</span>'+
       '</div>'+
       '<iframe id="sfPreviewFrame" style="width:100%;height:calc(100vh - 130px);border:1px solid #d0d8e4;border-radius:8px;background:#f0f3f7;" title="Form"></iframe>'+
     '</div>';
@@ -7840,7 +7840,7 @@ function openMonthlyInvModal(){
   var m=String(d.getMonth()+1).padStart(2,'0'),y=d.getFullYear();
   var inp=document.getElementById('monthlyInvPeriod');
   if(inp&&!inp.value)inp.value=m+'/'+y;
-  document.getElementById('monthlyInvResults').innerHTML='<div style="color:#8ca0b4;font-size:13px;text-align:center;padding:24px 0;">Enter a billing period and click <b>Preview</b> to see caseworker email groups.</div>';
+  document.getElementById('monthlyInvResults').innerHTML='<div style="color:#5c7590;font-size:13px;text-align:center;padding:24px 0;">Enter a billing period and click <b>Preview</b> to see caseworker email groups.</div>';
 }
 function closeMonthlyInvModal(){
   var modal=document.getElementById('monthlyInvModal');if(modal)modal.classList.remove('open');
@@ -7906,7 +7906,7 @@ function previewMonthlyInvoices(){
   // so we never render "No email on file" against stale LS. If the fetch takes >200ms we swap the
   // hint for the real preview; if it fails we fall through to whatever LS has (offline tolerance).
   var resultsEl=document.getElementById('monthlyInvResults');
-  if(resultsEl)resultsEl.innerHTML='<div style="color:#8ca0b4;font-size:13px;text-align:center;padding:24px 0;">Refreshing caseworker + client data…</div>';
+  if(resultsEl)resultsEl.innerHTML='<div style="color:#5c7590;font-size:13px;text-align:center;padding:24px 0;">Refreshing caseworker + client data…</div>';
   var freshFetch=Promise.all([
     (typeof loadCaseworkersAPI==='function'?loadCaseworkersAPI():Promise.resolve()),
     (typeof loadProfilesAPI==='function'?loadProfilesAPI():Promise.resolve()),
@@ -7938,7 +7938,7 @@ function _previewMonthlyInvoicesRender(period){
   });
   var groupKeys=Object.keys(groups).sort(function(a,b){return (groups[a].cwName||'').localeCompare(groups[b].cwName||'');});
   if(!groupKeys.length){
-    document.getElementById('monthlyInvResults').innerHTML='<div style="color:#8ca0b4;font-size:13px;text-align:center;padding:20px;">No active clients found.</div>';
+    document.getElementById('monthlyInvResults').innerHTML='<div style="color:#5c7590;font-size:13px;text-align:center;padding:20px;">No active clients found.</div>';
     return;
   }
   // Pre-compute global "send all" eligibility
@@ -7954,7 +7954,7 @@ function _previewMonthlyInvoicesRender(period){
   });
   // Count eligible auto-gen clients (active, missing invoice for period, have prior invoice)
   var eligibleAutoGen=findClientsEligibleForAutoGen(period).length;
-  var html='<div style="font-size:12px;color:#6b8dae;margin-bottom:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">'+
+  var html='<div style="font-size:12px;color:#4d6c88;margin-bottom:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">'+
     '<span><b>'+groupKeys.length+'</b> caseworker group'+(groupKeys.length!==1?'s':'')+' for billing period <b>'+esc(period)+'</b></span>'+
     '<span style="color:#1e7e34;">✓ '+totalReady+' ready</span>'+
     (totalIssues?'<span style="color:#c07000;">⚠ '+totalIssues+' issues</span>':'')+
@@ -7978,7 +7978,7 @@ function _previewMonthlyInvoicesRender(period){
       esc((wname.split(' ').map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase()||'?'))+
     '</div>';
     html+='<div><div class="cw-email-name">'+esc(wname)+'</div>';
-    if(email)html+='<div style="font-size:11px;color:#6b8dae;">'+esc(email)+'</div>';
+    if(email)html+='<div style="font-size:11px;color:#4d6c88;">'+esc(email)+'</div>';
     html+='</div>';
     html+='<div style="flex:1;"></div>';
     if(missingInv>0)html+='<span style="font-size:11px;color:#c07000;font-weight:600;margin-right:8px;">'+missingInv+' missing invoice'+(missingInv>1?'s':'')+'</span>';
@@ -8008,7 +8008,7 @@ function _previewMonthlyInvoicesRender(period){
         html+='<span style="display:inline-block;width:14px;flex-shrink:0;"></span>';
       }
       html+='<span style="flex:1;font-weight:500;color:#1a2b45;">'+esc(c.name)+'</span>'+
-        (c.prof.medicaidId?'<span style="color:#8ca0b4;font-size:11px;margin-right:6px;">ID: '+esc(c.prof.medicaidId)+'</span>':'');
+        (c.prof.medicaidId?'<span style="color:#5c7590;font-size:11px;margin-right:6px;">ID: '+esc(c.prof.medicaidId)+'</span>':'');
       // Preview button (only if invoice exists)
       if(c.inv){
         html+='<button class="btn btn-secondary btn-sm" style="font-size:10px;padding:2px 8px;margin-right:6px;" onclick=\'previewClientInvoice('+esc(JSON.stringify(c.name))+','+esc(JSON.stringify(period))+')\'>Preview</button>';
@@ -8117,12 +8117,12 @@ function openGenerateInvoicesModal(){
   ov.id='genInvModal';ov.className='modal-overlay open';
   ov.innerHTML='<div class="modal-box" style="max-width:480px;">'+
     '<h3>Generate Invoices</h3>'+
-    '<label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-top:12px;margin-bottom:4px;" for="genInvPeriod">Billing Period</label>'+
+    '<label style="display:block;font-size:11px;color:#4d6c88;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-top:12px;margin-bottom:4px;" for="genInvPeriod">Billing Period</label>'+
     '<input id="genInvPeriod" type="text" placeholder="MM/YYYY" maxlength="7" '+
       'style="padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:14px;width:140px;outline:none;" '+
       'oninput="onMonthlyPeriodInput(this)" onblur="onMonthlyPeriodBlur(this);refreshGenInvCount();" '+
       'onkeydown="if(event.key===\'Enter\'){onMonthlyPeriodBlur(this);refreshGenInvCount();doGenerateInvoices();}">'+
-    '<div style="font-size:11px;color:#8ca0b4;margin-top:6px;">e.g. <b>04/2026</b>, <b>0426</b>, or <b>042026</b></div>'+
+    '<div style="font-size:11px;color:#5c7590;margin-top:6px;">e.g. <b>04/2026</b>, <b>0426</b>, or <b>042026</b></div>'+
     '<div id="genInvCount" style="margin-top:14px;font-size:13px;color:#4a5d7a;min-height:18px;"></div>'+
     '<div class="modal-row" style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">'+
       '<button class="btn btn-secondary" onclick="closeGenInvModal()">Cancel</button>'+
