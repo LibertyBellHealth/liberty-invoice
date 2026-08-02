@@ -700,7 +700,7 @@ function _doSwitchTab(tab){
   ['overview','info','history','notes','docs','audit'].forEach(function(t){
     var dtab=document.getElementById('dtab-'+t);
     var dpane=document.getElementById('dpane-'+t);
-    if(dtab)dtab.classList.toggle('active',t===tab);
+    if(dtab){dtab.classList.toggle('active',t===tab);dtab.setAttribute('aria-selected',t===tab?'true':'false');}
     if(dpane)dpane.classList.toggle('active',t===tab);
   });
   if(tab==='overview')renderOverviewPane();

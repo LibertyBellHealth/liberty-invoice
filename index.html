@@ -219,13 +219,13 @@ function aiTrack(name, props){
         <button class="btn btn-primary" onclick="navInvoice()">+ New Invoice</button>
       </div>
     </div>
-    <div class="detail-tabs">
-      <button class="dtab active" id="dtab-overview" onclick="switchTab('overview')">Overview</button>
-      <button class="dtab" id="dtab-info" onclick="switchTab('info')">Profile</button>
-      <button class="dtab" id="dtab-history" onclick="switchTab('history')">Invoices</button>
-      <button class="dtab" id="dtab-notes" onclick="switchTab('notes')">Notes</button>
-      <button class="dtab" id="dtab-docs" onclick="switchTab('docs')">Documents</button>
-      <button class="dtab" id="dtab-audit" onclick="switchTab('audit')">Audit</button>
+    <div class="detail-tabs" role="tablist" aria-label="Client detail sections">
+      <button class="dtab active" id="dtab-overview" role="tab" aria-selected="true" onclick="switchTab('overview')">Overview</button>
+      <button class="dtab" id="dtab-info" role="tab" aria-selected="false" onclick="switchTab('info')">Profile</button>
+      <button class="dtab" id="dtab-history" role="tab" aria-selected="false" onclick="switchTab('history')">Invoices</button>
+      <button class="dtab" id="dtab-notes" role="tab" aria-selected="false" onclick="switchTab('notes')">Notes</button>
+      <button class="dtab" id="dtab-docs" role="tab" aria-selected="false" onclick="switchTab('docs')">Documents</button>
+      <button class="dtab" id="dtab-audit" role="tab" aria-selected="false" onclick="switchTab('audit')">Audit</button>
     </div>
     <div class="detail-pane active" id="dpane-overview"></div>
     <div class="detail-pane" id="dpane-info">
