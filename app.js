@@ -5721,7 +5721,7 @@ function loadProfilesAPI() {
           driversLicense: c.drivers_license || '', ssn: c.ssn || '',
           startDate: c.start_date || '', liveIn: !!c.live_in,
           clientStatus: c.client_status || 'active', hasComplex: !!c.has_complex,
-          clientNotes: c.client_notes || '', auditLog: [], _dbId: c.id,
+          clientNotes: c.client_notes || '', _dbId: c.id,
           // Optimistic-concurrency token (see saveProfileSP). Tolerant of both the bundled
           // (row_version_hex) and plain (/homecare-clients) endpoints.
           _rowVersion: c.row_version_hex || (typeof c.row_version === 'string' ? c.row_version : null),
@@ -5773,7 +5773,7 @@ function saveProfileSP(name, data, quiet) {
     dob: data.dob || '', gender: data.gender || '',
     drivers_license: data.driversLicense || '', ssn: data.ssn || '',
     start_date: data.startDate || '', live_in: data.liveIn ? 1 : 0,
-    client_notes: data.clientNotes || '', audit_json: JSON.stringify(data.auditLog || []),
+    client_notes: data.clientNotes || '',
   };
   // S8: only send ssn when we actually have it in memory. Omitting it makes the backend
   // keep the stored (encrypted) value rather than blanking it — so a save that happens
@@ -5869,10 +5869,9 @@ function _invoiceSig(inv) {
 // Signature of a client's OWN persisted fields (everything saveProfileSP sends EXCEPT the
 // invoices, which have their own dirty-tracking). Lets an invoice-only save skip re-POSTing
 // the client record — which otherwise bumps the client row_version on every save and made a
-// concurrent invoice edit falsely 409 at the CLIENT level. auditLog is excluded on purpose:
-// it's the vestigial audit_json blob and changes on every action, which would defeat the
-// skip. ssn IS included so an ssn-only edit is never skipped (never lost); the cost is only a
-// harmless re-send if ssn lazy-loads into memory after the load-time baseline.
+// concurrent invoice edit falsely 409 at the CLIENT level. ssn IS included so an ssn-only
+// edit is never skipped (never lost); the cost is only a harmless re-send if ssn lazy-loads
+// into memory after the load-time baseline.
 function _clientSig(d) {
   return JSON.stringify([
     d.firstName||'', d.lastName||'', d.middleName||'', d.nickname||'', d.medicaidId||'',
@@ -8211,27 +8210,46 @@ function undoAutoGenBatch(batchId){
     'Remove '+status.ok+' auto-generated invoice'+(status.ok!==1?'s':'')+' for '+batch.period+'?'+
     (warnExtras?'\n\nNote — the following will not be undone:'+warnExtras:''),
     function(){
+      // Collect the invoices still eligible to remove (pristine draft, unedited, present).
       var profiles=getProfiles();
-      var removed=0;
+      var targets=[]; // {clientName, dbId, billingPeriod, invoiceId}
       batch.invoices.forEach(function(rec){
         var prof=profiles[rec.clientName];if(!prof||!prof.invoices)return;
-        var i=prof.invoices.findIndex(function(inv){return (batch.period&&inv.billingPeriod===batch.period)||inv.id===rec.invoiceId;});
-        if(i<0)return;
-        var inv=prof.invoices[i];
+        var inv=prof.invoices.find(function(iv){return (batch.period&&iv.billingPeriod===batch.period)||iv.id===rec.invoiceId;});
+        if(!inv)return;
         if(inv.status&&inv.status!=='draft')return;
         if(rec.dataHash&&rec.dataHash!==_quickInvoiceHash(inv.data))return;
-        prof.invoices.splice(i,1);removed++;
+        targets.push({clientName:rec.clientName,dbId:inv.dbId,billingPeriod:inv.billingPeriod,invoiceId:inv.id});
       });
-      saveProfilesLS(profiles);
-      batch.invoices.forEach(function(rec){if(profiles[rec.clientName])saveProfileSP(rec.clientName,profiles[rec.clientName]);});
-      // Remove this batch from the stack
-      var arr2=_getAutoGenUndoStack();
-      arr2=arr2.filter(function(b){return b.id!==batchId;});
-      _setAutoGenUndoStack(arr2);
-      logActivity('invoice','Undid auto-generation: removed '+removed+' invoice'+(removed!==1?'s':'')+' for '+batch.period);
-      showAlert('✓ Removed '+removed+' auto-generated invoice'+(removed!==1?'s':'')+' for '+batch.period+'.',{title:'Undo Complete'});
-      if(typeof previewMonthlyInvoices==='function')previewMonthlyInvoices();
-      updateStats();renderUndoBanner();
+      if(!targets.length){renderUndoBanner();return;}
+      // DELETE each server-side (via the hardened deleteInvoiceAPI: server-first, remove-on-
+      // confirmed-2xx, retry toast on failure). The old code spliced locally + saveProfileSP,
+      // but syncNewInvoices only inserts/updates — it never deletes, so removed invoices
+      // resurrected on the next reload. finalize() runs once every targeted delete confirms
+      // (immediately for local-only rows, or later after a retry); a failed delete leaves its
+      // row + a Retry toast and keeps the batch on the stack so it can be re-undone.
+      var removed=0,settled=0;
+      var finalize=function(){
+        if(settled<targets.length)return;
+        var arr2=_getAutoGenUndoStack().filter(function(b){return b.id!==batchId;});
+        _setAutoGenUndoStack(arr2);
+        logActivity('invoice','Undid auto-generation: removed '+removed+' invoice'+(removed!==1?'s':'')+' for '+batch.period);
+        showAlert('✓ Removed '+removed+' auto-generated invoice'+(removed!==1?'s':'')+' for '+batch.period+'.',{title:'Undo Complete'});
+        if(typeof previewMonthlyInvoices==='function')previewMonthlyInvoices();
+        updateStats();renderUndoBanner();
+      };
+      targets.forEach(function(t){
+        deleteInvoiceAPI(t.dbId,t.clientName,t.billingPeriod,function(){
+          var p2=getProfiles(),prof=p2[t.clientName];
+          if(prof&&prof.invoices){
+            var j=t.dbId
+              ? prof.invoices.findIndex(function(iv){return iv.dbId===t.dbId;})
+              : prof.invoices.findIndex(function(iv){return !iv.dbId && iv.id===t.invoiceId;});
+            if(j>=0){prof.invoices.splice(j,1);saveProfilesLS(p2);}
+          }
+          removed++;settled++;renderUndoBanner();finalize();
+        });
+      });
     },
     {title:'Undo Auto-Generation',okText:'Remove '+status.ok,danger:true}
   );
