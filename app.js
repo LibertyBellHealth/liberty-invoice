@@ -4,7 +4,6 @@
 var SVC=15,CPLX=9,active=31,clipboard={};
 var activeProfileName=null,lastLoadedStates=null;
 var pendingSigTarget=null,sigDrawing=false,sigCanvas=null,sigCtx=null;
-var draftTimer=null;
 var unsavedChanges=false;
 
 // ============================================================
@@ -247,7 +246,6 @@ function navInvoice(loadSpecific){
     document.getElementById('dupWarning').style.display='none';
     applyFullInvoice(loadSpecific);
     syncBillingPeriodFields();
-    if(draftTimer)clearInterval(draftTimer);
     return;
   }
   // Show choice modal — New or Copy from last?
@@ -272,9 +270,8 @@ function confirmNewInvoice(mode){
   bc([{l:'Clients',fn:navHome},{l:activeProfileName,fn:function(){navDetail(activeProfileName);}},{l:'Invoice'}]);
   document.getElementById('topbarActions').innerHTML='';
   document.getElementById('dupWarning').style.display='none';
-  // Kill any stale draft
+  // Kill any stale draft (legacy cleanup — draft-autosave was removed)
   try{localStorage.removeItem('lhca_draft_'+activeProfileName);}catch(e){}
-  if(draftTimer)clearInterval(draftTimer);
   if(mode==='copy'&&prof.invoices&&prof.invoices.length){
     // Copy tasks AND total hours from last invoice; auto-advance to next month
     var last=prof.invoices[0];
@@ -324,7 +321,6 @@ function confirmNewInvoice(mode){
     checkDuplicatePeriod(_defBP);
     resetSigArea(1);resetSigArea(2);
   }
-  startDraftAutosave();
 }
 function loadInvFromHistory(idx){
   // Open invoice as a file — no confirmation needed
@@ -1706,40 +1702,10 @@ function showNewCaregiverForm(){
   var cgDocSec=document.getElementById('cgDocsSection');if(cgDocSec)cgDocSec.style.display='none';
   document.getElementById('cgFormWrap').scrollIntoView({behavior:'smooth'});
 }
-function editCaregiver(id){
-  var cg=getCaregivers()[id];if(!cg)return;
-  showNewCaregiverForm();
-  document.getElementById('cgFormTitle').textContent='Edit Caregiver';
-  document.getElementById('cg-editing-id').value=id;
-  // Populate split name fields (fall back to splitting cg.name if firstName not stored)
-  var cgFirst=cg.firstName||'';var cgLast=cg.lastName||'';
-  if(!cgFirst&&!cgLast){var cgParts=(cg.name||'').split(' ');cgFirst=cgParts[0]||'';cgLast=cgParts.slice(1).join(' ')||'';}
-  document.getElementById('cg-first').value=cgFirst;
-  document.getElementById('cg-middle').value=cg.middleName||'';
-  document.getElementById('cg-last').value=cgLast;
-  document.getElementById('cg-nickname').value=cg.nickname||'';
-  document.getElementById('cg-phone').value=cg.phone||'';
-  document.getElementById('cg-email').value=cg.email||'';
-  var cgDlEl=document.getElementById('cg-dl');if(cgDlEl)cgDlEl.value=cg.driversLicense||'';
-  var cgSsnEl=document.getElementById('cg-ssn');if(cgSsnEl)cgSsnEl.value=cg.ssn||'';
-  document.getElementById('cg-street').value=cg.street||cg.address||'';
-  document.getElementById('cg-city').value=cg.city||'';
-  document.getElementById('cg-state').value=cg.state||'';
-  document.getElementById('cg-zip').value=cg.zip||'';
-  document.getElementById('cg-county').value=cg.county||'';
-  var cgDobEl=document.getElementById('cg-dob');if(cgDobEl)cgDobEl.value=cg.dob||cg.dateOfBirth||'';
-  var cgChampsEl=document.getElementById('cg-champs');if(cgChampsEl)cgChampsEl.value=cg.champsId||cg.champs_id||'';
-  var cgMiuEl=document.getElementById('cg-milogin-user');if(cgMiuEl)cgMiuEl.value=cg.miloginUsername||cg.milogin_username||'';
-  // MI Login password is NOT preloaded — it stays blank and is fetched on demand via the Show button.
-  var cgMipEl=document.getElementById('cg-milogin-pass');if(cgMipEl)cgMipEl.value='';
-  var cgGenderEl=document.getElementById('cg-gender');if(cgGenderEl)cgGenderEl.value=cg.gender||'';
-  document.getElementById('cg-hire').value=cg.hireDate||'';document.getElementById('cg-pay').value=cg.payRate||'';
-  document.getElementById('cg-notes').value=cg.notes||'';
-  document.getElementById('cg-status').value=cg.status||'active';document.getElementById('cg-emptype').value=cg.emptype||'full-time';
-  document.getElementById('cgDeleteBtn').style.display='inline-block';
-  var cgDocSec=document.getElementById('cgDocsSection');
-  if(cgDocSec){cgDocSec.style.display='block';loadCgDocs(id);}
-}
+// (Removed) editCaregiver() populated the OLD inline caregiver form for an existing
+// caregiver, but caregiver editing moved to the detail view (openCgDetail via the
+// #/caregiver/<id> route + saveCgInfoPane). It had zero callers (not even a dynamic
+// onclick). The inline form now only serves "New Caregiver".
 function saveCaregiver(){
   var first=(document.getElementById('cg-first').value||'').trim();
   var middle=(document.getElementById('cg-middle').value||'').trim();
@@ -3406,10 +3372,17 @@ function exportReportExcel(){
 // memory; getProfiles overlays it back for display. Saves send ssn only when present, and
 // the backend keeps the stored value when a save omits it (provided-guard).
 var _ssnMem = Object.create(null);
+// _clientSynced is the client dirty-tracking baseline, but its signature string EMBEDS the
+// plaintext ssn (see _clientSig) — so it must be kept in memory ONLY, never written to disk,
+// exactly like _ssnMem. Persisting it would leak SSN into localStorage (defeats S8).
+var _clientSyncedMem = Object.create(null);
 function getProfiles(){
   try{
     var p=JSON.parse(localStorage.getItem('lhca_profiles')||'{}');
-    for(var name in p){ if(p[name] && _ssnMem[name]!==undefined) p[name].ssn=_ssnMem[name]; }
+    for(var name in p){ if(p[name]){
+      if(_ssnMem[name]!==undefined) p[name].ssn=_ssnMem[name];
+      if(_clientSyncedMem[name]!==undefined) p[name]._clientSynced=_clientSyncedMem[name];
+    } }
     return p;
   }catch(e){return{};}
 }
@@ -3419,7 +3392,9 @@ function saveProfilesLS(p){
     var prof=p[name];
     if(prof && typeof prof==='object'){
       if(prof.ssn) _ssnMem[name]=prof.ssn;               // keep the in-memory copy current
-      var clone={}; for(var k in prof){ if(k!=='ssn') clone[k]=prof[k]; } // strip ssn from disk
+      if(prof._clientSynced!==undefined) _clientSyncedMem[name]=prof._clientSynced; // memory-only (embeds ssn)
+      // strip ssn AND _clientSynced from disk — both hold SSN and must never persist
+      var clone={}; for(var k in prof){ if(k!=='ssn' && k!=='_clientSynced') clone[k]=prof[k]; }
       out[name]=clone;
     } else { out[name]=prof; }
   }
@@ -3994,17 +3969,10 @@ function clearInvoiceForm(){
 // ============================================================
 //  AUTOSAVE DRAFT
 // ============================================================
-function startDraftAutosave(){
-  if(draftTimer)clearInterval(draftTimer);
-  draftTimer=setInterval(function(){
-    if(!activeProfileName)return;
-    var d=captureFullInvoice();
-    if(!d.billingPeriod)return; // don't save empty drafts
-    try{localStorage.setItem('lhca_draft_'+activeProfileName,JSON.stringify(d));}catch(e){}
-    var badge=document.getElementById('draftBadge');
-    if(badge){badge.style.display='inline-block';badge.textContent='● Draft autosaved';setTimeout(function(){badge.style.display='none';},2000);}
-  },30000);
-}
+// (Removed) Draft-autosave was write-only: it wrote lhca_draft_* every 30s and flashed a
+// "Draft autosaved" badge, but no code ever read the key back — drafts could never be
+// recovered, so the timer + badge only misled the user. The removeItem('lhca_draft_'+…)
+// cleanups elsewhere are kept so any legacy draft keys still in a browser get purged.
 
 // ============================================================
 //  INVOICE TABLE HELPERS (unchanged from original)
@@ -5546,7 +5514,9 @@ function clearPHIFromStorage() {
     .filter(function(k){ return k.indexOf('lhca_') === 0 && !KEEP.test(k); })
     .forEach(function(k){ try{ localStorage.removeItem(k); }catch(e){} });
   // S8: also wipe the in-memory SSN caches so nothing lingers after sign-out/idle.
+  // _clientSyncedMem holds the dirty-tracking signatures, which embed SSN — wipe it too.
   _ssnMem = Object.create(null);
+  _clientSyncedMem = Object.create(null);
   if (typeof _cgSsnMem !== 'undefined') _cgSsnMem = Object.create(null);
 }
 function signOut() {
@@ -5846,16 +5816,6 @@ function saveProfileSP(name, data, quiet) {
   finally { Promise.resolve(_p).then(function(){ _savesInFlight--; }, function(){ _savesInFlight--; }); }
   return _p;
 }
-// Persist a client's invoices to SQL. New invoices (no dbId) INSERT; existing ones
-// (with dbId) send their id so the backend UPDATE branch fires — this is what makes
-// EDITS to a saved invoice (amount/status/note) actually reach the database. Every
-// save path routes through here via saveProfileSP.
-// Persist a client's invoices to SQL. Resolves only when EVERY write succeeds and REJECTS
-// otherwise — so the caller (saveProfileSP) reports a real "Save failed" instead of a
-// false "Saved ✓". For existing invoices it sends the row_version last seen; the backend
-// rejects a stale write with 409 (optimistic concurrency) instead of clobbering another
-// user's edit. Fresh row_versions and new dbIds are written back to LS in one pass so the
-// next save carries the current token. All items settle first, then we decide the outcome.
 // Signature of an invoice's PERSISTED fields (exactly what syncNewInvoices sends). Used
 // for dirty-tracking so an invoice is re-sent only when it actually changed since its last
 // server-confirmed save (or it has no dbId yet). Deliberately covers billing period,
@@ -5881,6 +5841,13 @@ function _clientSig(d) {
     d.ssn||'', d.startDate||'', d.liveIn?1:0, d.clientNotes||'',
   ]);
 }
+// Persist a client's invoices to SQL. New invoices (no dbId) INSERT; existing ones (with
+// dbId) send their id so the backend UPDATE branch fires — this is what makes EDITS to a
+// saved invoice (amount/status/note) actually reach the DB. Resolves only when EVERY write
+// succeeds and REJECTS otherwise, so saveProfileSP reports a real "Save failed" instead of a
+// false "Saved ✓". Existing invoices send the row_version last seen; the backend rejects a
+// stale write with 409 (optimistic concurrency). Fresh row_versions + new dbIds are written
+// back to LS in one pass. Every save path routes through here via saveProfileSP.
 function syncNewInvoices(name, data) {
   var idMap = getIdMap(); var clientDbId = idMap[name];
   if (!clientDbId || !data.invoices) return Promise.resolve();
