@@ -3406,10 +3406,17 @@ function exportReportExcel(){
 // memory; getProfiles overlays it back for display. Saves send ssn only when present, and
 // the backend keeps the stored value when a save omits it (provided-guard).
 var _ssnMem = Object.create(null);
+// _clientSynced is the client dirty-tracking baseline, but its signature string EMBEDS the
+// plaintext ssn (see _clientSig) — so it must be kept in memory ONLY, never written to disk,
+// exactly like _ssnMem. Persisting it would leak SSN into localStorage (defeats S8).
+var _clientSyncedMem = Object.create(null);
 function getProfiles(){
   try{
     var p=JSON.parse(localStorage.getItem('lhca_profiles')||'{}');
-    for(var name in p){ if(p[name] && _ssnMem[name]!==undefined) p[name].ssn=_ssnMem[name]; }
+    for(var name in p){ if(p[name]){
+      if(_ssnMem[name]!==undefined) p[name].ssn=_ssnMem[name];
+      if(_clientSyncedMem[name]!==undefined) p[name]._clientSynced=_clientSyncedMem[name];
+    } }
     return p;
   }catch(e){return{};}
 }
@@ -3419,7 +3426,9 @@ function saveProfilesLS(p){
     var prof=p[name];
     if(prof && typeof prof==='object'){
       if(prof.ssn) _ssnMem[name]=prof.ssn;               // keep the in-memory copy current
-      var clone={}; for(var k in prof){ if(k!=='ssn') clone[k]=prof[k]; } // strip ssn from disk
+      if(prof._clientSynced!==undefined) _clientSyncedMem[name]=prof._clientSynced; // memory-only (embeds ssn)
+      // strip ssn AND _clientSynced from disk — both hold SSN and must never persist
+      var clone={}; for(var k in prof){ if(k!=='ssn' && k!=='_clientSynced') clone[k]=prof[k]; }
       out[name]=clone;
     } else { out[name]=prof; }
   }
@@ -5546,7 +5555,9 @@ function clearPHIFromStorage() {
     .filter(function(k){ return k.indexOf('lhca_') === 0 && !KEEP.test(k); })
     .forEach(function(k){ try{ localStorage.removeItem(k); }catch(e){} });
   // S8: also wipe the in-memory SSN caches so nothing lingers after sign-out/idle.
+  // _clientSyncedMem holds the dirty-tracking signatures, which embed SSN — wipe it too.
   _ssnMem = Object.create(null);
+  _clientSyncedMem = Object.create(null);
   if (typeof _cgSsnMem !== 'undefined') _cgSsnMem = Object.create(null);
 }
 function signOut() {
