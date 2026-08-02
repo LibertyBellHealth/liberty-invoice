@@ -67,7 +67,7 @@ function aiTrack(name, props){
 </head>
 <body>
 <!-- DB sync-in-progress banner (auto-shown by body.db-syncing class) -->
-<div class="db-sync-banner" id="dbSyncBanner"><span class="spin">⟳</span> Syncing with the database… Adding new clients, caregivers, and caseworkers is paused until this finishes — usually a few seconds (occasionally up to a minute if the system was idle).</div>
+<div class="db-sync-banner" id="dbSyncBanner" role="status" aria-live="polite"><span class="spin">⟳</span> Syncing with the database… Adding new clients, caregivers, and caseworkers is paused until this finishes — usually a few seconds (occasionally up to a minute if the system was idle).</div>
 
 <!-- ===== LOGIN WALL (shown until MSAL confirms authenticated) ===== -->
 <div id="loginWall" style="position:fixed;inset:0;z-index:99999;background:#1a2b45;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;">
@@ -78,10 +78,10 @@ function aiTrack(name, props){
 </div>
 
 <!-- ===== SIDEBAR ===== -->
-<div id="sidebar">
+<div id="sidebar" role="navigation" aria-label="Main navigation">
   <div class="sb-logo">
     <div class="sb-logo-text"><strong>Liberty Home Care</strong><span>Client Manager</span></div>
-    <button class="sb-collapse" onclick="toggleSidebar()">&#9776;</button>
+    <button class="sb-collapse" aria-label="Toggle sidebar" onclick="toggleSidebar()">&#9776;</button>
   </div>
   <div class="sb-section">Navigation</div>
   <!--
@@ -112,9 +112,9 @@ function aiTrack(name, props){
 </div>
 
 <!-- ===== MAIN ===== -->
-<div id="main">
-  <div id="topbar">
-    <button id="mobileMenuBtn" style="display:none;background:none;border:none;font-size:20px;cursor:pointer;color:#1a2b45;padding:0 8px;" onclick="toggleMobileSidebar()">&#9776;</button>
+<div id="main" role="main">
+  <div id="topbar" role="banner">
+    <button id="mobileMenuBtn" style="display:none;background:none;border:none;font-size:20px;cursor:pointer;color:#1a2b45;padding:0 8px;" onclick="toggleMobileSidebar()" aria-label="Open menu">&#9776;</button>
     <div class="tb-bc" id="breadcrumb"></div>
     <div class="tb-spacer"></div>
     <span class="draft-badge" id="draftBadge">● Unsaved draft</span>
@@ -344,7 +344,7 @@ function aiTrack(name, props){
         <table class="client-table entity-table" id="cgTable">
           <thead>
             <tr>
-              <th style="width:32px;"><input type="checkbox" id="cgSelectAll" onchange="toggleAllCaregivers(this)" style="width:12px;height:12px;cursor:pointer;"></th>
+              <th style="width:32px;"><input type="checkbox" id="cgSelectAll" aria-label="Select all caregivers" onchange="toggleAllCaregivers(this)" style="width:12px;height:12px;cursor:pointer;"></th>
               <th class="sortable resizable" data-sortkey="name" data-col="name" onclick="sortCgBy('name')">Caregiver<span class="resize-handle" onmousedown="startCgColResize(event,'name')"></span></th>
               <th class="sortable resizable" data-sortkey="status" data-col="status" onclick="sortCgBy('status')">Status<span class="resize-handle" onmousedown="startCgColResize(event,'status')"></span></th>
               <th class="sortable resizable" data-sortkey="phone" data-col="phone" onclick="sortCgBy('phone')">Phone<span class="resize-handle" onmousedown="startCgColResize(event,'phone')"></span></th>
@@ -646,7 +646,7 @@ function aiTrack(name, props){
           <table class="client-table entity-table" id="cwTable">
             <thead>
               <tr>
-                <th style="width:32px;"><input type="checkbox" id="cwSelectAll" onchange="toggleAllCaseworkers(this)" style="width:12px;height:12px;cursor:pointer;"></th>
+                <th style="width:32px;"><input type="checkbox" id="cwSelectAll" aria-label="Select all caseworkers" onchange="toggleAllCaseworkers(this)" style="width:12px;height:12px;cursor:pointer;"></th>
                 <th class="sortable resizable" data-sortkey="name" data-col="name" onclick="sortCwBy('name')">Caseworker<span class="resize-handle" onmousedown="startCwColResize(event,'name')"></span></th>
                 <th class="sortable resizable" data-sortkey="phone" data-col="phone" onclick="sortCwBy('phone')">Phone<span class="resize-handle" onmousedown="startCwColResize(event,'phone')"></span></th>
                 <th class="sortable resizable" data-sortkey="email" data-col="email" onclick="sortCwBy('email')">Email<span class="resize-handle" onmousedown="startCwColResize(event,'email')"></span></th>
@@ -687,7 +687,7 @@ function aiTrack(name, props){
           <table class="client-table entity-table" id="supTable">
             <thead>
               <tr>
-                <th style="width:32px;"><input type="checkbox" id="supSelectAll" onchange="toggleAllSupervisors(this)" style="width:12px;height:12px;cursor:pointer;"></th>
+                <th style="width:32px;"><input type="checkbox" id="supSelectAll" aria-label="Select all supervisors" onchange="toggleAllSupervisors(this)" style="width:12px;height:12px;cursor:pointer;"></th>
                 <th class="sortable resizable" data-sortkey="name" data-col="name" onclick="sortSupBy('name')">Supervisor<span class="resize-handle" onmousedown="startSupColResize(event,'name')"></span></th>
                 <th class="sortable resizable" data-sortkey="phone" data-col="phone" onclick="sortSupBy('phone')">Phone<span class="resize-handle" onmousedown="startSupColResize(event,'phone')"></span></th>
                 <th class="sortable resizable" data-sortkey="email" data-col="email" onclick="sortSupBy('email')">Email<span class="resize-handle" onmousedown="startSupColResize(event,'email')"></span></th>
@@ -969,7 +969,7 @@ function aiTrack(name, props){
 
 <!-- NEW INVOICE CHOICE MODAL -->
 <div class="modal-overlay" id="newInvChoiceModal">
-  <div class="modal-box" style="max-width:420px;">
+  <div class="modal-box" style="max-width:420px;" role="dialog" aria-modal="true">
     <h3>New Invoice</h3>
     <p style="margin-bottom:16px;font-size:13px;color:#4a6a8a;">Start from scratch or copy tasks from the most recent invoice?</p>
     <div style="display:flex;flex-direction:column;gap:10px;">
@@ -988,7 +988,7 @@ function aiTrack(name, props){
 
 <!-- WORKFLOW MODAL -->
 <div class="modal-overlay" id="workflowModal">
-  <div class="modal-box" style="max-width:520px;">
+  <div class="modal-box" style="max-width:520px;" role="dialog" aria-modal="true">
     <h3>Create Workflow</h3>
     <p style="margin-bottom:12px;font-size:13px;color:#4a6a8a;">Build a sequence of tasks with due dates. Each step links to a client.</p>
     <div style="margin-bottom:10px;">
@@ -1013,7 +1013,7 @@ function aiTrack(name, props){
 
 <!-- EMAIL COMPOSER MODAL -->
 <div class="modal-overlay" id="emailComposerModal">
-  <div class="modal-box" style="max-width:560px;">
+  <div class="modal-box" style="max-width:560px;" role="dialog" aria-modal="true">
     <h3>Send Email</h3>
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
       <div><label style="font-size:11px;color:#6b8dae;display:block;margin-bottom:3px;" for="emailTo">To</label>
@@ -1035,7 +1035,7 @@ function aiTrack(name, props){
 
 <!-- ALL INVOICES MODAL -->
 <div class="modal-overlay" id="allInvoicesModal">
-  <div class="modal-box" style="max-width:680px;width:95%;">
+  <div class="modal-box" style="max-width:680px;width:95%;" role="dialog" aria-modal="true">
     <h3 id="allInvModalTitle">All Invoices</h3>
     <p style="margin-bottom:10px;" id="allInvModalSubtitle"></p>
     <div id="allInvModalList" style="max-height:420px;overflow-y:auto;"></div>
@@ -1109,7 +1109,7 @@ function aiTrack(name, props){
 
 <!-- CONFIRM MODAL — replaces browser confirm() popups -->
 <div class="modal-overlay" id="confirmModal">
-  <div class="modal-box">
+  <div class="modal-box" role="dialog" aria-modal="true">
     <h3 id="confirmTitle">Confirm</h3>
     <p id="confirmMessage" style="font-size:13px;color:#1a2b45;margin:8px 0 14px;white-space:pre-line;"></p>
     <div class="modal-row" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
@@ -1122,7 +1122,7 @@ function aiTrack(name, props){
 
 <!-- TASK EDIT MODAL — used for editing, creating follow-ups, and adding tasks -->
 <div class="modal-overlay" id="taskEditModal">
-  <div class="modal-box">
+  <div class="modal-box" role="dialog" aria-modal="true">
     <h3 id="taskEditTitle">Edit Task</h3>
     <p id="taskEditSubtitle" style="font-size:12px;color:#5a7296;margin:6px 0 12px;"></p>
     <label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;" for="taskEditName">Task name</label>
@@ -1144,7 +1144,7 @@ function aiTrack(name, props){
 
 <!-- PROMPT MODAL — replaces browser prompt() popups -->
 <div class="modal-overlay" id="promptModal">
-  <div class="modal-box">
+  <div class="modal-box" role="dialog" aria-modal="true">
     <h3 id="promptTitle">Enter value</h3>
     <p id="promptMessage" style="font-size:13px;color:#1a2b45;margin:8px 0 8px;"></p>
     <textarea id="promptInput" rows="3" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;box-sizing:border-box;resize:vertical;"></textarea>
@@ -1157,7 +1157,7 @@ function aiTrack(name, props){
 
 <!-- PICK SIG MODAL -->
 <div class="modal-overlay" id="pickSigModal">
-  <div class="modal-box">
+  <div class="modal-box" role="dialog" aria-modal="true">
     <h3>Choose Signature</h3>
     <p>Select which signature to place on the invoice.</p>
     <div id="pickSigList" style="display:flex;flex-direction:column;gap:8px;max-height:260px;overflow-y:auto;"></div>

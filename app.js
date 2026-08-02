@@ -4194,9 +4194,22 @@ function applyStates(states){
 
 // FIX #6: copyMonth preserves clientName and medicaidId
 // ── Toast ─────────────────────────────────────────────────────
+// a11y: announce a message to screen readers via a visually-hidden aria-live region, so
+// toasts / "Saved ✓" / "Save failed" (visual-only otherwise) are spoken. WCAG 4.1.3.
+function _ariaAnnounce(msg){
+  var r=document.getElementById('ariaLive');
+  if(!r){
+    r=document.createElement('div');r.id='ariaLive';
+    r.setAttribute('aria-live','polite');r.setAttribute('role','status');
+    r.style.cssText='position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;';
+    document.body.appendChild(r);
+  }
+  r.textContent='';setTimeout(function(){r.textContent=msg;},50); // clear+set so repeats re-announce
+}
 function showToast(msg,ms){
   var t=document.getElementById('lhcaToast');if(!t){t=document.createElement('div');t.id='lhcaToast';t.className='lhca-toast';document.body.appendChild(t);}
   t.textContent=msg;t.classList.add('show');
+  _ariaAnnounce(msg);
   clearTimeout(t._tid);t._tid=setTimeout(function(){t.classList.remove('show');},ms||3500);
 }
 // ── Save-status toast — used by every API save path so failures are never silent ──
@@ -4218,12 +4231,14 @@ function _showSaveStatus(state,label,onRetry){
   } else if(state==='saved'){
     _saveStatusEl.style.borderColor='#b9e4c9';_saveStatusEl.style.background='#eef9f1';
     _saveStatusEl.innerHTML='<span style="color:#1a7740;font-weight:700;">✓</span><span style="color:#1a7740;">Saved '+esc(label)+'</span>';
+    _ariaAnnounce('Saved '+label);
     clearTimeout(_saveStatusEl._t);_saveStatusEl._t=setTimeout(function(){_saveStatusEl.style.display='none';},2800);
   } else if(state==='failed'){
     _saveStatusEl.style.borderColor='#f0c0c0';_saveStatusEl.style.background='#fdecec';
     _saveStatusEl.innerHTML='<span style="color:#a00;font-weight:700;">✗</span><span style="color:#a00;flex:1;">Save failed: '+esc(label)+'</span>'+
       (onRetry?'<button class="btn btn-secondary btn-sm" style="padding:4px 10px;" id="_sstRetryBtn">Retry</button>':'')+
-      '<button style="background:none;border:none;color:#a00;cursor:pointer;font-size:14px;padding:0 4px;" onclick="document.getElementById(\'saveStatusToast\').style.display=\'none\';">✕</button>';
+      '<button style="background:none;border:none;color:#a00;cursor:pointer;font-size:14px;padding:0 4px;" onclick="document.getElementById(\'saveStatusToast\').style.display=\'none\';" aria-label="Dismiss">✕</button>';
+    _ariaAnnounce('Save failed: '+label);
     if(onRetry){
       var btn=document.getElementById('_sstRetryBtn');
       if(btn)btn.addEventListener('click',function(){onRetry();});
@@ -7047,6 +7062,11 @@ function renderCwAuditPane(){
 //  KEYBOARD SHORTCUTS & NAVIGATION GUARD
 // ============================================================
 document.addEventListener('keydown',function(e){
+  // a11y: Escape dismisses the topmost open modal (keyboard users had no way to close one).
+  if(e.key==='Escape'){
+    var open=document.querySelectorAll('.modal-overlay.open');
+    if(open.length){ open[open.length-1].classList.remove('open'); e.preventDefault(); return; }
+  }
   if((e.ctrlKey||e.metaKey)&&e.key==='s'){
     e.preventDefault();
     // Save whichever context is active
