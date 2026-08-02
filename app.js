@@ -124,10 +124,15 @@ function navHome(){showPage('home');bc([{l:'Clients'}]);document.getElementById(
 
 // ============================================================
 //  HASH ROUTER — enables right-click "Open in new tab" for records
-//  URL format: #/client/<name>, #/caregiver/<id>, #/caseworker/<id>,
+//  URL format: #/client/<id>, #/caregiver/<id>, #/caseworker/<id>,
 //              #/forms, #/tasks, #/caregivers, #/caseworkers, #/settings
 // ============================================================
-function buildClientUrl(name){return '#/client/'+encodeURIComponent(name);}
+// Route clients by opaque dbId so the patient NAME never lands in the URL / browser history.
+// Falls back to the name only for a client not yet saved to the server (no dbId yet).
+function buildClientUrl(name){
+  var id=(getIdMap()||{})[name];
+  return '#/client/'+encodeURIComponent(id!=null&&id!==''?id:name);
+}
 function buildCaregiverUrl(id){return '#/caregiver/'+encodeURIComponent(id);}
 function buildCaseworkerUrl(id){return '#/caseworker/'+encodeURIComponent(id);}
 
@@ -138,8 +143,16 @@ function routeFromHash(){
   var route=parts[0];
   try{
     if(route==='client'&&parts[1]){
-      activeProfileName=parts[1];
-      if(typeof navDetail==='function')navDetail(parts[1],parts[2]||null);
+      var seg=parts[1], nm=seg;
+      // seg is an opaque dbId (all digits) → resolve back to the client name. A non-numeric
+      // seg is a legacy #/client/<name> link (old bookmark / open tab) — use it as-is.
+      if(/^\d+$/.test(seg)){
+        var idMap=getIdMap()||{}; nm=null;
+        for(var k in idMap){ if(String(idMap[k])===seg){ nm=k; break; } }
+        if(!nm){ if(typeof navHome==='function')navHome(); return; }
+      }
+      activeProfileName=nm;
+      if(typeof navDetail==='function')navDetail(nm,parts[2]||null);
     } else if(route==='caregiver'&&parts[1]){
       if(typeof navCaregivers==='function')navCaregivers();
       setTimeout(function(){if(typeof openCgDetail==='function')openCgDetail(parts[1]);},80);
