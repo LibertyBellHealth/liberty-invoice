@@ -5727,6 +5727,9 @@ function loadProfilesAPI() {
           _rowVersion: c.row_version_hex || (typeof c.row_version === 'string' ? c.row_version : null),
           invoices: mappedInvs,
         };
+        // Client-record dirty-tracking baseline (server-confirmed state) — mirror of the
+        // per-invoice _synced above. saveProfileSP skips the client POST while this matches.
+        profiles[name]._clientSynced = _clientSig(profiles[name]);
       });
       // A save may have started DURING this fetch (the round-trip is async). If so, abort
       // the destructive full-store replace — otherwise it reverts the pending save's local
@@ -5780,7 +5783,19 @@ function saveProfileSP(name, data, quiet) {
   // stale save is rejected (409) instead of clobbering another user's edit. Omitted for a
   // new client, or one loaded before this feature (backend then updates unconditionally).
   if (dbId && data._rowVersion) body.expected_version = data._rowVersion;
+  // Client-record dirty-tracking: if this is an EXISTING client whose own fields are
+  // unchanged since the last confirmed save, skip the client POST entirely. That POST
+  // otherwise re-writes the row and bumps its row_version on EVERY save (even an invoice-
+  // only one), which made a concurrent invoice edit falsely 409 at the client level. The
+  // invoices still sync (they have their own dirty-tracking + version check).
+  var _clientSigNow = _clientSig(data);
+  var _clientUnchanged = dbId && data._clientSynced === _clientSigNow;
   var _doSave = function(){
+    if (_clientUnchanged) {
+      var now0 = new Date().toLocaleString(); localStorage.setItem('lhca_last_synced', now0);
+      var lsl0 = document.getElementById('lastSyncedLabel'); if (lsl0) lsl0.textContent = 'Last synced: ' + now0;
+      return syncNewInvoices(name, data).then(function(){ return { skipped: true }; });
+    }
     return fetch(API_BASE + '/homecare-clients', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(body) })
       .then(function (r) {
         if (r.status === 409) {
@@ -5805,6 +5820,10 @@ function saveProfileSP(name, data, quiet) {
           data._rowVersion = result.row_version;
           var pv = getProfiles(); if (pv[name]) { pv[name]._rowVersion = result.row_version; saveProfilesLS(pv); }
         }
+        // Client write confirmed — advance the dirty-tracking baseline to the state we just
+        // sent, so the NEXT save skips the client POST if nothing changes.
+        data._clientSynced = _clientSigNow;
+        var pcs = getProfiles(); if (pcs[name]) { pcs[name]._clientSynced = _clientSigNow; saveProfilesLS(pcs); }
         aiTrack('ClientInfoUpdated',{clientName:name,clientStatus:body.client_status});
         var now = new Date().toLocaleString(); localStorage.setItem('lhca_last_synced', now);
         var lsl = document.getElementById('lastSyncedLabel'); if (lsl) lsl.textContent = 'Last synced: ' + now;
@@ -5845,6 +5864,22 @@ function _invoiceSig(inv) {
   return JSON.stringify([
     inv.billingPeriod || '', inv.status || 'draft', inv.invoiceNote || '',
     inv.data ? JSON.stringify(inv.data) : '',
+  ]);
+}
+// Signature of a client's OWN persisted fields (everything saveProfileSP sends EXCEPT the
+// invoices, which have their own dirty-tracking). Lets an invoice-only save skip re-POSTing
+// the client record — which otherwise bumps the client row_version on every save and made a
+// concurrent invoice edit falsely 409 at the CLIENT level. auditLog is excluded on purpose:
+// it's the vestigial audit_json blob and changes on every action, which would defeat the
+// skip. ssn IS included so an ssn-only edit is never skipped (never lost); the cost is only a
+// harmless re-send if ssn lazy-loads into memory after the load-time baseline.
+function _clientSig(d) {
+  return JSON.stringify([
+    d.firstName||'', d.lastName||'', d.middleName||'', d.nickname||'', d.medicaidId||'',
+    d.hourlyRate||'', d.worker||'', d.caseworkerId||'', d.street||'', d.city||'', d.state||'',
+    d.zip||'', d.county||'', d.phone||'', d.clientEmail||'', d.caregiverId||'',
+    d.clientStatus||'active', d.hasComplex?1:0, d.dob||'', d.gender||'', d.driversLicense||'',
+    d.ssn||'', d.startDate||'', d.liveIn?1:0, d.clientNotes||'',
   ]);
 }
 function syncNewInvoices(name, data) {
