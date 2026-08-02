@@ -67,7 +67,7 @@ function aiTrack(name, props){
 </head>
 <body>
 <!-- DB sync-in-progress banner (auto-shown by body.db-syncing class) -->
-<div class="db-sync-banner" id="dbSyncBanner"><span class="spin">⟳</span> Syncing with the database… Adding new clients, caregivers, and caseworkers is paused until this finishes — usually a few seconds (occasionally up to a minute if the system was idle).</div>
+<div class="db-sync-banner" id="dbSyncBanner" role="status" aria-live="polite"><span class="spin">⟳</span> Syncing with the database… Adding new clients, caregivers, and caseworkers is paused until this finishes — usually a few seconds (occasionally up to a minute if the system was idle).</div>
 
 <!-- ===== LOGIN WALL (shown until MSAL confirms authenticated) ===== -->
 <div id="loginWall" style="position:fixed;inset:0;z-index:99999;background:#1a2b45;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;">
@@ -78,10 +78,10 @@ function aiTrack(name, props){
 </div>
 
 <!-- ===== SIDEBAR ===== -->
-<div id="sidebar">
+<div id="sidebar" role="navigation" aria-label="Main navigation">
   <div class="sb-logo">
     <div class="sb-logo-text"><strong>Liberty Home Care</strong><span>Client Manager</span></div>
-    <button class="sb-collapse" onclick="toggleSidebar()">&#9776;</button>
+    <button class="sb-collapse" aria-label="Toggle sidebar" onclick="toggleSidebar()">&#9776;</button>
   </div>
   <div class="sb-section">Navigation</div>
   <!--
@@ -112,9 +112,9 @@ function aiTrack(name, props){
 </div>
 
 <!-- ===== MAIN ===== -->
-<div id="main">
-  <div id="topbar">
-    <button id="mobileMenuBtn" style="display:none;background:none;border:none;font-size:20px;cursor:pointer;color:#1a2b45;padding:0 8px;" onclick="toggleMobileSidebar()">&#9776;</button>
+<div id="main" role="main">
+  <div id="topbar" role="banner">
+    <button id="mobileMenuBtn" style="display:none;background:none;border:none;font-size:20px;cursor:pointer;color:#1a2b45;padding:0 8px;" onclick="toggleMobileSidebar()" aria-label="Open menu">&#9776;</button>
     <div class="tb-bc" id="breadcrumb"></div>
     <div class="tb-spacer"></div>
     <span class="draft-badge" id="draftBadge">● Unsaved draft</span>
@@ -254,43 +254,43 @@ function aiTrack(name, props){
     <div class="page-subtitle">Fill in the details. Everything can be edited later from their profile.</div>
     <div class="form-card" style="max-width:620px;">
       <div class="ff-row" style="grid-template-columns:1fr 1fr 1fr;">
-        <div class="ff"><label>First Name *</label><input id="nc-first" placeholder="First name" maxlength="40"></div>
-        <div class="ff"><label>Middle Name</label><input id="nc-middle" placeholder="Middle" maxlength="40"></div>
-        <div class="ff"><label>Last Name *</label><input id="nc-last" placeholder="Last name" maxlength="40"></div>
+        <div class="ff"><label for="nc-first">First Name *</label><input id="nc-first" placeholder="First name" maxlength="40"></div>
+        <div class="ff"><label for="nc-middle">Middle Name</label><input id="nc-middle" placeholder="Middle" maxlength="40"></div>
+        <div class="ff"><label for="nc-last">Last Name *</label><input id="nc-last" placeholder="Last name" maxlength="40"></div>
       </div>
       <div class="ff-row">
-        <div class="ff"><label>Nickname / Goes By</label><input id="nc-nickname" placeholder="Optional" maxlength="40"></div>
-        <div class="ff"><label>Status</label>
+        <div class="ff"><label for="nc-nickname">Nickname / Goes By</label><input id="nc-nickname" placeholder="Optional" maxlength="40"></div>
+        <div class="ff"><label for="nc-status">Status</label>
           <select id="nc-status"><option value="active">Active</option><option value="inactive">In Progress</option><option value="lost">Lost</option><option value="terminated">Terminated</option></select>
         </div>
       </div>
       <div class="ff-row">
-        <div class="ff"><label>Medicaid ID</label><input id="nc-medicaid" placeholder="Medicaid ID" maxlength="20"></div>
-        <div class="ff"><label>Hourly Rate</label><input id="nc-rate" placeholder="0.00" maxlength="10" inputmode="decimal" oninput="formatRate(this)"></div>
+        <div class="ff"><label for="nc-medicaid">Medicaid ID</label><input id="nc-medicaid" placeholder="Medicaid ID" maxlength="20"></div>
+        <div class="ff"><label for="nc-rate">Hourly Rate</label><input id="nc-rate" placeholder="0.00" maxlength="10" inputmode="decimal" oninput="formatRate(this)"></div>
       </div>
       <div class="ff-row">
-        <div class="ff"><label>Driver's License #</label><input id="nc-dl" placeholder="DL number" maxlength="40"></div>
-        <div class="ff"><label>Social Security #</label>
+        <div class="ff"><label for="nc-dl">Driver's License #</label><input id="nc-dl" placeholder="DL number" maxlength="40"></div>
+        <div class="ff"><label for="nc-ssn">Social Security #</label>
           <input id="nc-ssn" type="password" placeholder="XXX-XX-XXXX" maxlength="11" autocomplete="off" oninput="formatSSN(this)" onfocus="this.type='text'" onblur="this.type='password'"></div>
       </div>
       <div class="ff-row">
-        <div class="ff"><label>Phone #</label><input id="nc-phone" placeholder="(555) 555-5555" maxlength="20"></div>
-        <div class="ff"><label>Client Email</label><input id="nc-cemail" placeholder="client@email.com" maxlength="80"></div>
+        <div class="ff"><label for="nc-phone">Phone #</label><input id="nc-phone" placeholder="(555) 555-5555" maxlength="20"></div>
+        <div class="ff"><label for="nc-cemail">Client Email</label><input id="nc-cemail" placeholder="client@email.com" maxlength="80"></div>
       </div>
       <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Address</div>
-      <div class="ff"><label>Street</label><input id="nc-street" placeholder="Street address" maxlength="120"></div>
+      <div class="ff"><label for="nc-street">Street</label><input id="nc-street" placeholder="Street address" maxlength="120"></div>
       <div class="ff-row">
-        <div class="ff"><label>City</label><input id="nc-city" placeholder="City" maxlength="60"></div>
-        <div class="ff"><label>State</label><input id="nc-state" placeholder="MI" maxlength="30"></div>
+        <div class="ff"><label for="nc-city">City</label><input id="nc-city" placeholder="City" maxlength="60"></div>
+        <div class="ff"><label for="nc-state">State</label><input id="nc-state" placeholder="MI" maxlength="30"></div>
       </div>
       <div class="ff-row">
-        <div class="ff"><label>ZIP</label><input id="nc-zip" placeholder="ZIP" maxlength="10" oninput="lookupZip('nc-zip','nc-city','nc-state','nc-county')"></div>
-        <div class="ff"><label>County</label><input id="nc-county" placeholder="County" maxlength="60"></div>
+        <div class="ff"><label for="nc-zip">ZIP</label><input id="nc-zip" placeholder="ZIP" maxlength="10" oninput="lookupZip('nc-zip','nc-city','nc-state','nc-county')"></div>
+        <div class="ff"><label for="nc-county">County</label><input id="nc-county" placeholder="County" maxlength="60"></div>
       </div>
       <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Assignments</div>
-      <div class="ff"><label>Service Start Date <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(prevents "missing invoice" warnings for months before this date)</span></label><input id="nc-start-date" type="date"></div>
+      <div class="ff"><label for="nc-start-date">Service Start Date <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(prevents "missing invoice" warnings for months before this date)</span></label><input id="nc-start-date" type="date"></div>
       <div class="ff-row">
-        <div class="ff" style="position:relative;"><label>Assigned Caregiver</label>
+        <div class="ff" style="position:relative;"><label for="nc-caregiver-search">Assigned Caregiver</label>
           <input id="nc-caregiver-search" placeholder="Click to browse, or type to search…" maxlength="80" autocomplete="off" oninput="cgSearch(this,'nc-caregiver-val','nc-caregiver-drop')" onfocus="cgSearch(this,'nc-caregiver-val','nc-caregiver-drop')" onblur="setTimeout(function(){var d=document.getElementById('nc-caregiver-drop');if(d)d.style.display='none';},200)">
           <input type="hidden" id="nc-caregiver-val">
           <div id="nc-caregiver-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>
@@ -300,7 +300,7 @@ function aiTrack(name, props){
         </div>
       </div>
       <div class="ff" style="position:relative;">
-        <label>Caseworker</label>
+        <label for="nc-worker-search">Caseworker</label>
         <input id="nc-worker-search" placeholder="Click to browse, or type to search…" maxlength="80" autocomplete="off" oninput="cwSearch(this,'nc-worker-val','nc-worker-drop')" onfocus="cwSearch(this,'nc-worker-val','nc-worker-drop')" onblur="setTimeout(function(){var d=document.getElementById('nc-worker-drop');if(d)d.style.display='none';},200)">
         <input type="hidden" id="nc-worker-val">
         <div id="nc-worker-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>
@@ -344,7 +344,7 @@ function aiTrack(name, props){
         <table class="client-table entity-table" id="cgTable">
           <thead>
             <tr>
-              <th style="width:32px;"><input type="checkbox" id="cgSelectAll" onchange="toggleAllCaregivers(this)" style="width:12px;height:12px;cursor:pointer;"></th>
+              <th style="width:32px;"><input type="checkbox" id="cgSelectAll" aria-label="Select all caregivers" onchange="toggleAllCaregivers(this)" style="width:12px;height:12px;cursor:pointer;"></th>
               <th class="sortable resizable" data-sortkey="name" data-col="name" onclick="sortCgBy('name')">Caregiver<span class="resize-handle" onmousedown="startCgColResize(event,'name')"></span></th>
               <th class="sortable resizable" data-sortkey="status" data-col="status" onclick="sortCgBy('status')">Status<span class="resize-handle" onmousedown="startCgColResize(event,'status')"></span></th>
               <th class="sortable resizable" data-sortkey="phone" data-col="phone" onclick="sortCgBy('phone')">Phone<span class="resize-handle" onmousedown="startCgColResize(event,'phone')"></span></th>
@@ -378,13 +378,13 @@ function aiTrack(name, props){
           <h3 id="cgFormTitle">New Caregiver</h3>
           <input type="hidden" id="cg-editing-id">
           <div class="ff-row" style="grid-template-columns:1fr 1fr 1fr;">
-            <div class="ff"><label>First Name *</label><input id="cg-first" placeholder="First name" maxlength="40"></div>
-            <div class="ff"><label>Middle Name</label><input id="cg-middle" placeholder="Middle" maxlength="40"></div>
-            <div class="ff"><label>Last Name *</label><input id="cg-last" placeholder="Last name" maxlength="40"></div>
+            <div class="ff"><label for="cg-first">First Name *</label><input id="cg-first" placeholder="First name" maxlength="40"></div>
+            <div class="ff"><label for="cg-middle">Middle Name</label><input id="cg-middle" placeholder="Middle" maxlength="40"></div>
+            <div class="ff"><label for="cg-last">Last Name *</label><input id="cg-last" placeholder="Last name" maxlength="40"></div>
           </div>
           <div class="ff-row">
-            <div class="ff"><label>Date of Birth</label><input id="cg-dob" type="date"></div>
-            <div class="ff"><label>Gender</label>
+            <div class="ff"><label for="cg-dob">Date of Birth</label><input id="cg-dob" type="date"></div>
+            <div class="ff"><label for="cg-gender">Gender</label>
               <select id="cg-gender">
                 <option value="">—</option>
                 <option value="Male">Male</option>
@@ -393,48 +393,48 @@ function aiTrack(name, props){
             </div>
           </div>
           <div class="ff-row">
-            <div class="ff"><label>Nickname / Goes By</label><input id="cg-nickname" placeholder="Optional" maxlength="40"></div>
-            <div class="ff"><label>Status</label>
+            <div class="ff"><label for="cg-nickname">Nickname / Goes By</label><input id="cg-nickname" placeholder="Optional" maxlength="40"></div>
+            <div class="ff"><label for="cg-status">Status</label>
               <select id="cg-status"><option value="active">Active</option><option value="inactive">Inactive</option><option value="terminated">Terminated</option></select>
             </div>
           </div>
           <div class="ff-row">
-            <div class="ff"><label>Phone</label><input id="cg-phone" placeholder="(555) 555-5555" maxlength="20"></div>
-            <div class="ff"><label>Email</label><input id="cg-email" placeholder="caregiver@email.com" maxlength="80"></div>
+            <div class="ff"><label for="cg-phone">Phone</label><input id="cg-phone" placeholder="(555) 555-5555" maxlength="20"></div>
+            <div class="ff"><label for="cg-email">Email</label><input id="cg-email" placeholder="caregiver@email.com" maxlength="80"></div>
           </div>
           <div class="ff-row">
-            <div class="ff"><label>Driver's License #</label><input id="cg-dl" placeholder="DL number" maxlength="40"></div>
-            <div class="ff"><label>Social Security #</label>
+            <div class="ff"><label for="cg-dl">Driver's License #</label><input id="cg-dl" placeholder="DL number" maxlength="40"></div>
+            <div class="ff"><label for="cg-ssn">Social Security #</label>
               <input id="cg-ssn" type="password" placeholder="XXX-XX-XXXX" maxlength="11" autocomplete="off" oninput="formatSSN(this)" onfocus="this.type='text'" onblur="this.type='password'"></div>
           </div>
           <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Address</div>
-          <div class="ff"><label>Street</label><input id="cg-street" placeholder="Street address" maxlength="120"></div>
+          <div class="ff"><label for="cg-street">Street</label><input id="cg-street" placeholder="Street address" maxlength="120"></div>
           <div class="ff-row">
-            <div class="ff"><label>City</label><input id="cg-city" placeholder="City" maxlength="60"></div>
-            <div class="ff"><label>State</label><input id="cg-state" placeholder="MI" maxlength="30"></div>
+            <div class="ff"><label for="cg-city">City</label><input id="cg-city" placeholder="City" maxlength="60"></div>
+            <div class="ff"><label for="cg-state">State</label><input id="cg-state" placeholder="MI" maxlength="30"></div>
           </div>
           <div class="ff-row">
-            <div class="ff"><label>ZIP</label><input id="cg-zip" placeholder="ZIP" maxlength="10" oninput="lookupZip('cg-zip','cg-city','cg-state','cg-county')"></div>
-            <div class="ff"><label>County</label><input id="cg-county" placeholder="County" maxlength="60"></div>
+            <div class="ff"><label for="cg-zip">ZIP</label><input id="cg-zip" placeholder="ZIP" maxlength="10" oninput="lookupZip('cg-zip','cg-city','cg-state','cg-county')"></div>
+            <div class="ff"><label for="cg-county">County</label><input id="cg-county" placeholder="County" maxlength="60"></div>
           </div>
           <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Employment</div>
           <div class="ff-row">
-            <div class="ff"><label>Hire Date</label><input id="cg-hire" type="date"></div>
-            <div class="ff"><label>Employment Type</label>
+            <div class="ff"><label for="cg-hire">Hire Date</label><input id="cg-hire" type="date"></div>
+            <div class="ff"><label for="cg-emptype">Employment Type</label>
               <select id="cg-emptype"><option value="full-time">Full-Time</option><option value="part-time">Part-Time</option><option value="per-diem">Per Diem</option></select>
             </div>
           </div>
           <div class="ff-row">
-            <div class="ff"><label>Pay Rate ($/hr)</label><input id="cg-pay" placeholder="0.00" maxlength="10" inputmode="decimal" oninput="formatRate(this)"></div>
+            <div class="ff"><label for="cg-pay">Pay Rate ($/hr)</label><input id="cg-pay" placeholder="0.00" maxlength="10" inputmode="decimal" oninput="formatRate(this)"></div>
             <div class="ff"></div>
           </div>
           <div class="ff-row">
-            <div class="ff"><label>CHAMPS Provider ID <span style="font-weight:400;font-size:10px;color:#8ca0b4;">(individual caregiver — used on BPHASA-2421 Live-In form)</span></label><input id="cg-champs" placeholder="Caregiver's CHAMPS ID" maxlength="40"></div>
+            <div class="ff"><label for="cg-champs">CHAMPS Provider ID <span style="font-weight:400;font-size:10px;color:#8ca0b4;">(individual caregiver — used on BPHASA-2421 Live-In form)</span></label><input id="cg-champs" placeholder="Caregiver's CHAMPS ID" maxlength="40"></div>
             <div class="ff"></div>
           </div>
           <div class="ff-row">
-            <div class="ff"><label>MI Login Username <span style="font-weight:400;font-size:10px;color:#8ca0b4;">(state portal — CHAMPS / MDHHS)</span></label><input id="cg-milogin-user" placeholder="username" maxlength="120" autocomplete="off"></div>
-            <div class="ff"><label>MI Login Password</label>
+            <div class="ff"><label for="cg-milogin-user">MI Login Username <span style="font-weight:400;font-size:10px;color:#8ca0b4;">(state portal — CHAMPS / MDHHS)</span></label><input id="cg-milogin-user" placeholder="username" maxlength="120" autocomplete="off"></div>
+            <div class="ff"><label for="cg-milogin-pass">MI Login Password</label>
               <div style="display:flex;gap:4px;align-items:center;">
                 <input id="cg-milogin-pass" type="password" placeholder="•••••• (click Show)" maxlength="200" autocomplete="off" style="flex:1;">
                 <button type="button" class="btn btn-secondary btn-sm" onclick="revealMilogin('cg-milogin-pass',this)" style="padding:4px 8px;font-size:11px;white-space:nowrap;">Show</button>
@@ -442,7 +442,7 @@ function aiTrack(name, props){
             </div>
           </div>
           <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Notes</div>
-          <div class="ff"><label>Notes</label><textarea id="cg-notes" rows="3" placeholder="Any additional notes…"></textarea></div>
+          <div class="ff"><label for="cg-notes">Notes</label><textarea id="cg-notes" rows="3" placeholder="Any additional notes…"></textarea></div>
           <div class="form-actions">
             <button class="btn btn-primary" onclick="saveCaregiver()">Save Caregiver</button>
             <button class="btn btn-secondary" onclick="hideCgForm()">Cancel</button>
@@ -560,7 +560,7 @@ function aiTrack(name, props){
     <div class="settings-section">
       <h3>State Billing Rate</h3>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <label style="font-size:13px;color:#243b53;">Government billing rate on invoices:</label>
+        <label style="font-size:13px;color:#243b53;" for="stateRateInput">Government billing rate on invoices:</label>
         <span style="font-size:14px;color:#243b53;">$</span>
         <input id="stateRateInput" type="text" inputmode="decimal" style="width:90px;padding:7px 9px;border:1px solid #d0d8e4;border-radius:5px;font-size:14px;" placeholder="27.00">
         <span style="font-size:13px;color:#6b8dae;">/ hour</span>
@@ -646,7 +646,7 @@ function aiTrack(name, props){
           <table class="client-table entity-table" id="cwTable">
             <thead>
               <tr>
-                <th style="width:32px;"><input type="checkbox" id="cwSelectAll" onchange="toggleAllCaseworkers(this)" style="width:12px;height:12px;cursor:pointer;"></th>
+                <th style="width:32px;"><input type="checkbox" id="cwSelectAll" aria-label="Select all caseworkers" onchange="toggleAllCaseworkers(this)" style="width:12px;height:12px;cursor:pointer;"></th>
                 <th class="sortable resizable" data-sortkey="name" data-col="name" onclick="sortCwBy('name')">Caseworker<span class="resize-handle" onmousedown="startCwColResize(event,'name')"></span></th>
                 <th class="sortable resizable" data-sortkey="phone" data-col="phone" onclick="sortCwBy('phone')">Phone<span class="resize-handle" onmousedown="startCwColResize(event,'phone')"></span></th>
                 <th class="sortable resizable" data-sortkey="email" data-col="email" onclick="sortCwBy('email')">Email<span class="resize-handle" onmousedown="startCwColResize(event,'email')"></span></th>
@@ -687,7 +687,7 @@ function aiTrack(name, props){
           <table class="client-table entity-table" id="supTable">
             <thead>
               <tr>
-                <th style="width:32px;"><input type="checkbox" id="supSelectAll" onchange="toggleAllSupervisors(this)" style="width:12px;height:12px;cursor:pointer;"></th>
+                <th style="width:32px;"><input type="checkbox" id="supSelectAll" aria-label="Select all supervisors" onchange="toggleAllSupervisors(this)" style="width:12px;height:12px;cursor:pointer;"></th>
                 <th class="sortable resizable" data-sortkey="name" data-col="name" onclick="sortSupBy('name')">Supervisor<span class="resize-handle" onmousedown="startSupColResize(event,'name')"></span></th>
                 <th class="sortable resizable" data-sortkey="phone" data-col="phone" onclick="sortSupBy('phone')">Phone<span class="resize-handle" onmousedown="startSupColResize(event,'phone')"></span></th>
                 <th class="sortable resizable" data-sortkey="email" data-col="email" onclick="sortSupBy('email')">Email<span class="resize-handle" onmousedown="startSupColResize(event,'email')"></span></th>
@@ -717,21 +717,21 @@ function aiTrack(name, props){
         <h3 id="cwFormTitle">New Caseworker</h3>
         <input type="hidden" id="cw-editing-id">
         <div class="ff-row" style="grid-template-columns:1fr 1fr 1fr;">
-          <div class="ff"><label>First Name *</label><input id="cw-first-name" placeholder="First name" maxlength="60"></div>
-          <div class="ff"><label>Middle Name</label><input id="cw-middle-name" placeholder="Middle" maxlength="40"></div>
-          <div class="ff"><label>Last Name *</label><input id="cw-last-name" placeholder="Last name" maxlength="60"></div>
+          <div class="ff"><label for="cw-first-name">First Name *</label><input id="cw-first-name" placeholder="First name" maxlength="60"></div>
+          <div class="ff"><label for="cw-middle-name">Middle Name</label><input id="cw-middle-name" placeholder="Middle" maxlength="40"></div>
+          <div class="ff"><label for="cw-last-name">Last Name *</label><input id="cw-last-name" placeholder="Last name" maxlength="60"></div>
         </div>
         <div class="ff-row">
-          <div class="ff"><label>Nickname / Goes By</label><input id="cw-nickname" placeholder="Optional" maxlength="40"></div>
-          <div class="ff"><label>Agency</label><input id="cw-agency" placeholder="e.g. MDHHS" maxlength="80"></div>
+          <div class="ff"><label for="cw-nickname">Nickname / Goes By</label><input id="cw-nickname" placeholder="Optional" maxlength="40"></div>
+          <div class="ff"><label for="cw-agency">Agency</label><input id="cw-agency" placeholder="e.g. MDHHS" maxlength="80"></div>
         </div>
         <div class="ff-row">
-          <div class="ff"><label>Phone</label><input id="cw-phone" placeholder="(555) 555-5555" maxlength="20"></div>
-          <div class="ff"><label>Fax</label><input id="cw-fax" placeholder="(555) 555-5555" maxlength="20"></div>
+          <div class="ff"><label for="cw-phone">Phone</label><input id="cw-phone" placeholder="(555) 555-5555" maxlength="20"></div>
+          <div class="ff"><label for="cw-fax">Fax</label><input id="cw-fax" placeholder="(555) 555-5555" maxlength="20"></div>
         </div>
-        <div class="ff"><label>Email</label><input id="cw-email" placeholder="worker@michigan.gov" maxlength="80"></div>
+        <div class="ff"><label for="cw-email">Email</label><input id="cw-email" placeholder="worker@michigan.gov" maxlength="80"></div>
         <div class="ff">
-          <label>Supervisor <span style="font-weight:400;font-size:10px;color:#8ca0b4;">(CC'd on monthly invoice emails when set)</span></label>
+          <label for="cw-supervisor">Supervisor <span style="font-weight:400;font-size:10px;color:#8ca0b4;">(CC'd on monthly invoice emails when set)</span></label>
           <div style="display:flex;gap:6px;align-items:center;">
             <select id="cw-supervisor" style="flex:1;"><option value="">— None —</option></select>
             <button type="button" class="btn btn-secondary btn-sm" onclick="openSupervisorModal()" style="white-space:nowrap;">+ Add</button>
@@ -739,17 +739,17 @@ function aiTrack(name, props){
           </div>
         </div>
         <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Address</div>
-        <div class="ff"><label>Street</label><input id="cw-street" placeholder="Street address" maxlength="120"></div>
+        <div class="ff"><label for="cw-street">Street</label><input id="cw-street" placeholder="Street address" maxlength="120"></div>
         <div class="ff-row">
-          <div class="ff"><label>City</label><input id="cw-city" placeholder="City" maxlength="60"></div>
-          <div class="ff"><label>State</label><input id="cw-state" placeholder="MI" maxlength="30"></div>
+          <div class="ff"><label for="cw-city">City</label><input id="cw-city" placeholder="City" maxlength="60"></div>
+          <div class="ff"><label for="cw-state">State</label><input id="cw-state" placeholder="MI" maxlength="30"></div>
         </div>
         <div class="ff-row">
-          <div class="ff"><label>ZIP</label><input id="cw-zip" placeholder="ZIP" maxlength="10" oninput="lookupZip('cw-zip','cw-city','cw-state','cw-county')"></div>
-          <div class="ff"><label>County</label><input id="cw-county" placeholder="County" maxlength="60"></div>
+          <div class="ff"><label for="cw-zip">ZIP</label><input id="cw-zip" placeholder="ZIP" maxlength="10" oninput="lookupZip('cw-zip','cw-city','cw-state','cw-county')"></div>
+          <div class="ff"><label for="cw-county">County</label><input id="cw-county" placeholder="County" maxlength="60"></div>
         </div>
         <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Notes</div>
-        <div class="ff"><label>Notes</label><textarea id="cw-notes" rows="3" placeholder="Any additional notes…"></textarea></div>
+        <div class="ff"><label for="cw-notes">Notes</label><textarea id="cw-notes" rows="3" placeholder="Any additional notes…"></textarea></div>
         <div class="form-actions">
           <button class="btn btn-primary" onclick="saveCaseworker()">Save Caseworker</button>
           <button class="btn btn-secondary" onclick="hideCaseworkerForm()">Cancel</button>
@@ -969,7 +969,7 @@ function aiTrack(name, props){
 
 <!-- NEW INVOICE CHOICE MODAL -->
 <div class="modal-overlay" id="newInvChoiceModal">
-  <div class="modal-box" style="max-width:420px;">
+  <div class="modal-box" style="max-width:420px;" role="dialog" aria-modal="true">
     <h3>New Invoice</h3>
     <p style="margin-bottom:16px;font-size:13px;color:#4a6a8a;">Start from scratch or copy tasks from the most recent invoice?</p>
     <div style="display:flex;flex-direction:column;gap:10px;">
@@ -988,7 +988,7 @@ function aiTrack(name, props){
 
 <!-- WORKFLOW MODAL -->
 <div class="modal-overlay" id="workflowModal">
-  <div class="modal-box" style="max-width:520px;">
+  <div class="modal-box" style="max-width:520px;" role="dialog" aria-modal="true">
     <h3>Create Workflow</h3>
     <p style="margin-bottom:12px;font-size:13px;color:#4a6a8a;">Build a sequence of tasks with due dates. Each step links to a client.</p>
     <div style="margin-bottom:10px;">
@@ -1013,14 +1013,14 @@ function aiTrack(name, props){
 
 <!-- EMAIL COMPOSER MODAL -->
 <div class="modal-overlay" id="emailComposerModal">
-  <div class="modal-box" style="max-width:560px;">
+  <div class="modal-box" style="max-width:560px;" role="dialog" aria-modal="true">
     <h3>Send Email</h3>
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
-      <div><label style="font-size:11px;color:#6b8dae;display:block;margin-bottom:3px;">To</label>
+      <div><label style="font-size:11px;color:#6b8dae;display:block;margin-bottom:3px;" for="emailTo">To</label>
         <input id="emailTo" placeholder="recipient@email.com" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;"></div>
-      <div><label style="font-size:11px;color:#6b8dae;display:block;margin-bottom:3px;">Subject</label>
+      <div><label style="font-size:11px;color:#6b8dae;display:block;margin-bottom:3px;" for="emailSubject">Subject</label>
         <input id="emailSubject" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;"></div>
-      <div><label style="font-size:11px;color:#6b8dae;display:block;margin-bottom:3px;">Message</label>
+      <div><label style="font-size:11px;color:#6b8dae;display:block;margin-bottom:3px;" for="emailBody">Message</label>
         <textarea id="emailBody" rows="6" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;resize:vertical;"></textarea></div>
     </div>
     <div style="background:#e8f4fb;border-radius:5px;padding:8px 12px;font-size:11px;color:#1565a0;margin-bottom:12px;">
@@ -1035,7 +1035,7 @@ function aiTrack(name, props){
 
 <!-- ALL INVOICES MODAL -->
 <div class="modal-overlay" id="allInvoicesModal">
-  <div class="modal-box" style="max-width:680px;width:95%;">
+  <div class="modal-box" style="max-width:680px;width:95%;" role="dialog" aria-modal="true">
     <h3 id="allInvModalTitle">All Invoices</h3>
     <p style="margin-bottom:10px;" id="allInvModalSubtitle"></p>
     <div id="allInvModalList" style="max-height:420px;overflow-y:auto;"></div>
@@ -1109,7 +1109,7 @@ function aiTrack(name, props){
 
 <!-- CONFIRM MODAL — replaces browser confirm() popups -->
 <div class="modal-overlay" id="confirmModal">
-  <div class="modal-box">
+  <div class="modal-box" role="dialog" aria-modal="true">
     <h3 id="confirmTitle">Confirm</h3>
     <p id="confirmMessage" style="font-size:13px;color:#1a2b45;margin:8px 0 14px;white-space:pre-line;"></p>
     <div class="modal-row" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
@@ -1122,18 +1122,18 @@ function aiTrack(name, props){
 
 <!-- TASK EDIT MODAL — used for editing, creating follow-ups, and adding tasks -->
 <div class="modal-overlay" id="taskEditModal">
-  <div class="modal-box">
+  <div class="modal-box" role="dialog" aria-modal="true">
     <h3 id="taskEditTitle">Edit Task</h3>
     <p id="taskEditSubtitle" style="font-size:12px;color:#5a7296;margin:6px 0 12px;"></p>
-    <label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Task name</label>
+    <label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;" for="taskEditName">Task name</label>
     <input id="taskEditName" type="text" placeholder="What needs to be done?" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:14px;font-family:Arial,sans-serif;outline:none;box-sizing:border-box;margin-bottom:12px;">
-    <label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Client <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#8ca0b4;">(optional)</span></label>
+    <label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;" for="taskEditClient">Client <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#8ca0b4;">(optional)</span></label>
     <select id="taskEditClient" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:12px;background:#fff;">
       <option value="">— No client —</option>
     </select>
-    <label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Due date <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#8ca0b4;">(optional)</span></label>
+    <label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;" for="taskEditDue">Due date <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#8ca0b4;">(optional)</span></label>
     <input id="taskEditDue" type="date" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:12px;">
-    <label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Note <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#8ca0b4;">(optional)</span></label>
+    <label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;" for="taskEditNote">Note <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#8ca0b4;">(optional)</span></label>
     <textarea id="taskEditNote" rows="3" placeholder="Any details or context…" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;box-sizing:border-box;resize:vertical;"></textarea>
     <div class="modal-row" style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
       <button class="btn btn-secondary" id="taskEditCancelBtn">Cancel</button>
@@ -1144,7 +1144,7 @@ function aiTrack(name, props){
 
 <!-- PROMPT MODAL — replaces browser prompt() popups -->
 <div class="modal-overlay" id="promptModal">
-  <div class="modal-box">
+  <div class="modal-box" role="dialog" aria-modal="true">
     <h3 id="promptTitle">Enter value</h3>
     <p id="promptMessage" style="font-size:13px;color:#1a2b45;margin:8px 0 8px;"></p>
     <textarea id="promptInput" rows="3" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;box-sizing:border-box;resize:vertical;"></textarea>
@@ -1157,7 +1157,7 @@ function aiTrack(name, props){
 
 <!-- PICK SIG MODAL -->
 <div class="modal-overlay" id="pickSigModal">
-  <div class="modal-box">
+  <div class="modal-box" role="dialog" aria-modal="true">
     <h3>Choose Signature</h3>
     <p>Select which signature to place on the invoice.</p>
     <div id="pickSigList" style="display:flex;flex-direction:column;gap:8px;max-height:260px;overflow-y:auto;"></div>
@@ -1194,7 +1194,7 @@ function aiTrack(name, props){
     </div>
     <div class="monthly-inv-body">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid #f0f3f7;flex-wrap:wrap;">
-        <label style="font-size:13px;font-weight:600;color:#1a2b45;white-space:nowrap;">Billing Period:</label>
+        <label style="font-size:13px;font-weight:600;color:#1a2b45;white-space:nowrap;" for="monthlyInvPeriod">Billing Period:</label>
         <input id="monthlyInvPeriod" type="text" placeholder="MM/YYYY" maxlength="7"
           style="padding:6px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;width:110px;"
           oninput="onMonthlyPeriodInput(this)" onblur="onMonthlyPeriodBlur(this)"

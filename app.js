@@ -843,7 +843,7 @@ function renderInfoPane(){
     var d=document.createElement('div');d.className='info-field'+(full?' full':'');
     // autocomplete=off: keep PHI (DL, phone, email, address, medicaid id) out of the
     // browser's form-autofill store, which lives outside the app and survives the idle-wipe.
-    d.innerHTML='<label>'+label+'</label><input id="'+id+'" value="'+esc(val)+'" autocomplete="off" oninput="unsavedChanges=true;">';
+    d.innerHTML='<label for="'+id+'">'+label+'</label><input id="'+id+'" value="'+esc(val)+'" autocomplete="off" oninput="unsavedChanges=true;">';
     g.appendChild(d);
   }
   // Helper for divider
@@ -853,15 +853,15 @@ function renderInfoPane(){
 
   // Name row: First / Middle / Last
   var dName=document.createElement('div');dName.className='info-field-row full';dName.style.gridTemplateColumns='1fr 1fr 1fr';
-  dName.innerHTML='<div class="info-field"><label>First Name *</label><input id="ei-first" value="'+esc(storedFirst)+'" oninput="unsavedChanges=true;"></div>'+
-    '<div class="info-field"><label>Middle Name</label><input id="ei-middle" value="'+esc(prof.middleName||'')+'" oninput="unsavedChanges=true;"></div>'+
-    '<div class="info-field"><label>Last Name *</label><input id="ei-last" value="'+esc(storedLast)+'" oninput="unsavedChanges=true;"></div>';
+  dName.innerHTML='<div class="info-field"><label for="ei-first">First Name *</label><input id="ei-first" value="'+esc(storedFirst)+'" oninput="unsavedChanges=true;"></div>'+
+    '<div class="info-field"><label for="ei-middle">Middle Name</label><input id="ei-middle" value="'+esc(prof.middleName||'')+'" oninput="unsavedChanges=true;"></div>'+
+    '<div class="info-field"><label for="ei-last">Last Name *</label><input id="ei-last" value="'+esc(storedLast)+'" oninput="unsavedChanges=true;"></div>';
   g.appendChild(dName);
 
   // Nickname + Status row
   var dNickSt=document.createElement('div');dNickSt.className='info-field-row full';
-  dNickSt.innerHTML='<div class="info-field"><label>Nickname / Goes By</label><input id="ei-nickname" value="'+esc(prof.nickname||'')+'" oninput="unsavedChanges=true;"></div>'+
-    '<div class="info-field"><label>Client Status</label><select id="ei-status">'+
+  dNickSt.innerHTML='<div class="info-field"><label for="ei-nickname">Nickname / Goes By</label><input id="ei-nickname" value="'+esc(prof.nickname||'')+'" oninput="unsavedChanges=true;"></div>'+
+    '<div class="info-field"><label for="ei-status">Client Status</label><select id="ei-status">'+
       ['active','inactive','lost','terminated'].map(function(s){return '<option value="'+s+'"'+((prof.clientStatus||'active')===s?' selected':'')+'>'+(s==='inactive'?'In Progress':s.charAt(0).toUpperCase()+s.slice(1))+'</option>';}).join('')+
     '</select></div>';
   g.appendChild(dNickSt);
@@ -869,11 +869,11 @@ function renderInfoPane(){
   mkField('ei-medicaid','Medicaid ID',prof.medicaidId||'',false);
   // Date of Birth — needed on DHS-390 / MDHHS-6200 / MSA-4676 state forms
   var dDob=document.createElement('div');dDob.className='info-field';
-  dDob.innerHTML='<label>Date of Birth</label><input id="ei-dob" type="date" value="'+esc(prof.dob||'')+'" autocomplete="off" oninput="unsavedChanges=true;">';
+  dDob.innerHTML='<label for="ei-dob">Date of Birth</label><input id="ei-dob" type="date" value="'+esc(prof.dob||'')+'" autocomplete="off" oninput="unsavedChanges=true;">';
   g.appendChild(dDob);
   var dGender=document.createElement('div');dGender.className='info-field';
   var gv=prof.gender||'';
-  dGender.innerHTML='<label>Gender</label><select id="ei-gender" onchange="unsavedChanges=true;">'+
+  dGender.innerHTML='<label for="ei-gender">Gender</label><select id="ei-gender" onchange="unsavedChanges=true;">'+
     '<option value=""'+(gv===''?' selected':'')+'>—</option>'+
     '<option value="Male"'+(gv==='Male'?' selected':'')+'>Male</option>'+
     '<option value="Female"'+(gv==='Female'?' selected':'')+'>Female</option>'+
@@ -882,12 +882,12 @@ function renderInfoPane(){
   // Hourly Rate: numeric-guarded (formatRate) like caregiver pay, so it can't hold
   // free text (defense-in-depth alongside the esc() on the overview render).
   var dRate=document.createElement('div');dRate.className='info-field';
-  dRate.innerHTML='<label>Hourly Rate</label><input id="ei-rate" value="'+esc(prof.hourlyRate||'')+'" inputmode="decimal" oninput="formatRate(this);unsavedChanges=true;">';
+  dRate.innerHTML='<label for="ei-rate">Hourly Rate</label><input id="ei-rate" value="'+esc(prof.hourlyRate||'')+'" inputmode="decimal" oninput="formatRate(this);unsavedChanges=true;">';
   g.appendChild(dRate);
   mkField('ei-dl',"Driver's License #",prof.driversLicense||'',false);
   // SSN masked by default; reveals while the field is focused, re-masks on blur
   var dSsn=document.createElement('div');dSsn.className='info-field';
-  dSsn.innerHTML='<label>Social Security #</label>'+
+  dSsn.innerHTML='<label for="ei-ssn">Social Security #</label>'+
     '<input id="ei-ssn" type="password" autocomplete="off" maxlength="11" placeholder="XXX-XX-XXXX" value="'+esc(prof.ssn||'')+'" oninput="formatSSN(this);unsavedChanges=true;" onfocus="this.type=\'text\'" onblur="this.type=\'password\'">';
   g.appendChild(dSsn);
   mkField('ei-phone','Client Phone',prof.phone||'',false);
@@ -896,27 +896,27 @@ function renderInfoPane(){
 
   // City + State row
   var dCityState=document.createElement('div');dCityState.className='info-field-row full';
-  dCityState.innerHTML='<div class="info-field"><label>City</label><input id="ei-city" value="'+esc(prof.city||'')+'" oninput="unsavedChanges=true;"></div>'+
-    '<div class="info-field"><label>State</label><input id="ei-state" value="'+esc(prof.state||'')+'" oninput="unsavedChanges=true;"></div>';
+  dCityState.innerHTML='<div class="info-field"><label for="ei-city">City</label><input id="ei-city" value="'+esc(prof.city||'')+'" oninput="unsavedChanges=true;"></div>'+
+    '<div class="info-field"><label for="ei-state">State</label><input id="ei-state" value="'+esc(prof.state||'')+'" oninput="unsavedChanges=true;"></div>';
   g.appendChild(dCityState);
 
   // ZIP + County row
   var dZipCounty=document.createElement('div');dZipCounty.className='info-field-row full';
-  dZipCounty.innerHTML='<div class="info-field"><label>ZIP</label><input id="ei-zip" value="'+esc(prof.zip||'')+'" oninput="unsavedChanges=true;lookupZip(\'ei-zip\',\'ei-city\',\'ei-state\',\'ei-county\')"></div>'+
-    '<div class="info-field"><label>County</label><input id="ei-county" value="'+esc(prof.county||'')+'" oninput="unsavedChanges=true;"></div>';
+  dZipCounty.innerHTML='<div class="info-field"><label for="ei-zip">ZIP</label><input id="ei-zip" value="'+esc(prof.zip||'')+'" oninput="unsavedChanges=true;lookupZip(\'ei-zip\',\'ei-city\',\'ei-state\',\'ei-county\')"></div>'+
+    '<div class="info-field"><label for="ei-county">County</label><input id="ei-county" value="'+esc(prof.county||'')+'" oninput="unsavedChanges=true;"></div>';
   g.appendChild(dZipCounty);
 
   mkDivider('Assignments');
 
   // Service Start Date — moved ABOVE caregiver per user
   var dStart=document.createElement('div');dStart.className='info-field full';
-  dStart.innerHTML='<label>Service Start Date <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(prevents missing-invoice warnings for months before this date)</span></label><input type="date" id="ei-start-date" value="'+esc(prof.startDate||'')+'" oninput="unsavedChanges=true;">';
+  dStart.innerHTML='<label for="ei-start-date">Service Start Date <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(prevents missing-invoice warnings for months before this date)</span></label><input type="date" id="ei-start-date" value="'+esc(prof.startDate||'')+'" oninput="unsavedChanges=true;">';
   g.appendChild(dStart);
 
   // Caregiver + Live-In side by side
   var dCgRow=document.createElement('div');dCgRow.className='info-field-row full';
   var cgName='';var cgsMap=getCaregivers();if(prof.caregiverId&&cgsMap[prof.caregiverId])cgName=cgsMap[prof.caregiverId].name;
-  dCgRow.innerHTML='<div class="info-field"><label>Assigned Caregiver</label>'+
+  dCgRow.innerHTML='<div class="info-field"><label for="ei-caregiver-search">Assigned Caregiver</label>'+
       '<div style="display:flex;align-items:center;gap:6px;position:relative;">'+
         '<div style="flex:1;position:relative;">'+
           '<input id="ei-caregiver-search" placeholder="Click to browse, or type to search…" maxlength="80" autocomplete="off" value="'+esc(cgName)+'" oninput="cgSearch(this,\'ei-caregiver-val\',\'ei-caregiver-drop\');unsavedChanges=true;" onfocus="cgSearch(this,\'ei-caregiver-val\',\'ei-caregiver-drop\')" onblur="setTimeout(function(){var d=document.getElementById(\'ei-caregiver-drop\');if(d)d.style.display=\'none\';},200)" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;">'+
@@ -934,7 +934,7 @@ function renderInfoPane(){
   // Caseworker searchable autocomplete + Open button
   var dCw=document.createElement('div');dCw.className='info-field full';
   var cwName=prof.worker||'';
-  dCw.innerHTML='<label>Caseworker</label>'+
+  dCw.innerHTML='<label for="ei-worker-search">Caseworker</label>'+
     '<div style="display:flex;align-items:center;gap:6px;position:relative;">'+
       '<div style="flex:1;position:relative;">'+
         '<input id="ei-worker-search" placeholder="Click to browse, or type to search…" maxlength="80" autocomplete="off" value="'+esc(cwName)+'" oninput="cwSearch(this,\'ei-worker-val\',\'ei-worker-drop\');unsavedChanges=true;" onfocus="cwSearch(this,\'ei-worker-val\',\'ei-worker-drop\')" onblur="setTimeout(function(){var d=document.getElementById(\'ei-worker-drop\');if(d)d.style.display=\'none\';},200)" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;">'+
@@ -1269,7 +1269,7 @@ function openDocEditModal(index){
   ov.innerHTML='<div class="modal-box" style="max-width:380px;">'+
     '<h3>Edit Document</h3>'+
     '<p>Rename this document or change its category.</p>'+
-    '<label class="qc-l">Name</label><input id="de-name" class="qc-i" maxlength="120" value="'+esc(d.displayName||d.name||'')+'">'+
+    '<label class="qc-l" for="de-name">Name</label><input id="de-name" class="qc-i" maxlength="120" value="'+esc(d.displayName||d.name||'')+'">'+
     docCategoryFieldHtml('de-cat',_docCatLabel(d.category))+
     '<div class="modal-row"><button class="btn btn-primary" id="de-save">Save</button><button class="btn btn-secondary" id="de-cancel">Cancel</button></div>'+
   '</div>';
@@ -1324,7 +1324,7 @@ function _docFileIcon(ext){
 // Shared modern document uploader (drop zone + category combobox + scan) for all 3 panes.
 function docCategoryFieldHtml(id,value){
   var chips=DOC_CATS.map(function(c){return '<button type="button" class="doc-chip" onclick="var e=document.getElementById(\''+id+'\');if(e){e.value=this.textContent;e.focus();}">'+esc(c[1])+'</button>';}).join('');
-  return '<div class="doc-field"><label class="doc-flabel">Category</label>'+
+  return '<div class="doc-field"><label class="doc-flabel" for="'+id+'">Category</label>'+
     '<input id="'+id+'" class="doc-input" value="'+esc(value||'Other')+'" placeholder="Type a category, or tap one below" autocomplete="off">'+
     '<div class="doc-chips">'+chips+'</div>'+
   '</div>';
@@ -2022,9 +2022,9 @@ async function openSendForSignatureModal(){
   ov.innerHTML='<div class="modal-box" style="max-width:540px;">'+
     '<h3>📝 Send for Signature</h3>'+
     '<div style="font-size:13px;color:#4a5d7a;margin:8px 0 14px;">Sends <b>'+esc(cg.name||'')+'</b> a secure link to '+esc(cg.email)+'. They verify their DOB, then sign — no CRM login needed.</div>'+
-    '<label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Document</label>'+
+    '<label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;" for="sendSigTemplate">Document</label>'+
     '<select id="sendSigTemplate" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;outline:none;background:#fff;margin-bottom:12px;">'+tplOptions+'</select>'+
-    '<label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Recipient Date of Birth <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#a05a00;">(used to verify identity at signing — 3 wrong attempts locks the link)</span></label>'+
+    '<label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;" for="sendSigDob">Recipient Date of Birth <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#a05a00;">(used to verify identity at signing — 3 wrong attempts locks the link)</span></label>'+
     '<input id="sendSigDob" type="date" value="'+esc(prefillDob)+'" style="width:200px;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;outline:none;margin-bottom:14px;">'+
     '<div style="font-size:11px;color:#8ca0b4;margin-bottom:14px;">Link expires in 14 days. A copy of every signed document is auto-CC\'d to <b>tommy@mybellcare.com</b>.</div>'+
     '<div id="sendSigError" style="display:none;background:#fdeaea;border:1px solid #e7a8a8;border-radius:5px;padding:10px;font-size:12px;color:#7a1f1f;margin-bottom:12px;"></div>'+
@@ -2223,7 +2223,7 @@ function renderCgInfoPane(){
 
   function mkF(id,label,val,full){
     var d=document.createElement('div');d.className='info-field'+(full?' full':'');
-    d.innerHTML='<label>'+label+'</label><input id="'+id+'" value="'+esc(val||'')+'">';
+    d.innerHTML='<label for="'+id+'">'+label+'</label><input id="'+id+'" value="'+esc(val||'')+'">';
     g.appendChild(d);
   }
   function mkDiv(label){
@@ -2237,37 +2237,37 @@ function renderCgInfoPane(){
   var dName=document.createElement('div');dName.className='info-field-row full';dName.style.gridTemplateColumns='1fr 1fr 1fr';
   var storedFirst=cg.firstName||cg.first_name||(cg.name||'').split(' ')[0]||'';
   var storedLast=cg.lastName||cg.last_name||(cg.name||'').split(' ').slice(1).join(' ')||'';
-  dName.innerHTML='<div class="info-field"><label>First Name *</label><input id="cgi-first" value="'+esc(storedFirst)+'"></div>'+
-    '<div class="info-field"><label>Middle Name</label><input id="cgi-middle" value="'+esc(cg.middleName||cg.middle_name||'')+'"></div>'+
-    '<div class="info-field"><label>Last Name *</label><input id="cgi-last" value="'+esc(storedLast)+'"></div>';
+  dName.innerHTML='<div class="info-field"><label for="cgi-first">First Name *</label><input id="cgi-first" value="'+esc(storedFirst)+'"></div>'+
+    '<div class="info-field"><label for="cgi-middle">Middle Name</label><input id="cgi-middle" value="'+esc(cg.middleName||cg.middle_name||'')+'"></div>'+
+    '<div class="info-field"><label for="cgi-last">Last Name *</label><input id="cgi-last" value="'+esc(storedLast)+'"></div>';
   g.appendChild(dName);
 
   // DOB + Gender row (moved up — needed for state forms / identity)
-  mkRow('<div class="info-field"><label>Date of Birth</label><input id="cgi-dob" type="date" value="'+esc(cg.dob||cg.dateOfBirth||'')+'" autocomplete="off"></div>'+
-    '<div class="info-field"><label>Gender</label><select id="cgi-gender"><option value=""'+(!cg.gender?' selected':'')+'>—</option><option value="Male"'+(cg.gender==='Male'?' selected':'')+'>Male</option><option value="Female"'+(cg.gender==='Female'?' selected':'')+'>Female</option></select></div>');
+  mkRow('<div class="info-field"><label for="cgi-dob">Date of Birth</label><input id="cgi-dob" type="date" value="'+esc(cg.dob||cg.dateOfBirth||'')+'" autocomplete="off"></div>'+
+    '<div class="info-field"><label for="cgi-gender">Gender</label><select id="cgi-gender"><option value=""'+(!cg.gender?' selected':'')+'>—</option><option value="Male"'+(cg.gender==='Male'?' selected':'')+'>Male</option><option value="Female"'+(cg.gender==='Female'?' selected':'')+'>Female</option></select></div>');
 
   // Nickname + Status row
-  mkRow('<div class="info-field"><label>Nickname</label><input id="cgi-nickname" value="'+esc(cg.nickname||'')+'"></div>'+
-    '<div class="info-field"><label>Status</label><select id="cgi-status"><option value="active"'+((!cg.status||cg.status==="active")?" selected":"")+'>Active</option><option value="inactive"'+(cg.status==="inactive"?" selected":"")+'>Inactive</option><option value="terminated"'+(cg.status==="terminated"?" selected":"")+'>Terminated</option></select></div>');
+  mkRow('<div class="info-field"><label for="cgi-nickname">Nickname</label><input id="cgi-nickname" value="'+esc(cg.nickname||'')+'"></div>'+
+    '<div class="info-field"><label for="cgi-status">Status</label><select id="cgi-status"><option value="active"'+((!cg.status||cg.status==="active")?" selected":"")+'>Active</option><option value="inactive"'+(cg.status==="inactive"?" selected":"")+'>Inactive</option><option value="terminated"'+(cg.status==="terminated"?" selected":"")+'>Terminated</option></select></div>');
 
   mkF('cgi-phone','Phone',cg.phone,false);
   mkF('cgi-email','Email',cg.email,false);
   mkF('cgi-dl',"Driver's License #",cg.driversLicense,false);
   // SSN masked; reveals while the field is focused, re-masks on blur
   var cgSsnDiv=document.createElement('div');cgSsnDiv.className='info-field';
-  cgSsnDiv.innerHTML='<label>Social Security #</label>'+
+  cgSsnDiv.innerHTML='<label for="cgi-ssn">Social Security #</label>'+
     '<input id="cgi-ssn" type="password" autocomplete="off" maxlength="11" placeholder="XXX-XX-XXXX" value="'+esc(cg.ssn||'')+'" oninput="formatSSN(this);" onfocus="this.type=\'text\'" onblur="this.type=\'password\'">';
   g.appendChild(cgSsnDiv);
   mkF('cgi-street','Street',cg.street||cg.address,true);
-  mkRow('<div class="info-field"><label>City</label><input id="cgi-city" value="'+esc(cg.city||'')+'"></div>'+
-    '<div class="info-field"><label>State</label><input id="cgi-state" value="'+esc(cg.state||'')+'"></div>');
-  mkRow('<div class="info-field"><label>ZIP</label><input id="cgi-zip" value="'+esc(cg.zip||'')+'" oninput="lookupZip(\'cgi-zip\',\'cgi-city\',\'cgi-state\',\'cgi-county\')"></div>'+
-    '<div class="info-field"><label>County</label><input id="cgi-county" value="'+esc(cg.county||'')+'"></div>');
+  mkRow('<div class="info-field"><label for="cgi-city">City</label><input id="cgi-city" value="'+esc(cg.city||'')+'"></div>'+
+    '<div class="info-field"><label for="cgi-state">State</label><input id="cgi-state" value="'+esc(cg.state||'')+'"></div>');
+  mkRow('<div class="info-field"><label for="cgi-zip">ZIP</label><input id="cgi-zip" value="'+esc(cg.zip||'')+'" oninput="lookupZip(\'cgi-zip\',\'cgi-city\',\'cgi-state\',\'cgi-county\')"></div>'+
+    '<div class="info-field"><label for="cgi-county">County</label><input id="cgi-county" value="'+esc(cg.county||'')+'"></div>');
 
-  mkRow('<div class="info-field full"><label>CHAMPS Provider ID <span style="font-weight:400;color:#8ca0b4;">(used on BPHASA-2421)</span></label><input id="cgi-champs" value="'+esc(cg.champsId||cg.champs_id||'')+'" placeholder="e.g. 6221933"></div>');
+  mkRow('<div class="info-field full"><label for="cgi-champs">CHAMPS Provider ID <span style="font-weight:400;color:#8ca0b4;">(used on BPHASA-2421)</span></label><input id="cgi-champs" value="'+esc(cg.champsId||cg.champs_id||'')+'" placeholder="e.g. 6221933"></div>');
   mkRow(
-    '<div class="info-field"><label>MI Login Username <span style="font-weight:400;color:#8ca0b4;">(state portal)</span></label><input id="cgi-milogin-user" value="'+esc(cg.miloginUsername||cg.milogin_username||'')+'" placeholder="username" autocomplete="off"></div>'+
-    '<div class="info-field"><label>MI Login Password</label>'+
+    '<div class="info-field"><label for="cgi-milogin-user">MI Login Username <span style="font-weight:400;color:#8ca0b4;">(state portal)</span></label><input id="cgi-milogin-user" value="'+esc(cg.miloginUsername||cg.milogin_username||'')+'" placeholder="username" autocomplete="off"></div>'+
+    '<div class="info-field"><label for="cgi-milogin-pass">MI Login Password</label>'+
       '<div style="display:flex;gap:4px;align-items:center;">'+
         '<input id="cgi-milogin-pass" type="password" value="" placeholder="•••••• (click Show)" autocomplete="off" style="flex:1;">'+
         '<button type="button" class="btn btn-secondary btn-sm" onclick="revealMilogin(\'cgi-milogin-pass\',this,\''+escJsAttr(activeCgId)+'\')" style="padding:4px 8px;font-size:11px;white-space:nowrap;">Show</button>'+
@@ -2276,9 +2276,9 @@ function renderCgInfoPane(){
   );
 
   mkDiv('Employment');
-  mkRow('<div class="info-field"><label>Hire Date</label><input id="cgi-hire" type="date" value="'+esc(cg.hireDate||'')+'"></div>'+
-    '<div class="info-field"><label>Employment Type</label><select id="cgi-emptype"><option value="full-time"'+(cg.emptype==='full-time'?' selected':'')+'>Full-Time</option><option value="part-time"'+(cg.emptype==='part-time'?' selected':'')+'>Part-Time</option><option value="per-diem"'+(cg.emptype==='per-diem'?' selected':'')+'>Per Diem</option></select></div>');
-  mkRow('<div class="info-field"><label>Pay Rate ($/hr)</label><input id="cgi-pay" value="'+esc(cg.payRate||'')+'" inputmode="decimal" oninput="formatRate(this)"></div>');
+  mkRow('<div class="info-field"><label for="cgi-hire">Hire Date</label><input id="cgi-hire" type="date" value="'+esc(cg.hireDate||'')+'"></div>'+
+    '<div class="info-field"><label for="cgi-emptype">Employment Type</label><select id="cgi-emptype"><option value="full-time"'+(cg.emptype==='full-time'?' selected':'')+'>Full-Time</option><option value="part-time"'+(cg.emptype==='part-time'?' selected':'')+'>Part-Time</option><option value="per-diem"'+(cg.emptype==='per-diem'?' selected':'')+'>Per Diem</option></select></div>');
+  mkRow('<div class="info-field"><label for="cgi-pay">Pay Rate ($/hr)</label><input id="cgi-pay" value="'+esc(cg.payRate||'')+'" inputmode="decimal" oninput="formatRate(this)"></div>');
 
   // Save + Delete buttons
   var actions=document.createElement('div');actions.style.cssText='margin-top:16px;display:flex;gap:8px;';
@@ -2724,10 +2724,10 @@ function openQuickCreate(kind, prefillName, onCreated){
     '<div class="modal-box" style="max-width:380px;">'+
       '<h3>New ' + (isCg ? 'Caregiver' : 'Caseworker') + '</h3>'+
       '<p>Just the essentials — add the rest later on their page.</p>'+
-      '<label class="qc-l">Name</label><input id="qc-name" class="qc-i" maxlength="80" value="'+esc(prefillName||'')+'">'+
-      (isCg ? '' : '<label class="qc-l">Agency</label><input id="qc-agency" class="qc-i" maxlength="80">')+
-      '<label class="qc-l">Phone</label><input id="qc-phone" class="qc-i" maxlength="20" placeholder="(555) 555-5555">'+
-      '<label class="qc-l">Email</label><input id="qc-email" class="qc-i" maxlength="80" placeholder="name@email.com">'+
+      '<label class="qc-l" for="qc-name">Name</label><input id="qc-name" class="qc-i" maxlength="80" value="'+esc(prefillName||'')+'">'+
+      (isCg ? '' : '<label class="qc-l" for="qc-agency">Agency</label><input id="qc-agency" class="qc-i" maxlength="80">')+
+      '<label class="qc-l" for="qc-phone">Phone</label><input id="qc-phone" class="qc-i" maxlength="20" placeholder="(555) 555-5555">'+
+      '<label class="qc-l" for="qc-email">Email</label><input id="qc-email" class="qc-i" maxlength="80" placeholder="name@email.com">'+
       '<div class="modal-row">'+
         '<button class="btn btn-primary" id="qc-save">Create &amp; select</button>'+
         '<button class="btn btn-secondary" id="qc-cancel">Cancel</button>'+
@@ -3340,7 +3340,7 @@ function renderReports(){
   });
   s4.innerHTML='<h3>Clients Missing Invoice for Month</h3>'+
     '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">'+
-      '<label style="font-size:12px;color:#6b8dae;">Check period:</label>'+
+      '<label style="font-size:12px;color:#6b8dae;" for="missingPeriodSelect">Check period:</label>'+
       '<select id="missingPeriodSelect" onchange="updateMissingReport()" style="padding:5px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:12px;font-family:Arial,sans-serif;">'+periodOpts+'</select>'+
       '<input id="missingPeriodCustom" placeholder="or type MM/YYYY" maxlength="7" style="padding:5px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:12px;font-family:Arial,sans-serif;width:120px;" onblur="updateMissingReport(true)" onkeydown="if(event.key===\'Enter\')updateMissingReport(true)">'+
     '</div>'+
@@ -4194,9 +4194,22 @@ function applyStates(states){
 
 // FIX #6: copyMonth preserves clientName and medicaidId
 // ── Toast ─────────────────────────────────────────────────────
+// a11y: announce a message to screen readers via a visually-hidden aria-live region, so
+// toasts / "Saved ✓" / "Save failed" (visual-only otherwise) are spoken. WCAG 4.1.3.
+function _ariaAnnounce(msg){
+  var r=document.getElementById('ariaLive');
+  if(!r){
+    r=document.createElement('div');r.id='ariaLive';
+    r.setAttribute('aria-live','polite');r.setAttribute('role','status');
+    r.style.cssText='position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;';
+    document.body.appendChild(r);
+  }
+  r.textContent='';setTimeout(function(){r.textContent=msg;},50); // clear+set so repeats re-announce
+}
 function showToast(msg,ms){
   var t=document.getElementById('lhcaToast');if(!t){t=document.createElement('div');t.id='lhcaToast';t.className='lhca-toast';document.body.appendChild(t);}
   t.textContent=msg;t.classList.add('show');
+  _ariaAnnounce(msg);
   clearTimeout(t._tid);t._tid=setTimeout(function(){t.classList.remove('show');},ms||3500);
 }
 // ── Save-status toast — used by every API save path so failures are never silent ──
@@ -4218,12 +4231,14 @@ function _showSaveStatus(state,label,onRetry){
   } else if(state==='saved'){
     _saveStatusEl.style.borderColor='#b9e4c9';_saveStatusEl.style.background='#eef9f1';
     _saveStatusEl.innerHTML='<span style="color:#1a7740;font-weight:700;">✓</span><span style="color:#1a7740;">Saved '+esc(label)+'</span>';
+    _ariaAnnounce('Saved '+label);
     clearTimeout(_saveStatusEl._t);_saveStatusEl._t=setTimeout(function(){_saveStatusEl.style.display='none';},2800);
   } else if(state==='failed'){
     _saveStatusEl.style.borderColor='#f0c0c0';_saveStatusEl.style.background='#fdecec';
     _saveStatusEl.innerHTML='<span style="color:#a00;font-weight:700;">✗</span><span style="color:#a00;flex:1;">Save failed: '+esc(label)+'</span>'+
       (onRetry?'<button class="btn btn-secondary btn-sm" style="padding:4px 10px;" id="_sstRetryBtn">Retry</button>':'')+
-      '<button style="background:none;border:none;color:#a00;cursor:pointer;font-size:14px;padding:0 4px;" onclick="document.getElementById(\'saveStatusToast\').style.display=\'none\';">✕</button>';
+      '<button style="background:none;border:none;color:#a00;cursor:pointer;font-size:14px;padding:0 4px;" onclick="document.getElementById(\'saveStatusToast\').style.display=\'none\';" aria-label="Dismiss">✕</button>';
+    _ariaAnnounce('Save failed: '+label);
     if(onRetry){
       var btn=document.getElementById('_sstRetryBtn');
       if(btn)btn.addEventListener('click',function(){onRetry();});
@@ -6228,9 +6243,9 @@ function _openSupervisorModal(editId){
   overlay.innerHTML=
     '<div class="modal-box" style="max-width:420px;">'+
       '<h3>'+(editId?'Edit Supervisor':'New Supervisor')+'</h3>'+
-      '<div class="ff" style="margin-top:8px;"><label>Name *</label><input id="sup-name" value="'+esc(sup.name||'')+'" placeholder="Full name" maxlength="120"></div>'+
-      '<div class="ff" style="margin-top:8px;"><label>Phone</label><input id="sup-phone" value="'+esc(sup.phone||'')+'" placeholder="(555) 555-5555" maxlength="30"></div>'+
-      '<div class="ff" style="margin-top:8px;"><label>Email <span style="font-weight:400;font-size:10px;color:#8ca0b4;">(used for CC on monthly invoice emails)</span></label><input id="sup-email" type="email" value="'+esc(sup.email||'')+'" placeholder="supervisor@michigan.gov" maxlength="120"></div>'+
+      '<div class="ff" style="margin-top:8px;"><label for="sup-name">Name *</label><input id="sup-name" value="'+esc(sup.name||'')+'" placeholder="Full name" maxlength="120"></div>'+
+      '<div class="ff" style="margin-top:8px;"><label for="sup-phone">Phone</label><input id="sup-phone" value="'+esc(sup.phone||'')+'" placeholder="(555) 555-5555" maxlength="30"></div>'+
+      '<div class="ff" style="margin-top:8px;"><label for="sup-email">Email <span style="font-weight:400;font-size:10px;color:#8ca0b4;">(used for CC on monthly invoice emails)</span></label><input id="sup-email" type="email" value="'+esc(sup.email||'')+'" placeholder="supervisor@michigan.gov" maxlength="120"></div>'+
       '<div class="modal-row" style="justify-content:space-between;">'+
         (editId?'<button class="btn btn-danger btn-sm" onclick="_deleteSupervisorFromModal(\''+escJsAttr(editId)+'\')">Delete</button>':'<span></span>')+
         '<div style="display:flex;gap:8px;">'+
@@ -6858,7 +6873,7 @@ function renderCwInfoPane(){
 
   function mkF(id,label,val,full){
     var d=document.createElement('div');d.className='info-field'+(full?' full':'');
-    d.innerHTML='<label>'+label+'</label><input id="'+id+'" value="'+esc(val||'')+'">';g.appendChild(d);
+    d.innerHTML='<label for="'+id+'">'+label+'</label><input id="'+id+'" value="'+esc(val||'')+'">';g.appendChild(d);
   }
   function mkDiv(label){var d=document.createElement('div');d.className='form-section-divider full';d.innerHTML='<span>'+label+'</span>';g.appendChild(d);}
   function mkRow(html){var d=document.createElement('div');d.className='info-field-row full';d.innerHTML=html;g.appendChild(d);}
@@ -6867,18 +6882,18 @@ function renderCwInfoPane(){
   var firstName=cw.first_name||(cw.name||'').split(' ')[0]||'';
   var lastName=cw.last_name||(cw.name||'').split(' ').slice(1).join(' ')||'';
   var dName=document.createElement('div');dName.className='info-field-row full';dName.style.gridTemplateColumns='1fr 1fr 1fr';
-  dName.innerHTML='<div class="info-field"><label>First Name *</label><input id="cwi-first" value="'+esc(firstName)+'"></div>'+
-    '<div class="info-field"><label>Middle Name</label><input id="cwi-middle" value="'+esc(cw.middle_name||'')+'"></div>'+
-    '<div class="info-field"><label>Last Name *</label><input id="cwi-last" value="'+esc(lastName)+'"></div>';
+  dName.innerHTML='<div class="info-field"><label for="cwi-first">First Name *</label><input id="cwi-first" value="'+esc(firstName)+'"></div>'+
+    '<div class="info-field"><label for="cwi-middle">Middle Name</label><input id="cwi-middle" value="'+esc(cw.middle_name||'')+'"></div>'+
+    '<div class="info-field"><label for="cwi-last">Last Name *</label><input id="cwi-last" value="'+esc(lastName)+'"></div>';
   g.appendChild(dName);
 
   mkF('cwi-agency','Agency',cw.agency,true);
-  mkRow('<div class="info-field"><label>Phone</label><input id="cwi-phone" value="'+esc(cw.phone||'')+'"></div>'+
-    '<div class="info-field"><label>Fax</label><input id="cwi-fax" value="'+esc(cw.fax||'')+'"></div>');
+  mkRow('<div class="info-field"><label for="cwi-phone">Phone</label><input id="cwi-phone" value="'+esc(cw.phone||'')+'"></div>'+
+    '<div class="info-field"><label for="cwi-fax">Fax</label><input id="cwi-fax" value="'+esc(cw.fax||'')+'"></div>');
   mkF('cwi-email','Email',cw.email,true);
   // Supervisor dropdown + Add/Edit buttons (CC'd on monthly invoice emails when set)
   var supDiv=document.createElement('div');supDiv.className='info-field full';
-  supDiv.innerHTML='<label>Supervisor <span style="font-weight:400;font-size:10px;color:#8ca0b4;">(CC\'d on monthly invoice emails when set)</span></label>'+
+  supDiv.innerHTML='<label for="cwi-supervisor">Supervisor <span style="font-weight:400;font-size:10px;color:#8ca0b4;">(CC\'d on monthly invoice emails when set)</span></label>'+
     '<div style="display:flex;gap:6px;align-items:center;">'+
       '<select id="cwi-supervisor" style="flex:1;"></select>'+
       '<button type="button" class="btn btn-secondary btn-sm" onclick="openSupervisorModal()" style="white-space:nowrap;">+ Add</button>'+
@@ -6890,10 +6905,10 @@ function renderCwInfoPane(){
 
   mkDiv('Address');
   mkF('cwi-street','Street',cw.street,true);
-  mkRow('<div class="info-field"><label>City</label><input id="cwi-city" value="'+esc(cw.city||'')+'"></div>'+
-    '<div class="info-field"><label>State</label><input id="cwi-state" value="'+esc(cw.state||'')+'"></div>');
-  mkRow('<div class="info-field"><label>ZIP</label><input id="cwi-zip" value="'+esc(cw.zip||'')+'" oninput="lookupZip(\'cwi-zip\',\'cwi-city\',\'cwi-state\',\'cwi-county\')"></div>'+
-    '<div class="info-field"><label>County</label><input id="cwi-county" value="'+esc(cw.county||'')+'"></div>');
+  mkRow('<div class="info-field"><label for="cwi-city">City</label><input id="cwi-city" value="'+esc(cw.city||'')+'"></div>'+
+    '<div class="info-field"><label for="cwi-state">State</label><input id="cwi-state" value="'+esc(cw.state||'')+'"></div>');
+  mkRow('<div class="info-field"><label for="cwi-zip">ZIP</label><input id="cwi-zip" value="'+esc(cw.zip||'')+'" oninput="lookupZip(\'cwi-zip\',\'cwi-city\',\'cwi-state\',\'cwi-county\')"></div>'+
+    '<div class="info-field"><label for="cwi-county">County</label><input id="cwi-county" value="'+esc(cw.county||'')+'"></div>');
 
   var actions=document.createElement('div');actions.style.cssText='margin-top:16px;display:flex;gap:8px;';
   actions.innerHTML='<button class="btn btn-primary" id="cwSaveInfoBtn" onclick="saveCwInfoPane()">Save Changes</button>'+
@@ -7047,6 +7062,11 @@ function renderCwAuditPane(){
 //  KEYBOARD SHORTCUTS & NAVIGATION GUARD
 // ============================================================
 document.addEventListener('keydown',function(e){
+  // a11y: Escape dismisses the topmost open modal (keyboard users had no way to close one).
+  if(e.key==='Escape'){
+    var open=document.querySelectorAll('.modal-overlay.open');
+    if(open.length){ open[open.length-1].classList.remove('open'); e.preventDefault(); return; }
+  }
   if((e.ctrlKey||e.metaKey)&&e.key==='s'){
     e.preventDefault();
     // Save whichever context is active
@@ -7172,7 +7192,7 @@ function openStateForm(type){
     '<div style="max-width:1100px;margin:0 auto;">'+
       '<div style="font-size:12px;color:#5a7296;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'+
         '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'+
-          '<label style="font-size:12px;font-weight:600;color:#1a2b45;white-space:nowrap;">Pre-fill for:</label>'+
+          '<label style="font-size:12px;font-weight:600;color:#1a2b45;white-space:nowrap;" for="sfClientPicker">Pre-fill for:</label>'+
           '<select id="sfClientPicker" onchange="changeStateFormClient(this.value)" style="padding:5px 8px;border:1px solid #d0d8e4;border-radius:5px;font-size:12px;background:#fff;min-width:220px;">'+clientOpts+'</select>'+
           (activeFormClientName?'<span style="color:#1a7740;font-size:11px;">✓ pre-filled</span>':'<span style="color:#a05a00;font-size:11px;">type directly, or pick a client to auto-fill</span>')+
         '</div>'+
@@ -8097,7 +8117,7 @@ function openGenerateInvoicesModal(){
   ov.id='genInvModal';ov.className='modal-overlay open';
   ov.innerHTML='<div class="modal-box" style="max-width:480px;">'+
     '<h3>Generate Invoices</h3>'+
-    '<label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-top:12px;margin-bottom:4px;">Billing Period</label>'+
+    '<label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-top:12px;margin-bottom:4px;" for="genInvPeriod">Billing Period</label>'+
     '<input id="genInvPeriod" type="text" placeholder="MM/YYYY" maxlength="7" '+
       'style="padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:14px;width:140px;outline:none;" '+
       'oninput="onMonthlyPeriodInput(this)" onblur="onMonthlyPeriodBlur(this);refreshGenInvCount();" '+
