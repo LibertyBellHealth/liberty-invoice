@@ -2175,7 +2175,7 @@ function renderCgAuditPane(){
   if(!pane||!cg)return;
   pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:8px 0;">Loading…</div>';
   if(spToken){
-    fetch(API_BASE+'/audit?client='+encodeURIComponent(cg.name||activeCgId)+'&limit=100',{headers:apiHeaders()})
+    fetch(API_BASE+'/audit/search',{method:'POST',headers:apiHeaders(),body:JSON.stringify({client:cg.name||activeCgId,limit:100})})
       .then(function(r){return r.ok?r.json():Promise.reject();})
       .then(function(rows){
         pane.innerHTML='';
@@ -2826,7 +2826,7 @@ function renderAuditPane(){
   if(spToken){
     // Load from DB for the active client
     pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:8px 0;">Loading audit history…</div>';
-    fetch(API_BASE+'/audit?client='+encodeURIComponent(activeProfileName)+'&limit=100',{headers:apiHeaders()})
+    fetch(API_BASE+'/audit/search',{method:'POST',headers:apiHeaders(),body:JSON.stringify({client:activeProfileName,limit:100})})
       .then(function(r){return r.ok?r.json():Promise.reject(r.status);})
       .then(function(rows){
         pane.innerHTML='';
@@ -7010,7 +7010,7 @@ function renderCwAuditPane(){
   if(!pane||!cw)return;
   pane.innerHTML='<div style="color:#8ca0b4;font-size:13px;padding:8px 0;">Loading…</div>';
   if(spToken){
-    fetch(API_BASE+'/audit?client='+encodeURIComponent(cw.name||activeCwId)+'&limit=100',{headers:apiHeaders()})
+    fetch(API_BASE+'/audit/search',{method:'POST',headers:apiHeaders(),body:JSON.stringify({client:cw.name||activeCwId,limit:100})})
       .then(function(r){return r.ok?r.json():Promise.reject();})
       .then(function(rows){
         pane.innerHTML='';
