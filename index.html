@@ -72,8 +72,8 @@ function aiTrack(name, props){
 <!-- ===== LOGIN WALL (shown until MSAL confirms authenticated) ===== -->
 <div id="loginWall" style="position:fixed;inset:0;z-index:99999;background:#1a2b45;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;">
   <div style="color:#fff;font-size:22px;font-weight:700;letter-spacing:0.5px;">Liberty Home Care</div>
-  <div style="color:#8ca0b4;font-size:14px;">Client Manager</div>
-  <div id="loginWallMsg" style="color:#8ca0b4;font-size:13px;margin-top:8px;">Verifying authentication…</div>
+  <div style="color:#9ab5cc;font-size:14px;">Client Manager</div>
+  <div id="loginWallMsg" style="color:#9ab5cc;font-size:13px;margin-top:8px;">Verifying authentication…</div>
   <button id="loginWallBtn" onclick="signIn()" style="display:none;margin-top:8px;padding:10px 28px;background:#185FA5;color:#fff;border:none;border-radius:6px;font-size:15px;font-weight:600;cursor:pointer;">Sign In with Microsoft</button>
 </div>
 
@@ -277,7 +277,7 @@ function aiTrack(name, props){
         <div class="ff"><label for="nc-phone">Phone #</label><input id="nc-phone" placeholder="(555) 555-5555" maxlength="20"></div>
         <div class="ff"><label for="nc-cemail">Client Email</label><input id="nc-cemail" placeholder="client@email.com" maxlength="80"></div>
       </div>
-      <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Address</div>
+      <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;">Address</div>
       <div class="ff"><label for="nc-street">Street</label><input id="nc-street" placeholder="Street address" maxlength="120"></div>
       <div class="ff-row">
         <div class="ff"><label for="nc-city">City</label><input id="nc-city" placeholder="City" maxlength="60"></div>
@@ -287,8 +287,8 @@ function aiTrack(name, props){
         <div class="ff"><label for="nc-zip">ZIP</label><input id="nc-zip" placeholder="ZIP" maxlength="10" oninput="lookupZip('nc-zip','nc-city','nc-state','nc-county')"></div>
         <div class="ff"><label for="nc-county">County</label><input id="nc-county" placeholder="County" maxlength="60"></div>
       </div>
-      <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Assignments</div>
-      <div class="ff"><label for="nc-start-date">Service Start Date <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(prevents "missing invoice" warnings for months before this date)</span></label><input id="nc-start-date" type="date"></div>
+      <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;">Assignments</div>
+      <div class="ff"><label for="nc-start-date">Service Start Date <span style="font-weight:400;font-size:11px;color:#5c7590;">(prevents "missing invoice" warnings for months before this date)</span></label><input id="nc-start-date" type="date"></div>
       <div class="ff-row">
         <div class="ff" style="position:relative;"><label for="nc-caregiver-search">Assigned Caregiver</label>
           <input id="nc-caregiver-search" placeholder="Click to browse, or type to search…" maxlength="80" autocomplete="off" oninput="cgSearch(this,'nc-caregiver-val','nc-caregiver-drop')" onfocus="cgSearch(this,'nc-caregiver-val','nc-caregiver-drop')" onblur="setTimeout(function(){var d=document.getElementById('nc-caregiver-drop');if(d)d.style.display='none';},200)">
@@ -407,7 +407,7 @@ function aiTrack(name, props){
             <div class="ff"><label for="cg-ssn">Social Security #</label>
               <input id="cg-ssn" type="password" placeholder="XXX-XX-XXXX" maxlength="11" autocomplete="off" oninput="formatSSN(this)" onfocus="this.type='text'" onblur="this.type='password'"></div>
           </div>
-          <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Address</div>
+          <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;">Address</div>
           <div class="ff"><label for="cg-street">Street</label><input id="cg-street" placeholder="Street address" maxlength="120"></div>
           <div class="ff-row">
             <div class="ff"><label for="cg-city">City</label><input id="cg-city" placeholder="City" maxlength="60"></div>
@@ -417,7 +417,7 @@ function aiTrack(name, props){
             <div class="ff"><label for="cg-zip">ZIP</label><input id="cg-zip" placeholder="ZIP" maxlength="10" oninput="lookupZip('cg-zip','cg-city','cg-state','cg-county')"></div>
             <div class="ff"><label for="cg-county">County</label><input id="cg-county" placeholder="County" maxlength="60"></div>
           </div>
-          <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Employment</div>
+          <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;">Employment</div>
           <div class="ff-row">
             <div class="ff"><label for="cg-hire">Hire Date</label><input id="cg-hire" type="date"></div>
             <div class="ff"><label for="cg-emptype">Employment Type</label>
@@ -429,11 +429,11 @@ function aiTrack(name, props){
             <div class="ff"></div>
           </div>
           <div class="ff-row">
-            <div class="ff"><label for="cg-champs">CHAMPS Provider ID <span style="font-weight:400;font-size:10px;color:#8ca0b4;">(individual caregiver — used on BPHASA-2421 Live-In form)</span></label><input id="cg-champs" placeholder="Caregiver's CHAMPS ID" maxlength="40"></div>
+            <div class="ff"><label for="cg-champs">CHAMPS Provider ID <span style="font-weight:400;font-size:10px;color:#5c7590;">(individual caregiver — used on BPHASA-2421 Live-In form)</span></label><input id="cg-champs" placeholder="Caregiver's CHAMPS ID" maxlength="40"></div>
             <div class="ff"></div>
           </div>
           <div class="ff-row">
-            <div class="ff"><label for="cg-milogin-user">MI Login Username <span style="font-weight:400;font-size:10px;color:#8ca0b4;">(state portal — CHAMPS / MDHHS)</span></label><input id="cg-milogin-user" placeholder="username" maxlength="120" autocomplete="off"></div>
+            <div class="ff"><label for="cg-milogin-user">MI Login Username <span style="font-weight:400;font-size:10px;color:#5c7590;">(state portal — CHAMPS / MDHHS)</span></label><input id="cg-milogin-user" placeholder="username" maxlength="120" autocomplete="off"></div>
             <div class="ff"><label for="cg-milogin-pass">MI Login Password</label>
               <div style="display:flex;gap:4px;align-items:center;">
                 <input id="cg-milogin-pass" type="password" placeholder="•••••• (click Show)" maxlength="200" autocomplete="off" style="flex:1;">
@@ -441,7 +441,7 @@ function aiTrack(name, props){
               </div>
             </div>
           </div>
-          <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Notes</div>
+          <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;">Notes</div>
           <div class="ff"><label for="cg-notes">Notes</label><textarea id="cg-notes" rows="3" placeholder="Any additional notes…"></textarea></div>
           <div class="form-actions">
             <button class="btn btn-primary" onclick="saveCaregiver()">Save Caregiver</button>
@@ -499,11 +499,11 @@ function aiTrack(name, props){
       <h3>Signatures</h3>
       <div class="sig-stored-list" id="sigStoredList"></div>
       <button class="btn btn-secondary" onclick="openAddSigModal()">+ Add Signature</button>
-      <p style="font-size:11px;color:#8ca0b4;margin-top:10px;">Signatures are stored locally in this browser. When placing a signature on an invoice, you'll choose from saved signatures here.</p>
+      <p style="font-size:11px;color:#5c7590;margin-top:10px;">Signatures are stored locally in this browser. When placing a signature on an invoice, you'll choose from saved signatures here.</p>
     </div>
 
     <div class="settings-section">
-      <h3>Signing Templates <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(documents you send caregivers for e-signature)</span></h3>
+      <h3>Signing Templates <span style="font-weight:400;font-size:11px;color:#5c7590;">(documents you send caregivers for e-signature)</span></h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">
         <input type="file" id="signTplFile" accept="application/pdf" style="flex:1;min-width:200px;font-size:12px;">
         <input type="text" id="signTplName" placeholder="Display name (e.g. Employee Handbook)" maxlength="100" style="flex:1;min-width:200px;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:12px;outline:none;">
@@ -511,21 +511,21 @@ function aiTrack(name, props){
         <button class="btn btn-primary" onclick="uploadSigningTemplate()">Upload</button>
       </div>
       <div id="signTplList" style="max-height:260px;overflow:auto;border:1px solid #e1e5ea;border-radius:6px;font-size:12px;">
-        <div style="padding:14px;color:#8ca0b4;text-align:center;">Loading templates…</div>
+        <div style="padding:14px;color:#5c7590;text-align:center;">Loading templates…</div>
       </div>
-      <p style="font-size:11px;color:#8ca0b4;margin-top:10px;">Upload the PDF version of each onboarding document. Caregivers receive a link via email and sign on a separate page (no CRM login). Drafts are in <code>~/Documents/Claude/onboarding-drafts/</code>.</p>
+      <p style="font-size:11px;color:#5c7590;margin-top:10px;">Upload the PDF version of each onboarding document. Caregivers receive a link via email and sign on a separate page (no CRM login). Drafts are in <code>~/Documents/Claude/onboarding-drafts/</code>.</p>
     </div>
 
     <div class="settings-section">
-      <h3>Email Audit Log <span style="font-weight:400;font-size:11px;color:#8ca0b4;">(HIPAA accounting of disclosures)</span></h3>
+      <h3>Email Audit Log <span style="font-weight:400;font-size:11px;color:#5c7590;">(HIPAA accounting of disclosures)</span></h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
         <button class="btn btn-primary" onclick="downloadEmailAuditCSV()">Download CSV</button>
         <button class="btn btn-secondary" onclick="renderEmailAuditTable()">Refresh</button>
       </div>
       <div id="emailAuditTableWrap" style="max-height:280px;overflow:auto;border:1px solid #e1e5ea;border-radius:6px;font-size:11px;">
-        <div style="padding:14px;color:#8ca0b4;text-align:center;">No log entries yet. Audit log will populate after you send an invoice email.</div>
+        <div style="padding:14px;color:#5c7590;text-align:center;">No log entries yet. Audit log will populate after you send an invoice email.</div>
       </div>
-      <p style="font-size:11px;color:#8ca0b4;margin-top:10px;">Records every PHI-bearing email sent — recipient, caseworker, billing period, clients included, success/failure. Useful for resolving "did you send X?" disputes and HIPAA accounting requirements. Stored locally; download CSV for permanent records.</p>
+      <p style="font-size:11px;color:#5c7590;margin-top:10px;">Records every PHI-bearing email sent — recipient, caseworker, billing period, clients included, success/failure. Useful for resolving "did you send X?" disputes and HIPAA accounting requirements. Stored locally; download CSV for permanent records.</p>
     </div>
 
     <div class="settings-section">
@@ -539,9 +539,9 @@ function aiTrack(name, props){
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed #e1e5ea;">
         <button class="btn btn-primary" onclick="backupToOneDrive()" id="oneDriveBackupBtn">☁ Backup to OneDrive Now</button>
-        <span style="font-size:11px;color:#8ca0b4;align-self:center;line-height:1.5;">Auto-backs up <b>weekly</b> on first sign-in (keeps 26 most recent ~6 months). <b>Manual backups (this button) are kept forever</b> — never auto-deleted. Saves to <b>OneDrive / Liberty Home Care Backups /</b></span>
+        <span style="font-size:11px;color:#5c7590;align-self:center;line-height:1.5;">Auto-backs up <b>weekly</b> on first sign-in (keeps 26 most recent ~6 months). <b>Manual backups (this button) are kept forever</b> — never auto-deleted. Saves to <b>OneDrive / Liberty Home Care Backups /</b></span>
       </div>
-      <p style="font-size:11px;color:#8ca0b4;margin-top:10px;line-height:1.6;">
+      <p style="font-size:11px;color:#5c7590;margin-top:10px;line-height:1.6;">
         <b>JSON</b>: backup for re-import. <span style="color:#1e7e34;">SSN masked by default</span> — opt in to "Include Full SSN" if you need to preserve them across a restore.<br>
         <b>Excel</b>: spreadsheet of all client/invoice/caregiver data. <span style="color:#1e7e34;">SSN auto-masked to last 4 digits.</span><br>
         <b>PDFs</b>: ZIP with one folder per client containing their invoice PDFs (no SSN — invoices don't include SSN by design).
@@ -551,10 +551,10 @@ function aiTrack(name, props){
     <div class="settings-section">
       <h3>Azure Database &amp; Email Sync</h3>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
-        <span id="settingsAuthStatus" style="font-size:13px;color:#6b8dae;">Not signed in</span>
+        <span id="settingsAuthStatus" style="font-size:13px;color:#4d6c88;">Not signed in</span>
         <button class="btn btn-secondary" id="settingsAuthBtn" onclick="signIn()">Sign In</button>
       </div>
-      <p style="font-size:11px;color:#8ca0b4;margin-top:0;">Sign in with your Microsoft account (<b>Tommy@mybellcare.com</b>) to sync client data with Azure SQL and enable in-app email sending via Microsoft Graph. All data is stored in your Azure SQL database — no SharePoint required.</p>
+      <p style="font-size:11px;color:#5c7590;margin-top:0;">Sign in with your Microsoft account (<b>Tommy@mybellcare.com</b>) to sync client data with Azure SQL and enable in-app email sending via Microsoft Graph. All data is stored in your Azure SQL database — no SharePoint required.</p>
     </div>
 
     <div class="settings-section">
@@ -563,11 +563,11 @@ function aiTrack(name, props){
         <label style="font-size:13px;color:#243b53;" for="stateRateInput">Government billing rate on invoices:</label>
         <span style="font-size:14px;color:#243b53;">$</span>
         <input id="stateRateInput" type="text" inputmode="decimal" style="width:90px;padding:7px 9px;border:1px solid #d0d8e4;border-radius:5px;font-size:14px;" placeholder="27.00">
-        <span style="font-size:13px;color:#6b8dae;">/ hour</span>
+        <span style="font-size:13px;color:#4d6c88;">/ hour</span>
         <button class="btn btn-primary" onclick="saveStateRate()">Save</button>
         <span id="stateRateStatus" style="font-size:12px;color:#1a7740;"></span>
       </div>
-      <p style="font-size:11px;color:#8ca0b4;margin-top:8px;">The hourly rate billed to the state on all invoices (default <b>$27.00</b>). This is <b>not</b> the caregiver's pay rate. Update it here whenever the state rate changes — no code change needed.</p>
+      <p style="font-size:11px;color:#5c7590;margin-top:8px;">The hourly rate billed to the state on all invoices (default <b>$27.00</b>). This is <b>not</b> the caregiver's pay rate. Update it here whenever the state rate changes — no code change needed.</p>
     </div>
 
     <div class="settings-section">
@@ -576,7 +576,7 @@ function aiTrack(name, props){
         <button class="btn btn-danger" onclick="clearAllDrafts()">Clear All Drafts</button>
         <button class="btn btn-danger" onclick="clearAllData()">Clear Local Cache</button>
       </div>
-      <p style="font-size:11px;color:#8ca0b4;margin-top:8px;"><b>Local cache only.</b> Clears clients/caregivers/caseworkers/drafts/signatures from this browser. Your Azure SQL database is not affected — data automatically re-downloads on next sign-in. Use this only to force a fresh sync if local data looks stale.</p>
+      <p style="font-size:11px;color:#5c7590;margin-top:8px;"><b>Local cache only.</b> Clears clients/caregivers/caseworkers/drafts/signatures from this browser. Your Azure SQL database is not affected — data automatically re-downloads on next sign-in. Use this only to force a fresh sync if local data looks stale.</p>
     </div>
   </div>
 
@@ -587,7 +587,7 @@ function aiTrack(name, props){
       <button class="btn btn-secondary" onclick="openWorkflowModal()">New Workflow</button>
     </div>
     <div class="todo-panel">
-      <h3>Open Tasks <span id="openTaskCount" style="font-size:11px;color:#8ca0b4;font-weight:normal;text-transform:none;letter-spacing:0;"></span></h3>
+      <h3>Open Tasks <span id="openTaskCount" style="font-size:11px;color:#5c7590;font-weight:normal;text-transform:none;letter-spacing:0;"></span></h3>
       <div id="todoList"></div>
       <div class="todo-add-row">
         <input id="todoText" placeholder="New task…" style="flex:1;min-width:180px;" onkeydown="if(event.key==='Enter')addTodo()">
@@ -600,7 +600,7 @@ function aiTrack(name, props){
       </div>
     </div>
     <div class="todo-panel" style="opacity:0.8;">
-      <h3>Completed <span id="doneTaskCount" style="font-size:11px;color:#8ca0b4;font-weight:normal;text-transform:none;letter-spacing:0;"></span> <button class="btn btn-danger btn-sm" onclick="clearDoneTasks()" style="margin-left:auto;font-size:10px;">Clear Done</button></h3>
+      <h3>Completed <span id="doneTaskCount" style="font-size:11px;color:#5c7590;font-weight:normal;text-transform:none;letter-spacing:0;"></span> <button class="btn btn-danger btn-sm" onclick="clearDoneTasks()" style="margin-left:auto;font-size:10px;">Clear Done</button></h3>
       <div id="todoListDone"></div>
     </div>
   </div>
@@ -731,14 +731,14 @@ function aiTrack(name, props){
         </div>
         <div class="ff"><label for="cw-email">Email</label><input id="cw-email" placeholder="worker@michigan.gov" maxlength="80"></div>
         <div class="ff">
-          <label for="cw-supervisor">Supervisor <span style="font-weight:400;font-size:10px;color:#8ca0b4;">(CC'd on monthly invoice emails when set)</span></label>
+          <label for="cw-supervisor">Supervisor <span style="font-weight:400;font-size:10px;color:#5c7590;">(CC'd on monthly invoice emails when set)</span></label>
           <div style="display:flex;gap:6px;align-items:center;">
             <select id="cw-supervisor" style="flex:1;"><option value="">— None —</option></select>
             <button type="button" class="btn btn-secondary btn-sm" onclick="openSupervisorModal()" style="white-space:nowrap;">+ Add</button>
             <button type="button" id="cw-supervisor-edit-btn" class="btn btn-secondary btn-sm" onclick="editSelectedSupervisor()" style="white-space:nowrap;display:none;">Edit</button>
           </div>
         </div>
-        <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Address</div>
+        <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;">Address</div>
         <div class="ff"><label for="cw-street">Street</label><input id="cw-street" placeholder="Street address" maxlength="120"></div>
         <div class="ff-row">
           <div class="ff"><label for="cw-city">City</label><input id="cw-city" placeholder="City" maxlength="60"></div>
@@ -748,7 +748,7 @@ function aiTrack(name, props){
           <div class="ff"><label for="cw-zip">ZIP</label><input id="cw-zip" placeholder="ZIP" maxlength="10" oninput="lookupZip('cw-zip','cw-city','cw-state','cw-county')"></div>
           <div class="ff"><label for="cw-county">County</label><input id="cw-county" placeholder="County" maxlength="60"></div>
         </div>
-        <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b8dae;">Notes</div>
+        <div style="border-top:1px solid #e8ecf0;margin:14px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;">Notes</div>
         <div class="ff"><label for="cw-notes">Notes</label><textarea id="cw-notes" rows="3" placeholder="Any additional notes…"></textarea></div>
         <div class="form-actions">
           <button class="btn btn-primary" onclick="saveCaseworker()">Save Caseworker</button>
@@ -798,7 +798,7 @@ function aiTrack(name, props){
       <select id="formClientSelect" style="flex:1;min-width:180px;padding:6px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;background:#fff;" onchange="activeFormClientName=this.value">
         <option value="">— Select a client to pre-fill —</option>
       </select>
-      <span style="font-size:11px;color:#8ca0b4;">All fields can be edited after opening</span>
+      <span style="font-size:11px;color:#5c7590;">All fields can be edited after opening</span>
     </div>
     <!-- Form cards -->
     <div class="form-type-card" onclick="openStateForm('dhs390')">
@@ -977,7 +977,7 @@ function aiTrack(name, props){
         <strong>Blank Invoice</strong><br><span style="font-size:11px;font-weight:normal;color:rgba(255,255,255,0.8);">Start fresh — client info pre-filled, no tasks checked</span>
       </button>
       <button class="btn btn-secondary" style="padding:12px;font-size:13px;text-align:left;" id="copyLastInvBtn" onclick="confirmNewInvoice('copy')">
-        <strong>Copy from Last Invoice</strong><br><span id="copyLastInvMeta" style="font-size:11px;color:#6b8dae;"></span>
+        <strong>Copy from Last Invoice</strong><br><span id="copyLastInvMeta" style="font-size:11px;color:#4d6c88;"></span>
       </button>
     </div>
     <div style="margin-top:12px;text-align:right;">
@@ -1016,11 +1016,11 @@ function aiTrack(name, props){
   <div class="modal-box" style="max-width:560px;" role="dialog" aria-modal="true">
     <h3>Send Email</h3>
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
-      <div><label style="font-size:11px;color:#6b8dae;display:block;margin-bottom:3px;" for="emailTo">To</label>
+      <div><label style="font-size:11px;color:#4d6c88;display:block;margin-bottom:3px;" for="emailTo">To</label>
         <input id="emailTo" placeholder="recipient@email.com" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;"></div>
-      <div><label style="font-size:11px;color:#6b8dae;display:block;margin-bottom:3px;" for="emailSubject">Subject</label>
+      <div><label style="font-size:11px;color:#4d6c88;display:block;margin-bottom:3px;" for="emailSubject">Subject</label>
         <input id="emailSubject" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;"></div>
-      <div><label style="font-size:11px;color:#6b8dae;display:block;margin-bottom:3px;" for="emailBody">Message</label>
+      <div><label style="font-size:11px;color:#4d6c88;display:block;margin-bottom:3px;" for="emailBody">Message</label>
         <textarea id="emailBody" rows="6" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;resize:vertical;"></textarea></div>
     </div>
     <div style="background:#e8f4fb;border-radius:5px;padding:8px 12px;font-size:11px;color:#1565a0;margin-bottom:12px;">
@@ -1125,15 +1125,15 @@ function aiTrack(name, props){
   <div class="modal-box" role="dialog" aria-modal="true">
     <h3 id="taskEditTitle">Edit Task</h3>
     <p id="taskEditSubtitle" style="font-size:12px;color:#5a7296;margin:6px 0 12px;"></p>
-    <label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;" for="taskEditName">Task name</label>
+    <label style="display:block;font-size:11px;color:#4d6c88;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;" for="taskEditName">Task name</label>
     <input id="taskEditName" type="text" placeholder="What needs to be done?" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:14px;font-family:Arial,sans-serif;outline:none;box-sizing:border-box;margin-bottom:12px;">
-    <label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;" for="taskEditClient">Client <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#8ca0b4;">(optional)</span></label>
+    <label style="display:block;font-size:11px;color:#4d6c88;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;" for="taskEditClient">Client <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#5c7590;">(optional)</span></label>
     <select id="taskEditClient" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:12px;background:#fff;">
       <option value="">— No client —</option>
     </select>
-    <label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;" for="taskEditDue">Due date <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#8ca0b4;">(optional)</span></label>
+    <label style="display:block;font-size:11px;color:#4d6c88;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;" for="taskEditDue">Due date <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#5c7590;">(optional)</span></label>
     <input id="taskEditDue" type="date" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:12px;">
-    <label style="display:block;font-size:11px;color:#6b8dae;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;" for="taskEditNote">Note <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#8ca0b4;">(optional)</span></label>
+    <label style="display:block;font-size:11px;color:#4d6c88;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;" for="taskEditNote">Note <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#5c7590;">(optional)</span></label>
     <textarea id="taskEditNote" rows="3" placeholder="Any details or context…" style="width:100%;padding:8px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;box-sizing:border-box;resize:vertical;"></textarea>
     <div class="modal-row" style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
       <button class="btn btn-secondary" id="taskEditCancelBtn">Cancel</button>
@@ -1188,7 +1188,7 @@ function aiTrack(name, props){
     <div class="monthly-inv-header">
       <div>
         <div style="font-size:16px;font-weight:700;color:#1a2b45;">Send Monthly Invoices</div>
-        <div style="font-size:12px;color:#6b8dae;margin-top:3px;">Group and email invoices to each caseworker — one email per worker with all their clients</div>
+        <div style="font-size:12px;color:#4d6c88;margin-top:3px;">Group and email invoices to each caseworker — one email per worker with all their clients</div>
       </div>
       <button class="btn btn-secondary btn-sm" onclick="closeMonthlyInvModal()" style="margin-left:16px;flex-shrink:0;">&#10005; Close</button>
     </div>
@@ -1200,7 +1200,7 @@ function aiTrack(name, props){
           oninput="onMonthlyPeriodInput(this)" onblur="onMonthlyPeriodBlur(this)"
           onkeydown="if(event.key==='Enter'){onMonthlyPeriodBlur(this);previewMonthlyInvoices();}">
         <button class="btn btn-primary btn-sm" onclick="previewMonthlyInvoices()">Preview</button>
-        <span style="font-size:11px;color:#8ca0b4;">e.g. <b>04/2026</b>, <b>0426</b>, or <b>042026</b> — sends on May 1st or 2nd</span>
+        <span style="font-size:11px;color:#5c7590;">e.g. <b>04/2026</b>, <b>0426</b>, or <b>042026</b> — sends on May 1st or 2nd</span>
       </div>
       <div id="monthlyInvResults"></div>
     </div>
