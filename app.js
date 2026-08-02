@@ -7067,6 +7067,15 @@ window.addEventListener('beforeunload',function(e){
     (typeof cwUnsavedChanges!=='undefined'&&cwUnsavedChanges);
   if(dirty){e.preventDefault();e.returnValue='';}
 });
+// HIPAA: wipe cached PHI (lhca_* + in-memory SSN/signature caches) when the app is actually
+// being left or the tab closed — so the client roster doesn't sit at rest in the browser
+// profile after the session ends. Internal SPA navigation is hash-based and does NOT fire
+// pagehide, so this only triggers on real unload. On the next visit the roster reloads from
+// the server. Skip when the page is going into bfcache (persisted) since it may be restored.
+window.addEventListener('pagehide',function(e){
+  if(e&&e.persisted)return;
+  try{clearPHIFromStorage();}catch(_){}
+});
 
 // ============================================================
 //  AUTO SESSION TIMEOUT (HIPAA — 15 min inactivity)
