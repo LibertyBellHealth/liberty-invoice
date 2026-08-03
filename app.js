@@ -1114,13 +1114,9 @@ function saveInvNote(input){
   if(p[clientName]&&p[clientName].invoices&&p[clientName].invoices[idx]){
     p[clientName].invoices[idx].invoiceNote=input.value;
     saveProfilesLS(p);
-    // Debounce backend save so we don't slam the API on every keystroke.
-    // Key the timer PER CLIENT: a single shared handle meant that typing a note on client A
-    // then switching to client B within 600ms would clearTimeout A's pending flush, so A's
-    // note reached LS but never the backend and a later reload dropped it.
-    saveInvNote._t=saveInvNote._t||{};
-    clearTimeout(saveInvNote._t[clientName]);
-    saveInvNote._t[clientName]=setTimeout(function(){
+    // Debounce the backend save (per-client key so switching clients can't cancel it), and
+    // register it so a tab-close can flush the pending save (F4).
+    _scheduleNoteSave('inv:'+clientName, function(){
       // Re-read the CURRENT store at flush time (not the keystroke-time snapshot) so a
       // concurrent status/note/reload write in the 600ms window isn't reverted, and use the
       // captured clientName in case the user navigated away.
@@ -1128,7 +1124,7 @@ function saveInvNote(input){
       // D8: surface a failure toast instead of silently saving to LS only.
       var doSave=function(){return surfaceSaveFailure(saveProfileSP(clientName,pNow[clientName],true),'Invoice note',doSave);};
       doSave();
-    },600);
+    });
   }
 }
 function deleteInv(idx){
@@ -1199,14 +1195,13 @@ function renderNotesPane(){
     var clientName=activeProfileName, val=ta.value;
     var pNow=getProfiles();
     if(pNow[clientName]){ pNow[clientName].clientNotes=val; saveProfilesLS(pNow); }
-    renderNotesPane._t=renderNotesPane._t||{};
-    clearTimeout(renderNotesPane._t[clientName]);
-    renderNotesPane._t[clientName]=setTimeout(function(){
+    // Debounce the backend save, but register it so a tab-close can flush it (F4).
+    _scheduleNoteSave('client:'+clientName, function(){
       var p2=getProfiles(); if(!p2[clientName])return;
       // D8: only claim "Saved ✓" after the API resolves; surface failure otherwise.
       var doSave=function(){return flashQuietSave(saveProfileSP(clientName,p2[clientName],true),'notesSavedFlash','Client note',doSave);};
       doSave();
-    },600);
+    });
   };
   ta.addEventListener('input',ta._nl);
   var c=document.getElementById('invNotesContent'),invoices=(prof&&prof.invoices)?prof.invoices:[];
@@ -3413,17 +3408,27 @@ var _ssnMem = Object.create(null);
 // plaintext ssn (see _clientSig) — so it must be kept in memory ONLY, never written to disk,
 // exactly like _ssnMem. Persisting it would leak SSN into localStorage (defeats S8).
 var _clientSyncedMem = Object.create(null);
+// Perf: getProfiles() JSON.parses the ENTIRE profiles store (incl. every invoice data blob)
+// on each call, and a single navigation calls it ~4×. _profilesCache is a TICK-SCOPED cache:
+// it collapses those repeated parses within one synchronous render pass, then self-clears on
+// the next microtask — so it can never serve stale data to a later interaction. saveProfilesLS
+// also clears it immediately, so a write is always reflected.
+var _profilesCache=null;
 function getProfiles(){
+  if(_profilesCache) return _profilesCache;
   try{
     var p=JSON.parse(localStorage.getItem('lhca_profiles')||'{}');
     for(var name in p){ if(p[name]){
       if(_ssnMem[name]!==undefined) p[name].ssn=_ssnMem[name];
       if(_clientSyncedMem[name]!==undefined) p[name]._clientSynced=_clientSyncedMem[name];
     } }
+    _profilesCache=p;
+    Promise.resolve().then(function(){_profilesCache=null;});   // clear at end of this sync pass
     return p;
   }catch(e){return{};}
 }
 function saveProfilesLS(p){
+  _profilesCache=null;   // a write invalidates the read cache immediately
   var out={};
   for(var name in p){
     var prof=p[name];
@@ -3437,6 +3442,26 @@ function saveProfilesLS(p){
   }
   localStorage.setItem('lhca_profiles',JSON.stringify(out));
 }
+// Perf: debounce the list filter inputs so typing doesn't re-parse the whole dataset and
+// rebuild the entire table on every keystroke (~150ms after the last keystroke instead).
+function _debounce(fn, ms){ var t; return function(){ var a=arguments, c=this; clearTimeout(t); t=setTimeout(function(){ fn.apply(c,a); }, ms||150); }; }
+var filterClients     = _debounce(function(){ if(typeof renderClientTable==='function') renderClientTable(); }, 150);
+var filterCaregivers  = _debounce(function(){ if(typeof renderCaregiverGrid==='function') renderCaregiverGrid(); }, 150);
+var filterCaseworkers = _debounce(function(){ if(typeof renderCaseworkerList==='function') renderCaseworkerList(); }, 150);
+var filterSupervisors = _debounce(function(){ if(typeof renderSupervisorList==='function') renderSupervisorList(); }, 150);
+// F4: a note typed then the tab closed within the 600ms debounce was lost — the pending backend
+// save never fired and pagehide's PHI wipe erased the LS copy. Register each debounced note save
+// here so the pagehide/beforeunload handler can FLUSH it (fire the save while the note is still in
+// LS, before the wipe). Best-effort on a hard close, but closes the guaranteed-loss window.
+var _pendingNoteSaves = Object.create(null);
+function _scheduleNoteSave(key, saveFn){
+  var ex=_pendingNoteSaves[key]; if(ex) clearTimeout(ex._t);
+  var entry={};
+  entry._t=setTimeout(function(){ delete _pendingNoteSaves[key]; saveFn(); }, 600);
+  entry.flush=function(){ clearTimeout(entry._t); delete _pendingNoteSaves[key]; saveFn(); };
+  _pendingNoteSaves[key]=entry;
+}
+function _flushPendingNoteSaves(){ Object.keys(_pendingNoteSaves).forEach(function(k){ var e=_pendingNoteSaves[k]; if(e) e.flush(); }); }
 function exportProfiles(){
   var p=getProfiles();if(!Object.keys(p).length){showConfirm('No clients yet.',function(){},{title:'Nothing to Export',okText:'OK',danger:false});return;}
   // Ask whether to include plaintext SSN (default: masked)
@@ -5576,6 +5601,9 @@ function signIn() {
   });
 }
 function clearPHIFromStorage() {
+  // F4: before wiping, fire any pending note save (it reads the note from LS synchronously),
+  // so a note typed just before an idle-wipe / sign-out / tab-close still reaches the backend.
+  try{ if(typeof _flushPendingNoteSaves==='function') _flushPendingNoteSaves(); }catch(_){}
   // Remove ALL PHI/PII from localStorage (HIPAA idle-wipe / sign-out). Wipe every lhca_*
   // key EXCEPT an explicit whitelist of non-PHI *settings*, so a PHI key added later is
   // covered automatically instead of silently surviving. (The old fixed list missed
@@ -5591,6 +5619,7 @@ function clearPHIFromStorage() {
   // _clientSyncedMem holds the dirty-tracking signatures, which embed SSN — wipe it too.
   _ssnMem = Object.create(null);
   _clientSyncedMem = Object.create(null);
+  _profilesCache = null;   // the profiles store was just wiped — drop the read cache too
   if (typeof _cgSsnMem !== 'undefined') _cgSsnMem = Object.create(null);
 }
 function signOut() {
