@@ -644,17 +644,35 @@ function toggleBulkClient(name,cb){
   if(bar){bar.classList.toggle('visible',count>0);var lbl=document.getElementById('ctBulkCount');if(lbl)lbl.textContent=count+' selected';}
 }
 function clearBulkSelect(){bulkSelected={};var bar=document.getElementById('ctBulkBar');if(bar)bar.classList.remove('visible');renderClientTable();}
+// F3: run a batch of saves as QUIET saves and report ONE summary status — so a failure in
+// the middle of a batch can't be visually overwritten by a later "Saved ✓" (which left the
+// failed record un-synced in LS, to be clobbered on the next reload). thunks each return a
+// save promise. On any failure the persistent red toast tells the user how many + which.
+function batchSaveWithSummary(label, thunks){
+  if(!thunks.length)return Promise.resolve({ok:0,fail:0});
+  var ok=0,failed=[];
+  return Promise.all(thunks.map(function(t){
+    return Promise.resolve(t()).then(function(){ok++;},function(){failed.push(t._label||'');});
+  })).then(function(){
+    if(failed.length){
+      var some=failed.filter(Boolean).slice(0,3).join(', ');
+      _showSaveStatus('failed', label+': '+ok+' saved, '+failed.length+' FAILED'+(some?' ('+some+')':'')+' — re-check and save again', null);
+    } else { _showSaveStatus('saved', label+' ('+ok+')'); }
+    return {ok:ok,fail:failed.length};
+  });
+}
 function bulkSetClientStatus(status){
   var names=Object.keys(bulkSelected);if(!names.length)return;
-  var p=getProfiles(),changed=0;
+  var p=getProfiles(),changed=0,thunks=[];
   names.forEach(function(name){
     if(!p[name])return;
     p[name].clientStatus=status;
-    saveProfileSP(name,p[name]);
     addAuditEntry(name,'Client status changed to '+status+' (bulk action)');
+    var th=function(){return saveProfileSP(name,p[name],true);}; th._label=name; thunks.push(th);
     changed++;
   });
   saveProfilesLS(p);
+  batchSaveWithSummary('Status update', thunks);
   logActivity('status','Bulk client status update: '+changed+' set to '+status);
   clearBulkSelect();updateStats();renderClientTable();renderSidebarClients();
   showAlert(changed+' client'+(changed!==1?'s':'')+' set to '+status+'.');
@@ -1174,18 +1192,22 @@ function renderNotesPane(){
   var prof=getProfiles()[activeProfileName],ta=document.getElementById('clientNotesArea');
   ta.value=(prof&&prof.clientNotes)?prof.clientNotes:'';
   if(ta._nl)ta.removeEventListener('input',ta._nl);
-  var t=null;
-  ta._nl=function(){clearTimeout(t);t=setTimeout(function(){
-    var p2=getProfiles();
-    if(p2[activeProfileName]){
-      p2[activeProfileName].clientNotes=ta.value;
-      saveProfilesLS(p2);
-      // Persist to backend too — without this, notes vanished on refresh / other device.
+  ta._nl=function(){
+    // Capture the client NOW — activeProfileName may change before the 600ms flush. And write
+    // LS SYNCHRONOUSLY (not inside the timer) so closing the tab / switching clients within the
+    // debounce can't lose the note. Only the backend save is debounced. (Parity with saveInvNote.)
+    var clientName=activeProfileName, val=ta.value;
+    var pNow=getProfiles();
+    if(pNow[clientName]){ pNow[clientName].clientNotes=val; saveProfilesLS(pNow); }
+    renderNotesPane._t=renderNotesPane._t||{};
+    clearTimeout(renderNotesPane._t[clientName]);
+    renderNotesPane._t[clientName]=setTimeout(function(){
+      var p2=getProfiles(); if(!p2[clientName])return;
       // D8: only claim "Saved ✓" after the API resolves; surface failure otherwise.
-      var doSave=function(){return flashQuietSave(saveProfileSP(activeProfileName,p2[activeProfileName],true),'notesSavedFlash','Client note',doSave);};
+      var doSave=function(){return flashQuietSave(saveProfileSP(clientName,p2[clientName],true),'notesSavedFlash','Client note',doSave);};
       doSave();
-    }
-  },600);};
+    },600);
+  };
   ta.addEventListener('input',ta._nl);
   var c=document.getElementById('invNotesContent'),invoices=(prof&&prof.invoices)?prof.invoices:[];
   if(!invoices.length){c.innerHTML='<div style="color:#5c7590;font-size:13px;">No saved invoices yet.</div>';return;}
@@ -1685,7 +1707,7 @@ function bulkSetCaregiverStatus(status){
   ids.forEach(function(id){if(cgs[id]){cgs[id].status=status;changed++;}});
   saveCaregiversLS(cgs);
   // Persist to backend
-  ids.forEach(function(id){if(cgs[id]&&typeof saveCaregiverAPI==='function'){try{saveCaregiverAPI(id,cgs[id]);}catch(e){}}});
+  batchSaveWithSummary('Caregiver status', ids.filter(function(id){return cgs[id];}).map(function(id){var th=function(){return saveCaregiverAPI(id,cgs[id],true);};th._label=(cgs[id]&&cgs[id].name)||id;return th;}));
   logActivity('status','Bulk caregiver update: '+changed+' set to '+status);
   clearCgBulkSelect();updateStats();
   showAlert(changed+' caregiver'+(changed!==1?'s':'')+' updated to '+status+'.');
@@ -5658,12 +5680,10 @@ function revalidate(force){
   _lastRevalidate=now;
   // Need an auth token to actually fetch — silently skip on cold start
   if(!spToken)return;
-  // Fire all entity loads in parallel; each one re-renders its respective UI
+  // loadProfilesAPI already fans out to caregivers/caseworkers/supervisors/tasks/signatures
+  // internally, so calling those here too double-fetched each of them every revalidate. Just
+  // call loadProfilesAPI — it re-renders all the entity UIs.
   if(typeof loadProfilesAPI==='function')loadProfilesAPI();
-  if(typeof loadCaregiversAPI==='function')loadCaregiversAPI();
-  if(typeof loadCaseworkersAPI==='function')loadCaseworkersAPI();
-  if(typeof loadSupervisorsAPI==='function')loadSupervisorsAPI();
-  if(typeof loadTasksAPI==='function')loadTasksAPI();
 }
 
 // ── LOAD all clients + invoices from Azure SQL (bulk fetch) ───────────────
@@ -8445,7 +8465,7 @@ function _doAutoGenerateInvoices(eligible,period){
     generated++;
   });
   saveProfilesLS(profiles);
-  eligible.forEach(function(e){if(profiles[e.name])saveProfileSP(e.name,profiles[e.name]);});
+  batchSaveWithSummary('Auto-generate', eligible.filter(function(e){return profiles[e.name];}).map(function(e){var th=function(){return saveProfileSP(e.name,profiles[e.name],true);};th._label=e.name;return th;}));
   if(undoBatch.invoices.length)_pushAutoGenUndoBatch(undoBatch);
   logActivity('invoice','Auto-generated '+generated+' invoice'+(generated!==1?'s':'')+' for '+period);
   showAlert(
