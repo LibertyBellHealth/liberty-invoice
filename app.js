@@ -5580,8 +5580,10 @@ function clearPHIFromStorage() {
   // key EXCEPT an explicit whitelist of non-PHI *settings*, so a PHI key added later is
   // covered automatically instead of silently surviving. (The old fixed list missed
   // lhca_email_audit, lhca_supervisors, and lhca_autogen_undo — all client-identifying.)
-  // KEEP = column widths, page sizes, the state billing rate, and PDF-mode preference.
-  var KEEP = /(_col_widths|_page_size)$|^lhca_state_rate$|^lhca_pdf_mode$/;
+  // KEEP = column widths, page sizes, the state billing rate, PDF-mode preference, and the
+  // weekly-backup timestamp (a plain date, not PHI — wiping it made the "weekly" OneDrive
+  // backup re-fire on every session, since the wipe erased its memory of the last run).
+  var KEEP = /(_col_widths|_page_size)$|^lhca_state_rate$|^lhca_pdf_mode$|^lhca_last_onedrive_backup$/;
   Object.keys(localStorage)
     .filter(function(k){ return k.indexOf('lhca_') === 0 && !KEEP.test(k); })
     .forEach(function(k){ try{ localStorage.removeItem(k); }catch(e){} });
