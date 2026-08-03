@@ -6033,7 +6033,8 @@ function loadCaregiversAPI() {
           street: cg.street || '', city: cg.city || '',
           state: cg.state || '', zip: cg.zip || '', county: cg.county || '',
           dob: cg.dob || '', driversLicense: cg.drivers_license || '', ssn: cg.ssn || '',
-          notes: cg.notes || ''
+          notes: cg.notes || '',
+          _rowVersion: cg.row_version_hex || null   // optimistic-concurrency token
         };
       });
       if (Object.keys(obj).length) saveCaregiversLS(obj);
@@ -6072,10 +6073,27 @@ function saveCaregiverAPI(id, cg, quiet) {
     };
     // S8: only send ssn when present; omitting it makes the backend keep the stored value.
     if (!cg.ssn) delete body.ssn;
+    // Optimistic concurrency: send the row_version we last read so a stale save is rejected
+    // (409) instead of silently overwriting another user's edit.
+    if (cg._rowVersion) body.expected_version = cg._rowVersion;
     return fetch(API_BASE + '/caregivers', {
       method: 'POST', headers: apiHeaders(),
       body: JSON.stringify(body),
-    }).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();});
+    }).then(function(r){
+      if (r.status === 409) {
+        var ce = new Error("This caregiver's info was changed by someone else. Reload to get the latest, then re-apply your edit.");
+        ce.isConflict = true; throw ce;
+      }
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      return r.json();
+    }).then(function(result){
+      // Refresh the concurrency token so the NEXT save carries the current one.
+      if (result && result.row_version) {
+        cg._rowVersion = result.row_version;
+        var cgs = getCaregivers(); if (cgs[id]) { cgs[id]._rowVersion = result.row_version; saveCaregiversLS(cgs); }
+      }
+      return result;
+    });
   };
   return quiet ? _doSave() : trackSave(cg.name||id, _doSave);
 }
@@ -6156,7 +6174,8 @@ function loadCaseworkersAPI(){
         return { id:c.id, name:c.name||'', first_name:c.first_name||'', middle_name:c.middle_name||'', last_name:c.last_name||'', nickname:c.nickname||'',
                  agency:c.agency||'', phone:c.phone||'', email:c.email||'', fax:c.fax||'',
                  street:c.street||'', city:c.city||'', state:c.state||'', zip:c.zip||'', county:c.county||'',
-                 notes:c.notes||'', supervisor_id:c.supervisor_id||'' };
+                 notes:c.notes||'', supervisor_id:c.supervisor_id||'',
+                 _rowVersion:c.row_version_hex||null };   // optimistic-concurrency token
       });
       // D11: don't let a transient empty/partial response wipe the good caseworker cache.
       if (arr.length) {
@@ -6169,9 +6188,28 @@ function loadCaseworkersAPI(){
 }
 function saveCaseworkerAPI(cw, quiet){
   var _doSave = function(){
+    var body = Object.assign({}, cw);
+    // Optimistic concurrency: send the row_version we last read (as expected_version) so a
+    // stale save is rejected (409) instead of silently overwriting another user's edit.
+    if (cw._rowVersion) body.expected_version = cw._rowVersion;
+    delete body._rowVersion;   // internal token, not a DB column
     return fetch(API_BASE + '/caseworkers', {
-      method: 'POST', headers: apiHeaders(), body: JSON.stringify(cw),
-    }).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();});
+      method: 'POST', headers: apiHeaders(), body: JSON.stringify(body),
+    }).then(function(r){
+      if (r.status === 409) {
+        var ce = new Error("This caseworker's info was changed by someone else. Reload to get the latest, then re-apply your edit.");
+        ce.isConflict = true; throw ce;
+      }
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      return r.json();
+    }).then(function(result){
+      if (result && result.row_version) {
+        cw._rowVersion = result.row_version;
+        var cws = getCaseworkers(); var c = cws.find(function(x){return x.id===cw.id;});
+        if (c) { c._rowVersion = result.row_version; saveCaseworkersLS(cws); }
+      }
+      return result;
+    });
   };
   return quiet ? _doSave() : trackSave(cw.name||cw.id||'caseworker', _doSave);
 }
