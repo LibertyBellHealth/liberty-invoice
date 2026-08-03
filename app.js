@@ -5008,6 +5008,22 @@ function markInvoiceSubmitted(clientName,period){
   saveProfileSP(clientName,p[clientName]);
 }
 
+// ── Email tone helpers (personalized but SAFE — never asserts a fact that could be wrong) ──
+// Date-aware sign-off: only fires on unambiguous, always-correct windows; otherwise "Thanks,".
+function _emailClose(){
+  var d=new Date();
+  if(d.getMonth()===0 && d.getDate()<=3) return 'Happy New Year,';
+  if(d.getDay()===4 || d.getDay()===5) return 'Have a great weekend,';
+  return 'Thanks,';
+}
+// Deterministic index from a string — STABLE for a given caseworker+month (so a resend
+// matches), but different across caseworkers so a batch doesn't read identically to all.
+function _emailSeed(s,n){var h=5381;for(var i=0;i<(s||'').length;i++)h=((h*33)^s.charCodeAt(i))>>>0;return h%n;}
+// Occasional "here and there" appreciation line (~1 in 3), keyed off the same seed.
+function _apprecLine(seed,plural){return _emailSeed(seed+'|a',3)===0?(' I appreciate your help with '+(plural?'these':'this')+', as always.'):'';}
+// Standard sign-off block with the date-aware close.
+function _emailSig(){return '<p>'+_emailClose()+'<br><b>Thomas Jaboro</b><br>Liberty Home Care Assistance<br>(248) 291-4106</p>';}
+
 // ── Send single invoice email ─────────────────────────────────
 async function sendEmail(){
   var cn=document.getElementById('clientName').value.trim();
@@ -5069,11 +5085,15 @@ async function sendEmail(){
     }
     var base64=await captureInvoicePDF();
     var fname=(cn||'Invoice').replace(/[^a-z0-9]/gi,'_')+'_'+(bp||'').replace('/','_')+'.pdf';
-    var subj='Home Help Agency Invoice'+(cn?' – '+cn:'')+(bp?' – '+bp:'');
-    var body='<p>Dear '+(w||'Caseworker')+',</p>'+
-      '<p>Please find attached the Home Help Agency Invoice'+(cn?' for <b>'+cn+'</b>':'')+(bp?' for billing period <b>'+bp+'</b>':'')+'. Please review and process at your earliest convenience.</p>'+
-      '<p>Please do not hesitate to contact us with any questions.</p>'+
-      '<p>Thank you,<br><b>Thomas Jaboro</b><br>Liberty Home Care Assistance<br>(248) 291-4106</p>';
+    var _mo=['January','February','March','April','May','June','July','August','September','October','November','December'];
+    var _bpP=(bp||'').split('/');
+    var bpLabel=(_bpP.length===2&&parseInt(_bpP[0],10)>=1&&parseInt(_bpP[0],10)<=12)?_mo[parseInt(_bpP[0],10)-1]+' '+_bpP[1]:bp;
+    var wFirst=(w||'').split(/\s+/)[0];
+    // Subject always leads with "Invoice" + the month/year (agency direction), then client.
+    var subj='Invoice'+(bpLabel?' '+bpLabel:'')+(cn?' – '+cn:'');
+    var body='<p>Hi'+(wFirst?' '+esc(wFirst):'')+',</p>'+
+      '<p>Attached is the invoice for <b>'+esc(cn)+'</b> for <b>'+esc(bpLabel)+'</b>. Please review it at your convenience, and let me know if you have any questions or if anything needs adjusting.'+_apprecLine((ae||'')+'|'+(bp||''),false)+'</p>'+
+      _emailSig();
     if(btn)btn.textContent='Sending…';
     var result=await sendMailWithPDF(ae,subj,body,[{name:fname,base64:base64}]);
     // HIPAA audit log entry
@@ -8657,26 +8677,33 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
   // Lead client first name (used in subject for the personal touch)
   var leadFirst=((attachments[0]&&attachments[0].clientName)||'').split(/\s+/)[0]||'';
   var extraCount=Math.max(0,attachments.length-1);
-  // Follow-up vs first send wording — conversational, avoids spam-trigger phrases
-  // ("invoice", "please confirm receipt", "at your earliest convenience", "find attached")
+  // Subject always leads with "Invoice" + the month/year (agency direction), then the lead
+  // client for context. Signed as Thomas Jaboro.
   var isFollowUp=alreadySentCount>0;
-  var subj;
-  if(isFollowUp){
-    subj='Hi '+workerFirst+' — one more for '+periodLabel+(leadFirst?' ('+leadFirst+(extraCount>0?' + '+extraCount+' more':'')+')':'');
-  } else {
-    subj='Hi '+workerFirst+' — '+periodLabel+' paperwork'+(leadFirst?' for '+leadFirst+(extraCount>0?' + '+extraCount+' more':''):'');
-  }
+  // Subject stays human — just the month/year (the client list lives in the body). A
+  // single-client batch still names that client; multi-client batches don't itemize.
+  var _oneClient=(attachments.length===1 && attachments[0] && attachments[0].clientName)?(' – '+attachments[0].clientName):'';
+  var subj='Invoice '+periodLabel+_oneClient+(isFollowUp?' – additional':'');
+  var _list='<ul>'+attachments.map(function(a){return '<li>'+esc(a.clientName)+'</li>';}).join('')+'</ul>';
+  var multi=attachments.length>1;
+  var _seed=(email||'')+'|'+(period||'');
+  var _mword=(periodLabel||'').split(' ')[0];
+  var _apprec=_apprecLine(_seed,true);   // "here and there" — ~1 in 3, stable per caseworker/month
   var body;
   if(isFollowUp){
-    body='<p>Hi '+workerFirst+',</p>'+
-      '<p>Quick follow-up — '+(attachments.length>1?'a couple more files':'one more file')+' for '+periodLabel+' that I missed in my earlier note. Let me know if anything looks off.</p>'+
-      '<ul>'+attachments.map(function(a){return '<li>'+a.clientName+'</li>';}).join('')+'</ul>'+
-      '<p>Thanks,<br>Tommy<br>Liberty Home Care Assistance<br>(248) 291-4106</p>';
+    body='<p>Hi '+esc(workerFirst)+',</p>'+
+      '<p>A quick follow-up to my earlier note — attached '+(multi?'are a few additional invoices':'is one additional invoice')+' for '+periodLabel+' that I wanted to be sure reached you, listed below. Please let me know if you have any questions.'+_apprec+'</p>'+
+      _list+_emailSig();
   } else {
-    body='<p>Hi '+workerFirst+',</p>'+
-      '<p>Sending over '+periodLabel+' paperwork for our shared client'+(attachments.length>1?'s':'')+' below. Let me know if anything needs to be adjusted on my end.</p>'+
-      '<ul>'+attachments.map(function(a){return '<li>'+a.clientName+'</li>';}).join('')+'</ul>'+
-      '<p>Thanks,<br>Tommy<br>Liberty Home Care Assistance<br>(248) 291-4106</p>';
+    // Rotated, month-start opener — seeded per caseworker so a batch doesn't read identically.
+    var _openers=[
+      'Hope '+_mword+' is off to a good start. Attached '+(multi?'are the':'is the')+' invoice'+(multi?'s':'')+' for our shared client'+(multi?'s':'')+', listed below.',
+      'Now that '+_mword+' is underway, here '+(multi?'are the':'is the')+' invoice'+(multi?'s':'')+' for our shared client'+(multi?'s':'')+' below.',
+      'Attached '+(multi?'are the':'is the')+' '+periodLabel+' invoice'+(multi?'s':'')+' for our shared client'+(multi?'s':'')+', listed below.'
+    ];
+    body='<p>Hi '+esc(workerFirst)+',</p>'+
+      '<p>'+_openers[_emailSeed(_seed,_openers.length)]+' Please review at your convenience and let me know if anything needs to be adjusted.'+_apprec+'</p>'+
+      _list+_emailSig();
   }
 
   // Resolve supervisor CC — caseworker → supervisor_id → supervisor.email
