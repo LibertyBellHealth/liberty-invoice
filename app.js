@@ -8688,7 +8688,7 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
   var multi=attachments.length>1;
   var _seed=(email||'')+'|'+(period||'');
   var _mword=(periodLabel||'').split(' ')[0];
-  var _apprec=_apprecLine(_seed,true);   // "here and there" — ~1 in 3, stable per caseworker/month
+  var _apprec=_apprecLine(_seed,multi);  // plural matches count: "these" (multi) / "this" (one)
   var body;
   if(isFollowUp){
     body='<p>Hi '+esc(workerFirst)+',</p>'+
