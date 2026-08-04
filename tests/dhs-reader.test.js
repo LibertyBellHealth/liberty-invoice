@@ -73,6 +73,33 @@ test('parseDHS1210: flags a mismatch instead of silently trusting a bad parse', 
   assert.strictEqual(r.amountReconciles, false, 'a wrong total is caught, not accepted');
 });
 
+test('_dhsSuggestedUpdates: suggests only real, non-blanking changes (#5)', () => {
+  const w = loadApp();
+  const res = { aswEmail: 'new@michigan.gov', aswPhone: '313-555-9999', medicaidId: '1234567890' };
+  const prof = { medicaidId: '0000000000' };
+  const cw = { id: 'cw1', email: 'old@michigan.gov', phone: '313-555-9999' };
+  const ups = w._dhsSuggestedUpdates(res, prof, cw);
+  const by = {}; ups.forEach(u => { by[u.target + '.' + u.field] = u; });
+  assert.ok(by['caseworker.email'], 'differing caseworker email is suggested');
+  assert.strictEqual(by['caseworker.email'].to, 'new@michigan.gov');
+  assert.ok(!by['caseworker.phone'], 'identical phone is NOT suggested');
+  assert.ok(by['client.medicaidId'], 'differing Medicaid ID is suggested');
+});
+
+test('_dhsSuggestedUpdates: never blanks a stored value, and no cw => no cw suggestions', () => {
+  const w = loadApp();
+  const ups1 = w._dhsSuggestedUpdates({ aswEmail: '', aswPhone: '' }, {}, { id: 'cw1', email: 'keep@michigan.gov', phone: '313-000-0000' });
+  assert.strictEqual(ups1.length, 0, 'empty form values suggest nothing');
+  const ups2 = w._dhsSuggestedUpdates({ aswEmail: 'x@michigan.gov', aswPhone: '313-1' }, {}, null);
+  assert.ok(!ups2.some(u => u.target === 'caseworker'), 'no matched caseworker -> no caseworker suggestions');
+});
+
+test('parseDHS1210: extracts Client ID (Medicaid #) without grabbing the Case Number', () => {
+  const w = loadApp();
+  const r = w.parseDHS1210([['Client ID Number 1234567890', 'Case Number 9405375-2', 'County 82-WAYNE']]);
+  assert.strictEqual(r.medicaidId, '1234567890', 'Client ID captured, not the case number');
+});
+
 test('parseDHS1210: missing approved-hours line produces a warning, not a crash', () => {
   const w = loadApp();
   const r = w.parseDHS1210([['Bathing 00:18 7 days per week 09:02 $243.81']]);
