@@ -715,7 +715,7 @@ function switchTab(tab){
   _doSwitchTab(tab);
 }
 function _doSwitchTab(tab){
-  ['overview','info','history','notes','docs','audit'].forEach(function(t){
+  ['overview','info','auth','history','notes','docs','audit'].forEach(function(t){
     var dtab=document.getElementById('dtab-'+t);
     var dpane=document.getElementById('dpane-'+t);
     if(dtab){dtab.classList.toggle('active',t===tab);dtab.setAttribute('aria-selected',t===tab?'true':'false');}
@@ -723,6 +723,7 @@ function _doSwitchTab(tab){
   });
   if(tab==='overview')renderOverviewPane();
   if(tab==='info')renderInfoPane();
+  if(tab==='auth')renderAuthPane();
   if(tab==='history')renderInvHistory();
   if(tab==='notes')renderNotesPane();
   if(tab==='docs')renderDocsPane();
@@ -781,11 +782,11 @@ function renderOverviewPane(){
         if(days<0){dueTxt=' · overdue';dueColor='#b03030';}else if(days<=30){dueTxt=' · '+days+'d';dueColor='#c67605';}}
     }
     // Slim read-only glance — the editable version lives in the Profile tab. Click to go there.
-    authCardHtml='<div class="ov-card" style="cursor:pointer;" onclick="switchTab(\'info\')" title="View / edit in Profile">'+
+    authCardHtml='<div class="ov-card" style="cursor:pointer;" onclick="switchTab(\'auth\')" title="Open Authorization tab">'+
       '<h4>Authorization (DHS-1210)</h4>'+
       '<div class="ov-row"><span class="ov-label">Approved / mo</span><span class="ov-value">'+(auth.hours!=null?auth.hours+'h '+(auth.minutes||0)+'m':'—')+'</span></div>'+
       '<div class="ov-row"><span class="ov-label">Reassess due</span><span class="ov-value" style="color:'+dueColor+';">'+esc(auth.reassessDate||'—')+dueTxt+'</span></div>'+
-      '<div style="margin-top:6px;font-size:10px;color:#94a7bd;">Click to view / edit in Profile</div>'+
+      '<div style="margin-top:6px;font-size:10px;color:#94a7bd;">Click to open the Authorization tab</div>'+
     '</div>';
   }
   pane.innerHTML='<div class="overview-grid">'+
@@ -980,33 +981,6 @@ function renderInfoPane(){
       (prof.caseworkerId?'<button class="btn-open" onclick="navCaseworkers();setTimeout(function(){openCwDetail(\''+escJsAttr(prof.caseworkerId)+'\');},50)">Open ↗</button>':'')+
     '</div>';
   g.appendChild(dCw);
-
-  // ── Authorization (DHS-1210) — editable, so a wrong import or a phone-update can be fixed ──
-  mkDivider('Authorization (DHS-1210)');
-  var a=prof.authorization||{};
-  var dAuth=document.createElement('div');dAuth.className='info-field full';
-  dAuth.innerHTML=
-    '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;">'+
-      '<span style="font-size:11px;color:#5c7590;">Authorized hours &amp; tasks from the MDHHS DHS-1210. Import to auto-fill, or edit any field here.</span>'+
-      '<button type="button" class="btn btn-secondary btn-sm" onclick="importDHS1210()" style="white-space:nowrap;">Import DHS-1210</button>'+
-    '</div>'+
-    '<div class="info-field-row" style="grid-template-columns:1fr 1fr 1fr;">'+
-      '<div class="info-field"><label for="ei-auth-hours">Approved Hours</label><input id="ei-auth-hours" type="number" min="0" value="'+esc(a.hours!=null?a.hours:'')+'" oninput="unsavedChanges=true;"></div>'+
-      '<div class="info-field"><label for="ei-auth-mins">Approved Minutes</label><input id="ei-auth-mins" type="number" min="0" max="59" value="'+esc(a.minutes!=null?a.minutes:'')+'" oninput="unsavedChanges=true;"></div>'+
-      '<div class="info-field"><label for="ei-auth-rate">Rate ($/hr)</label><input id="ei-auth-rate" value="'+esc(a.rate!=null?String(a.rate):'')+'" inputmode="decimal" oninput="unsavedChanges=true;"></div>'+
-    '</div>'+
-    '<div class="info-field-row" style="grid-template-columns:1fr 1fr;">'+
-      '<div class="info-field"><label for="ei-auth-eff">Effective <span style="font-weight:400;font-size:10px;color:#5c7590;">(MM/DD/YYYY)</span></label><input id="ei-auth-eff" placeholder="MM/DD/YYYY" value="'+esc(a.effectiveDate||'')+'" oninput="unsavedChanges=true;"></div>'+
-      '<div class="info-field"><label for="ei-auth-reassess">Reassessment due <a href="#" onclick="return _fillReassess()" style="font-weight:400;font-size:10px;">↻ +6mo</a></label><input id="ei-auth-reassess" placeholder="MM/DD/YYYY" value="'+esc(a.reassessDate||'')+'" oninput="unsavedChanges=true;"></div>'+
-    '</div>'+
-    '<div class="info-field"><label for="ei-auth-total">Monthly total ($)</label><input id="ei-auth-total" value="'+esc(a.total!=null?String(a.total):'')+'" inputmode="decimal" oninput="unsavedChanges=true;"></div>'+
-    '<div style="margin-top:10px;">'+
-      '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;margin-bottom:4px;">Tasks</div>'+
-      '<div id="ei-auth-tasks"></div>'+
-      '<button type="button" class="btn btn-secondary btn-sm" onclick="_authAddTaskRow()" style="margin-top:6px;font-size:11px;">+ Add task</button>'+
-    '</div>';
-  g.appendChild(dAuth);
-  _renderAuthTaskRows(a.tasks||[]);
 }
 // Editable task rows for the Authorization section.
 function _renderAuthTaskRows(tasks){
@@ -1019,13 +993,14 @@ function _authAddTaskRow(t){
   var host=document.getElementById('ei-auth-tasks'); if(!host)return;
   var row=document.createElement('div');
   row.className='ei-auth-task-row';
-  row.style.cssText='display:grid;grid-template-columns:2fr 1.5fr 0.9fr 0.9fr 26px;gap:5px;margin-bottom:5px;';
+  row.style.cssText='display:grid;grid-template-columns:1.8fr 0.8fr 1.3fr 0.9fr 0.9fr 26px;gap:5px;margin-bottom:5px;';
   row.innerHTML=
-    '<input class="ei-at-task" placeholder="Task" value="'+esc(t.task||'')+'" oninput="unsavedChanges=true;">'+
-    '<input class="ei-at-freq" placeholder="Frequency" value="'+esc(t.freq||'')+'" oninput="unsavedChanges=true;">'+
-    '<input class="ei-at-perMonth" placeholder="HH:MM" value="'+esc(t.perMonth||'')+'" oninput="unsavedChanges=true;">'+
-    '<input class="ei-at-amount" placeholder="$" value="'+esc(t.amount!=null?String(t.amount):'')+'" inputmode="decimal" oninput="unsavedChanges=true;">'+
-    '<button type="button" class="btn btn-secondary btn-sm" title="Remove" onclick="this.parentNode.remove();unsavedChanges=true;" style="padding:2px 6px;">×</button>';
+    '<input class="ei-at-task" placeholder="Task" value="'+esc(t.task||'')+'">'+
+    '<input class="ei-at-perDay" placeholder="HH:MM" value="'+esc(t.perDay||'')+'">'+
+    '<input class="ei-at-freq" placeholder="e.g. 7 days per week" value="'+esc(t.freq||'')+'">'+
+    '<input class="ei-at-perMonth" placeholder="HH:MM" value="'+esc(t.perMonth||'')+'">'+
+    '<input class="ei-at-amount" placeholder="$" value="'+esc(t.amount!=null?String(t.amount):'')+'" inputmode="decimal">'+
+    '<button type="button" class="btn btn-secondary btn-sm" title="Remove" onclick="this.parentNode.remove();" style="padding:2px 6px;">×</button>';
   host.appendChild(row);
 }
 // "↻ +6mo" — fill reassessment date from effective + 6 months.
@@ -1037,6 +1012,116 @@ function _fillReassess(){
   unsavedChanges=true; return false;
 }
 function _mdyToYmd(mdy){var p=String(mdy||'').split('/');if(p.length!==3)return '';return p[2]+'-'+('0'+p[0]).slice(-2)+'-'+('0'+p[1]).slice(-2);}
+// Approved time as HH:MM (e.g. 29:47), matching the DHS-1210. Empty when no hours set.
+function _authHM(a){ if(!a||a.hours==null)return ''; return a.hours+':'+('0'+(a.minutes||0)).slice(-2); }
+// Parse "HH:MM" (or plain hours) back to {hours,minutes}.
+function _parseHM(v){ v=String(v||'').trim(); if(!v)return {hours:null,minutes:null}; var p=v.split(':'); var h=parseInt(p[0]); var m=p.length>1?parseInt(p[1]):0; return {hours:isNaN(h)?null:h, minutes:isNaN(m)?0:m}; }
+// ── Authorization tab — read-only display by default; Edit reveals the form ──
+function renderAuthPane(edit){
+  if(!activeProfileName)return;
+  var host=document.getElementById('authContent'); if(!host)return;
+  var prof=getProfiles()[activeProfileName]; if(!prof)return;
+  var a=prof.authorization;
+  if(edit){ host.innerHTML=_authEditHtml(a||{}); _renderAuthTaskRows((a&&a.tasks)||[]); return; }
+  // Empty state
+  if(!a || (a.hours==null && !(a.tasks&&a.tasks.length) && !a.effectiveDate)){
+    host.innerHTML='<div class="form-card" style="max-width:640px;text-align:center;padding:28px;">'+
+      '<div style="font-size:13px;color:#5c7590;margin-bottom:12px;">No DHS-1210 authorization on file for this client yet.</div>'+
+      '<button class="btn btn-primary" onclick="importDHS1210()">Import DHS-1210</button>'+
+      '<div style="font-size:11px;color:#94a7bd;margin-top:10px;">or <a href="#" onclick="renderAuthPane(true);return false;">enter it manually</a></div>'+
+    '</div>';
+    return;
+  }
+  // Reassessment countdown color
+  var dueTxt='',dueColor='#1a2b45';
+  if(a.reassessDate){var dp=a.reassessDate.split('/');if(dp.length===3){var dd=new Date(+dp[2],(+dp[0])-1,+dp[1]);var days=Math.floor((dd-new Date())/86400000);
+    if(days<0){dueTxt=' · overdue';dueColor='#b03030';}else if(days<=30){dueTxt=' · '+days+' days';dueColor='#c67605';}}}
+  var kv=function(l,v,color){return '<div style="display:flex;justify-content:space-between;gap:16px;padding:6px 0;border-bottom:1px solid #f0f3f7;"><span style="color:#5c7590;font-size:13px;">'+l+'</span><span style="font-weight:600;color:'+(color||'#1a2b45')+';font-size:13px;">'+v+'</span></div>';};
+  var rows=(a.tasks||[]).map(function(t){
+    return '<tr><td style="padding:4px 8px;">'+esc(t.task||'')+'</td><td style="padding:4px 8px;color:#5c7590;">'+esc(t.perDay||'—')+'</td><td style="padding:4px 8px;color:#5c7590;">'+esc(t.freq||'')+'</td><td style="padding:4px 8px;text-align:right;">'+esc(t.perMonth||'')+'</td><td style="padding:4px 8px;text-align:right;">'+(t.amount!=null?'$'+Number(t.amount).toFixed(2):'—')+'</td></tr>';
+  }).join('');
+  host.innerHTML='<div class="form-card" style="max-width:720px;">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap;">'+
+      '<h3 style="margin:0;">Authorization (DHS-1210)</h3>'+
+      '<div style="display:flex;gap:8px;">'+
+        '<button class="btn btn-secondary btn-sm" onclick="importDHS1210()">Import DHS-1210</button>'+
+        '<button class="btn btn-primary btn-sm" onclick="renderAuthPane(true)">Edit</button>'+
+      '</div>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 24px;">'+
+      kv('Approved / month', _authHM(a)||'—')+
+      kv('Provider rate', (a.rate!=null&&a.rate!=='')?'$'+esc(String(a.rate))+'/hr':'—')+
+      kv('Effective', esc(a.effectiveDate||'—'))+
+      kv('Reassessment due', esc(a.reassessDate||'—')+dueTxt, dueColor)+
+      kv('Monthly total', (a.total!=null&&a.total!=='')?'$'+esc(Number(a.total).toFixed(2)):'—')+
+      kv('Caseworker (ASW)', esc(a.aswName||prof.worker||'—'))+
+    '</div>'+
+    (rows?'<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;margin:18px 0 4px;">Tasks</div>'+
+      '<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="color:#8296ab;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.3px;"><th style="padding:4px 8px;">Task</th><th style="padding:4px 8px;">Time/Day</th><th style="padding:4px 8px;">Number of Days</th><th style="padding:4px 8px;text-align:right;">Time/Month</th><th style="padding:4px 8px;text-align:right;">Amount</th></tr></thead><tbody>'+rows+'</tbody></table>':'')+
+    (a.importedAt?'<div style="font-size:10px;color:#94a7bd;margin-top:14px;">Imported '+esc(a.importedAt)+(a.sourceFile?' · '+esc(a.sourceFile):'')+'</div>':'')+
+  '</div>';
+}
+function _authEditHtml(a){
+  return '<div class="form-card" style="max-width:720px;">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:10px;flex-wrap:wrap;">'+
+      '<h3 style="margin:0;">Edit Authorization</h3>'+
+      '<button type="button" class="btn btn-secondary btn-sm" onclick="importDHS1210()">Import DHS-1210</button>'+
+    '</div>'+
+    '<div class="info-field-row" style="grid-template-columns:1fr 1fr;">'+
+      '<div class="info-field"><label for="ei-auth-permonth">Approved / month <span style="font-weight:400;font-size:10px;color:#5c7590;">(HH:MM)</span></label><input id="ei-auth-permonth" placeholder="HH:MM" value="'+esc(_authHM(a))+'"></div>'+
+      '<div class="info-field"><label for="ei-auth-rate">Rate ($/hr)</label><input id="ei-auth-rate" value="'+esc(a.rate!=null?String(a.rate):'')+'" inputmode="decimal"></div>'+
+    '</div>'+
+    '<div class="info-field-row" style="grid-template-columns:1fr 1fr;">'+
+      '<div class="info-field"><label for="ei-auth-eff">Effective <span style="font-weight:400;font-size:10px;color:#5c7590;">(MM/DD/YYYY)</span></label><input id="ei-auth-eff" placeholder="MM/DD/YYYY" value="'+esc(a.effectiveDate||'')+'"></div>'+
+      '<div class="info-field"><label for="ei-auth-reassess">Reassessment due <a href="#" onclick="return _fillReassess()" style="font-weight:400;font-size:10px;">↻ +6mo</a></label><input id="ei-auth-reassess" placeholder="MM/DD/YYYY" value="'+esc(a.reassessDate||'')+'"></div>'+
+    '</div>'+
+    '<div class="info-field"><label for="ei-auth-total">Monthly total ($)</label><input id="ei-auth-total" value="'+esc(a.total!=null?String(a.total):'')+'" inputmode="decimal"></div>'+
+    '<div style="margin-top:10px;">'+
+      '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;margin-bottom:4px;">Tasks</div>'+
+      '<div style="display:grid;grid-template-columns:1.8fr 0.8fr 1.3fr 0.9fr 0.9fr 26px;gap:5px;margin-bottom:4px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#8296ab;"><span>Task</span><span>Time/Day</span><span>Number of Days</span><span>Time/Month</span><span>Amount</span><span></span></div>'+
+      '<div id="ei-auth-tasks"></div>'+
+      '<button type="button" class="btn btn-secondary btn-sm" onclick="_authAddTaskRow()" style="margin-top:6px;font-size:11px;">+ Add task</button>'+
+    '</div>'+
+    '<div style="display:flex;gap:8px;margin-top:16px;align-items:center;">'+
+      '<button class="btn btn-primary" onclick="saveAuthPane()">Save</button>'+
+      '<button class="btn btn-secondary" onclick="renderAuthPane(false)">Cancel</button>'+
+      ((a&&a.hours!=null)?'<button class="btn btn-danger btn-sm" onclick="_clearAuth()" style="margin-left:auto;">Remove authorization</button>':'')+
+    '</div>';
+}
+function saveAuthPane(){
+  if(!activeProfileName)return;
+  var p=getProfiles(); var rec=p[activeProfileName]; if(!rec)return;
+  var tasks=[];
+  document.querySelectorAll('#ei-auth-tasks .ei-auth-task-row').forEach(function(r){
+    var tk=(r.querySelector('.ei-at-task').value||'').trim();
+    var pd=(r.querySelector('.ei-at-perDay').value||'').trim();
+    var fq=(r.querySelector('.ei-at-freq').value||'').trim();
+    var pm=(r.querySelector('.ei-at-perMonth').value||'').trim();
+    var am=(r.querySelector('.ei-at-amount').value||'').trim();
+    if(tk||pd||fq||pm||am)tasks.push({task:tk,perDay:pd,freq:fq,perMonth:pm,amount:am!==''?parseFloat(am):null});
+  });
+  var hm=_parseHM(document.getElementById('ei-auth-permonth').value);
+  var re=(document.getElementById('ei-auth-reassess').value||'').trim();
+  rec.authorization=Object.assign({},rec.authorization||{},{
+    hours:hm.hours, minutes:hm.minutes,
+    effectiveDate:(document.getElementById('ei-auth-eff').value||'').trim(),
+    reassessDate:re, rate:(document.getElementById('ei-auth-rate').value||'').trim(),
+    total:(function(v){return v!==''?parseFloat(v):'';})((document.getElementById('ei-auth-total').value||'').trim()),
+    tasks:tasks,
+  });
+  saveProfilesLS(p); saveProfileSP(activeProfileName,rec);
+  _syncReassessTask(activeProfileName, re);
+  if(typeof addAuditEntry==='function')addAuditEntry(activeProfileName,'Authorization (DHS-1210) updated');
+  renderAuthPane(false);
+  if(typeof showToast==='function')showToast('✓ Authorization saved');
+}
+function _clearAuth(){
+  showConfirm('Remove the DHS-1210 authorization from this client? The filed PDF stays in Documents.',function(){
+    var p=getProfiles(); var rec=p[activeProfileName]; if(!rec)return;
+    rec.authorization=null; saveProfilesLS(p); saveProfileSP(activeProfileName,rec);
+    renderAuthPane(false);
+  },{title:'Remove Authorization',okText:'Remove'});
+}
 // Keep a single "reassessment due" task per client in sync with the authorization date.
 function _syncReassessTask(clientName, reassessMdy){
   if(!reassessMdy)return; // don't auto-delete existing tasks if the date is cleared
@@ -1085,33 +1170,9 @@ function saveClientInfo(){
   var cwValEl=document.getElementById('ei-worker-val');var cwSearchEl=document.getElementById('ei-worker-search');
   rec.caseworkerId=cwValEl?cwValEl.value:'';rec.worker=cwSearchEl?cwSearchEl.value:'';
   var statusEl=document.getElementById('ei-status');if(statusEl)rec.clientStatus=statusEl.value;
-  // Authorization (DHS-1210) — read the editable section back onto the record.
-  if(document.getElementById('ei-auth-hours')){
-    var _tasks=[];
-    document.querySelectorAll('#ei-auth-tasks .ei-auth-task-row').forEach(function(r){
-      var tk=(r.querySelector('.ei-at-task').value||'').trim();
-      var fq=(r.querySelector('.ei-at-freq').value||'').trim();
-      var pm=(r.querySelector('.ei-at-perMonth').value||'').trim();
-      var am=(r.querySelector('.ei-at-amount').value||'').trim();
-      if(tk||fq||pm||am)_tasks.push({task:tk,freq:fq,perMonth:pm,amount:am!==''?parseFloat(am):null});
-    });
-    var _h=(document.getElementById('ei-auth-hours').value||'').trim();
-    var _m=(document.getElementById('ei-auth-mins').value||'').trim();
-    var _eff=(document.getElementById('ei-auth-eff').value||'').trim();
-    var _re=(document.getElementById('ei-auth-reassess').value||'').trim();
-    var _rate=(document.getElementById('ei-auth-rate').value||'').trim();
-    var _tot=(document.getElementById('ei-auth-total').value||'').trim();
-    if(_h||_m||_eff||_re||_rate||_tot||_tasks.length){
-      rec.authorization=Object.assign({},rec.authorization||{},{
-        hours:_h!==''?parseInt(_h):null, minutes:_m!==''?parseInt(_m):null,
-        effectiveDate:_eff, reassessDate:_re, rate:_rate,
-        total:_tot!==''?parseFloat(_tot):'', tasks:_tasks,
-      });
-    } else { rec.authorization=null; } // fully cleared → remove authorization
-  }
+  // (Authorization lives in its own tab now — see renderAuthPane/saveAuthPane.)
   if(newName!==activeProfileName){p[newName]=rec;delete p[activeProfileName];activeProfileName=newName;}
   saveProfilesLS(p);saveProfileSP(activeProfileName,p[activeProfileName]);
-  _syncReassessTask(activeProfileName, rec.authorization && rec.authorization.reassessDate);
   unsavedChanges=false;
   logActivity('edit','Profile updated for '+activeProfileName);
   addAuditEntry(activeProfileName,'Profile information updated');
@@ -1540,6 +1601,9 @@ function _applyDhsImport(file,res,opts){
     showToast('✓ Authorization saved for '+name+' (save the client to file the PDF)');
   }
   if(typeof renderOverviewPane==='function')renderOverviewPane();
+  // If the Authorization tab is the one on screen, refresh it to show the imported data.
+  var ap=document.getElementById('dpane-auth');
+  if(ap && ap.classList.contains('active') && typeof renderAuthPane==='function')renderAuthPane(false);
 }
 
 function renderDocsPane(){
