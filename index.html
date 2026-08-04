@@ -224,6 +224,7 @@ function aiTrack(name, props){
     <div class="detail-tabs" role="tablist" aria-label="Client detail sections">
       <button class="dtab active" id="dtab-overview" role="tab" aria-selected="true" onclick="switchTab('overview')">Overview</button>
       <button class="dtab" id="dtab-info" role="tab" aria-selected="false" onclick="switchTab('info')">Profile</button>
+      <button class="dtab" id="dtab-auth" role="tab" aria-selected="false" onclick="switchTab('auth')">Authorization</button>
       <button class="dtab" id="dtab-history" role="tab" aria-selected="false" onclick="switchTab('history')">Invoices</button>
       <button class="dtab" id="dtab-notes" role="tab" aria-selected="false" onclick="switchTab('notes')">Notes</button>
       <button class="dtab" id="dtab-docs" role="tab" aria-selected="false" onclick="switchTab('docs')">Documents</button>
@@ -246,6 +247,7 @@ function aiTrack(name, props){
         <div id="invNotesContent"></div>
       </div>
     </div>
+    <div class="detail-pane" id="dpane-auth"><div id="authContent"></div></div>
     <div class="detail-pane" id="dpane-docs"><div id="docsContent"></div></div>
     <div class="detail-pane" id="dpane-audit"></div>
   </div>
