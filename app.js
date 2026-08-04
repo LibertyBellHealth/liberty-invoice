@@ -6193,7 +6193,7 @@ function loadCaseworkersAPI(){
     .then(function(rows){
       var arr = (rows||[]).map(function(c){
         // D7: map middle_name/nickname back so they survive a reload (was dropping both).
-        return { id:c.id, name:c.name||'', first_name:c.first_name||'', middle_name:c.middle_name||'', last_name:c.last_name||'', nickname:c.nickname||'',
+        return { id:c.id, name:c.name||'', title:c.title||'', first_name:c.first_name||'', middle_name:c.middle_name||'', last_name:c.last_name||'', nickname:c.nickname||'',
                  agency:c.agency||'', phone:c.phone||'', email:c.email||'', fax:c.fax||'',
                  street:c.street||'', city:c.city||'', state:c.state||'', zip:c.zip||'', county:c.county||'',
                  notes:c.notes||'', supervisor_id:c.supervisor_id||'',
@@ -6260,7 +6260,7 @@ function loadSupervisorsAPI(){
     .then(function(rows){
       var map={};
       (rows||[]).forEach(function(s){
-        map[s.id]={id:s.id,name:s.name||'',phone:s.phone||'',email:s.email||''};
+        map[s.id]={id:s.id,name:s.name||'',title:s.title||'',phone:s.phone||'',email:s.email||''};
       });
       saveSupervisorsLS(map);
       // If a caseworker form is open, refresh its dropdown
@@ -6307,6 +6307,72 @@ function refreshSupervisorDropdowns(){
   var sel2=document.getElementById('cwi-supervisor');
   if(sel2)populateSupervisorDropdown(sel2,sel2.value);
 }
+// ── Supervisor profile (detail page) ─────────────────────────
+// Caseworker + supervisor emails are all @michigan.gov. Type just the username and this
+// fills in the domain on blur; a value that already has "@" is left untouched.
+function _autoGovEmail(input){
+  if(!input)return;
+  var v=(input.value||'').trim();
+  if(v && v.indexOf('@')===-1){ input.value=v+'@michigan.gov'; }
+}
+function openSupDetail(id){
+  var sups=getSupervisors(); var s=sups[id]; if(!s)return;
+  // supDetailView is a sibling of the two list views inside cwGridView — hide the lists, not
+  // the wrapper (hiding cwGridView would hide the profile itself).
+  var cwList=document.getElementById('cwViewCaseworkers'); if(cwList)cwList.style.display='none';
+  var supView=document.getElementById('cwViewSupervisors'); if(supView)supView.style.display='none';
+  var det=document.getElementById('supDetailView'); if(det)det.style.display='block';
+  document.getElementById('supd-id').value=id;
+  document.getElementById('supd-title').value=s.title||'';
+  document.getElementById('supd-name').value=s.name||'';
+  document.getElementById('supd-phone').value=s.phone||'';
+  document.getElementById('supd-email').value=s.email||'';
+  var ini=(s.name||'?').split(/\s+/).map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase();
+  var av=document.getElementById('supDetailAvatar'); if(av)av.textContent=ini||'?';
+  var nm=document.getElementById('supDetailName'); if(nm)nm.textContent=(s.title?s.title+' ':'')+(s.name||'');
+  renderSupCaseworkers(id);
+}
+function renderSupCaseworkers(id){
+  var host=document.getElementById('supd-caseworkers'); if(!host)return;
+  var cws=getCaseworkers().filter(function(c){return String(c.supervisor_id||'')===String(id);})
+    .sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
+  if(!cws.length){ host.innerHTML='<div style="color:#5c7590;font-size:13px;padding:4px 0;">No caseworkers assigned to this supervisor yet.</div>'; return; }
+  host.innerHTML=cws.map(function(c){
+    var nm=(c.title?c.title+' ':'')+(c.name||'');
+    var sub=[c.agency||'',c.email||''].filter(Boolean).map(esc).join(' · ');
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid #e8ecf0;border-radius:6px;margin-bottom:6px;">'+
+      '<div style="min-width:0;"><div style="font-size:13px;font-weight:600;color:#1a2b45;">'+esc(nm)+'</div>'+
+      '<div style="font-size:11px;color:#5c7590;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+sub+'</div></div>'+
+      '<button class="btn btn-secondary btn-sm" onclick="openCwDetail(\''+escJsAttr(c.id)+'\')" style="white-space:nowrap;">Open ↗</button>'+
+    '</div>';
+  }).join('');
+}
+function saveSupDetail(){
+  var id=document.getElementById('supd-id').value;
+  var name=(document.getElementById('supd-name').value||'').trim();
+  if(!name){ showAlert('Name is required.'); return; }
+  var sup={ id:id, name:name, title:document.getElementById('supd-title').value||'',
+    phone:(document.getElementById('supd-phone').value||'').trim(),
+    email:(document.getElementById('supd-email').value||'').trim() };
+  var sups=getSupervisors(); sups[id]=sup; saveSupervisorsLS(sups);
+  saveSupervisorAPI(sup);
+  var nm=document.getElementById('supDetailName'); if(nm)nm.textContent=(sup.title?sup.title+' ':'')+sup.name;
+  if(typeof refreshSupervisorDropdowns==='function') refreshSupervisorDropdowns();
+}
+function backToSupList(){
+  var det=document.getElementById('supDetailView'); if(det)det.style.display='none';
+  var supView=document.getElementById('cwViewSupervisors'); if(supView)supView.style.display='block';
+  if(typeof renderSupervisorList==='function') renderSupervisorList();
+}
+function deleteSupervisorFromDetail(){
+  var id=document.getElementById('supd-id').value;
+  var sups=getSupervisors(); var name=(sups[id]&&sups[id].name)||'this supervisor';
+  showConfirm('Delete supervisor "'+name+'"? Caseworkers assigned to them will show no supervisor.',function(){
+    var s=getSupervisors(); delete s[id]; saveSupervisorsLS(s);
+    if(typeof deleteSupervisorAPI==='function') deleteSupervisorAPI(id);
+    backToSupList();
+  },{title:'Delete Supervisor',okText:'Delete'});
+}
 function openSupervisorModal(){_openSupervisorModal(null);}
 function editSelectedSupervisor(){
   var sel=document.getElementById('cw-supervisor')||document.getElementById('cwi-supervisor');
@@ -6323,9 +6389,13 @@ function _openSupervisorModal(editId){
   overlay.innerHTML=
     '<div class="modal-box" style="max-width:420px;">'+
       '<h3>'+(editId?'Edit Supervisor':'New Supervisor')+'</h3>'+
-      '<div class="ff" style="margin-top:8px;"><label for="sup-name">Name *</label><input id="sup-name" value="'+esc(sup.name||'')+'" placeholder="Full name" maxlength="120"></div>'+
+      '<div style="display:flex;gap:8px;margin-top:8px;">'+
+        '<div class="ff" style="flex:0 0 110px;"><label for="sup-title">Title</label>'+
+          '<select id="sup-title">'+['','Mr.','Mrs.','Ms.','Miss','Dr.','Mx.'].map(function(t){return '<option'+(String(sup.title||'')===t?' selected':'')+'>'+t+'</option>';}).join('')+'</select></div>'+
+        '<div class="ff" style="flex:1;"><label for="sup-name">Name *</label><input id="sup-name" value="'+esc(sup.name||'')+'" placeholder="Full name" maxlength="120"></div>'+
+      '</div>'+
       '<div class="ff" style="margin-top:8px;"><label for="sup-phone">Phone</label><input id="sup-phone" value="'+esc(sup.phone||'')+'" placeholder="(555) 555-5555" maxlength="30"></div>'+
-      '<div class="ff" style="margin-top:8px;"><label for="sup-email">Email <span style="font-weight:400;font-size:10px;color:#5c7590;">(used for CC on monthly invoice emails)</span></label><input id="sup-email" type="email" value="'+esc(sup.email||'')+'" placeholder="supervisor@michigan.gov" maxlength="120"></div>'+
+      '<div class="ff" style="margin-top:8px;"><label for="sup-email">Email <span style="font-weight:400;font-size:10px;color:#5c7590;">(used for CC on monthly invoice emails)</span></label><input id="sup-email" type="email" value="'+esc(sup.email||'')+'" placeholder="supervisor@michigan.gov" maxlength="120" onblur="_autoGovEmail(this)"></div>'+
       '<div class="modal-row" style="justify-content:space-between;">'+
         (editId?'<button class="btn btn-danger btn-sm" onclick="_deleteSupervisorFromModal(\''+escJsAttr(editId)+'\')">Delete</button>':'<span></span>')+
         '<div style="display:flex;gap:8px;">'+
@@ -6342,9 +6412,11 @@ function _saveSupervisorFromModal(editId){
   if(!name){showAlert('Supervisor name is required.');return;}
   var phone=(document.getElementById('sup-phone').value||'').trim();
   var email=(document.getElementById('sup-email').value||'').trim();
+  var titleEl=document.getElementById('sup-title');
+  var title=titleEl?(titleEl.value||''):'';
   var sups=getSupervisors();
   var id=editId||supId();
-  sups[id]={id:id,name:name,phone:phone,email:email};
+  sups[id]={id:id,name:name,title:title,phone:phone,email:email};
   saveSupervisorsLS(sups);
   saveSupervisorAPI(sups[id]);
   document.getElementById('supModal').remove();
@@ -6405,6 +6477,8 @@ function showCwView(view){
   var isSup = view === 'supervisors';
   var cwView=document.getElementById('cwViewCaseworkers');
   var supView=document.getElementById('cwViewSupervisors');
+  // Always leave the supervisor profile page when switching pills.
+  var supDet=document.getElementById('supDetailView'); if(supDet)supDet.style.display='none';
   var pillCw=document.getElementById('pillCaseworkers');
   var pillSup=document.getElementById('pillSupervisors');
   var addBtn=document.getElementById('cwAddBtn');
@@ -6524,13 +6598,13 @@ function renderSupervisorList(){
     var checked=supBulkSelected[id]?'checked':'';
     tr.innerHTML=
       '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" class="sup-select" data-id="'+esc(id)+'" '+checked+' onchange="toggleBulkSupervisor(\''+escJsAttr(id)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
-      '<td><div class="ct-name">'+esc(s.name||'')+'</div></td>'+
+      '<td><div class="ct-name">'+esc((s.title?s.title+' ':'')+(s.name||''))+'</div></td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(s.phone||'—')+'</td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(s.email||'—')+'</td>'+
       '<td style="color:var(--text);font-size:12px;">'+cwCount+'</td>';
     tr.addEventListener('click',function(e){
       if(e.target.closest('a')||e.target.tagName==='BUTTON'||e.target.tagName==='INPUT')return;
-      _openSupervisorModal(id);
+      openSupDetail(id);
     });
     tbody.appendChild(tr);
   });
@@ -6601,6 +6675,7 @@ function showCaseworkerForm(id){
       var nameParts=(cw.name||'').trim().split(' ');
       var firstName=nameParts[0]||'';
       var lastName=nameParts.slice(1).join(' ')||'';
+      document.getElementById('cw-title').value=cw.title||'';
       document.getElementById('cw-first-name').value=cw.first_name||firstName;
       document.getElementById('cw-middle-name').value=cw.middle_name||'';
       document.getElementById('cw-last-name').value=cw.last_name||lastName;
@@ -6621,7 +6696,7 @@ function showCaseworkerForm(id){
     }
     document.getElementById('cwDeleteBtn').style.display='inline-block';
   } else {
-    ['cw-first-name','cw-middle-name','cw-last-name','cw-nickname','cw-agency','cw-phone','cw-fax','cw-email','cw-street','cw-city','cw-state','cw-zip','cw-county','cw-notes'].forEach(function(fid){var e=document.getElementById(fid);if(e)e.value='';});
+    ['cw-title','cw-first-name','cw-middle-name','cw-last-name','cw-nickname','cw-agency','cw-phone','cw-fax','cw-email','cw-street','cw-city','cw-state','cw-zip','cw-county','cw-notes'].forEach(function(fid){var e=document.getElementById(fid);if(e)e.value='';});
     // Fresh form — populate dropdown with no selection
     populateSupervisorDropdown(document.getElementById('cw-supervisor'),'');
     document.getElementById('cwDeleteBtn').style.display='none';
@@ -6647,7 +6722,7 @@ function saveCaseworker(){
   var cws=getCaseworkers();
   var editingId=document.getElementById('cw-editing-id').value;
   var rec={
-    id:editingId||cwId(),name:name,first_name:firstName,middle_name:middleName,last_name:lastName,nickname:nickname,
+    id:editingId||cwId(),name:name,title:document.getElementById('cw-title').value,first_name:firstName,middle_name:middleName,last_name:lastName,nickname:nickname,
     agency:document.getElementById('cw-agency').value,
     phone:document.getElementById('cw-phone').value,
     fax:document.getElementById('cw-fax').value,
@@ -6864,7 +6939,7 @@ function openCwDetail(id){
   document.getElementById('cwDetailView').style.display='block';
   var ini=(cw.name||'?').split(' ').map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase();
   document.getElementById('cwDetailAvatar').textContent=ini;
-  document.getElementById('cwDetailName').textContent=cw.name||'';
+  document.getElementById('cwDetailName').textContent=(cw.title?cw.title+' ':'')+(cw.name||'');
   document.getElementById('cwDetailMeta').innerHTML=esc(cw.agency||'')+(cw.phone?' · '+esc(cw.phone):'');
   switchCwTab('overview');
 }
@@ -6951,9 +7026,9 @@ function renderCwInfoPane(){
 
   var g=document.createElement('div');g.className='info-grid';c.appendChild(g);
 
-  function mkF(id,label,val,full){
+  function mkF(id,label,val,full,attrs){
     var d=document.createElement('div');d.className='info-field'+(full?' full':'');
-    d.innerHTML='<label for="'+id+'">'+label+'</label><input id="'+id+'" value="'+esc(val||'')+'">';g.appendChild(d);
+    d.innerHTML='<label for="'+id+'">'+label+'</label><input id="'+id+'" value="'+esc(val||'')+'"'+(attrs||'')+'>';g.appendChild(d);
   }
   function mkDiv(label){var d=document.createElement('div');d.className='form-section-divider full';d.innerHTML='<span>'+label+'</span>';g.appendChild(d);}
   function mkRow(html){var d=document.createElement('div');d.className='info-field-row full';d.innerHTML=html;g.appendChild(d);}
@@ -6961,8 +7036,9 @@ function renderCwInfoPane(){
   // Name row
   var firstName=cw.first_name||(cw.name||'').split(' ')[0]||'';
   var lastName=cw.last_name||(cw.name||'').split(' ').slice(1).join(' ')||'';
-  var dName=document.createElement('div');dName.className='info-field-row full';dName.style.gridTemplateColumns='1fr 1fr 1fr';
-  dName.innerHTML='<div class="info-field"><label for="cwi-first">First Name *</label><input id="cwi-first" value="'+esc(firstName)+'"></div>'+
+  var dName=document.createElement('div');dName.className='info-field-row full';dName.style.gridTemplateColumns='84px 1fr 1fr 1fr';
+  dName.innerHTML='<div class="info-field"><label for="cwi-title">Title</label><select id="cwi-title">'+['','Mr.','Mrs.','Ms.','Miss','Dr.','Mx.'].map(function(t){return '<option'+(String(cw.title||'')===t?' selected':'')+'>'+t+'</option>';}).join('')+'</select></div>'+
+    '<div class="info-field"><label for="cwi-first">First Name *</label><input id="cwi-first" value="'+esc(firstName)+'"></div>'+
     '<div class="info-field"><label for="cwi-middle">Middle Name</label><input id="cwi-middle" value="'+esc(cw.middle_name||'')+'"></div>'+
     '<div class="info-field"><label for="cwi-last">Last Name *</label><input id="cwi-last" value="'+esc(lastName)+'"></div>';
   g.appendChild(dName);
@@ -6970,7 +7046,7 @@ function renderCwInfoPane(){
   mkF('cwi-agency','Agency',cw.agency,true);
   mkRow('<div class="info-field"><label for="cwi-phone">Phone</label><input id="cwi-phone" value="'+esc(cw.phone||'')+'"></div>'+
     '<div class="info-field"><label for="cwi-fax">Fax</label><input id="cwi-fax" value="'+esc(cw.fax||'')+'"></div>');
-  mkF('cwi-email','Email',cw.email,true);
+  mkF('cwi-email','Email',cw.email,true,' onblur="_autoGovEmail(this)"');
   // Supervisor dropdown + Add/Edit buttons (CC'd on monthly invoice emails when set)
   var supDiv=document.createElement('div');supDiv.className='info-field full';
   supDiv.innerHTML='<label for="cwi-supervisor">Supervisor <span style="font-weight:400;font-size:10px;color:#5c7590;">(CC\'d on monthly invoice emails when set)</span></label>'+
@@ -7001,6 +7077,7 @@ function saveCwInfoPane(){
   var first=(document.getElementById('cwi-first').value||'').trim();
   var last=(document.getElementById('cwi-last').value||'').trim();
   if(!first||!last){showAlert('First and last name are required.');return;}
+  var titleEl=document.getElementById('cwi-title');cw.title=titleEl?(titleEl.value||''):(cw.title||'');
   cw.first_name=first;cw.middle_name=document.getElementById('cwi-middle').value;cw.last_name=last;
   cw.name=(first+(document.getElementById('cwi-middle').value?' '+document.getElementById('cwi-middle').value:'')+' '+last).trim();
   cw.agency=document.getElementById('cwi-agency').value;
@@ -7010,7 +7087,7 @@ function saveCwInfoPane(){
   cw.state=document.getElementById('cwi-state').value;cw.zip=document.getElementById('cwi-zip').value;cw.county=document.getElementById('cwi-county').value;
   var cwiSup=document.getElementById('cwi-supervisor');if(cwiSup)cw.supervisor_id=cwiSup.value||'';
   saveCaseworkersLS(arr);saveCaseworkerAPI(cw);
-  document.getElementById('cwDetailName').textContent=cw.name;
+  document.getElementById('cwDetailName').textContent=(cw.title?cw.title+' ':'')+cw.name;
   document.getElementById('cwDetailMeta').innerHTML=esc(cw.agency||'')+(cw.phone?' · '+esc(cw.phone):'');
   var btn=document.getElementById('cwSaveInfoBtn');if(btn){btn.textContent='Saved ✓';setTimeout(function(){btn.textContent='Save Changes';},1800);}
   addAuditEntry(cw.name,'Caseworker profile updated');
