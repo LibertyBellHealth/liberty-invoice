@@ -771,7 +771,28 @@ function renderOverviewPane(){
       '<span style="flex:1;color:#5c7590;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(inv.invoiceNote||'')+'</span>'+
       '<span style="font-size:11px;color:#4d6c88;white-space:nowrap;">'+esc(inv.savedAt.split(',')[0])+'</span></div>';
   });}
+  // Authorization (DHS-1210) card — only when the client has an imported authorization.
+  var auth=prof.authorization, authCardHtml='';
+  if(auth){
+    var dueTxt='', dueColor='#1a2b45';
+    if(auth.reassessDate){
+      var dp=auth.reassessDate.split('/');
+      if(dp.length===3){var dd=new Date(+dp[2],(+dp[0])-1,+dp[1]);var days=Math.floor((dd-new Date())/86400000);
+        if(days<0){dueTxt=' · overdue';dueColor='#b03030';}else if(days<=30){dueTxt=' · '+days+'d';dueColor='#c67605';}}
+    }
+    authCardHtml='<div class="ov-card"><h4>Authorization (DHS-1210)</h4>'+
+      '<div class="ov-row"><span class="ov-label">Approved / mo</span><span class="ov-value">'+(auth.hours!=null?auth.hours+'h '+auth.minutes+'m':'—')+'</span></div>'+
+      '<div class="ov-row"><span class="ov-label">Effective</span><span class="ov-value">'+esc(auth.effectiveDate||'—')+'</span></div>'+
+      '<div class="ov-row"><span class="ov-label">Reassess due</span><span class="ov-value" style="color:'+dueColor+';">'+esc(auth.reassessDate||'—')+dueTxt+'</span></div>'+
+      (auth.rate!==''&&auth.rate!=null?'<div class="ov-row"><span class="ov-label">Rate</span><span class="ov-value">$'+esc(String(auth.rate))+'/hr</span></div>':'')+
+      (auth.total!==''&&auth.total!=null?'<div class="ov-row"><span class="ov-label">Monthly total</span><span class="ov-value">$'+esc(Number(auth.total).toFixed(2))+'</span></div>':'')+
+      '<div class="ov-row"><span class="ov-label">Tasks</span><span class="ov-value">'+((auth.tasks||[]).length)+'</span></div>'+
+      '<div style="margin-top:8px;font-size:10px;color:#94a7bd;">Imported '+esc(auth.importedAt||'')+(auth.sourceFile?' · '+esc(auth.sourceFile):'')+'</div>'+
+      '<div style="margin-top:6px;"><button class="btn btn-secondary btn-sm" style="font-size:10px;" onclick="importDHS1210()">Update from DHS-1210</button></div>'+
+    '</div>';
+  }
   pane.innerHTML='<div class="overview-grid">'+
+    authCardHtml+
     '<div class="ov-card"><h4>Client Info</h4>'+
       '<div class="ov-row"><span class="ov-label">Medicaid ID</span><span class="ov-value">'+esc(prof.medicaidId||'—')+'</span></div>'+
       '<div class="ov-row"><span class="ov-label">Hourly Rate</span><span class="ov-value">'+(prof.hourlyRate?'$'+esc(prof.hourlyRate)+'/hr':'—')+'</span></div>'+
@@ -1234,11 +1255,206 @@ function getHcClientId(){
   var prof=getProfiles()[activeProfileName];
   return prof&&prof._dbId?prof._dbId:null;
 }
+// ═══════════════════════════════════════════════════════════════════════════
+// DHS-1210 reader — extract authorized hours/tasks from the MDHHS approval packet.
+// Runs entirely in-browser via pdf.js (self-hosted); the PHI on the form never
+// leaves the machine. Output feeds a review/confirm step, then the client profile.
+// ═══════════════════════════════════════════════════════════════════════════
+function _dhsReady(){ return typeof pdfjsLib!=='undefined'; }
+
+// Group one page's text items into ordered lines (top→bottom, then left→right).
+async function _dhsPageLines(page){
+  var tc=await page.getTextContent();
+  var buckets={};
+  tc.items.forEach(function(it){
+    if(!it.str||!it.str.trim())return;
+    var x=it.transform[4], y=Math.round(it.transform[5]);
+    var key=Object.keys(buckets).find(function(k){return Math.abs(k-y)<=3;}); // merge a row's items
+    if(key===undefined)key=y;
+    (buckets[key]=buckets[key]||[]).push({x:x,s:it.str});
+  });
+  return Object.keys(buckets).map(Number).sort(function(a,b){return b-a;}).map(function(y){
+    return buckets[y].sort(function(a,b){return a.x-b.x;}).map(function(o){return o.s;}).join(' ').replace(/\s+/g,' ').trim();
+  }).filter(Boolean);
+}
+
+// Parse the grouped lines into a structured authorization. Self-checks the extraction
+// against the form's own printed totals (task $ = total; task minutes = approved hours).
+function parseDHS1210(pages){
+  var lines=[].concat.apply([],pages);
+  var flat=lines.join(' ').replace(/\s+/g,' ');
+  var out={warnings:[]};
+  var m=flat.match(/approved for\s+(\d+)\s+Hours?\s+and\s+(\d+)\s+Minutes? per month/i);
+  if(m){out.hours=+m[1];out.minutes=+m[2];} else out.warnings.push('approved hours');
+  var e=flat.match(/effective\s+(\d{2}\/\d{2}\/\d{4})/i); if(e)out.effectiveDate=e[1]; else out.warnings.push('effective date');
+  var em=flat.match(/([A-Za-z][A-Za-z.]*@michigan\.gov)/i); if(em)out.aswEmail=em[1];
+  var ph=flat.match(/(\d{3}-\d{3}-\d{4})/); if(ph)out.aswPhone=ph[1];
+  var co=flat.match(/\b(\d{2}-[A-Z]{3,})\b/); if(co)out.county=co[1];
+  pages.forEach(function(ls){ls.forEach(function(ln,i){
+    if(out.aswName)return;
+    if(/Adult Services Worker.*Name/i.test(ln)){var nxt=(ls[i+1]||'').match(/^([A-Z]\.?\s?[A-Z][a-z]+)/); if(nxt)out.aswName=nxt[1].trim();}
+  });});
+  if(!out.aswName){var a2=flat.match(/\b([A-Z]\s[A-Z][a-z]+)\b\s+\d{3}-\d{3}-\d{4}/); if(a2)out.aswName=a2[1];}
+  // Provider name + pay rate: a "<name> $NN.NN" line that isn't a task row.
+  pages.forEach(function(ls){ls.forEach(function(ln){
+    var r=ln.match(/^([A-Za-z][A-Za-z .,&'-]+?)\s+\$\s*(\d{1,3}\.\d{2})$/);
+    if(r && !/\d{2}:\d{2}/.test(ln) && out.rate===undefined){out.providerName=r[1].trim();out.rate=+r[2];}
+  });});
+  var t=flat.match(/Total per month[\s\S]*?\$\s*([\d,]+\.\d{2})/i); if(t)out.printedTotal=+t[1].replace(/,/g,'');
+  // Task rows: <task> <HH:MM/day> <frequency> <HH:MM/month> [$amount]
+  var tasks=[],seen={};
+  pages.forEach(function(ls){ls.forEach(function(ln){
+    var r=ln.match(/^(.+?)\s+(\d{2}:\d{2})\s+(\d+ days? per week|Once per (?:week|month)|\d+ days? per month)\s+(\d{2}:\d{2})(?:\s+\$?([\d,]+\.\d{2}))?/i);
+    if(r){var nm=r[1].trim(); if(!seen[nm]){seen[nm]=1;tasks.push({task:nm,perDay:r[2],freq:r[3],perMonth:r[4],amount:r[5]?+r[5].replace(/,/g,''):null});}}
+  });});
+  out.tasks=tasks;
+  if(tasks.length){
+    var sum=Math.round(tasks.filter(function(x){return x.amount!=null;}).reduce(function(a,x){return a+x.amount;},0)*100)/100;
+    out.taskAmountSum=sum;
+    out.total=out.printedTotal!=null?out.printedTotal:sum; // bill from summed line items; printed total cross-checks
+    out.amountReconciles=out.printedTotal!=null?Math.abs(sum-out.printedTotal)<0.02:null;
+  }
+  if(out.hours!=null){
+    var mins=tasks.reduce(function(a,x){var p=(x.perMonth||'0:0').split(':');return a+(+p[0])*60+(+p[1]);},0);
+    out.taskMinuteSum=mins; out.approvedTotalMin=out.hours*60+out.minutes;
+    out.timeReconciles=Math.abs(mins-out.approvedTotalMin)<=1;
+  }
+  // Reassessment due = effective + 6 months (form says services reviewed every 6 months).
+  if(out.effectiveDate){var pp=out.effectiveDate.split('/'); if(pp.length===3){var d=new Date(+pp[2],(+pp[0])-1+6,+pp[1]); out.reassessDate=('0'+(d.getMonth()+1)).slice(-2)+'/'+('0'+d.getDate()).slice(-2)+'/'+d.getFullYear();}}
+  return out;
+}
+
+function readDHS1210File(file){
+  return file.arrayBuffer().then(function(buf){
+    if(!pdfjsLib.GlobalWorkerOptions.workerSrc) pdfjsLib.GlobalWorkerOptions.workerSrc='vendor/pdf.worker.min.js';
+    return pdfjsLib.getDocument({data:buf}).promise;
+  }).then(function(pdf){
+    var jobs=[]; for(var p=1;p<=pdf.numPages;p++)jobs.push(pdf.getPage(p).then(_dhsPageLines));
+    return Promise.all(jobs);
+  }).then(parseDHS1210);
+}
+
+// Entry point — triggered from the client Documents pane.
+function importDHS1210(){
+  if(!activeProfileName){showAlert('Open a client first.');return;}
+  if(!_dhsReady()){showAlert('PDF reader is still loading — try again in a second.');return;}
+  var inp=document.getElementById('dhsImportFile'); if(!inp)return;
+  inp.value=''; inp.click();
+}
+function handleDhsImport(input){
+  var file=input&&input.files&&input.files[0]; if(!file)return;
+  if(!/\.pdf$/i.test(file.name)&&file.type!=='application/pdf'){showAlert('Please choose the DHS-1210 PDF file.');return;}
+  var status=document.getElementById('hcDocStatus'); if(status)status.textContent='Reading DHS-1210…';
+  readDHS1210File(file).then(function(res){
+    if(status)status.textContent='';
+    showDhsReview(file,res);
+  }).catch(function(e){
+    if(status)status.textContent='';
+    showAlert('Could not read that PDF: '+e);
+  });
+}
+
+function _dhsChip(ok){return ok?'<span style="color:#1a7f4b;font-weight:700;">✓</span>':(ok===false?'<span style="color:#c0392b;font-weight:700;">✗</span>':'<span style="color:#5c7590;">–</span>');}
+
+function showDhsReview(file,res){
+  var ex=document.getElementById('dhsReviewModal'); if(ex)ex.remove();
+  var prof=getProfiles()[activeProfileName]||{};
+  var cws=getCaseworkers();
+  var match=res.aswEmail?cws.find(function(c){return (c.email||'').toLowerCase()===res.aswEmail.toLowerCase();}):null;
+  var hasCw=!!prof.caseworkerId;
+  var row=function(l,v){return '<div style="display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:13px;"><span style="color:#5c7590;">'+l+'</span><span style="font-weight:600;color:#1a2b45;text-align:right;">'+v+'</span></div>';};
+  var warn=(res.warnings&&res.warnings.length)?'<div style="background:#fff3cd;border:1px solid #ffeaa7;color:#856404;font-size:12px;padding:6px 10px;border-radius:6px;margin:8px 0;">Couldn\'t read: '+esc(res.warnings.join(', '))+' — verify before saving.</div>':'';
+  var tasksHtml=(res.tasks||[]).map(function(t){
+    return '<tr><td style="padding:2px 6px;">'+esc(t.task)+'</td><td style="padding:2px 6px;color:#5c7590;">'+esc(t.freq)+'</td><td style="padding:2px 6px;text-align:right;">'+esc(t.perMonth)+'</td><td style="padding:2px 6px;text-align:right;">'+(t.amount!=null?'$'+t.amount.toFixed(2):'—')+'</td></tr>';
+  }).join('');
+  var cwSection='';
+  if(match){
+    cwSection='<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-top:4px;"><input type="checkbox" id="dhs-link-cw" '+(!hasCw?'checked':'')+' style="margin-top:3px;"><span>Set this client\'s caseworker to <b>'+esc(match.name)+'</b> <span style="color:#1a7f4b;">(matched by email)</span></span></label>';
+  } else if(res.aswName){
+    cwSection='<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-top:4px;"><input type="checkbox" id="dhs-add-cw" checked style="margin-top:3px;"><span>Add <b>'+esc(res.aswName)+'</b> ('+esc(res.aswEmail||'no email')+') as a caseworker and assign to this client</span></label>';
+  }
+  var reconcileNote=(res.timeReconciles||res.amountReconciles)
+    ? '<div style="font-size:12px;color:#1a7f4b;margin-top:6px;">'+_dhsChip(res.timeReconciles!==false)+' Task times match the approved hours'+(res.amountReconciles!=null?' &nbsp; '+_dhsChip(res.amountReconciles)+' Task $ match the printed total':'')+'</div>'
+    : '';
+  var ov=document.createElement('div');
+  ov.id='dhsReviewModal'; ov.className='modal-overlay open';
+  ov.innerHTML='<div class="modal-box" style="max-width:560px;max-height:88vh;overflow:auto;">'+
+    '<h3>DHS-1210 — review before saving</h3>'+
+    '<p style="font-size:12px;color:#5c7590;margin:-4px 0 8px;">Read from <b>'+esc(file.name)+'</b>. Nothing was sent anywhere — parsed in your browser.</p>'+
+    warn+
+    '<div style="background:#f4f6f9;border-radius:8px;padding:10px 12px;">'+
+      row('Approved / month', (res.hours!=null?res.hours+'h '+res.minutes+'m':'—'))+
+      row('Effective', esc(res.effectiveDate||'—'))+
+      row('Reassessment due', esc(res.reassessDate||'—'))+
+      row('Provider rate', (res.rate!=null?'$'+res.rate+'/hr':'—'))+
+      row('Monthly total', (res.total!=null?'$'+res.total.toFixed(2):'—'))+
+      row('Adult Services Worker', esc((res.aswName||'—')+(res.aswEmail?' · '+res.aswEmail:'')))+
+    '</div>'+
+    reconcileNote+
+    (tasksHtml?'<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;margin:12px 0 4px;">Tasks ('+res.tasks.length+')</div>'+
+      '<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="color:#5c7590;text-align:left;"><th style="padding:2px 6px;">Task</th><th style="padding:2px 6px;">Frequency</th><th style="padding:2px 6px;text-align:right;">Time/mo</th><th style="padding:2px 6px;text-align:right;">Amount</th></tr></thead><tbody>'+tasksHtml+'</tbody></table>':'')+
+    (cwSection?'<div style="border-top:1px solid #e8ecf0;margin-top:12px;padding-top:10px;">'+cwSection+'</div>':'')+
+    '<div class="modal-row" style="justify-content:flex-end;gap:8px;margin-top:14px;">'+
+      '<button class="btn btn-secondary" onclick="document.getElementById(\'dhsReviewModal\').remove()">Cancel</button>'+
+      '<button class="btn btn-primary" id="dhs-confirm-btn">Save to '+esc(activeProfileName)+'</button>'+
+    '</div>'+
+  '</div>';
+  document.body.appendChild(ov);
+  document.getElementById('dhs-confirm-btn').onclick=function(){
+    var opts={link:!!(document.getElementById('dhs-link-cw')&&document.getElementById('dhs-link-cw').checked),
+              add:!!(document.getElementById('dhs-add-cw')&&document.getElementById('dhs-add-cw').checked),
+              match:match};
+    _applyDhsImport(file,res,opts);
+    ov.remove();
+  };
+}
+
+function _applyDhsImport(file,res,opts){
+  var name=activeProfileName; var p=getProfiles(); var prof=p[name]; if(!prof)return;
+  prof.authorization={
+    hours:res.hours!=null?res.hours:null, minutes:res.minutes!=null?res.minutes:null,
+    effectiveDate:res.effectiveDate||'', reassessDate:res.reassessDate||'',
+    rate:res.rate!=null?res.rate:'', total:res.total!=null?res.total:'',
+    providerName:res.providerName||'', county:res.county||'',
+    tasks:res.tasks||[], aswName:res.aswName||'', aswEmail:res.aswEmail||'', aswPhone:res.aswPhone||'',
+    importedAt:new Date().toLocaleString(), sourceFile:file.name,
+  };
+  // Caseworker verify/match/add (the "verify and match; if not there, add it" ask).
+  if(opts.match && opts.link){ prof.caseworkerId=opts.match.id; prof.worker=opts.match.name; }
+  else if(!opts.match && opts.add && res.aswName){
+    var parts=res.aswName.split(/\s+/); var first=parts[0]||res.aswName; var last=parts.slice(1).join(' ')||'';
+    var cw={id:cwId(),name:res.aswName,first_name:first,last_name:last,agency:'MDHHS',email:res.aswEmail||'',phone:res.aswPhone||'',supervisor_id:''};
+    var cws=getCaseworkers(); cws.push(cw); saveCaseworkersLS(cws);
+    if(typeof saveCaseworkerAPI==='function') saveCaseworkerAPI(cw);
+    prof.caseworkerId=cw.id; prof.worker=cw.name;
+  }
+  saveProfilesLS(p); saveProfileSP(name,prof);
+  // File the PDF into Documents (Authorization category) — best effort; needs a saved client.
+  var cid=getHcClientId();
+  if(cid){
+    var fd=new FormData();
+    fd.append('clientType','homecare'); fd.append('clientId',cid); fd.append('category','Authorization');
+    fd.append('file',new File([file],'Authorization__'+file.name,{type:file.type||'application/pdf'}));
+    fetch(API_BASE+'/documents',{method:'POST',headers:authUploadHeaders(),body:fd})
+      .then(function(r){ if(r.ok && document.getElementById('hcDocList'))loadHcDocs(cid); })
+      .catch(function(e){ console.error('DHS PDF upload failed',e); });
+    showToast('✓ Authorization saved + PDF filed for '+name);
+  } else {
+    showToast('✓ Authorization saved for '+name+' (save the client to file the PDF)');
+  }
+  if(typeof renderOverviewPane==='function')renderOverviewPane();
+}
+
 function renderDocsPane(){
   var c=document.getElementById('docsContent');c.innerHTML='';
   if(!activeProfileName)return;
   var clientId=getHcClientId();
-  c.innerHTML=docUploaderHtml({title:'Client Documents',subtitle:"SSN cards, driver's licenses, insurance cards, authorizations, etc.",hasCategory:true,catId:'hcDocCategory',fileId:'hcDocFileInput',scanId:'docScanInput',scanFn:'handleDocScan(this)',uploadFn:'uploadHcDoc()',statusId:'hcDocStatus',listId:'hcDocList'});
+  c.innerHTML=
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;background:#eef4fb;border:1px solid #d5e4f3;border-radius:8px;padding:10px 14px;margin-bottom:12px;flex-wrap:wrap;">'+
+      '<div style="font-size:12px;color:#2b4a6b;"><b>📄 DHS-1210?</b> Import it to auto-fill authorized hours &amp; tasks — and file the PDF here.</div>'+
+      '<button class="btn btn-primary btn-sm" onclick="importDHS1210()" style="white-space:nowrap;">Import DHS-1210</button>'+
+    '</div>'+
+    docUploaderHtml({title:'Client Documents',subtitle:"SSN cards, driver's licenses, insurance cards, authorizations, etc.",hasCategory:true,catId:'hcDocCategory',fileId:'hcDocFileInput',scanId:'docScanInput',scanFn:'handleDocScan(this)',uploadFn:'uploadHcDoc()',statusId:'hcDocStatus',listId:'hcDocList'});
   if(clientId){loadHcDocs(clientId);}
   else{document.getElementById('hcDocList').innerHTML='<div style="color:#5c7590;font-size:12px;">Save this client to the database first before uploading documents.</div>';}
 }
@@ -5793,6 +6009,7 @@ function loadProfilesAPI() {
           startDate: c.start_date || '', liveIn: !!c.live_in,
           clientStatus: c.client_status || 'active', hasComplex: !!c.has_complex,
           clientNotes: c.client_notes || '', _dbId: c.id,
+          authorization: _parseAuth(c.dhs_authorization),
           // Optimistic-concurrency token (see saveProfileSP). Tolerant of both the bundled
           // (row_version_hex) and plain (/homecare-clients) endpoints.
           _rowVersion: c.row_version_hex || (typeof c.row_version === 'string' ? c.row_version : null),
@@ -5845,6 +6062,9 @@ function saveProfileSP(name, data, quiet) {
     drivers_license: data.driversLicense || '', ssn: data.ssn || '',
     start_date: data.startDate || '', live_in: data.liveIn ? 1 : 0,
     client_notes: data.clientNotes || '',
+    // DHS-1210 authorization (hours/dates/tasks). Sent as an object; the backend
+    // JSON.stringify's it. null when the client has no imported authorization yet.
+    dhs_authorization: data.authorization || null,
   };
   // S8: only send ssn when we actually have it in memory. Omitting it makes the backend
   // keep the stored (encrypted) value rather than blanking it — so a save that happens
@@ -5940,7 +6160,14 @@ function _clientSig(d) {
     d.zip||'', d.county||'', d.phone||'', d.clientEmail||'', d.caregiverId||'',
     d.clientStatus||'active', d.hasComplex?1:0, d.dob||'', d.gender||'', d.driversLicense||'',
     d.ssn||'', d.startDate||'', d.liveIn?1:0, d.clientNotes||'',
+    d.authorization?JSON.stringify(d.authorization):'',
   ]);
+}
+// DHS-1210 authorization JSON may arrive as a string (from SQL) or already-parsed object.
+function _parseAuth(v){
+  if(!v)return null;
+  if(typeof v==='object')return v;
+  try{return JSON.parse(v);}catch(e){return null;}
 }
 // Persist a client's invoices to SQL. New invoices (no dbId) INSERT; existing ones (with
 // dbId) send their id so the backend UPDATE branch fires — this is what makes EDITS to a
