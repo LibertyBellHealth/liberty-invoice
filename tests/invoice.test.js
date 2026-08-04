@@ -75,6 +75,27 @@ test('clientDueForInvoice: only flags a missing invoice when a start date is on/
   assert.strictEqual(w.clientDueForInvoice({ startDate: '2026-07-15' }, '07/2026'), true, 'starts within the period -> due');
 });
 
+test('clientInvoiceRate: client rate if set (from DHS or manual), else the Settings default (#1)', () => {
+  const w = loadApp();
+  w.localStorage.setItem('lhca_state_rate', '27.00');
+  assert.strictEqual(w.clientInvoiceRate({ hourlyRate: '30.00' }), '30.00', 'client rate used');
+  assert.strictEqual(w.clientInvoiceRate({ hourlyRate: '' }), '27.00', 'empty -> state default');
+  assert.strictEqual(w.clientInvoiceRate({}), '27.00', 'no rate -> state default');
+  assert.strictEqual(w.clientInvoiceRate({ hourlyRate: '0' }), '27.00', 'zero -> state default');
+  assert.strictEqual(w.clientInvoiceRate({ hourlyRate: '$28.50' }), '28.50', 'strips formatting');
+});
+
+test('DHS rate is suggested as the client hourly rate, normalized to 2 decimals (#1)', () => {
+  const w = loadApp();
+  const ups = w._dhsSuggestedUpdates({ rate: 27 }, { hourlyRate: '' }, null);
+  const rate = ups.find(u => u.field === 'hourlyRate');
+  assert.ok(rate, 'rate is suggested when client has none');
+  assert.strictEqual(rate.to, '27.00', 'normalized to 2 decimals');
+  // stored "27.00" vs form 27 must NOT be flagged (same value, different format)
+  const same = w._dhsSuggestedUpdates({ rate: 27 }, { hourlyRate: '27.00' }, null);
+  assert.ok(!same.some(u => u.field === 'hourlyRate'), 'identical rate not flagged');
+});
+
 test('generateNextMonthInvoiceData: guards bad input instead of producing a garbage bill', () => {
   const w = loadApp();
   assert.strictEqual(w.generateNextMonthInvoiceData(null, '08/2026'), null, 'no prior invoice -> null');
