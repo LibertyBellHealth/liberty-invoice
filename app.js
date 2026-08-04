@@ -352,7 +352,7 @@ function navCaregivers(){
   if(typeof spToken!=='undefined'&&spToken&&Object.keys(getCaregivers()).length===0&&typeof loadCaregiversAPI==='function')loadCaregiversAPI();
   if(typeof revalidate==='function')revalidate();
 }
-function navSettings(){showPage('settings');bc([{l:'Settings'}]);document.getElementById('topbarActions').innerHTML='';renderSigSettings();updateSettingsAuth();renderEmailAuditTable();if(typeof loadSigningTemplates==='function')loadSigningTemplates();if(typeof revalidate==='function')revalidate();var sr=document.getElementById('stateRateInput');if(sr)sr.value=stateRate();var srs=document.getElementById('stateRateStatus');if(srs)srs.textContent='';}
+function navSettings(){showPage('settings');bc([{l:'Settings'}]);document.getElementById('topbarActions').innerHTML='';renderSigSettings();updateSettingsAuth();renderEmailAuditTable();if(typeof loadSigningTemplates==='function')loadSigningTemplates();if(typeof revalidate==='function')revalidate();var sr=document.getElementById('stateRateInput');if(sr)sr.value=stateRate();var srs=document.getElementById('stateRateStatus');if(srs)srs.textContent='';if(typeof renderAgencySettings==='function')renderAgencySettings();}
 function navTasks(){showPage('tasks');bc([{l:'Tasks'}]);document.getElementById('topbarActions').innerHTML='';populateTodoClientSelect();renderTodos();if(typeof revalidate==='function')revalidate();}
 function navReports(){showPage('reports');bc([{l:'Reports'}]);document.getElementById('topbarActions').innerHTML='';renderReports();}
 
@@ -6019,7 +6019,7 @@ function clearPHIFromStorage() {
   // KEEP = column widths, page sizes, the state billing rate, PDF-mode preference, and the
   // weekly-backup timestamp (a plain date, not PHI — wiping it made the "weekly" OneDrive
   // backup re-fire on every session, since the wipe erased its memory of the last run).
-  var KEEP = /(_col_widths|_page_size)$|^lhca_state_rate$|^lhca_pdf_mode$|^lhca_last_onedrive_backup$/;
+  var KEEP = /(_col_widths|_page_size)$|^lhca_state_rate$|^lhca_pdf_mode$|^lhca_last_onedrive_backup$|^lhca_agency$/;
   Object.keys(localStorage)
     .filter(function(k){ return k.indexOf('lhca_') === 0 && !KEEP.test(k); })
     .forEach(function(k){ try{ localStorage.removeItem(k); }catch(e){} });
@@ -7894,18 +7894,53 @@ function _normalizeDate(v){
   return v;
 }
 
-// Hard-coded agency info — appears as Section 2 (provider info) on MSA-4676.
-// If anything here changes (new owner / address / CHAMPS ID), update this block.
-var AGENCY_INFO={
-  agency_provider_name:'Thomas Jaboro',
-  agency_provider_id:'6221933',
-  agency_address:'2741 Balsam Way Dr',
-  agency_city:'Sterling Heights',
-  agency_state:'MI',
-  agency_zip:'48314',
-  agency_phone:'(248) 291-4106',
-  agency_relationship:'N/A - Agency'
-};
+// Agency (provider) info — auto-filled onto state forms (Section 2 of MSA-4676, etc.).
+// These are the DEFAULTS; the live values are editable in Settings and stored in localStorage
+// (lhca_agency), so the owner can update them without a code change. Not PHI — it's the agency's
+// own business info — so lhca_agency is in the clearPHIFromStorage KEEP whitelist (survives wipe).
+// Defaults as a hoisted function (not a top-level var) so it's available everywhere regardless of
+// file position — including test harnesses that don't execute the whole file top-to-bottom.
+function _agencyDefaults(){
+  return {
+    agency_provider_name:'Thomas Jaboro',
+    agency_provider_id:'6221933',
+    agency_address:'2741 Balsam Way Dr',
+    agency_city:'Sterling Heights',
+    agency_state:'MI',
+    agency_zip:'48314',
+    agency_phone:'(248) 291-4106',
+    agency_relationship:'N/A - Agency'
+  };
+}
+function getAgencyInfo(){
+  var D=_agencyDefaults();
+  var saved={}; try{ saved=JSON.parse(localStorage.getItem('lhca_agency')||'{}')||{}; }catch(e){ saved={}; }
+  // Merge over defaults so a partially-filled/older saved object still yields every field.
+  var out={}; for(var k in D){ out[k]=(saved[k]!==undefined&&saved[k]!=='')?saved[k]:D[k]; }
+  return out;
+}
+function saveAgencyInfo(obj){
+  var D=_agencyDefaults();
+  var clean={}; for(var k in D){ clean[k]=(obj&&obj[k]!=null)?String(obj[k]):D[k]; }
+  localStorage.setItem('lhca_agency', JSON.stringify(clean));
+  return clean;
+}
+// Settings > Agency Information — populate the inputs from the stored/default values.
+function renderAgencySettings(){
+  var a=getAgencyInfo();
+  var set=function(id,v){var e=document.getElementById(id);if(e)e.value=v||'';};
+  set('ag-name',a.agency_provider_name); set('ag-id',a.agency_provider_id); set('ag-phone',a.agency_phone);
+  set('ag-address',a.agency_address); set('ag-city',a.agency_city); set('ag-state',a.agency_state); set('ag-zip',a.agency_zip);
+}
+function saveAgencyFromSettings(){
+  var g=function(id){var e=document.getElementById(id);return e?e.value.trim():'';};
+  saveAgencyInfo({
+    agency_provider_name:g('ag-name'), agency_provider_id:g('ag-id'), agency_phone:g('ag-phone'),
+    agency_address:g('ag-address'), agency_city:g('ag-city'), agency_state:g('ag-state'), agency_zip:g('ag-zip'),
+    agency_relationship:getAgencyInfo().agency_relationship
+  });
+  var s=document.getElementById('agencyStatus'); if(s){s.textContent='Saved ✓';setTimeout(function(){s.textContent='';},1800);}
+}
 // Set of dict keys that hold dates and should be normalized to MM/DD/YYYY
 var _DATE_DICT_KEYS={client_dob:1,caregiver_dob:1,signature_date:1,today_date:1,last_seen:1,resolved_date:1,start_date:1};
 
@@ -7918,6 +7953,7 @@ function _buildFormDataDict(){
   var cgs=getCaregivers();
   var assignedCg=(prof.caregiverId&&cgs[prof.caregiverId])||{};
   var td=today();
+  var _agency=getAgencyInfo();
   var fullName=activeFormClientName||'';
   var fParts=fullName.split(' ');
   var firstN=fParts[0]||'',lastN=fParts.slice(1).join(' ')||'';
@@ -7939,15 +7975,15 @@ function _buildFormDataDict(){
     caregiver_city:assignedCg.city||'', caregiver_state:assignedCg.state||'MI', caregiver_zip:assignedCg.zip||'',
     caregiver_phone:assignedCg.phone||'', caregiver_email:assignedCg.email||'',
     caregiver_champs_id:assignedCg.champsId||assignedCg.champs_id||'',
-    // Agency (hardcoded — used as Section 2 on MSA-4676)
-    agency_provider_name:AGENCY_INFO.agency_provider_name,
-    agency_provider_id:AGENCY_INFO.agency_provider_id,
-    agency_address:AGENCY_INFO.agency_address,
-    agency_city:AGENCY_INFO.agency_city,
-    agency_state:AGENCY_INFO.agency_state,
-    agency_zip:AGENCY_INFO.agency_zip,
-    agency_phone:AGENCY_INFO.agency_phone,
-    agency_relationship:AGENCY_INFO.agency_relationship,
+    // Agency (editable in Settings — used as Section 2 on MSA-4676, etc.)
+    agency_provider_name:_agency.agency_provider_name,
+    agency_provider_id:_agency.agency_provider_id,
+    agency_address:_agency.agency_address,
+    agency_city:_agency.agency_city,
+    agency_state:_agency.agency_state,
+    agency_zip:_agency.agency_zip,
+    agency_phone:_agency.agency_phone,
+    agency_relationship:_agency.agency_relationship,
     // Common
     today_date:td, signature_date:td, log_number:''
   };

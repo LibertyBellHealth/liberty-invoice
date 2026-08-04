@@ -577,6 +577,24 @@ function aiTrack(name, props){
     </div>
 
     <div class="settings-section">
+      <h3>Agency Information</h3>
+      <p style="font-size:11px;color:#5c7590;margin-top:0;">Your provider details, auto-filled onto state forms (Section 2 of MSA-4676, etc.). Update here whenever they change — no code change needed.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;max-width:560px;">
+        <div class="ff" style="grid-column:1 / -1;"><label for="ag-name">Agency / Provider Name</label><input id="ag-name" maxlength="120"></div>
+        <div class="ff"><label for="ag-id">Provider #</label><input id="ag-id" maxlength="40"></div>
+        <div class="ff"><label for="ag-phone">Phone</label><input id="ag-phone" maxlength="30"></div>
+        <div class="ff" style="grid-column:1 / -1;"><label for="ag-address">Address</label><input id="ag-address" maxlength="120"></div>
+        <div class="ff"><label for="ag-city">City</label><input id="ag-city" maxlength="60"></div>
+        <div class="ff"><label for="ag-state">State</label><input id="ag-state" maxlength="20"></div>
+        <div class="ff"><label for="ag-zip">ZIP</label><input id="ag-zip" maxlength="12"></div>
+      </div>
+      <div style="margin-top:12px;display:flex;align-items:center;gap:10px;">
+        <button class="btn btn-primary" onclick="saveAgencyFromSettings()">Save Agency Info</button>
+        <span id="agencyStatus" style="font-size:12px;color:#1a7740;"></span>
+      </div>
+    </div>
+
+    <div class="settings-section">
       <h3>Clear Local Cache</h3>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-danger" onclick="clearAllDrafts()">Clear All Drafts</button>
