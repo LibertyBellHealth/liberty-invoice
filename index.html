@@ -148,7 +148,7 @@ function aiTrack(name, props){
     <!-- CLIENT TABLE — filters kept, sort dropdown + All-Caregivers dropdown removed -->
     <div class="client-table-wrap">
       <div class="ct-toolbar">
-        <input id="clientSearch" class="ct-search" placeholder="Filter clients…" oninput="renderClientTable()">
+        <input id="clientSearch" class="ct-search" placeholder="Filter clients…" oninput="filterClients()">
         <select id="filterStatus" onchange="renderClientTable()" class="ct-filter">
           <option value="all">All Statuses</option>
           <option value="active">Active</option>
@@ -325,7 +325,7 @@ function aiTrack(name, props){
       </div>
       <div class="client-table-wrap">
         <div class="ct-toolbar">
-          <input id="cgSearch" class="ct-search" placeholder="Filter caregivers…" oninput="renderCaregiverGrid()">
+          <input id="cgSearch" class="ct-search" placeholder="Filter caregivers…" oninput="filterCaregivers()">
           <select id="cgFilterStatus" onchange="renderCaregiverGrid()" class="ct-filter">
             <option value="active">Active</option>
             <option value="all">All Statuses</option>
@@ -636,7 +636,7 @@ function aiTrack(name, props){
       <div id="cwViewCaseworkers">
         <div class="client-table-wrap">
           <div class="ct-toolbar">
-            <input id="cwSearch" class="ct-search" placeholder="Filter caseworkers…" oninput="renderCaseworkerList()">
+            <input id="cwSearch" class="ct-search" placeholder="Filter caseworkers…" oninput="filterCaseworkers()">
           </div>
           <div class="ct-bulk-bar" id="cwBulkBar">
             <span id="cwBulkCount">0 selected</span>
@@ -677,7 +677,7 @@ function aiTrack(name, props){
       <div id="cwViewSupervisors" style="display:none;">
         <div class="client-table-wrap">
           <div class="ct-toolbar">
-            <input id="supSearch" class="ct-search" placeholder="Filter supervisors…" oninput="renderSupervisorList()">
+            <input id="supSearch" class="ct-search" placeholder="Filter supervisors…" oninput="filterSupervisors()">
           </div>
           <div class="ct-bulk-bar" id="supBulkBar">
             <span id="supBulkCount">0 selected</span>
