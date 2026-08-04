@@ -993,14 +993,17 @@ function _authAddTaskRow(t){
   var host=document.getElementById('ei-auth-tasks'); if(!host)return;
   var row=document.createElement('div');
   row.className='ei-auth-task-row';
-  row.style.cssText='display:grid;grid-template-columns:1.8fr 0.8fr 1.3fr 0.9fr 0.9fr 26px;gap:5px;margin-bottom:5px;';
+  row.style.cssText='display:grid;grid-template-columns:1.7fr 0.9fr 1.4fr 0.9fr 0.9fr 24px;gap:6px;margin-bottom:5px;align-items:center;';
+  // min-width:0 lets each input shrink to its grid track instead of forcing the row wider than
+  // the card (the cause of the overflow + header misalignment).
+  var s=' style="min-width:0;width:100%;box-sizing:border-box;"';
   row.innerHTML=
-    '<input class="ei-at-task" placeholder="Task" value="'+esc(t.task||'')+'">'+
-    '<input class="ei-at-perDay" placeholder="HH:MM" value="'+esc(t.perDay||'')+'">'+
-    '<input class="ei-at-freq" placeholder="e.g. 7 days per week" value="'+esc(t.freq||'')+'">'+
-    '<input class="ei-at-perMonth" placeholder="HH:MM" value="'+esc(t.perMonth||'')+'">'+
-    '<input class="ei-at-amount" placeholder="$" value="'+esc(t.amount!=null?String(t.amount):'')+'" inputmode="decimal">'+
-    '<button type="button" class="btn btn-secondary btn-sm" title="Remove" onclick="this.parentNode.remove();" style="padding:2px 6px;">×</button>';
+    '<input class="ei-at-task" placeholder="Task" value="'+esc(t.task||'')+'"'+s+'>'+
+    '<input class="ei-at-perDay" placeholder="HH:MM" value="'+esc(t.perDay||'')+'"'+s+'>'+
+    '<input class="ei-at-freq" placeholder="e.g. 7 days per week" value="'+esc(t.freq||'')+'"'+s+'>'+
+    '<input class="ei-at-perMonth" placeholder="HH:MM" value="'+esc(t.perMonth||'')+'"'+s+'>'+
+    '<input class="ei-at-amount" placeholder="$" value="'+esc(t.amount!=null?String(t.amount):'')+'" inputmode="decimal"'+s+'>'+
+    '<button type="button" class="btn btn-secondary btn-sm" title="Remove" onclick="this.parentNode.remove();" style="padding:2px 4px;min-width:0;">×</button>';
   host.appendChild(row);
 }
 // "↻ +6mo" — fill reassessment date from effective + 6 months.
@@ -1067,18 +1070,20 @@ function _authEditHtml(a){
       '<h3 style="margin:0;">Edit Authorization</h3>'+
       '<button type="button" class="btn btn-secondary btn-sm" onclick="importDHS1210()">Import DHS-1210</button>'+
     '</div>'+
-    '<div class="info-field-row" style="grid-template-columns:1fr 1fr;">'+
-      '<div class="info-field"><label for="ei-auth-permonth">Approved / month <span style="font-weight:400;font-size:10px;color:#5c7590;">(HH:MM)</span></label><input id="ei-auth-permonth" placeholder="HH:MM" value="'+esc(_authHM(a))+'"></div>'+
+    '<div class="info-field-row" style="grid-template-columns:1fr 1fr;margin-bottom:16px;">'+
+      '<div class="info-field"><label for="ei-auth-permonth">Approved Hours / Month <span style="font-weight:400;font-size:10px;color:#5c7590;">(HH:MM)</span></label><input id="ei-auth-permonth" placeholder="HH:MM" value="'+esc(_authHM(a))+'"></div>'+
       '<div class="info-field"><label for="ei-auth-rate">Rate ($/hr)</label><input id="ei-auth-rate" value="'+esc(a.rate!=null?String(a.rate):'')+'" inputmode="decimal"></div>'+
     '</div>'+
-    '<div class="info-field-row" style="grid-template-columns:1fr 1fr;">'+
+    '<div class="info-field-row" style="grid-template-columns:1fr 1fr;margin-bottom:16px;">'+
       '<div class="info-field"><label for="ei-auth-eff">Effective <span style="font-weight:400;font-size:10px;color:#5c7590;">(MM/DD/YYYY)</span></label><input id="ei-auth-eff" placeholder="MM/DD/YYYY" value="'+esc(a.effectiveDate||'')+'"></div>'+
       '<div class="info-field"><label for="ei-auth-reassess">Reassessment due <a href="#" onclick="return _fillReassess()" style="font-weight:400;font-size:10px;">↻ +6mo</a></label><input id="ei-auth-reassess" placeholder="MM/DD/YYYY" value="'+esc(a.reassessDate||'')+'"></div>'+
     '</div>'+
-    '<div class="info-field"><label for="ei-auth-total">Monthly total ($)</label><input id="ei-auth-total" value="'+esc(a.total!=null?String(a.total):'')+'" inputmode="decimal"></div>'+
-    '<div style="margin-top:10px;">'+
-      '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;margin-bottom:4px;">Tasks</div>'+
-      '<div style="display:grid;grid-template-columns:1.8fr 0.8fr 1.3fr 0.9fr 0.9fr 26px;gap:5px;margin-bottom:4px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#8296ab;"><span>Task</span><span>Time/Day</span><span>Number of Days</span><span>Time/Month</span><span>Amount</span><span></span></div>'+
+    '<div class="info-field" style="margin-bottom:16px;"><label for="ei-auth-total">Monthly Total ($)</label><input id="ei-auth-total" value="'+esc(a.total!=null?String(a.total):'')+'" inputmode="decimal"></div>'+
+    '<div style="margin-top:14px;">'+
+      '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;margin-bottom:6px;">Tasks</div>'+
+      '<div style="display:grid;grid-template-columns:1.7fr 0.9fr 1.4fr 0.9fr 0.9fr 24px;gap:6px;margin-bottom:5px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#8296ab;">'+
+        '<span style="min-width:0;overflow:hidden;">Task</span><span style="min-width:0;overflow:hidden;">Time/Day</span><span style="min-width:0;overflow:hidden;">Number of Days</span><span style="min-width:0;overflow:hidden;">Time/Month</span><span style="min-width:0;overflow:hidden;">Amount</span><span></span>'+
+      '</div>'+
       '<div id="ei-auth-tasks"></div>'+
       '<button type="button" class="btn btn-secondary btn-sm" onclick="_authAddTaskRow()" style="margin-top:6px;font-size:11px;">+ Add task</button>'+
     '</div>'+
