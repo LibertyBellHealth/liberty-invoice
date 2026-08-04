@@ -1006,13 +1006,24 @@ function _authAddTaskRow(t){
     '<button type="button" class="btn btn-secondary btn-sm" title="Remove" onclick="this.parentNode.remove();" style="padding:2px 4px;min-width:0;">×</button>';
   host.appendChild(row);
 }
-// "↻ +6mo" — fill reassessment date from effective + 6 months.
+// "Set to 6 months after effective" button — fill reassessment = effective + 6 months.
 function _fillReassess(){
   var eff=(document.getElementById('ei-auth-eff').value||'').trim();
   var p=eff.split('/'); if(p.length!==3){showAlert('Enter the effective date first (MM/DD/YYYY).');return false;}
   var d=new Date(+p[2],(+p[0])-1+6,+p[1]);
   document.getElementById('ei-auth-reassess').value=('0'+(d.getMonth()+1)).slice(-2)+'/'+('0'+d.getDate()).slice(-2)+'/'+d.getFullYear();
   unsavedChanges=true; return false;
+}
+// Auto-fill reassessment = effective + 6 months when the user finishes entering the effective
+// date, but only if reassessment is still blank (never clobber a value they typed).
+function _autoReassessFromEff(){
+  var eff=(document.getElementById('ei-auth-eff').value||'').trim();
+  var re=document.getElementById('ei-auth-reassess');
+  var p=eff.split('/');
+  if(re && !re.value.trim() && p.length===3 && p[2].length===4){
+    var d=new Date(+p[2],(+p[0])-1+6,+p[1]);
+    if(!isNaN(d.getTime())) re.value=('0'+(d.getMonth()+1)).slice(-2)+'/'+('0'+d.getDate()).slice(-2)+'/'+d.getFullYear();
+  }
 }
 function _mdyToYmd(mdy){var p=String(mdy||'').split('/');if(p.length!==3)return '';return p[2]+'-'+('0'+p[0]).slice(-2)+'-'+('0'+p[1]).slice(-2);}
 // Approved time as HH:MM (e.g. 29:47), matching the DHS-1210. Empty when no hours set.
@@ -1075,8 +1086,9 @@ function _authEditHtml(a){
       '<div class="info-field"><label for="ei-auth-rate">Rate ($/hr)</label><input id="ei-auth-rate" value="'+esc(a.rate!=null?String(a.rate):'')+'" inputmode="decimal"></div>'+
     '</div>'+
     '<div class="info-field-row" style="grid-template-columns:1fr 1fr;margin-bottom:16px;">'+
-      '<div class="info-field"><label for="ei-auth-eff">Effective <span style="font-weight:400;font-size:10px;color:#5c7590;">(MM/DD/YYYY)</span></label><input id="ei-auth-eff" placeholder="MM/DD/YYYY" value="'+esc(a.effectiveDate||'')+'"></div>'+
-      '<div class="info-field"><label for="ei-auth-reassess">Reassessment due <a href="#" onclick="return _fillReassess()" style="font-weight:400;font-size:10px;">↻ +6mo</a></label><input id="ei-auth-reassess" placeholder="MM/DD/YYYY" value="'+esc(a.reassessDate||'')+'"></div>'+
+      '<div class="info-field"><label for="ei-auth-eff">Effective <span style="font-weight:400;font-size:10px;color:#5c7590;">(MM/DD/YYYY)</span></label><input id="ei-auth-eff" placeholder="MM/DD/YYYY" value="'+esc(a.effectiveDate||'')+'" onchange="_autoReassessFromEff()"></div>'+
+      '<div class="info-field"><label for="ei-auth-reassess">Reassessment due <span style="font-weight:400;font-size:10px;color:#5c7590;">(MM/DD/YYYY)</span></label><input id="ei-auth-reassess" placeholder="MM/DD/YYYY" value="'+esc(a.reassessDate||'')+'">'+
+        '<button type="button" onclick="_fillReassess()" style="margin-top:5px;font-size:10px;background:none;border:none;color:#185FA5;text-decoration:underline;cursor:pointer;padding:0;">Set to 6 months after effective</button></div>'+
     '</div>'+
     '<div class="info-field" style="margin-bottom:16px;"><label for="ei-auth-total">Monthly Total ($)</label><input id="ei-auth-total" value="'+esc(a.total!=null?String(a.total):'')+'" inputmode="decimal"></div>'+
     '<div style="margin-top:14px;">'+
