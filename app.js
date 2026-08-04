@@ -1495,6 +1495,8 @@ function parseDHS1210(pages){
   var em=flat.match(/([A-Za-z][A-Za-z.]*@michigan\.gov)/i); if(em)out.aswEmail=em[1];
   var ph=flat.match(/(\d{3}-\d{3}-\d{4})/); if(ph)out.aswPhone=ph[1];
   var co=flat.match(/\b(\d{2}-[A-Z]{3,})\b/); if(co)out.county=co[1];
+  // Client ID (= Medicaid #). Anchored to the "Client ID" label so it doesn't grab the Case Number.
+  var mid=flat.match(/Client ID(?:\s*Number)?\s*:?\s*([0-9]{6,12})/i); if(mid)out.medicaidId=mid[1];
   pages.forEach(function(ls){ls.forEach(function(ln,i){
     if(out.aswName)return;
     if(/Adult Services Worker.*Name/i.test(ln)){var nxt=(ls[i+1]||'').match(/^([A-Z]\.?\s?[A-Z][a-z]+)/); if(nxt)out.aswName=nxt[1].trim();}
@@ -1562,6 +1564,22 @@ function handleDhsImport(input){
 
 function _dhsChip(ok){return ok?'<span style="color:#1a7f4b;font-weight:700;">✓</span>':(ok===false?'<span style="color:#c0392b;font-weight:700;">✗</span>':'<span style="color:#5c7590;">–</span>');}
 
+// #5: fields a DHS-1210 suggests updating on the client / matched caseworker. Only when the form
+// has a value that DIFFERS from what's stored — never suggests blanking a field. Client NAME is
+// intentionally excluded (renaming a client changes its record key — too risky to auto-suggest).
+function _dhsSuggestedUpdates(res, prof, cw){
+  var out=[];
+  var add=function(label,target,field,from,to,id){
+    to=(to==null?'':String(to)).trim(); from=(from==null?'':String(from)).trim();
+    if(to && to!==from) out.push({label:label,target:target,field:field,from:from,to:to,id:id||null});
+  };
+  if(cw){
+    add('Caseworker email','caseworker','email',cw.email,res.aswEmail,cw.id);
+    add('Caseworker phone','caseworker','phone',cw.phone,res.aswPhone,cw.id);
+  }
+  add('Client Medicaid ID','client','medicaidId',prof&&prof.medicaidId,res.medicaidId,null);
+  return out;
+}
 function showDhsReview(file,res){
   var ex=document.getElementById('dhsReviewModal'); if(ex)ex.remove();
   var prof=getProfiles()[activeProfileName]||{};
@@ -1578,6 +1596,22 @@ function showDhsReview(file,res){
     cwSection='<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-top:4px;"><input type="checkbox" id="dhs-link-cw" '+(!hasCw?'checked':'')+' style="margin-top:3px;"><span>Set this client\'s caseworker to <b>'+esc(match.name)+'</b> <span style="color:#1a7f4b;">(matched by email)</span></span></label>';
   } else if(res.aswName){
     cwSection='<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-top:4px;"><input type="checkbox" id="dhs-add-cw" checked style="margin-top:3px;"><span>Add <b>'+esc(res.aswName)+'</b> ('+esc(res.aswEmail||'no email')+') as a caseworker and assign to this client</span></label>';
+  }
+  // #5: the caseworker to potentially update is the client's current one (by id or name), or the
+  // email-matched one — NOT just the email match (a differing email wouldn't match at all).
+  var cwForUpdate=cws.find(function(c){return c.id===prof.caseworkerId;}) || match ||
+    (res.aswName?cws.find(function(c){return (c.name||'').toLowerCase()===String(res.aswName).toLowerCase();}):null);
+  var updates=_dhsSuggestedUpdates(res, prof, cwForUpdate);
+  var updatesSection='';
+  if(updates.length){
+    updatesSection='<div style="border-top:1px solid #e8ecf0;margin-top:12px;padding-top:10px;">'+
+      '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;margin-bottom:6px;">Update from this form?</div>'+
+      updates.map(function(u,i){
+        return '<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:6px;"><input type="checkbox" id="dhs-upd-'+i+'" checked style="margin-top:3px;"><span>'+esc(u.label)+': '+
+          (u.from?'<span style="color:#b03030;text-decoration:line-through;">'+esc(u.from)+'</span> &rarr; ':'<span style="color:#94a7bd;">(empty) &rarr; </span>')+
+          '<b>'+esc(u.to)+'</b></span></label>';
+      }).join('')+
+    '</div>';
   }
   var reconcileNote=(res.timeReconciles||res.amountReconciles)
     ? '<div style="font-size:12px;color:#1a7f4b;margin-top:6px;">'+_dhsChip(res.timeReconciles!==false)+' Task times match the approved hours'+(res.amountReconciles!=null?' &nbsp; '+_dhsChip(res.amountReconciles)+' Task $ match the printed total':'')+'</div>'
@@ -1600,6 +1634,7 @@ function showDhsReview(file,res){
     (tasksHtml?'<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;margin:12px 0 4px;">Tasks ('+res.tasks.length+')</div>'+
       '<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="color:#5c7590;text-align:left;"><th style="padding:2px 6px;">Task</th><th style="padding:2px 6px;">Frequency</th><th style="padding:2px 6px;text-align:right;">Time/mo</th><th style="padding:2px 6px;text-align:right;">Amount</th></tr></thead><tbody>'+tasksHtml+'</tbody></table>':'')+
     (cwSection?'<div style="border-top:1px solid #e8ecf0;margin-top:12px;padding-top:10px;">'+cwSection+'</div>':'')+
+    updatesSection+
     // #6: a DHS-1210 makes you the client's agency → offer to set them Active with a start date.
     '<div style="border-top:1px solid #e8ecf0;margin-top:12px;padding-top:10px;">'+
       '<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;"><input type="checkbox" id="dhs-set-active" '+((prof.clientStatus||'active')!=='active'?'checked':'')+' style="margin-top:3px;"><span>Set <b>'+esc(activeProfileName)+'</b> to <b>Active</b> — this DHS-1210 officially makes you their agency</span></label>'+
@@ -1620,6 +1655,7 @@ function showDhsReview(file,res){
               add:!!(document.getElementById('dhs-add-cw')&&document.getElementById('dhs-add-cw').checked),
               setActive:!!(document.getElementById('dhs-set-active')&&document.getElementById('dhs-set-active').checked),
               startDate:(document.getElementById('dhs-start-date')&&document.getElementById('dhs-start-date').value)||'',
+              updates:updates.filter(function(u,i){var el=document.getElementById('dhs-upd-'+i);return el&&el.checked;}),
               match:match};
     _applyDhsImport(file,res,opts);
     ov.remove();
@@ -1644,6 +1680,19 @@ function _applyDhsImport(file,res,opts){
     var cws=getCaseworkers(); cws.push(cw); saveCaseworkersLS(cws);
     if(typeof saveCaseworkerAPI==='function') saveCaseworkerAPI(cw);
     prof.caseworkerId=cw.id; prof.worker=cw.name;
+  }
+  // #5: apply the field updates the user confirmed (caseworker email/phone, client Medicaid ID).
+  if(opts.updates && opts.updates.length){
+    var cwDirty=null, allCws=null;
+    opts.updates.forEach(function(u){
+      if(u.target==='client'){ prof[u.field]=u.to; }
+      else if(u.target==='caseworker' && u.id){
+        if(!allCws){ allCws=getCaseworkers(); }
+        var rec=allCws.find(function(c){return c.id===u.id;});
+        if(rec){ rec[u.field]=u.to; cwDirty=rec; }
+      }
+    });
+    if(cwDirty){ saveCaseworkersLS(allCws); if(typeof saveCaseworkerAPI==='function') saveCaseworkerAPI(cwDirty); }
   }
   // #6: activate the client from the DHS-1210 (the authorization we just set satisfies the
   // Active-requires-authorization rule). Needs a start date; default to the 1st of the effective month.
