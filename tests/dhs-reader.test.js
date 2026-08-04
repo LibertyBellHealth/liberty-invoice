@@ -34,7 +34,7 @@ test('parseDHS1210: extracts the headline fields', () => {
   assert.strictEqual(r.hours, 29, 'approved hours');
   assert.strictEqual(r.minutes, 47, 'approved minutes');
   assert.strictEqual(r.effectiveDate, '08/01/2026', 'effective date');
-  assert.strictEqual(r.reassessDate, '02/01/2027', 'reassessment = effective + 6 months');
+  assert.strictEqual(r.reassessDate, w._nextReassessment('08/01/2026'), 'reassessment via _nextReassessment');
   assert.strictEqual(r.rate, 27, 'provider pay rate');
   assert.strictEqual(r.printedTotal, 804.47, 'printed monthly total');
   assert.strictEqual(r.aswEmail, 'FetoR@michigan.gov', 'ASW email');

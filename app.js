@@ -1007,11 +1007,24 @@ function _authAddTaskRow(t){
   host.appendChild(row);
 }
 // "Set to 6 months after effective" button — fill reassessment = effective + 6 months.
+// Reassessment due = effective + 6 months, advanced in 6-month steps to the NEXT date on/after
+// today (MDHHS reviews every 6 months). So an OLD form (effective years ago) yields the next
+// upcoming reassessment, not a long-past one. refDate defaults to now; pass one for tests.
+function _nextReassessment(effMdy, refDate){
+  var p=String(effMdy||'').split('/'); if(p.length!==3)return '';
+  var y=+p[2], mi=(+p[0])-1, day=+p[1];
+  if(isNaN(y)||isNaN(mi)||isNaN(day))return '';
+  var ref=refDate||new Date(); ref=new Date(ref.getFullYear(),ref.getMonth(),ref.getDate());
+  var d=new Date(y,mi+6,day);            // first reassessment (effective + 6 months)
+  var guard=0;
+  while(d<ref && guard++<400){ d=new Date(d.getFullYear(),d.getMonth()+6,d.getDate()); }
+  return ('0'+(d.getMonth()+1)).slice(-2)+'/'+('0'+d.getDate()).slice(-2)+'/'+d.getFullYear();
+}
 function _fillReassess(){
   var eff=(document.getElementById('ei-auth-eff').value||'').trim();
-  var p=eff.split('/'); if(p.length!==3){showAlert('Enter the effective date first (MM/DD/YYYY).');return false;}
-  var d=new Date(+p[2],(+p[0])-1+6,+p[1]);
-  document.getElementById('ei-auth-reassess').value=('0'+(d.getMonth()+1)).slice(-2)+'/'+('0'+d.getDate()).slice(-2)+'/'+d.getFullYear();
+  var next=_nextReassessment(eff);
+  if(!next){showAlert('Enter the effective date first (MM/DD/YYYY).');return false;}
+  document.getElementById('ei-auth-reassess').value=next;
   unsavedChanges=true; return false;
 }
 // Auto-fill reassessment = effective + 6 months when the user finishes entering the effective
@@ -1021,8 +1034,8 @@ function _autoReassessFromEff(){
   var re=document.getElementById('ei-auth-reassess');
   var p=eff.split('/');
   if(re && !re.value.trim() && p.length===3 && p[2].length===4){
-    var d=new Date(+p[2],(+p[0])-1+6,+p[1]);
-    if(!isNaN(d.getTime())) re.value=('0'+(d.getMonth()+1)).slice(-2)+'/'+('0'+d.getDate()).slice(-2)+'/'+d.getFullYear();
+    var next=_nextReassessment(eff);
+    if(next) re.value=next;
   }
 }
 function _mdyToYmd(mdy){var p=String(mdy||'').split('/');if(p.length!==3)return '';return p[2]+'-'+('0'+p[0]).slice(-2)+'-'+('0'+p[1]).slice(-2);}
@@ -1493,8 +1506,9 @@ function parseDHS1210(pages){
     out.taskMinuteSum=mins; out.approvedTotalMin=out.hours*60+out.minutes;
     out.timeReconciles=Math.abs(mins-out.approvedTotalMin)<=1;
   }
-  // Reassessment due = effective + 6 months (form says services reviewed every 6 months).
-  if(out.effectiveDate){var pp=out.effectiveDate.split('/'); if(pp.length===3){var d=new Date(+pp[2],(+pp[0])-1+6,+pp[1]); out.reassessDate=('0'+(d.getMonth()+1)).slice(-2)+'/'+('0'+d.getDate()).slice(-2)+'/'+d.getFullYear();}}
+  // Reassessment due = effective + 6 months, advanced to the next date on/after today (so an old
+  // form doesn't show a long-past reassessment — see _nextReassessment).
+  if(out.effectiveDate){ out.reassessDate=_nextReassessment(out.effectiveDate); }
   return out;
 }
 
