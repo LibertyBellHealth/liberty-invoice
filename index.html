@@ -711,12 +711,41 @@ function aiTrack(name, props){
           </div>
         </div>
       </div>
+      <div id="supDetailView" style="display:none;">
+        <button class="btn btn-secondary btn-sm" onclick="backToSupList()" style="margin-bottom:12px;">← Back to Supervisors</button>
+        <div class="form-card" style="max-width:620px;">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+            <div class="dh-avatar detail-avatar" id="supDetailAvatar"></div>
+            <h1 class="detail-name" id="supDetailName" style="margin:0;font-size:20px;"></h1>
+          </div>
+          <input type="hidden" id="supd-id">
+          <div class="ff-row" style="grid-template-columns:130px 1fr;">
+            <div class="ff"><label for="supd-title">Title</label>
+              <select id="supd-title"><option value=""></option><option>Mr.</option><option>Mrs.</option><option>Ms.</option><option>Miss</option><option>Dr.</option><option>Mx.</option></select>
+            </div>
+            <div class="ff"><label for="supd-name">Name *</label><input id="supd-name" maxlength="80" placeholder="Full name"></div>
+          </div>
+          <div class="ff-row">
+            <div class="ff"><label for="supd-phone">Phone</label><input id="supd-phone" maxlength="20" placeholder="(555) 555-5555"></div>
+            <div class="ff"><label for="supd-email">Email</label><input id="supd-email" maxlength="80" placeholder="name@michigan.gov" onblur="_autoGovEmail(this)"></div>
+          </div>
+          <div style="margin-top:14px;display:flex;gap:8px;">
+            <button class="btn btn-primary" onclick="saveSupDetail()">Save Changes</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteSupervisorFromDetail()" style="padding:6px 14px;">Delete Supervisor</button>
+          </div>
+          <div style="border-top:1px solid #e8ecf0;margin:18px 0 10px;padding-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;">Assigned Caseworkers</div>
+          <div id="supd-caseworkers"></div>
+        </div>
+      </div>
     </div>
     <div id="cwFormWrap" style="display:none;margin-top:16px;">
       <div class="form-card" style="max-width:620px;">
         <h3 id="cwFormTitle">New Caseworker</h3>
         <input type="hidden" id="cw-editing-id">
-        <div class="ff-row" style="grid-template-columns:1fr 1fr 1fr;">
+        <div class="ff-row" style="grid-template-columns:88px 1fr 1fr 1fr;">
+          <div class="ff"><label for="cw-title">Title</label>
+            <select id="cw-title"><option value=""></option><option>Mr.</option><option>Mrs.</option><option>Ms.</option><option>Miss</option><option>Dr.</option><option>Mx.</option></select>
+          </div>
           <div class="ff"><label for="cw-first-name">First Name *</label><input id="cw-first-name" placeholder="First name" maxlength="60"></div>
           <div class="ff"><label for="cw-middle-name">Middle Name</label><input id="cw-middle-name" placeholder="Middle" maxlength="40"></div>
           <div class="ff"><label for="cw-last-name">Last Name *</label><input id="cw-last-name" placeholder="Last name" maxlength="60"></div>
@@ -729,7 +758,7 @@ function aiTrack(name, props){
           <div class="ff"><label for="cw-phone">Phone</label><input id="cw-phone" placeholder="(555) 555-5555" maxlength="20"></div>
           <div class="ff"><label for="cw-fax">Fax</label><input id="cw-fax" placeholder="(555) 555-5555" maxlength="20"></div>
         </div>
-        <div class="ff"><label for="cw-email">Email</label><input id="cw-email" placeholder="worker@michigan.gov" maxlength="80"></div>
+        <div class="ff"><label for="cw-email">Email</label><input id="cw-email" placeholder="worker@michigan.gov" maxlength="80" onblur="_autoGovEmail(this)"></div>
         <div class="ff">
           <label for="cw-supervisor">Supervisor <span style="font-weight:400;font-size:10px;color:#5c7590;">(CC'd on monthly invoice emails when set)</span></label>
           <div style="display:flex;gap:6px;align-items:center;">
