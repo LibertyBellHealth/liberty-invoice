@@ -780,19 +780,15 @@ function renderOverviewPane(){
       if(dp.length===3){var dd=new Date(+dp[2],(+dp[0])-1,+dp[1]);var days=Math.floor((dd-new Date())/86400000);
         if(days<0){dueTxt=' · overdue';dueColor='#b03030';}else if(days<=30){dueTxt=' · '+days+'d';dueColor='#c67605';}}
     }
-    authCardHtml='<div class="ov-card"><h4>Authorization (DHS-1210)</h4>'+
-      '<div class="ov-row"><span class="ov-label">Approved / mo</span><span class="ov-value">'+(auth.hours!=null?auth.hours+'h '+auth.minutes+'m':'—')+'</span></div>'+
-      '<div class="ov-row"><span class="ov-label">Effective</span><span class="ov-value">'+esc(auth.effectiveDate||'—')+'</span></div>'+
+    // Slim read-only glance — the editable version lives in the Profile tab. Click to go there.
+    authCardHtml='<div class="ov-card" style="cursor:pointer;" onclick="switchTab(\'info\')" title="View / edit in Profile">'+
+      '<h4>Authorization (DHS-1210)</h4>'+
+      '<div class="ov-row"><span class="ov-label">Approved / mo</span><span class="ov-value">'+(auth.hours!=null?auth.hours+'h '+(auth.minutes||0)+'m':'—')+'</span></div>'+
       '<div class="ov-row"><span class="ov-label">Reassess due</span><span class="ov-value" style="color:'+dueColor+';">'+esc(auth.reassessDate||'—')+dueTxt+'</span></div>'+
-      (auth.rate!==''&&auth.rate!=null?'<div class="ov-row"><span class="ov-label">Rate</span><span class="ov-value">$'+esc(String(auth.rate))+'/hr</span></div>':'')+
-      (auth.total!==''&&auth.total!=null?'<div class="ov-row"><span class="ov-label">Monthly total</span><span class="ov-value">$'+esc(Number(auth.total).toFixed(2))+'</span></div>':'')+
-      '<div class="ov-row"><span class="ov-label">Tasks</span><span class="ov-value">'+((auth.tasks||[]).length)+'</span></div>'+
-      '<div style="margin-top:8px;font-size:10px;color:#94a7bd;">Imported '+esc(auth.importedAt||'')+(auth.sourceFile?' · '+esc(auth.sourceFile):'')+'</div>'+
-      '<div style="margin-top:6px;"><button class="btn btn-secondary btn-sm" style="font-size:10px;" onclick="importDHS1210()">Update from DHS-1210</button></div>'+
+      '<div style="margin-top:6px;font-size:10px;color:#94a7bd;">Click to view / edit in Profile</div>'+
     '</div>';
   }
   pane.innerHTML='<div class="overview-grid">'+
-    authCardHtml+
     '<div class="ov-card"><h4>Client Info</h4>'+
       '<div class="ov-row"><span class="ov-label">Medicaid ID</span><span class="ov-value">'+esc(prof.medicaidId||'—')+'</span></div>'+
       '<div class="ov-row"><span class="ov-label">Hourly Rate</span><span class="ov-value">'+(prof.hourlyRate?'$'+esc(prof.hourlyRate)+'/hr':'—')+'</span></div>'+
@@ -803,6 +799,7 @@ function renderOverviewPane(){
       '<div class="ov-row"><span class="ov-label">Caseworker</span>'+(cwRec?'<span class="ov-value" style="color:#185FA5;cursor:pointer;text-decoration:underline;" onclick="navCaseworkers();setTimeout(function(){openCwDetail(\''+escJsAttr(cwRec.id)+'\');},50)">'+esc(cwName)+'</span>':'<span class="ov-value">'+esc(cwName||'—')+'</span>')+'</div>'+
       (prof.startDate?'<div class="ov-row"><span class="ov-label">Service Start</span><span class="ov-value">'+esc(prof.startDate)+'</span></div>':'')+
     '</div>'+
+    authCardHtml+
     '<div class="ov-card"><h4>Invoice Summary</h4>'+
       '<div class="ov-row"><span class="ov-label">Total Saved</span><span class="ov-value">'+invoices.length+'</span></div>'+
       '<div class="ov-row"><span class="ov-label">Paid</span><span class="ov-value" style="color:#1e7e34;">'+paid+'</span></div>'+
@@ -983,6 +980,80 @@ function renderInfoPane(){
       (prof.caseworkerId?'<button class="btn-open" onclick="navCaseworkers();setTimeout(function(){openCwDetail(\''+escJsAttr(prof.caseworkerId)+'\');},50)">Open ↗</button>':'')+
     '</div>';
   g.appendChild(dCw);
+
+  // ── Authorization (DHS-1210) — editable, so a wrong import or a phone-update can be fixed ──
+  mkDivider('Authorization (DHS-1210)');
+  var a=prof.authorization||{};
+  var dAuth=document.createElement('div');dAuth.className='info-field full';
+  dAuth.innerHTML=
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;">'+
+      '<span style="font-size:11px;color:#5c7590;">Authorized hours &amp; tasks from the MDHHS DHS-1210. Import to auto-fill, or edit any field here.</span>'+
+      '<button type="button" class="btn btn-secondary btn-sm" onclick="importDHS1210()" style="white-space:nowrap;">Import DHS-1210</button>'+
+    '</div>'+
+    '<div class="info-field-row" style="grid-template-columns:1fr 1fr 1fr;">'+
+      '<div class="info-field"><label for="ei-auth-hours">Approved Hours</label><input id="ei-auth-hours" type="number" min="0" value="'+esc(a.hours!=null?a.hours:'')+'" oninput="unsavedChanges=true;"></div>'+
+      '<div class="info-field"><label for="ei-auth-mins">Approved Minutes</label><input id="ei-auth-mins" type="number" min="0" max="59" value="'+esc(a.minutes!=null?a.minutes:'')+'" oninput="unsavedChanges=true;"></div>'+
+      '<div class="info-field"><label for="ei-auth-rate">Rate ($/hr)</label><input id="ei-auth-rate" value="'+esc(a.rate!=null?String(a.rate):'')+'" inputmode="decimal" oninput="unsavedChanges=true;"></div>'+
+    '</div>'+
+    '<div class="info-field-row" style="grid-template-columns:1fr 1fr;">'+
+      '<div class="info-field"><label for="ei-auth-eff">Effective <span style="font-weight:400;font-size:10px;color:#5c7590;">(MM/DD/YYYY)</span></label><input id="ei-auth-eff" placeholder="MM/DD/YYYY" value="'+esc(a.effectiveDate||'')+'" oninput="unsavedChanges=true;"></div>'+
+      '<div class="info-field"><label for="ei-auth-reassess">Reassessment due <a href="#" onclick="return _fillReassess()" style="font-weight:400;font-size:10px;">↻ +6mo</a></label><input id="ei-auth-reassess" placeholder="MM/DD/YYYY" value="'+esc(a.reassessDate||'')+'" oninput="unsavedChanges=true;"></div>'+
+    '</div>'+
+    '<div class="info-field"><label for="ei-auth-total">Monthly total ($)</label><input id="ei-auth-total" value="'+esc(a.total!=null?String(a.total):'')+'" inputmode="decimal" oninput="unsavedChanges=true;"></div>'+
+    '<div style="margin-top:10px;">'+
+      '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;margin-bottom:4px;">Tasks</div>'+
+      '<div id="ei-auth-tasks"></div>'+
+      '<button type="button" class="btn btn-secondary btn-sm" onclick="_authAddTaskRow()" style="margin-top:6px;font-size:11px;">+ Add task</button>'+
+    '</div>';
+  g.appendChild(dAuth);
+  _renderAuthTaskRows(a.tasks||[]);
+}
+// Editable task rows for the Authorization section.
+function _renderAuthTaskRows(tasks){
+  var host=document.getElementById('ei-auth-tasks'); if(!host)return; host.innerHTML='';
+  if(!tasks||!tasks.length){ _authAddTaskRow(); return; }
+  tasks.forEach(function(t){_authAddTaskRow(t);});
+}
+function _authAddTaskRow(t){
+  t=t||{};
+  var host=document.getElementById('ei-auth-tasks'); if(!host)return;
+  var row=document.createElement('div');
+  row.className='ei-auth-task-row';
+  row.style.cssText='display:grid;grid-template-columns:2fr 1.5fr 0.9fr 0.9fr 26px;gap:5px;margin-bottom:5px;';
+  row.innerHTML=
+    '<input class="ei-at-task" placeholder="Task" value="'+esc(t.task||'')+'" oninput="unsavedChanges=true;">'+
+    '<input class="ei-at-freq" placeholder="Frequency" value="'+esc(t.freq||'')+'" oninput="unsavedChanges=true;">'+
+    '<input class="ei-at-perMonth" placeholder="HH:MM" value="'+esc(t.perMonth||'')+'" oninput="unsavedChanges=true;">'+
+    '<input class="ei-at-amount" placeholder="$" value="'+esc(t.amount!=null?String(t.amount):'')+'" inputmode="decimal" oninput="unsavedChanges=true;">'+
+    '<button type="button" class="btn btn-secondary btn-sm" title="Remove" onclick="this.parentNode.remove();unsavedChanges=true;" style="padding:2px 6px;">×</button>';
+  host.appendChild(row);
+}
+// "↻ +6mo" — fill reassessment date from effective + 6 months.
+function _fillReassess(){
+  var eff=(document.getElementById('ei-auth-eff').value||'').trim();
+  var p=eff.split('/'); if(p.length!==3){showAlert('Enter the effective date first (MM/DD/YYYY).');return false;}
+  var d=new Date(+p[2],(+p[0])-1+6,+p[1]);
+  document.getElementById('ei-auth-reassess').value=('0'+(d.getMonth()+1)).slice(-2)+'/'+('0'+d.getDate()).slice(-2)+'/'+d.getFullYear();
+  unsavedChanges=true; return false;
+}
+function _mdyToYmd(mdy){var p=String(mdy||'').split('/');if(p.length!==3)return '';return p[2]+'-'+('0'+p[0]).slice(-2)+'-'+('0'+p[1]).slice(-2);}
+// Keep a single "reassessment due" task per client in sync with the authorization date.
+function _syncReassessTask(clientName, reassessMdy){
+  if(!reassessMdy)return; // don't auto-delete existing tasks if the date is cleared
+  var todos=getTodos();
+  var existing=todos.find(function(t){return t.client===clientName && /^DHS-1210 reassessment/.test(t.text||'');});
+  var dueYmd=_mdyToYmd(reassessMdy);
+  var text='DHS-1210 reassessment due ('+reassessMdy+')';
+  if(existing){
+    if(existing.done)return; // leave a completed one alone
+    existing.due=dueYmd; existing.text=text; saveTodos(todos);
+    if(typeof saveTaskAPI==='function')saveTaskAPI(existing);
+  } else {
+    var nt={id:todoId(),text:text,client:clientName,due:dueYmd,note:'Auto-added from the DHS-1210 authorization. Review services with the client + provider.',done:false,kind:'dhs-reassess',created:new Date().toLocaleString()};
+    todos.unshift(nt); saveTodos(todos);
+    if(typeof saveTaskAPI==='function')saveTaskAPI(nt);
+  }
+  if(typeof updateTaskBadge==='function')updateTaskBadge();
 }
 function saveClientInfo(){
   if(!activeProfileName)return;
@@ -1014,8 +1085,33 @@ function saveClientInfo(){
   var cwValEl=document.getElementById('ei-worker-val');var cwSearchEl=document.getElementById('ei-worker-search');
   rec.caseworkerId=cwValEl?cwValEl.value:'';rec.worker=cwSearchEl?cwSearchEl.value:'';
   var statusEl=document.getElementById('ei-status');if(statusEl)rec.clientStatus=statusEl.value;
+  // Authorization (DHS-1210) — read the editable section back onto the record.
+  if(document.getElementById('ei-auth-hours')){
+    var _tasks=[];
+    document.querySelectorAll('#ei-auth-tasks .ei-auth-task-row').forEach(function(r){
+      var tk=(r.querySelector('.ei-at-task').value||'').trim();
+      var fq=(r.querySelector('.ei-at-freq').value||'').trim();
+      var pm=(r.querySelector('.ei-at-perMonth').value||'').trim();
+      var am=(r.querySelector('.ei-at-amount').value||'').trim();
+      if(tk||fq||pm||am)_tasks.push({task:tk,freq:fq,perMonth:pm,amount:am!==''?parseFloat(am):null});
+    });
+    var _h=(document.getElementById('ei-auth-hours').value||'').trim();
+    var _m=(document.getElementById('ei-auth-mins').value||'').trim();
+    var _eff=(document.getElementById('ei-auth-eff').value||'').trim();
+    var _re=(document.getElementById('ei-auth-reassess').value||'').trim();
+    var _rate=(document.getElementById('ei-auth-rate').value||'').trim();
+    var _tot=(document.getElementById('ei-auth-total').value||'').trim();
+    if(_h||_m||_eff||_re||_rate||_tot||_tasks.length){
+      rec.authorization=Object.assign({},rec.authorization||{},{
+        hours:_h!==''?parseInt(_h):null, minutes:_m!==''?parseInt(_m):null,
+        effectiveDate:_eff, reassessDate:_re, rate:_rate,
+        total:_tot!==''?parseFloat(_tot):'', tasks:_tasks,
+      });
+    } else { rec.authorization=null; } // fully cleared → remove authorization
+  }
   if(newName!==activeProfileName){p[newName]=rec;delete p[activeProfileName];activeProfileName=newName;}
   saveProfilesLS(p);saveProfileSP(activeProfileName,p[activeProfileName]);
+  _syncReassessTask(activeProfileName, rec.authorization && rec.authorization.reassessDate);
   unsavedChanges=false;
   logActivity('edit','Profile updated for '+activeProfileName);
   addAuditEntry(activeProfileName,'Profile information updated');
@@ -1429,6 +1525,7 @@ function _applyDhsImport(file,res,opts){
     prof.caseworkerId=cw.id; prof.worker=cw.name;
   }
   saveProfilesLS(p); saveProfileSP(name,prof);
+  if(typeof _syncReassessTask==='function') _syncReassessTask(name, prof.authorization.reassessDate);
   // File the PDF into Documents (Authorization category) — best effort; needs a saved client.
   var cid=getHcClientId();
   if(cid){
