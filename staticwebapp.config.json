@@ -12,6 +12,10 @@
     {
       "route": "/api/signing/*",
       "allowedRoles": ["anonymous"]
+    },
+    {
+      "route": "/tests/*",
+      "statusCode": 404
     }
   ],
   "globalHeaders": {
