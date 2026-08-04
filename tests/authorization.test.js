@@ -50,6 +50,24 @@ test('_nextReassessment: next 6-month date on/after today (catches up old forms)
   assert.strictEqual(w._nextReassessment('garbage', ref), '', 'invalid -> empty, no crash');
 });
 
+test('hasAuthorization: true only when a real DHS-1210 authorization is on file (#8 gate)', () => {
+  const w = loadApp();
+  assert.strictEqual(w.hasAuthorization({}), false, 'no authorization -> false');
+  assert.strictEqual(w.hasAuthorization({ authorization: null }), false, 'null authorization -> false');
+  assert.strictEqual(w.hasAuthorization({ authorization: {} }), false, 'empty authorization -> false');
+  assert.strictEqual(w.hasAuthorization({ authorization: { hours: 29 } }), true, 'has hours -> true');
+  assert.strictEqual(w.hasAuthorization({ authorization: { tasks: [{ task: 'Bathing' }] } }), true, 'has tasks -> true');
+  assert.strictEqual(w.hasAuthorization({ authorization: { effectiveDate: '08/01/2026' } }), true, 'has effective date -> true');
+});
+
+test('_firstOfEffectiveMonth: 1st of the effective month as YYYY-MM-01 (#6 default start date)', () => {
+  const w = loadApp();
+  assert.strictEqual(w._firstOfEffectiveMonth('08/15/2026'), '2026-08-01');
+  assert.strictEqual(w._firstOfEffectiveMonth('12/31/2026'), '2026-12-01');
+  assert.strictEqual(w._firstOfEffectiveMonth(''), '', 'blank -> blank');
+  assert.strictEqual(w._firstOfEffectiveMonth('nope'), '', 'invalid -> blank');
+});
+
 test('_clientSig: detects an authorization change (so the save actually fires)', () => {
   const w = loadApp();
   const base = { firstName: 'Jane', lastName: 'Doe', authorization: { hours: 29, minutes: 47 } };
