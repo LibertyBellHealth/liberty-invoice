@@ -24,9 +24,13 @@ test('profiles: save then load round-trips, authorization included', () => {
 });
 
 test('profiles: empty or corrupt storage returns {} instead of throwing', () => {
-  assert.deepStrictEqual({ ...w.getProfiles() }, {}, 'empty -> {}');
+  assert.strictEqual(Object.keys(w.getProfiles()).length, 0, 'empty -> {}');
+  // Corrupt JSON. getProfiles() has a tick-scoped read-cache; the first call above cached {},
+  // so we must clear it to force a REAL parse of the corrupt string — otherwise this test would
+  // pass even if the try/catch guard were deleted (it's what an independent audit caught).
   w.localStorage.setItem('lhca_profiles', 'not valid json{');
-  assert.deepStrictEqual({ ...w.getProfiles() }, {}, 'corrupt -> {}, no crash');
+  w._profilesCache = null;
+  assert.strictEqual(Object.keys(w.getProfiles()).length, 0, 'corrupt -> {}, no crash');
 });
 
 test('caseworkers: title round-trips through save/load', () => {
