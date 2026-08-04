@@ -17,6 +17,17 @@ test('esc: escapes every HTML-significant character (XSS defense)', () => {
   assert.ok(!w.esc('<img src=x onerror=alert(1)>').includes('<'), 'no raw < survives');
 });
 
+test('escJsAttr: neutralizes JS-string breakout + HTML (the other XSS sink)', () => {
+  const w = loadApp();
+  // Used inside onclick="fn('<HERE>')" — a raw single quote would break out of the JS string.
+  const out = w.escJsAttr("x');alert(1)//");
+  assert.ok(!out.includes("'"), 'no bare single-quote survives (cannot break out of the JS string)');
+  // Also HTML-escaped, so it is safe inside the attribute too.
+  assert.ok(w.escJsAttr('<b>').includes('&lt;') && !w.escJsAttr('<b>').includes('<'), 'angle brackets escaped');
+  assert.ok(!w.escJsAttr('a\nb\r\nc').match(/[\r\n]/), 'newlines stripped (cannot break the attribute)');
+  assert.strictEqual(w.escJsAttr(null), '', 'null -> empty, no crash');
+});
+
 test('clientStatusLabel: the inactive -> "In Progress" gotcha holds', () => {
   const w = loadApp();
   assert.strictEqual(w.clientStatusLabel('inactive'), 'In Progress', 'stored inactive shows as In Progress');
