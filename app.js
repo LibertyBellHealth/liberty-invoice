@@ -426,6 +426,12 @@ function clientWasActiveInPeriod(prof,period){
 function clientDueForInvoice(prof, period){
   return !!(prof && prof.startDate) && clientWasActiveInPeriod(prof, period);
 }
+// True when a client has a real DHS-1210 authorization on file (hours, tasks, or an effective date).
+// A DHS-1210 is what officially makes you the client's agency, so it gates the Active status.
+function hasAuthorization(prof){
+  var a=prof&&prof.authorization; if(!a)return false;
+  return a.hours!=null || (a.tasks && a.tasks.length>0) || !!a.effectiveDate;
+}
 function renderAttentionPanel(){
   var panel=document.getElementById('attentionPanel');if(!panel)return;
   var p=getProfiles(),items=[];
@@ -1048,6 +1054,8 @@ function _autoReassessFromEff(){
   }
 }
 function _mdyToYmd(mdy){var p=String(mdy||'').split('/');if(p.length!==3)return '';return p[2]+'-'+('0'+p[0]).slice(-2)+'-'+('0'+p[1]).slice(-2);}
+// 1st of the effective month as YYYY-MM-01 (the usual service start date on a DHS-1210).
+function _firstOfEffectiveMonth(effMdy){var p=String(effMdy||'').split('/');if(p.length!==3)return '';return p[2]+'-'+('0'+p[0]).slice(-2)+'-01';}
 // Approved time as HH:MM (e.g. 29:47), matching the DHS-1210. Empty when no hours set.
 function _authHM(a){ if(!a||a.hours==null)return ''; return a.hours+':'+('0'+(a.minutes||0)).slice(-2); }
 // Parse "HH:MM" (or plain hours) back to {hours,minutes}.
@@ -1184,6 +1192,7 @@ function saveClientInfo(){
   var p=getProfiles();
   var rec=p[activeProfileName];
   if(((document.getElementById('ei-status')||{}).value||'')==='active' && !((document.getElementById('ei-start-date')||{}).value||'').trim()){showAlert('Service Start Date is required when the status is Active.');return;}
+  if(((document.getElementById('ei-status')||{}).value||'')==='active' && !hasAuthorization(rec)){showAlert('A DHS-1210 authorization is required before a client can be Active.\n\nImport one on the Authorization tab first — that’s what officially makes you their agency.');return;}
   var first=(document.getElementById('ei-first').value||'').trim();
   var middle=(document.getElementById('ei-middle').value||'').trim();
   var last=(document.getElementById('ei-last').value||'').trim();
@@ -1591,6 +1600,15 @@ function showDhsReview(file,res){
     (tasksHtml?'<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;margin:12px 0 4px;">Tasks ('+res.tasks.length+')</div>'+
       '<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="color:#5c7590;text-align:left;"><th style="padding:2px 6px;">Task</th><th style="padding:2px 6px;">Frequency</th><th style="padding:2px 6px;text-align:right;">Time/mo</th><th style="padding:2px 6px;text-align:right;">Amount</th></tr></thead><tbody>'+tasksHtml+'</tbody></table>':'')+
     (cwSection?'<div style="border-top:1px solid #e8ecf0;margin-top:12px;padding-top:10px;">'+cwSection+'</div>':'')+
+    // #6: a DHS-1210 makes you the client's agency → offer to set them Active with a start date.
+    '<div style="border-top:1px solid #e8ecf0;margin-top:12px;padding-top:10px;">'+
+      '<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;"><input type="checkbox" id="dhs-set-active" '+((prof.clientStatus||'active')!=='active'?'checked':'')+' style="margin-top:3px;"><span>Set <b>'+esc(activeProfileName)+'</b> to <b>Active</b> — this DHS-1210 officially makes you their agency</span></label>'+
+      '<div style="display:flex;align-items:center;gap:8px;margin-top:8px;padding-left:24px;flex-wrap:wrap;">'+
+        '<label for="dhs-start-date" style="font-size:12px;color:#5c7590;">Service start date</label>'+
+        '<input type="date" id="dhs-start-date" value="'+esc(_firstOfEffectiveMonth(res.effectiveDate))+'" style="padding:5px 8px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;">'+
+        '<span style="font-size:11px;color:#94a7bd;">defaults to the 1st of the effective month — edit if needed</span>'+
+      '</div>'+
+    '</div>'+
     '<div class="modal-row" style="justify-content:flex-end;gap:8px;margin-top:14px;">'+
       '<button class="btn btn-secondary" onclick="document.getElementById(\'dhsReviewModal\').remove()">Cancel</button>'+
       '<button class="btn btn-primary" id="dhs-confirm-btn">Save to '+esc(activeProfileName)+'</button>'+
@@ -1600,6 +1618,8 @@ function showDhsReview(file,res){
   document.getElementById('dhs-confirm-btn').onclick=function(){
     var opts={link:!!(document.getElementById('dhs-link-cw')&&document.getElementById('dhs-link-cw').checked),
               add:!!(document.getElementById('dhs-add-cw')&&document.getElementById('dhs-add-cw').checked),
+              setActive:!!(document.getElementById('dhs-set-active')&&document.getElementById('dhs-set-active').checked),
+              startDate:(document.getElementById('dhs-start-date')&&document.getElementById('dhs-start-date').value)||'',
               match:match};
     _applyDhsImport(file,res,opts);
     ov.remove();
@@ -1625,8 +1645,15 @@ function _applyDhsImport(file,res,opts){
     if(typeof saveCaseworkerAPI==='function') saveCaseworkerAPI(cw);
     prof.caseworkerId=cw.id; prof.worker=cw.name;
   }
+  // #6: activate the client from the DHS-1210 (the authorization we just set satisfies the
+  // Active-requires-authorization rule). Needs a start date; default to the 1st of the effective month.
+  if(opts.setActive){
+    var sd=opts.startDate||_firstOfEffectiveMonth(res.effectiveDate);
+    if(sd){ prof.clientStatus='active'; prof.startDate=sd; }
+  }
   saveProfilesLS(p); saveProfileSP(name,prof);
   if(typeof _syncReassessTask==='function') _syncReassessTask(name, prof.authorization.reassessDate);
+  if(typeof renderSidebarClients==='function') renderSidebarClients(); // reflect a newly-active client in the sidebar
   // File the PDF into Documents (Authorization category) — best effort; needs a saved client.
   var cid=getHcClientId();
   if(cid){
@@ -1909,6 +1936,7 @@ function createClient(){
   if(!first||!last){showAlert('First Name and Last Name are required.');return;}
   var ncStatus=(document.getElementById('nc-status')||{}).value||'active';
   if(ncStatus==='active' && !((document.getElementById('nc-start-date')||{}).value||'').trim()){showAlert('Service Start Date is required when the status is Active.');return;}
+  if(ncStatus==='active'){showAlert('A new client can’t start as Active — a DHS-1210 authorization is required first.\n\nCreate them as “In Progress”, then import the DHS-1210 on their Authorization tab to activate them.');return;}
   var name=(first+' '+last).trim();
   var p=getProfiles();
   if(p[name]){
