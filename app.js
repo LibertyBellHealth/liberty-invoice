@@ -420,6 +420,12 @@ function clientWasActiveInPeriod(prof,period){
   var startD=new Date(prof.startDate);
   return periodEnd>=startD;
 }
+// A client should only be flagged as "missing an invoice" for a period if they have a service
+// start date on/before that period. No start date -> we can't say they were active, so don't nag
+// (bug #10: clients with no start date, or a start date after the period, were being flagged).
+function clientDueForInvoice(prof, period){
+  return !!(prof && prof.startDate) && clientWasActiveInPeriod(prof, period);
+}
 function renderAttentionPanel(){
   var panel=document.getElementById('attentionPanel');if(!panel)return;
   var p=getProfiles(),items=[];
@@ -428,7 +434,7 @@ function renderAttentionPanel(){
   var prev=new Date(d.getFullYear(),d.getMonth()-1,1);
   var prevPeriod=String(prev.getMonth()+1).padStart(2,'0')+'/'+prev.getFullYear();
   var active=Object.keys(p).filter(function(k){return !p[k].clientStatus||p[k].clientStatus==='active';});
-  var missingPrev=active.filter(function(k){return clientWasActiveInPeriod(p[k],prevPeriod) && !((p[k].invoices)||[]).some(function(i){return i.billingPeriod===prevPeriod;});});
+  var missingPrev=active.filter(function(k){return clientDueForInvoice(p[k],prevPeriod) && !((p[k].invoices)||[]).some(function(i){return i.billingPeriod===prevPeriod;});});
   if(missingPrev.length){
     items.push({cls:'attn-warn',count:missingPrev.length,label:missingPrev.length+' active client'+(missingPrev.length>1?'s':'')+' missing invoice for '+prevPeriod,fn:'showMissingInvoicesModal(\''+prevPeriod+'\')'});
   }
@@ -8724,6 +8730,7 @@ function showMissingInvoicesModal(period){
   var missing=Object.keys(profiles).filter(function(name){
     var st=profiles[name].clientStatus||'active';
     if(st!=='active')return false;
+    if(!clientDueForInvoice(profiles[name],period))return false; // #10: respect the service start date
     return !((profiles[name].invoices)||[]).some(function(i){return i.billingPeriod===period;});
   }).sort(function(a,b){return a.localeCompare(b);});
   var ov=document.createElement('div');

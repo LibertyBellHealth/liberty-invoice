@@ -67,6 +67,14 @@ test('generateNextMonthInvoiceData: carries service-day patterns forward correct
   assert.strictEqual(ns[0][2], false, 'shift +1: new day 0 wraps to prior last day (unchecked)');
 });
 
+test('clientDueForInvoice: only flags a missing invoice when a start date is on/before the period (#10)', () => {
+  const w = loadApp();
+  assert.strictEqual(w.clientDueForInvoice({}, '07/2026'), false, 'no start date -> not due (this was the bug)');
+  assert.strictEqual(w.clientDueForInvoice({ startDate: '2026-05-01' }, '07/2026'), true, 'started before the period -> due');
+  assert.strictEqual(w.clientDueForInvoice({ startDate: '2026-09-01' }, '07/2026'), false, 'starts after the period -> not due');
+  assert.strictEqual(w.clientDueForInvoice({ startDate: '2026-07-15' }, '07/2026'), true, 'starts within the period -> due');
+});
+
 test('generateNextMonthInvoiceData: guards bad input instead of producing a garbage bill', () => {
   const w = loadApp();
   assert.strictEqual(w.generateNextMonthInvoiceData(null, '08/2026'), null, 'no prior invoice -> null');
