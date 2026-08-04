@@ -352,7 +352,7 @@ function navCaregivers(){
   if(typeof spToken!=='undefined'&&spToken&&Object.keys(getCaregivers()).length===0&&typeof loadCaregiversAPI==='function')loadCaregiversAPI();
   if(typeof revalidate==='function')revalidate();
 }
-function navSettings(){showPage('settings');bc([{l:'Settings'}]);document.getElementById('topbarActions').innerHTML='';renderSigSettings();updateSettingsAuth();renderEmailAuditTable();if(typeof loadSigningTemplates==='function')loadSigningTemplates();if(typeof revalidate==='function')revalidate();var sr=document.getElementById('stateRateInput');if(sr)sr.value=stateRate();var srs=document.getElementById('stateRateStatus');if(srs)srs.textContent='';}
+function navSettings(){showPage('settings');bc([{l:'Settings'}]);document.getElementById('topbarActions').innerHTML='';renderSigSettings();updateSettingsAuth();renderEmailAuditTable();if(typeof loadSigningTemplates==='function')loadSigningTemplates();if(typeof revalidate==='function')revalidate();var sr=document.getElementById('stateRateInput');if(sr)sr.value=stateRate();var srs=document.getElementById('stateRateStatus');if(srs)srs.textContent='';if(typeof renderAgencySettings==='function')renderAgencySettings();}
 function navTasks(){showPage('tasks');bc([{l:'Tasks'}]);document.getElementById('topbarActions').innerHTML='';populateTodoClientSelect();renderTodos();if(typeof revalidate==='function')revalidate();}
 function navReports(){showPage('reports');bc([{l:'Reports'}]);document.getElementById('topbarActions').innerHTML='';renderReports();}
 
@@ -420,6 +420,12 @@ function clientWasActiveInPeriod(prof,period){
   var startD=new Date(prof.startDate);
   return periodEnd>=startD;
 }
+// A client should only be flagged as "missing an invoice" for a period if they have a service
+// start date on/before that period. No start date -> we can't say they were active, so don't nag
+// (bug #10: clients with no start date, or a start date after the period, were being flagged).
+function clientDueForInvoice(prof, period){
+  return !!(prof && prof.startDate) && clientWasActiveInPeriod(prof, period);
+}
 function renderAttentionPanel(){
   var panel=document.getElementById('attentionPanel');if(!panel)return;
   var p=getProfiles(),items=[];
@@ -428,7 +434,7 @@ function renderAttentionPanel(){
   var prev=new Date(d.getFullYear(),d.getMonth()-1,1);
   var prevPeriod=String(prev.getMonth()+1).padStart(2,'0')+'/'+prev.getFullYear();
   var active=Object.keys(p).filter(function(k){return !p[k].clientStatus||p[k].clientStatus==='active';});
-  var missingPrev=active.filter(function(k){return clientWasActiveInPeriod(p[k],prevPeriod) && !((p[k].invoices)||[]).some(function(i){return i.billingPeriod===prevPeriod;});});
+  var missingPrev=active.filter(function(k){return clientDueForInvoice(p[k],prevPeriod) && !((p[k].invoices)||[]).some(function(i){return i.billingPeriod===prevPeriod;});});
   if(missingPrev.length){
     items.push({cls:'attn-warn',count:missingPrev.length,label:missingPrev.length+' active client'+(missingPrev.length>1?'s':'')+' missing invoice for '+prevPeriod,fn:'showMissingInvoicesModal(\''+prevPeriod+'\')'});
   }
@@ -950,27 +956,30 @@ function renderInfoPane(){
   dStart.innerHTML='<label for="ei-start-date">Service Start Date <span style="font-weight:400;font-size:11px;color:#5c7590;">(prevents missing-invoice warnings for months before this date)</span></label><input type="date" id="ei-start-date" value="'+esc(prof.startDate||'')+'" oninput="unsavedChanges=true;">';
   g.appendChild(dStart);
 
-  // Caregiver + Live-In side by side
-  var dCgRow=document.createElement('div');dCgRow.className='info-field-row full';
+  // Assigned Caregiver — full width, with Open button (now matches the Caseworker layout below)
   var cgName='';var cgsMap=getCaregivers();if(prof.caregiverId&&cgsMap[prof.caregiverId])cgName=cgsMap[prof.caregiverId].name;
-  dCgRow.innerHTML='<div class="info-field"><label for="ei-caregiver-search">Assigned Caregiver</label>'+
-      '<div style="display:flex;align-items:center;gap:6px;position:relative;">'+
-        '<div style="flex:1;position:relative;">'+
-          '<input id="ei-caregiver-search" placeholder="Click to browse, or type to search…" maxlength="80" autocomplete="off" value="'+esc(cgName)+'" oninput="cgSearch(this,\'ei-caregiver-val\',\'ei-caregiver-drop\');unsavedChanges=true;" onfocus="cgSearch(this,\'ei-caregiver-val\',\'ei-caregiver-drop\')" onblur="setTimeout(function(){var d=document.getElementById(\'ei-caregiver-drop\');if(d)d.style.display=\'none\';},200)" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;">'+
-          '<input type="hidden" id="ei-caregiver-val" value="'+esc(prof.caregiverId||'')+'">'+
-          '<div id="ei-caregiver-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>'+
-        '</div>'+
-        (prof.caregiverId?'<button class="btn-open" onclick="navCaregivers();setTimeout(function(){openCgDetail(\''+escJsAttr(prof.caregiverId)+'\');},50)">Open ↗</button>':'')+
+  var dCg=document.createElement('div');dCg.className='info-field full';
+  dCg.innerHTML='<label for="ei-caregiver-search">Assigned Caregiver</label>'+
+    '<div style="display:flex;align-items:center;gap:6px;position:relative;">'+
+      '<div style="flex:1;position:relative;">'+
+        '<input id="ei-caregiver-search" placeholder="Click to browse, or type to search…" maxlength="80" autocomplete="off" value="'+esc(cgName)+'" oninput="cgSearch(this,\'ei-caregiver-val\',\'ei-caregiver-drop\');unsavedChanges=true;" onfocus="cgSearch(this,\'ei-caregiver-val\',\'ei-caregiver-drop\')" onblur="setTimeout(function(){var d=document.getElementById(\'ei-caregiver-drop\');if(d)d.style.display=\'none\';},200)" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;">'+
+        '<input type="hidden" id="ei-caregiver-val" value="'+esc(prof.caregiverId||'')+'">'+
+        '<div id="ei-caregiver-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>'+
       '</div>'+
-    '</div>'+
-    '<div class="info-field" style="display:flex;align-items:flex-end;padding-bottom:8px;">'+
-      '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:500;margin:0;"><input type="checkbox" id="ei-live-in" '+(prof.liveIn?'checked':'')+' onchange="unsavedChanges=true;" style="width:14px;height:14px;cursor:pointer;"> Live-In Caregiver</label>'+
+      (prof.caregiverId?'<button class="btn-open" onclick="navCaregivers();setTimeout(function(){openCgDetail(\''+escJsAttr(prof.caregiverId)+'\');},50)">Open ↗</button>':'')+
     '</div>';
-  g.appendChild(dCgRow);
+  g.appendChild(dCg);
+  // Live-In on its own row (was cramped beside the caregiver box, making it narrower)
+  var dLiveIn=document.createElement('div');dLiveIn.className='info-field full';
+  dLiveIn.innerHTML='<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:500;margin:0;"><input type="checkbox" id="ei-live-in" '+(prof.liveIn?'checked':'')+' onchange="unsavedChanges=true;" style="width:14px;height:14px;cursor:pointer;"> Live-In Caregiver</label>';
+  g.appendChild(dLiveIn);
 
-  // Caseworker searchable autocomplete + Open button
-  var dCw=document.createElement('div');dCw.className='info-field full';
+  // Caseworker — full width. Open resolves by id OR by matching name, so a caseworker stored as a
+  // plain name (legacy data with no caseworkerId) still gets an Open button.
   var cwName=prof.worker||'';
+  var cwRecOpen=getCaseworkers().find(function(c){return c.id===prof.caseworkerId || (cwName && (c.name||'').toLowerCase()===cwName.toLowerCase());});
+  var cwOpenId=cwRecOpen?cwRecOpen.id:'';
+  var dCw=document.createElement('div');dCw.className='info-field full';
   dCw.innerHTML='<label for="ei-worker-search">Caseworker</label>'+
     '<div style="display:flex;align-items:center;gap:6px;position:relative;">'+
       '<div style="flex:1;position:relative;">'+
@@ -978,7 +987,7 @@ function renderInfoPane(){
         '<input type="hidden" id="ei-worker-val" value="'+esc(prof.caseworkerId||'')+'">'+
         '<div id="ei-worker-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>'+
       '</div>'+
-      (prof.caseworkerId?'<button class="btn-open" onclick="navCaseworkers();setTimeout(function(){openCwDetail(\''+escJsAttr(prof.caseworkerId)+'\');},50)">Open ↗</button>':'')+
+      (cwOpenId?'<button class="btn-open" onclick="navCaseworkers();setTimeout(function(){openCwDetail(\''+escJsAttr(cwOpenId)+'\');},50)">Open ↗</button>':'')+
     '</div>';
   g.appendChild(dCw);
 }
@@ -1007,11 +1016,24 @@ function _authAddTaskRow(t){
   host.appendChild(row);
 }
 // "Set to 6 months after effective" button — fill reassessment = effective + 6 months.
+// Reassessment due = effective + 6 months, advanced in 6-month steps to the NEXT date on/after
+// today (MDHHS reviews every 6 months). So an OLD form (effective years ago) yields the next
+// upcoming reassessment, not a long-past one. refDate defaults to now; pass one for tests.
+function _nextReassessment(effMdy, refDate){
+  var p=String(effMdy||'').split('/'); if(p.length!==3)return '';
+  var y=+p[2], mi=(+p[0])-1, day=+p[1];
+  if(isNaN(y)||isNaN(mi)||isNaN(day))return '';
+  var ref=refDate||new Date(); ref=new Date(ref.getFullYear(),ref.getMonth(),ref.getDate());
+  var d=new Date(y,mi+6,day);            // first reassessment (effective + 6 months)
+  var guard=0;
+  while(d<ref && guard++<400){ d=new Date(d.getFullYear(),d.getMonth()+6,d.getDate()); }
+  return ('0'+(d.getMonth()+1)).slice(-2)+'/'+('0'+d.getDate()).slice(-2)+'/'+d.getFullYear();
+}
 function _fillReassess(){
   var eff=(document.getElementById('ei-auth-eff').value||'').trim();
-  var p=eff.split('/'); if(p.length!==3){showAlert('Enter the effective date first (MM/DD/YYYY).');return false;}
-  var d=new Date(+p[2],(+p[0])-1+6,+p[1]);
-  document.getElementById('ei-auth-reassess').value=('0'+(d.getMonth()+1)).slice(-2)+'/'+('0'+d.getDate()).slice(-2)+'/'+d.getFullYear();
+  var next=_nextReassessment(eff);
+  if(!next){showAlert('Enter the effective date first (MM/DD/YYYY).');return false;}
+  document.getElementById('ei-auth-reassess').value=next;
   unsavedChanges=true; return false;
 }
 // Auto-fill reassessment = effective + 6 months when the user finishes entering the effective
@@ -1021,8 +1043,8 @@ function _autoReassessFromEff(){
   var re=document.getElementById('ei-auth-reassess');
   var p=eff.split('/');
   if(re && !re.value.trim() && p.length===3 && p[2].length===4){
-    var d=new Date(+p[2],(+p[0])-1+6,+p[1]);
-    if(!isNaN(d.getTime())) re.value=('0'+(d.getMonth()+1)).slice(-2)+'/'+('0'+d.getDate()).slice(-2)+'/'+d.getFullYear();
+    var next=_nextReassessment(eff);
+    if(next) re.value=next;
   }
 }
 function _mdyToYmd(mdy){var p=String(mdy||'').split('/');if(p.length!==3)return '';return p[2]+'-'+('0'+p[0]).slice(-2)+'-'+('0'+p[1]).slice(-2);}
@@ -1493,8 +1515,9 @@ function parseDHS1210(pages){
     out.taskMinuteSum=mins; out.approvedTotalMin=out.hours*60+out.minutes;
     out.timeReconciles=Math.abs(mins-out.approvedTotalMin)<=1;
   }
-  // Reassessment due = effective + 6 months (form says services reviewed every 6 months).
-  if(out.effectiveDate){var pp=out.effectiveDate.split('/'); if(pp.length===3){var d=new Date(+pp[2],(+pp[0])-1+6,+pp[1]); out.reassessDate=('0'+(d.getMonth()+1)).slice(-2)+'/'+('0'+d.getDate()).slice(-2)+'/'+d.getFullYear();}}
+  // Reassessment due = effective + 6 months, advanced to the next date on/after today (so an old
+  // form doesn't show a long-past reassessment — see _nextReassessment).
+  if(out.effectiveDate){ out.reassessDate=_nextReassessment(out.effectiveDate); }
   return out;
 }
 
@@ -6005,7 +6028,7 @@ function clearPHIFromStorage() {
   // KEEP = column widths, page sizes, the state billing rate, PDF-mode preference, and the
   // weekly-backup timestamp (a plain date, not PHI — wiping it made the "weekly" OneDrive
   // backup re-fire on every session, since the wipe erased its memory of the last run).
-  var KEEP = /(_col_widths|_page_size)$|^lhca_state_rate$|^lhca_pdf_mode$|^lhca_last_onedrive_backup$/;
+  var KEEP = /(_col_widths|_page_size)$|^lhca_state_rate$|^lhca_pdf_mode$|^lhca_last_onedrive_backup$|^lhca_agency$/;
   Object.keys(localStorage)
     .filter(function(k){ return k.indexOf('lhca_') === 0 && !KEEP.test(k); })
     .forEach(function(k){ try{ localStorage.removeItem(k); }catch(e){} });
@@ -7880,18 +7903,53 @@ function _normalizeDate(v){
   return v;
 }
 
-// Hard-coded agency info — appears as Section 2 (provider info) on MSA-4676.
-// If anything here changes (new owner / address / CHAMPS ID), update this block.
-var AGENCY_INFO={
-  agency_provider_name:'Thomas Jaboro',
-  agency_provider_id:'6221933',
-  agency_address:'2741 Balsam Way Dr',
-  agency_city:'Sterling Heights',
-  agency_state:'MI',
-  agency_zip:'48314',
-  agency_phone:'(248) 291-4106',
-  agency_relationship:'N/A - Agency'
-};
+// Agency (provider) info — auto-filled onto state forms (Section 2 of MSA-4676, etc.).
+// These are the DEFAULTS; the live values are editable in Settings and stored in localStorage
+// (lhca_agency), so the owner can update them without a code change. Not PHI — it's the agency's
+// own business info — so lhca_agency is in the clearPHIFromStorage KEEP whitelist (survives wipe).
+// Defaults as a hoisted function (not a top-level var) so it's available everywhere regardless of
+// file position — including test harnesses that don't execute the whole file top-to-bottom.
+function _agencyDefaults(){
+  return {
+    agency_provider_name:'Thomas Jaboro',
+    agency_provider_id:'6221933',
+    agency_address:'2741 Balsam Way Dr',
+    agency_city:'Sterling Heights',
+    agency_state:'MI',
+    agency_zip:'48314',
+    agency_phone:'(248) 291-4106',
+    agency_relationship:'N/A - Agency'
+  };
+}
+function getAgencyInfo(){
+  var D=_agencyDefaults();
+  var saved={}; try{ saved=JSON.parse(localStorage.getItem('lhca_agency')||'{}')||{}; }catch(e){ saved={}; }
+  // Merge over defaults so a partially-filled/older saved object still yields every field.
+  var out={}; for(var k in D){ out[k]=(saved[k]!==undefined&&saved[k]!=='')?saved[k]:D[k]; }
+  return out;
+}
+function saveAgencyInfo(obj){
+  var D=_agencyDefaults();
+  var clean={}; for(var k in D){ clean[k]=(obj&&obj[k]!=null)?String(obj[k]):D[k]; }
+  localStorage.setItem('lhca_agency', JSON.stringify(clean));
+  return clean;
+}
+// Settings > Agency Information — populate the inputs from the stored/default values.
+function renderAgencySettings(){
+  var a=getAgencyInfo();
+  var set=function(id,v){var e=document.getElementById(id);if(e)e.value=v||'';};
+  set('ag-name',a.agency_provider_name); set('ag-id',a.agency_provider_id); set('ag-phone',a.agency_phone);
+  set('ag-address',a.agency_address); set('ag-city',a.agency_city); set('ag-state',a.agency_state); set('ag-zip',a.agency_zip);
+}
+function saveAgencyFromSettings(){
+  var g=function(id){var e=document.getElementById(id);return e?e.value.trim():'';};
+  saveAgencyInfo({
+    agency_provider_name:g('ag-name'), agency_provider_id:g('ag-id'), agency_phone:g('ag-phone'),
+    agency_address:g('ag-address'), agency_city:g('ag-city'), agency_state:g('ag-state'), agency_zip:g('ag-zip'),
+    agency_relationship:getAgencyInfo().agency_relationship
+  });
+  var s=document.getElementById('agencyStatus'); if(s){s.textContent='Saved ✓';setTimeout(function(){s.textContent='';},1800);}
+}
 // Set of dict keys that hold dates and should be normalized to MM/DD/YYYY
 var _DATE_DICT_KEYS={client_dob:1,caregiver_dob:1,signature_date:1,today_date:1,last_seen:1,resolved_date:1,start_date:1};
 
@@ -7904,6 +7962,7 @@ function _buildFormDataDict(){
   var cgs=getCaregivers();
   var assignedCg=(prof.caregiverId&&cgs[prof.caregiverId])||{};
   var td=today();
+  var _agency=getAgencyInfo();
   var fullName=activeFormClientName||'';
   var fParts=fullName.split(' ');
   var firstN=fParts[0]||'',lastN=fParts.slice(1).join(' ')||'';
@@ -7925,15 +7984,15 @@ function _buildFormDataDict(){
     caregiver_city:assignedCg.city||'', caregiver_state:assignedCg.state||'MI', caregiver_zip:assignedCg.zip||'',
     caregiver_phone:assignedCg.phone||'', caregiver_email:assignedCg.email||'',
     caregiver_champs_id:assignedCg.champsId||assignedCg.champs_id||'',
-    // Agency (hardcoded — used as Section 2 on MSA-4676)
-    agency_provider_name:AGENCY_INFO.agency_provider_name,
-    agency_provider_id:AGENCY_INFO.agency_provider_id,
-    agency_address:AGENCY_INFO.agency_address,
-    agency_city:AGENCY_INFO.agency_city,
-    agency_state:AGENCY_INFO.agency_state,
-    agency_zip:AGENCY_INFO.agency_zip,
-    agency_phone:AGENCY_INFO.agency_phone,
-    agency_relationship:AGENCY_INFO.agency_relationship,
+    // Agency (editable in Settings — used as Section 2 on MSA-4676, etc.)
+    agency_provider_name:_agency.agency_provider_name,
+    agency_provider_id:_agency.agency_provider_id,
+    agency_address:_agency.agency_address,
+    agency_city:_agency.agency_city,
+    agency_state:_agency.agency_state,
+    agency_zip:_agency.agency_zip,
+    agency_phone:_agency.agency_phone,
+    agency_relationship:_agency.agency_relationship,
     // Common
     today_date:td, signature_date:td, log_number:''
   };
@@ -8674,6 +8733,7 @@ function showMissingInvoicesModal(period){
   var missing=Object.keys(profiles).filter(function(name){
     var st=profiles[name].clientStatus||'active';
     if(st!=='active')return false;
+    if(!clientDueForInvoice(profiles[name],period))return false; // #10: respect the service start date
     return !((profiles[name].invoices)||[]).some(function(i){return i.billingPeriod===period;});
   }).sort(function(a,b){return a.localeCompare(b);});
   var ov=document.createElement('div');

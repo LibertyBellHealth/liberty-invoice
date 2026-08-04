@@ -23,6 +23,7 @@ test('clearPHIFromStorage: wipes PHI keys but keeps the settings whitelist', () 
   ls.setItem('lhca_last_onedrive_backup', '2026-08-01'); // the exact key whose wipe caused a real bug
   ls.setItem('lhca_cw_col_widths', '{}');
   ls.setItem('lhca_sup_page_size', '25');
+  ls.setItem('lhca_agency', '{"agency_provider_name":"X"}'); // business info, not PHI — must survive
   ls.setItem('theme', 'dark'); // non-lhca, must be untouched
 
   w.clearPHIFromStorage();
@@ -30,7 +31,7 @@ test('clearPHIFromStorage: wipes PHI keys but keeps the settings whitelist', () 
   for (const gone of ['lhca_profiles', 'lhca_caregivers', 'lhca_supervisors', 'lhca_email_audit', 'lhca_autogen_undo', 'lhca_todos']) {
     assert.strictEqual(ls.getItem(gone), null, `${gone} must be wiped`);
   }
-  for (const kept of ['lhca_state_rate', 'lhca_pdf_mode', 'lhca_last_onedrive_backup', 'lhca_cw_col_widths', 'lhca_sup_page_size', 'theme']) {
+  for (const kept of ['lhca_state_rate', 'lhca_pdf_mode', 'lhca_last_onedrive_backup', 'lhca_cw_col_widths', 'lhca_sup_page_size', 'lhca_agency', 'theme']) {
     assert.notStrictEqual(ls.getItem(kept), null, `${kept} must survive the wipe`);
   }
 });

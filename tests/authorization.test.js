@@ -36,12 +36,18 @@ test('_mdyToYmd: converts MM/DD/YYYY to YYYY-MM-DD (task due dates)', () => {
   assert.strictEqual(w._mdyToYmd('not a date'), '', 'garbage -> blank, no crash');
 });
 
-test('reassessment = effective + 6 months, incl. year rollover (via parseDHS1210)', () => {
+test('_nextReassessment: next 6-month date on/after today (catches up old forms)', () => {
   const w = loadApp();
-  const mk = (eff) => w.parseDHS1210([[`approved for 29 Hours and 47 Minutes per month effective ${eff}.`]]).reassessDate;
-  assert.strictEqual(mk('08/01/2026'), '02/01/2027', 'Aug -> Feb next year');
-  assert.strictEqual(mk('12/01/2026'), '06/01/2027', 'Dec rolls into next year');
-  assert.strictEqual(mk('10/15/2026'), '04/15/2027', 'keeps the day');
+  const ref = new Date(2026, 7, 4); // fixed reference: Aug 4, 2026
+  // Recent form: effective + 6mo is already in the future -> unchanged, with year rollover
+  assert.strictEqual(w._nextReassessment('08/01/2026', ref), '02/01/2027', 'Aug -> Feb next year');
+  assert.strictEqual(w._nextReassessment('12/01/2026', ref), '06/01/2027', 'Dec rolls into next year');
+  assert.strictEqual(w._nextReassessment('10/15/2026', ref), '04/15/2027', 'keeps the day');
+  // OLD form (the real scenario): effective years ago -> steps 6mo to the next upcoming date
+  assert.strictEqual(w._nextReassessment('09/19/2024', ref), '09/19/2026', 'old form catches up, not a past date');
+  // Boundary: a reassessment landing exactly on today stays today (not skipped forward)
+  assert.strictEqual(w._nextReassessment('02/04/2026', ref), '08/04/2026', 'due exactly today stays');
+  assert.strictEqual(w._nextReassessment('garbage', ref), '', 'invalid -> empty, no crash');
 });
 
 test('_clientSig: detects an authorization change (so the save actually fires)', () => {
