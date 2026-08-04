@@ -956,27 +956,30 @@ function renderInfoPane(){
   dStart.innerHTML='<label for="ei-start-date">Service Start Date <span style="font-weight:400;font-size:11px;color:#5c7590;">(prevents missing-invoice warnings for months before this date)</span></label><input type="date" id="ei-start-date" value="'+esc(prof.startDate||'')+'" oninput="unsavedChanges=true;">';
   g.appendChild(dStart);
 
-  // Caregiver + Live-In side by side
-  var dCgRow=document.createElement('div');dCgRow.className='info-field-row full';
+  // Assigned Caregiver — full width, with Open button (now matches the Caseworker layout below)
   var cgName='';var cgsMap=getCaregivers();if(prof.caregiverId&&cgsMap[prof.caregiverId])cgName=cgsMap[prof.caregiverId].name;
-  dCgRow.innerHTML='<div class="info-field"><label for="ei-caregiver-search">Assigned Caregiver</label>'+
-      '<div style="display:flex;align-items:center;gap:6px;position:relative;">'+
-        '<div style="flex:1;position:relative;">'+
-          '<input id="ei-caregiver-search" placeholder="Click to browse, or type to search…" maxlength="80" autocomplete="off" value="'+esc(cgName)+'" oninput="cgSearch(this,\'ei-caregiver-val\',\'ei-caregiver-drop\');unsavedChanges=true;" onfocus="cgSearch(this,\'ei-caregiver-val\',\'ei-caregiver-drop\')" onblur="setTimeout(function(){var d=document.getElementById(\'ei-caregiver-drop\');if(d)d.style.display=\'none\';},200)" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;">'+
-          '<input type="hidden" id="ei-caregiver-val" value="'+esc(prof.caregiverId||'')+'">'+
-          '<div id="ei-caregiver-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>'+
-        '</div>'+
-        (prof.caregiverId?'<button class="btn-open" onclick="navCaregivers();setTimeout(function(){openCgDetail(\''+escJsAttr(prof.caregiverId)+'\');},50)">Open ↗</button>':'')+
+  var dCg=document.createElement('div');dCg.className='info-field full';
+  dCg.innerHTML='<label for="ei-caregiver-search">Assigned Caregiver</label>'+
+    '<div style="display:flex;align-items:center;gap:6px;position:relative;">'+
+      '<div style="flex:1;position:relative;">'+
+        '<input id="ei-caregiver-search" placeholder="Click to browse, or type to search…" maxlength="80" autocomplete="off" value="'+esc(cgName)+'" oninput="cgSearch(this,\'ei-caregiver-val\',\'ei-caregiver-drop\');unsavedChanges=true;" onfocus="cgSearch(this,\'ei-caregiver-val\',\'ei-caregiver-drop\')" onblur="setTimeout(function(){var d=document.getElementById(\'ei-caregiver-drop\');if(d)d.style.display=\'none\';},200)" style="width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;outline:none;">'+
+        '<input type="hidden" id="ei-caregiver-val" value="'+esc(prof.caregiverId||'')+'">'+
+        '<div id="ei-caregiver-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>'+
       '</div>'+
-    '</div>'+
-    '<div class="info-field" style="display:flex;align-items:flex-end;padding-bottom:8px;">'+
-      '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:500;margin:0;"><input type="checkbox" id="ei-live-in" '+(prof.liveIn?'checked':'')+' onchange="unsavedChanges=true;" style="width:14px;height:14px;cursor:pointer;"> Live-In Caregiver</label>'+
+      (prof.caregiverId?'<button class="btn-open" onclick="navCaregivers();setTimeout(function(){openCgDetail(\''+escJsAttr(prof.caregiverId)+'\');},50)">Open ↗</button>':'')+
     '</div>';
-  g.appendChild(dCgRow);
+  g.appendChild(dCg);
+  // Live-In on its own row (was cramped beside the caregiver box, making it narrower)
+  var dLiveIn=document.createElement('div');dLiveIn.className='info-field full';
+  dLiveIn.innerHTML='<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:500;margin:0;"><input type="checkbox" id="ei-live-in" '+(prof.liveIn?'checked':'')+' onchange="unsavedChanges=true;" style="width:14px;height:14px;cursor:pointer;"> Live-In Caregiver</label>';
+  g.appendChild(dLiveIn);
 
-  // Caseworker searchable autocomplete + Open button
-  var dCw=document.createElement('div');dCw.className='info-field full';
+  // Caseworker — full width. Open resolves by id OR by matching name, so a caseworker stored as a
+  // plain name (legacy data with no caseworkerId) still gets an Open button.
   var cwName=prof.worker||'';
+  var cwRecOpen=getCaseworkers().find(function(c){return c.id===prof.caseworkerId || (cwName && (c.name||'').toLowerCase()===cwName.toLowerCase());});
+  var cwOpenId=cwRecOpen?cwRecOpen.id:'';
+  var dCw=document.createElement('div');dCw.className='info-field full';
   dCw.innerHTML='<label for="ei-worker-search">Caseworker</label>'+
     '<div style="display:flex;align-items:center;gap:6px;position:relative;">'+
       '<div style="flex:1;position:relative;">'+
@@ -984,7 +987,7 @@ function renderInfoPane(){
         '<input type="hidden" id="ei-worker-val" value="'+esc(prof.caseworkerId||'')+'">'+
         '<div id="ei-worker-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0d8e4;border-radius:0 0 6px 6px;z-index:200;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>'+
       '</div>'+
-      (prof.caseworkerId?'<button class="btn-open" onclick="navCaseworkers();setTimeout(function(){openCwDetail(\''+escJsAttr(prof.caseworkerId)+'\');},50)">Open ↗</button>':'')+
+      (cwOpenId?'<button class="btn-open" onclick="navCaseworkers();setTimeout(function(){openCwDetail(\''+escJsAttr(cwOpenId)+'\');},50)">Open ↗</button>':'')+
     '</div>';
   g.appendChild(dCw);
 }
