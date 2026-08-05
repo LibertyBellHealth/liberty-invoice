@@ -1716,10 +1716,13 @@ function _applyDhsImport(file,res,opts){
     var fd=new FormData();
     fd.append('clientType','homecare'); fd.append('clientId',cid); fd.append('category','Authorization');
     fd.append('file',new File([file],'Authorization__'+file.name,{type:file.type||'application/pdf'}));
+    // Authorization DATA is already persisted above; the PDF file is a separate best-effort upload.
+    // The toast must reflect what actually happened — never claim "PDF filed" before the POST resolves.
+    showToast('✓ Authorization saved for '+name+' — filing PDF…');
     fetch(API_BASE+'/documents',{method:'POST',headers:authUploadHeaders(),body:fd})
-      .then(function(r){ if(r.ok && document.getElementById('hcDocList'))loadHcDocs(cid); })
-      .catch(function(e){ console.error('DHS PDF upload failed',e); });
-    showToast('✓ Authorization saved + PDF filed for '+name);
+      .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); if(document.getElementById('hcDocList'))loadHcDocs(cid); showToast('✓ Authorization PDF filed for '+name); })
+      .catch(function(e){ console.error('DHS PDF upload failed',e);
+        showAlert('The authorization was saved, but the PDF could not be filed ('+((e&&e.message)||'connection error')+'). Your data is safe — re-upload the PDF from the Documents tab'+(/\b401\b/.test(String((e&&e.message)||''))?' after signing in again.':'.')); });
   } else {
     showToast('✓ Authorization saved for '+name+' (save the client to file the PDF)');
   }
@@ -1742,11 +1745,22 @@ function renderDocsPane(){
   if(clientId){loadHcDocs(clientId);}
   else{document.getElementById('hcDocList').innerHTML='<div style="color:#5c7590;font-size:12px;">Save this client to the database first before uploading documents.</div>';}
 }
+// Render a document-load FAILURE — never a false "No documents yet". The files are safe on the
+// server; a failed GET (expired sign-in / connection) must show a retry, not an empty pane, so a
+// worker doesn't think the docs vanished and re-upload duplicates. retryExpr re-runs the loader.
+function _renderDocLoadError(listId, retryExpr, err){
+  var el=document.getElementById(listId); if(!el)return;
+  el.className='';
+  var is401=/\b401\b/.test(String((err&&err.message)||''));
+  el.innerHTML='<div style="color:#b03030;font-size:12px;padding:8px 2px;line-height:1.5;">'+
+    (is401?'Your sign-in expired — <b>sign in again</b>, then ':'Couldn’t load documents (connection issue) — ')+
+    'your files are safe on the server. <a href="#" style="color:#185FA5;font-weight:600;" onclick="'+retryExpr+';return false;">Retry</a></div>';
+}
 function loadHcDocs(clientId){
   fetch(API_BASE+'/documents?clientType=homecare&clientId='+clientId,{headers:apiHeaders()})
-  .then(function(r){return r.json();})
-  .then(function(docs){renderHcDocList(clientId,docs||[]);})
-  .catch(function(){renderHcDocList(clientId,[]);});
+  .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); return r.json(); })
+  .then(function(docs){ renderHcDocList(clientId, Array.isArray(docs)?docs:[]); })
+  .catch(function(err){ _renderDocLoadError('hcDocList', "loadHcDocs('"+clientId+"')", err); });
 }
 // ── Shared modern document grid (client / caregiver / caseworker) ──
 var DOC_CATS=[['Other','Other'],['SSN_Card','SSN Card'],['Drivers_License',"Driver's License"],['Insurance_Card','Insurance Card'],['Medicare_Card','Medicare Card'],['Medicaid_Card','Medicaid Card'],['Authorization','Authorization'],['Certification','Certification'],['Background_Check','Background Check'],['I9_W4','I-9 / W-4']];
@@ -1943,10 +1957,10 @@ function loadCgDocs(cgId){
     '</div>'+
     '<span id="cgDocStatus" style="font-size:11px;color:#666;"></span>';
   fetch(API_BASE+'/documents?clientType=caregiver&clientId='+cgId,{headers:apiHeaders()})
-  .then(function(r){return r.json();})
+  .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); return r.json(); })
   .then(function(docs){
     var list=document.getElementById('cgDocList');if(!list)return;
-    if(!docs||!docs.length){list.innerHTML='<div style="color:#5c7590;font-size:12px;">No documents yet.</div>';return;}
+    if(!Array.isArray(docs)||!docs.length){list.innerHTML='<div style="color:#5c7590;font-size:12px;">No documents yet.</div>';return;}
     list.innerHTML='';
     docs.forEach(function(d){
       var kb=d.size?Math.round(d.size/1024)+'KB':'';
@@ -1957,7 +1971,7 @@ function loadCgDocs(cgId){
         '<button class="btn btn-danger btn-sm" style="padding:2px 8px;font-size:10px;" onclick="deleteCgDoc(\''+cgId+'\',\''+encodeURIComponent(d.name)+'\')">✕</button>';
       list.appendChild(div);
     });
-  }).catch(function(){var l=document.getElementById('cgDocList');if(l)l.innerHTML='<div style="color:#e74c3c;font-size:12px;">Could not load documents.</div>';});
+  }).catch(function(err){ _renderDocLoadError('cgDocList', "loadCgDocs('"+cgId+"')", err); });
 }
 function uploadCgDoc(cgId){
   var input=document.getElementById('cgDocFileInput');
@@ -2871,9 +2885,9 @@ function renderCgDocsPane(){
 }
 function loadCgDocsAzure(cgId){
   fetch(API_BASE+'/documents?clientType=caregiver&clientId='+cgId,{headers:apiHeaders()})
-  .then(function(r){return r.json();})
-  .then(function(docs){renderCgDocListAzure(cgId,docs||[]);})
-  .catch(function(){renderCgDocListAzure(cgId,[]);});
+  .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); return r.json(); })
+  .then(function(docs){ renderCgDocListAzure(cgId, Array.isArray(docs)?docs:[]); })
+  .catch(function(err){ _renderDocLoadError('cgDocListAzure', "loadCgDocsAzure('"+cgId+"')", err); });
 }
 function renderCgDocListAzure(cgId,docs){
   renderDocGrid(document.getElementById('cgDocListAzure'),docs,{clientType:'caregiver',clientId:cgId,deleteExpr:function(name){return 'deleteCgDocAzure(\''+cgId+'\',\''+encodeURIComponent(name)+'\')';},refresh:function(){loadCgDocsAzure(cgId);}});
@@ -7700,9 +7714,9 @@ function renderCwDocsPane(){
   if(!c||!cw)return;
   c.innerHTML=docUploaderHtml({title:'Documents for '+esc(cw.name||'Caseworker'),subtitle:'Letters, authorization docs, etc.',hasCategory:true,catId:'cwDocCategory',fileId:'cwDocFileInput',scanId:'cwDocScanInput',scanFn:'handleCwDocScan(this)',uploadFn:'uploadCwDoc()',statusId:'cwDocUploadStatus',listId:'cwDocListAzure'});
   fetch(API_BASE+'/documents?clientType=caseworker&clientId='+activeCwId,{headers:apiHeaders()})
-    .then(function(r){return r.json();})
-    .then(function(docs){renderCwDocListAzure(activeCwId,docs||[]);})
-    .catch(function(){renderCwDocListAzure(activeCwId,[]);});
+    .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); return r.json(); })
+    .then(function(docs){ renderCwDocListAzure(activeCwId, Array.isArray(docs)?docs:[]); })
+    .catch(function(err){ _renderDocLoadError('cwDocListAzure', 'renderCwDocsPane()', err); });
 }
 function renderCwDocListAzure(cwId,docs){
   renderDocGrid(document.getElementById('cwDocListAzure'),docs,{clientType:'caseworker',clientId:cwId,deleteExpr:function(name){return 'deleteCwDoc(\''+cwId+'\',\''+encodeURIComponent(name)+'\')';},refresh:function(){renderCwDocsPane();}});
