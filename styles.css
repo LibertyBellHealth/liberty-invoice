@@ -285,7 +285,7 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 .detail-pane.active{display:block;}
 
 /* FORMS */
-.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;max-width:560px;}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px 18px;max-width:860px;}
 .info-grid.three-col{grid-template-columns:1fr 1fr 1fr;}
 .info-field label{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;display:block;margin-bottom:4px;font-weight:600;}
 .info-field input,.info-field select,.info-field textarea{width:100%;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;font-family:Arial,sans-serif;color:#1a2b45;outline:none;background:#fff;}
@@ -311,6 +311,8 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
   .doc-upload-row{grid-template-columns:1fr;}
   .doc-upload-actions{flex-direction:row;}
   .doc-upload-actions .btn{flex:1;}
+  /* Profile form: single column on a phone so fields aren't cramped */
+  .info-grid,.info-field-row{grid-template-columns:1fr;}
 }
 
 /* INVOICE TABLE */
