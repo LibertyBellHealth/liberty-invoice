@@ -2923,14 +2923,30 @@ function handleCgDocScan(input){
 function getSigs(){try{return JSON.parse(localStorage.getItem('lhca_signatures')||'[]');}catch(e){return[];}}
 function saveSigsLS(arr){try{localStorage.setItem('lhca_signatures',JSON.stringify(arr));}catch(e){}}
 function sigId(){return 'sig_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);}
+// Merge a freshly-loaded id-array over the local one WITHOUT dropping unsynced local additions —
+// the same cold-device race that hit the rosters applies to tasks and signatures. Server wins for
+// shared ids; a local-only item is kept UNLESS it carries `syncedProp` (it was previously confirmed
+// by the server and is now gone → deleted elsewhere → drop). Pass no syncedProp to always keep
+// local-only items (signatures have no per-row sync marker).
+function _mergeByIdKeepUnsynced(serverArr, localArr, syncedProp){
+  var have={}; (serverArr||[]).forEach(function(x){ if(x&&x.id!=null) have[x.id]=true; });
+  var out=(serverArr||[]).slice();
+  (localArr||[]).forEach(function(x){
+    if(!x || x.id==null || have[x.id]) return;
+    if(syncedProp && x[syncedProp]) return;   // was synced, now absent from server → deleted elsewhere
+    out.push(x);
+  });
+  return out;
+}
 function loadSignaturesAPI(){
   if(!spToken)return;
   fetch(API_BASE+'/signatures',{headers:apiHeaders()})
     .then(function(r){return r.ok?r.json():Promise.reject(r.status);})
     .then(function(rows){
       // rows: [{id,label,data_url,created_at}]
-      var sigs=rows.map(function(r){return {id:r.id,label:r.label,data:r.data_url};});
-      saveSigsLS(sigs);
+      var sigs=(Array.isArray(rows)?rows:[]).map(function(r){return {id:r.id,label:r.label,data:r.data_url};});
+      // Merge so a signature saved on this device while the load was in flight isn't wiped.
+      saveSigsLS(_mergeByIdKeepUnsynced(sigs, getSigs()));
       renderSigSettings();
     })
     .catch(function(e){console.error('Signatures load error:',e);});
@@ -6679,9 +6695,9 @@ function deleteCaregiverAPI(id) {
 // ── TASKS API ────────────────────────────────────────────────
 function loadTasksAPI() {
   fetch(API_BASE + '/tasks?source=homecare', { headers: apiHeaders() })
-    .then(function (r) { return r.json(); })
+    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(function (tasks) {
-      var todos = tasks.map(function (t) {
+      var todos = (Array.isArray(tasks) ? tasks : []).map(function (t) {
         // CRITICAL: id MUST be a string to match the format used by todoId() (e.g. 'td_xxx_yyy').
         // If id is a number, all task button click handlers (deleteTodo / toggleTodo / etc.)
         // fail their strict-equality lookup and silently do nothing.
@@ -6692,7 +6708,9 @@ function loadTasksAPI() {
           parentId: t.parent_id ? String(t.parent_id) : null,
         };
       });
-      if (todos.length) saveTodos(todos);
+      // Merge so a task created on this device while the load was in flight isn't wiped; a task
+      // that had a dbId but is gone from the server was deleted elsewhere, so it's dropped.
+      saveTodos(_mergeByIdKeepUnsynced(todos, getTodos(), 'dbId'));
       // Re-render if user is currently on the tasks page so DB-loaded tasks become clickable
       if(document.getElementById('page-tasks')&&document.getElementById('page-tasks').classList.contains('active')){
         renderTodos();updateTaskBadge();
