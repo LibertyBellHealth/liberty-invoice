@@ -1084,12 +1084,16 @@ function renderAuthPane(edit){
   var rows=(a.tasks||[]).map(function(t){
     return '<tr><td style="padding:4px 8px;">'+esc(t.task||'')+'</td><td style="padding:4px 8px;color:#5c7590;">'+esc(t.perDay||'—')+'</td><td style="padding:4px 8px;color:#5c7590;">'+esc(t.freq||'')+'</td><td style="padding:4px 8px;text-align:right;">'+esc(t.perMonth||'')+'</td><td style="padding:4px 8px;text-align:right;">'+(t.amount!=null?'$'+Number(t.amount).toFixed(2):'—')+'</td></tr>';
   }).join('');
+  // First invoice: offer it when there's no invoice yet for the authorization's effective month.
+  var _effP=(a.effectiveDate||'').split('/'); var _effPeriod=(_effP.length===3)?(_effP[0]+'/'+_effP[2]):'';
+  var _canCreateInv=_effPeriod && !((prof.invoices||[]).some(function(i){return i.billingPeriod===_effPeriod;}));
   host.innerHTML='<div class="form-card" style="max-width:720px;">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap;">'+
       '<h3 style="margin:0;">Authorization (DHS-1210)</h3>'+
-      '<div style="display:flex;gap:8px;">'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
+        (_canCreateInv?'<button class="btn btn-primary btn-sm" onclick="createFirstInvoiceFromAuth()">Create '+esc(_effPeriod)+' invoice</button>':'')+
         '<button class="btn btn-secondary btn-sm" onclick="importDHS1210()">Import DHS-1210</button>'+
-        '<button class="btn btn-primary btn-sm" onclick="renderAuthPane(true)">Edit</button>'+
+        '<button class="btn btn-secondary btn-sm" onclick="renderAuthPane(true)">Edit</button>'+
       '</div>'+
     '</div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 24px;">'+
@@ -9108,6 +9112,87 @@ function generateNextMonthInvoiceData(prevInv,newPeriod){
     invoiceNote:'',
     data:newData
   };
+}
+
+// ── First invoice from a DHS-1210 authorization ────────────────────────────────
+// The invoice's 15 service columns (order matters — it's the grid column order).
+function _dhsSvcColNames(){
+  return ['Bathing','Dressing','Eating','Grooming','Mobility','Toileting','Transferring','Housework',
+    'Laundry','Travel Time for Laundry','Medication','Meal Preparation','Shopping','Travel Time for Shopping',
+    'Hospital/Nursing Facility Stay'];
+}
+// Map a DHS-1210 task name to a service-column index (-1 if none). Exact match first, then the
+// known DHS aliases, then a loose contains — so a task is never put in the WRONG column silently.
+function _dhsMapTaskToCol(taskName){
+  var cols=_dhsSvcColNames(); var t=String(taskName||'').toLowerCase().trim(); if(!t)return -1;
+  for(var i=0;i<cols.length;i++){ if(cols[i].toLowerCase()===t)return i; }
+  if(/travel.*laundry/.test(t))return cols.indexOf('Travel Time for Laundry');
+  if(/travel.*shop/.test(t))return cols.indexOf('Travel Time for Shopping');
+  if(/^shopping|shopping for (food|meds)/.test(t))return cols.indexOf('Shopping');
+  for(var j=0;j<cols.length;j++){ var c=cols[j].toLowerCase(); if(c===t)continue; if(c.indexOf(t)>=0||t.indexOf(c)>=0)return j; }
+  return -1;
+}
+// Turn a frequency phrase into the day indices to check across `days`. The form gives frequency,
+// not calendar days — this is a reviewable starting pattern (the provider adjusts), not a claim.
+function _dhsFreqToDays(freq, days){
+  var f=String(freq||'').toLowerCase(), out=[], i;
+  if(/7 days? per week|daily|every day/.test(f)){ for(i=0;i<days;i++)out.push(i); return out; }
+  var wk=f.match(/(\d+)\s*days?\s*per\s*week/);
+  if(wk){ var n=Math.min(7,parseInt(wk[1])||1); for(i=0;i<days;i++){ if((i%7)<n)out.push(i); } return out; }
+  if(/once per month|1 day per month|monthly/.test(f)){ return [0]; }
+  var mo=f.match(/(\d+)\s*days?\s*per\s*month/);
+  if(mo){ var m=Math.max(1,parseInt(mo[1])||1), step=Math.max(1,Math.floor(days/m)); for(i=0;i<m&&i*step<days;i++)out.push(i*step); return out; }
+  return [0]; // unknown frequency → mark the 1st day only, provider adjusts
+}
+// Build the data for a first invoice from a parsed authorization (res) + client (prof) + period MM/YYYY.
+// Returns { data, unmapped:[taskNames] } — unmapped tasks are surfaced, never dropped silently.
+function _dhsBuildFirstInvoice(res, prof, period){
+  var pp=String(period||'').split('/'); if(pp.length!==2||pp[1].length!==4)return null;
+  var days=daysIn(pp[0],pp[1]); var cols=_dhsSvcColNames();
+  var grid=[]; for(var d=0;d<days;d++){ var row=[]; for(var c=0;c<cols.length;c++)row.push(false); grid.push(row); }
+  var unmapped=[];
+  (res.tasks||[]).forEach(function(t){
+    var col=_dhsMapTaskToCol(t.task);
+    if(col<0){ unmapped.push(t.task); return; }
+    _dhsFreqToDays(t.freq, days).forEach(function(di){ if(di>=0&&di<days)grid[di][col]=true; });
+  });
+  var hours=res.hours!=null?String(res.hours):'', mins=res.minutes!=null?String(res.minutes):'';
+  var rate=(res.rate!=null&&res.rate!=='')?Number(res.rate).toFixed(2):stateRate();
+  var T=today();
+  return {
+    data:{
+      clientName:(prof&&prof.clientName)||'', medicaidId:(prof&&prof.medicaidId)||'', worker:(prof&&prof.worker)||'',
+      billingPeriod:period, hourlyRate:rate,
+      svcHH:hours, svcMM:mins, cplxHH:'', cplxMM:'', p1HH:'', p1MM:'', grandHH:hours, grandMM:mins,
+      dateSubmitted:T, sigDate1:T, sigDate2:T, hasComplex:false, tasks:{svc:grid, cplx:[]}
+    },
+    unmapped:unmapped
+  };
+}
+
+// Create a first invoice (Draft) for the active client from their DHS-1210 authorization.
+function createFirstInvoiceFromAuth(){
+  if(!activeProfileName)return;
+  var p=getProfiles(); var prof=p[activeProfileName];
+  if(!prof||!hasAuthorization(prof)){ showAlert('No DHS-1210 authorization on file for this client.'); return; }
+  var a=prof.authorization;
+  var eff=(a.effectiveDate||'').split('/');
+  var period=(eff.length===3)?(eff[0]+'/'+eff[2]):'';
+  if(!period){ showAlert('The authorization has no effective date, so the billing period can’t be set. Add one on the Authorization tab first.'); return; }
+  if((prof.invoices||[]).some(function(i){return i.billingPeriod===period;})){ showAlert('An invoice for '+period+' already exists for this client.'); return; }
+  var built=_dhsBuildFirstInvoice({hours:a.hours, minutes:a.minutes, rate:a.rate, tasks:a.tasks||[]}, prof, period);
+  if(!built){ showAlert('Could not build the invoice from this authorization.'); return; }
+  var inv={ id:'dhs_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), billingPeriod:period,
+    savedAt:new Date().toLocaleString(), status:'draft', invoiceNote:'', data:built.data };
+  if(!prof.invoices)prof.invoices=[];
+  prof.invoices.unshift(inv);
+  saveProfilesLS(p); saveProfileSP(activeProfileName, prof);
+  if(typeof logActivity==='function')logActivity('invoice','First invoice created from DHS-1210 for '+activeProfileName+' ('+period+')');
+  var msg='✓ Draft invoice created for '+period+' from the authorization.\n\nIt is a Draft — review the day grid (the checked days are a starting pattern from each task’s frequency) before sending.';
+  if(built.unmapped.length)msg+='\n\n⚠ These tasks didn’t match a service column and were left OFF — add them manually: '+built.unmapped.join(', ');
+  showAlert(msg,{title:'First Invoice Created'});
+  if(typeof renderAuthPane==='function')renderAuthPane(false);
+  if(typeof switchTab==='function')switchTab('history');
 }
 
 // Returns list of clients eligible for auto-gen (active, missing invoice for period, has a prior)
