@@ -6578,6 +6578,26 @@ function deleteInvoiceAPI(dbId, clientName, billingPeriod, onDeleted) {
 }
 
 // ── CAREGIVERS API ───────────────────────────────────────────
+// ── Roster load merge ────────────────────────────────────────────────────────
+// A fresh server roster used to REPLACE the local cache wholesale. On a cold device a worker can
+// add a row while the initial load is still in flight; the load then lands and wipes the just-added
+// row. These merges keep server data authoritative for rows the server knows about, but preserve a
+// LOCAL-ONLY row *only when it's an unsynced addition* (no _rowVersion yet). A local row that once
+// had a _rowVersion but is now absent from the server was deleted on another device → we drop it,
+// so cross-device deletes still propagate.
+function _rosterHas(o, k){ return Object.prototype.hasOwnProperty.call(o, k); }
+function _mergeRosterMap(serverMap, localMap){   // caregivers, supervisors (id-keyed objects)
+  var out = {}, k;
+  for (k in serverMap) if (_rosterHas(serverMap, k)) out[k] = serverMap[k];
+  for (k in localMap)  if (_rosterHas(localMap, k) && !_rosterHas(out, k) && localMap[k] && !localMap[k]._rowVersion) out[k] = localMap[k];
+  return out;
+}
+function _mergeRosterArr(serverArr, localArr){   // caseworkers (array of {id,…})
+  var have = {}; (serverArr || []).forEach(function(x){ if (x && x.id != null) have[x.id] = true; });
+  var out = (serverArr || []).slice();
+  (localArr || []).forEach(function(x){ if (x && x.id != null && !have[x.id] && !x._rowVersion) out.push(x); });
+  return out;
+}
 function loadCaregiversAPI() {
   syncStart();
   fetch(API_BASE + '/caregivers', { headers: apiHeaders() })
@@ -6607,7 +6627,9 @@ function loadCaregiversAPI() {
           _rowVersion: cg.row_version_hex || null   // optimistic-concurrency token
         };
       });
-      if (Object.keys(obj).length) saveCaregiversLS(obj);
+      // Merge (not replace) so an unsynced local addition isn't wiped by the load; the merge also
+      // keeps local rows when the server response is transiently empty.
+      saveCaregiversLS(_mergeRosterMap(obj, getCaregivers()));
       // Repaint the grid now that fresh data is in — matches loadProfilesAPI/loadCaseworkersAPI.
       // Without this, a cold cache (new device/URL, or after the idle-timeout clears storage)
       // renders an empty grid and never refreshes when the fetch lands.
@@ -6747,11 +6769,11 @@ function loadCaseworkersAPI(){
                  notes:c.notes||'', supervisor_id:c.supervisor_id||'',
                  _rowVersion:c.row_version_hex||null };   // optimistic-concurrency token
       });
-      // D11: don't let a transient empty/partial response wipe the good caseworker cache.
-      if (arr.length) {
-        saveCaseworkersLS(arr);
-        if (typeof renderCaseworkerList === 'function' && document.getElementById('cwList')) renderCaseworkerList();
-      }
+      // D11: don't let a transient empty/partial response wipe the good caseworker cache — and
+      // merge so an unsynced local addition isn't dropped by the load (cross-device deletes still
+      // propagate: a row that had a _rowVersion but is gone from the server is dropped).
+      saveCaseworkersLS(_mergeRosterArr(arr, getCaseworkers()));
+      if (typeof renderCaseworkerList === 'function' && document.getElementById('cwList')) renderCaseworkerList();
       syncEnd();
     })
     .catch(function(e){ console.error('Load caseworkers error:', e); showDbError('caseworkers'); syncEnd(); });
@@ -6810,7 +6832,9 @@ function loadSupervisorsAPI(){
       (rows||[]).forEach(function(s){
         map[s.id]={id:s.id,name:s.name||'',title:s.title||'',phone:s.phone||'',email:s.email||''};
       });
-      saveSupervisorsLS(map);
+      // Merge so an unsynced local addition survives the load and a transient empty response
+      // doesn't wipe the cache (supervisors carry no _rowVersion, so local-only rows are kept).
+      saveSupervisorsLS(_mergeRosterMap(map, getSupervisors()));
       // If a caseworker form is open, refresh its dropdown
       refreshSupervisorDropdowns();
       syncEnd();
