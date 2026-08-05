@@ -1084,12 +1084,16 @@ function renderAuthPane(edit){
   var rows=(a.tasks||[]).map(function(t){
     return '<tr><td style="padding:4px 8px;">'+esc(t.task||'')+'</td><td style="padding:4px 8px;color:#5c7590;">'+esc(t.perDay||'—')+'</td><td style="padding:4px 8px;color:#5c7590;">'+esc(t.freq||'')+'</td><td style="padding:4px 8px;text-align:right;">'+esc(t.perMonth||'')+'</td><td style="padding:4px 8px;text-align:right;">'+(t.amount!=null?'$'+Number(t.amount).toFixed(2):'—')+'</td></tr>';
   }).join('');
+  // First invoice: offer it when there's no invoice yet for the authorization's effective month.
+  var _effP=(a.effectiveDate||'').split('/'); var _effPeriod=(_effP.length===3)?(_effP[0]+'/'+_effP[2]):'';
+  var _canCreateInv=_effPeriod && !((prof.invoices||[]).some(function(i){return i.billingPeriod===_effPeriod;}));
   host.innerHTML='<div class="form-card" style="max-width:720px;">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap;">'+
       '<h3 style="margin:0;">Authorization (DHS-1210)</h3>'+
-      '<div style="display:flex;gap:8px;">'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
+        (_canCreateInv?'<button class="btn btn-primary btn-sm" onclick="createFirstInvoiceFromAuth()">Create '+esc(_effPeriod)+' invoice</button>':'')+
         '<button class="btn btn-secondary btn-sm" onclick="importDHS1210()">Import DHS-1210</button>'+
-        '<button class="btn btn-primary btn-sm" onclick="renderAuthPane(true)">Edit</button>'+
+        '<button class="btn btn-secondary btn-sm" onclick="renderAuthPane(true)">Edit</button>'+
       '</div>'+
     '</div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 24px;">'+
@@ -9164,6 +9168,31 @@ function _dhsBuildFirstInvoice(res, prof, period){
     },
     unmapped:unmapped
   };
+}
+
+// Create a first invoice (Draft) for the active client from their DHS-1210 authorization.
+function createFirstInvoiceFromAuth(){
+  if(!activeProfileName)return;
+  var p=getProfiles(); var prof=p[activeProfileName];
+  if(!prof||!hasAuthorization(prof)){ showAlert('No DHS-1210 authorization on file for this client.'); return; }
+  var a=prof.authorization;
+  var eff=(a.effectiveDate||'').split('/');
+  var period=(eff.length===3)?(eff[0]+'/'+eff[2]):'';
+  if(!period){ showAlert('The authorization has no effective date, so the billing period can’t be set. Add one on the Authorization tab first.'); return; }
+  if((prof.invoices||[]).some(function(i){return i.billingPeriod===period;})){ showAlert('An invoice for '+period+' already exists for this client.'); return; }
+  var built=_dhsBuildFirstInvoice({hours:a.hours, minutes:a.minutes, rate:a.rate, tasks:a.tasks||[]}, prof, period);
+  if(!built){ showAlert('Could not build the invoice from this authorization.'); return; }
+  var inv={ id:'dhs_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), billingPeriod:period,
+    savedAt:new Date().toLocaleString(), status:'draft', invoiceNote:'', data:built.data };
+  if(!prof.invoices)prof.invoices=[];
+  prof.invoices.unshift(inv);
+  saveProfilesLS(p); saveProfileSP(activeProfileName, prof);
+  if(typeof logActivity==='function')logActivity('invoice','First invoice created from DHS-1210 for '+activeProfileName+' ('+period+')');
+  var msg='✓ Draft invoice created for '+period+' from the authorization.\n\nIt is a Draft — review the day grid (the checked days are a starting pattern from each task’s frequency) before sending.';
+  if(built.unmapped.length)msg+='\n\n⚠ These tasks didn’t match a service column and were left OFF — add them manually: '+built.unmapped.join(', ');
+  showAlert(msg,{title:'First Invoice Created'});
+  if(typeof renderAuthPane==='function')renderAuthPane(false);
+  if(typeof switchTab==='function')switchTab('history');
 }
 
 // Returns list of clients eligible for auto-gen (active, missing invoice for period, has a prior)
