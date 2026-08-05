@@ -1578,6 +1578,9 @@ function _dhsSuggestedUpdates(res, prof, cw){
     add('Caseworker phone','caseworker','phone',cw.phone,res.aswPhone,cw.id);
   }
   add('Client Medicaid ID','client','medicaidId',prof&&prof.medicaidId,res.medicaidId,null);
+  // #1: the form's provider rate becomes the client's invoice rate (normalized to 2 decimals so
+  // "27" vs a stored "27.00" isn't flagged as a change).
+  add('Client hourly rate','client','hourlyRate',prof&&prof.hourlyRate,(res.rate!=null&&res.rate!=='')?Number(res.rate).toFixed(2):'',null);
   return out;
 }
 function showDhsReview(file,res){
@@ -4444,8 +4447,9 @@ function loadProfileIntoForm(prof){
   var cwRec=getCaseworkers().find(function(c){return c.id===prof.caseworkerId||c.name===prof.worker;})||{};
   document.getElementById('billTo').value=(cwRec.agency||cwRec.county||'');
   document.getElementById('worker').value=prof.worker||'';document.getElementById('worker2').value=prof.worker||'';
-  // Hourly rate on invoice is always the government billing rate ($27), not caregiver pay rate
-  document.getElementById('hourlyRate').value=stateRate();
+  // Invoice bills at the client's own rate (set from their DHS-1210 authorization or manually),
+  // falling back to the Settings state rate. NOT the caregiver's pay rate.
+  document.getElementById('hourlyRate').value=clientInvoiceRate(prof);
   document.getElementById('showComplex').checked=prof.hasComplex||false;toggleComplex();
   if(prof.tasks){applyStates(prof.tasks);lastLoadedStates=prof.tasks;}
   // Agent email from caseworker record
@@ -4459,10 +4463,10 @@ function captureFullInvoice(){
 function applyFullInvoice(data){
   var f=['clientName','medicaidId','worker','billingPeriod','svcHH','svcMM','cplxHH','cplxMM','p1HH','p1MM','grandHH','grandMM','dateSubmitted','sigDate1','sigDate2'];
   f.forEach(function(id){var el=document.getElementById(id);if(el&&data[id]!==undefined)el.value=data[id];});
-  // Hourly rate is always the government billing rate
-  document.getElementById('hourlyRate').value=stateRate();
-  // Bill To: always from caseworker billing code, not whatever was saved on the invoice
+  // Hourly rate = the client's own rate (from DHS-1210 or manual), else the Settings state rate
   var profCur=(activeProfileName&&getProfiles()[activeProfileName])||{};
+  document.getElementById('hourlyRate').value=clientInvoiceRate(profCur);
+  // Bill To: always from caseworker billing code, not whatever was saved on the invoice
   var cwApply=getCaseworkers().find(function(c){return c.id===profCur.caseworkerId||c.name===(data.worker||profCur.worker);})||{};
   document.getElementById('billTo').value=(cwApply.agency||cwApply.county||data.billTo||'');
   document.getElementById('clientName2').value=data.clientName||'';document.getElementById('worker2').value=data.worker||'';document.getElementById('billingPeriod2').value=data.billingPeriod||'';
@@ -5666,6 +5670,12 @@ async function sendEmail(){
 // The government/state hourly rate billed on every invoice (NOT the caregiver pay rate).
 // Configurable in Settings so the once-a-year rate change is a setting, not a code edit.
 function stateRate(){ var v=(localStorage.getItem('lhca_state_rate')||'').trim(); return v||'27.00'; }
+// The rate to bill a client's invoices at: the client's own hourly rate (set from their DHS-1210
+// or manually) if it's a valid positive number, otherwise the Settings state rate as a fallback.
+function clientInvoiceRate(prof){
+  var r=prof&&prof.hourlyRate!=null?String(prof.hourlyRate).replace(/[^0-9.]/g,'').trim():'';
+  return (r!=='' && parseFloat(r)>0) ? r : stateRate();
+}
 function saveStateRate(){
   var el=document.getElementById('stateRateInput'); if(!el)return;
   var raw=(el.value||'').replace(/[^0-9.]/g,'').trim();
