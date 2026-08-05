@@ -96,6 +96,57 @@ test('DHS rate is suggested as the client hourly rate, normalized to 2 decimals 
   assert.ok(!same.some(u => u.field === 'hourlyRate'), 'identical rate not flagged');
 });
 
+test('_dhsMapTaskToCol: every DHS-1210 task maps to the right service column (#1)', () => {
+  const w = loadApp();
+  const cols = w._dhsSvcColNames();
+  const at = (name) => cols[w._dhsMapTaskToCol(name)];
+  assert.strictEqual(at('Bathing'), 'Bathing', 'exact');
+  assert.strictEqual(at('Transferring'), 'Transferring', 'exact');
+  assert.strictEqual(at('Meal Preparation'), 'Meal Preparation', 'exact');
+  assert.strictEqual(at('Shopping for Food/Meds'), 'Shopping', 'alias -> Shopping');
+  assert.strictEqual(at('Travel For Shopping'), 'Travel Time for Shopping', 'alias -> Travel Time for Shopping');
+  assert.strictEqual(w._dhsMapTaskToCol('Nonexistent Task'), -1, 'unknown -> -1 (surfaced, never wrong column)');
+});
+
+test('_dhsFreqToDays: frequency -> a reviewable day pattern', () => {
+  const w = loadApp();
+  assert.strictEqual(w._dhsFreqToDays('7 days per week', 31).length, 31, 'daily -> every day');
+  assert.deepStrictEqual([...w._dhsFreqToDays('once per month', 31)], [0], 'monthly -> just the 1st');
+  const wk = w._dhsFreqToDays('2 days per week', 14);
+  assert.deepStrictEqual([...wk], [0, 1, 7, 8], '2x/week -> 2 days each week');
+  assert.deepStrictEqual([...w._dhsFreqToDays('weird', 31)], [0], 'unknown -> 1st day only');
+});
+
+test('_dhsBuildFirstInvoice: builds a correct draft from the authorization, flags unmapped (#1)', () => {
+  const w = loadApp();
+  const res = {
+    hours: 29, minutes: 47, rate: 27,
+    tasks: [
+      { task: 'Bathing', freq: '7 days per week' },
+      { task: 'Shopping for Food/Meds', freq: 'Once per month' },
+      { task: 'Mystery Service', freq: '1 day per week' }, // won't map
+    ],
+  };
+  const built = w._dhsBuildFirstInvoice(res, { clientName: 'Jane', medicaidId: 'M1' }, '08/2026');
+  assert.ok(built, 'returns a build');
+  const cols = w._dhsSvcColNames();
+  const svc = built.data.tasks.svc;
+  assert.strictEqual(svc.length, 31, 'August has 31 day-rows');
+  assert.ok(svc.every(r => r[cols.indexOf('Bathing')] === true), 'Bathing checked every day');
+  assert.strictEqual(svc[0][cols.indexOf('Shopping')], true, 'Shopping checked on the 1st');
+  assert.strictEqual(svc[5][cols.indexOf('Shopping')], false, 'Shopping not checked mid-month');
+  assert.strictEqual(built.data.svcHH, '29', 'hours from authorization');
+  assert.strictEqual(built.data.grandHH, '29', 'grand hours from authorization');
+  assert.strictEqual(built.data.hourlyRate, '27.00', 'rate from the form');
+  assert.strictEqual(built.data.billingPeriod, '08/2026');
+  assert.deepStrictEqual([...built.unmapped], ['Mystery Service'], 'unmapped task surfaced, not dropped');
+});
+
+test('_dhsBuildFirstInvoice: bad period -> null (no garbage invoice)', () => {
+  const w = loadApp();
+  assert.strictEqual(w._dhsBuildFirstInvoice({ tasks: [] }, {}, 'bad'), null);
+});
+
 test('generateNextMonthInvoiceData: guards bad input instead of producing a garbage bill', () => {
   const w = loadApp();
   assert.strictEqual(w.generateNextMonthInvoiceData(null, '08/2026'), null, 'no prior invoice -> null');

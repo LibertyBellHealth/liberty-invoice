@@ -9110,6 +9110,62 @@ function generateNextMonthInvoiceData(prevInv,newPeriod){
   };
 }
 
+// ── First invoice from a DHS-1210 authorization ────────────────────────────────
+// The invoice's 15 service columns (order matters — it's the grid column order).
+function _dhsSvcColNames(){
+  return ['Bathing','Dressing','Eating','Grooming','Mobility','Toileting','Transferring','Housework',
+    'Laundry','Travel Time for Laundry','Medication','Meal Preparation','Shopping','Travel Time for Shopping',
+    'Hospital/Nursing Facility Stay'];
+}
+// Map a DHS-1210 task name to a service-column index (-1 if none). Exact match first, then the
+// known DHS aliases, then a loose contains — so a task is never put in the WRONG column silently.
+function _dhsMapTaskToCol(taskName){
+  var cols=_dhsSvcColNames(); var t=String(taskName||'').toLowerCase().trim(); if(!t)return -1;
+  for(var i=0;i<cols.length;i++){ if(cols[i].toLowerCase()===t)return i; }
+  if(/travel.*laundry/.test(t))return cols.indexOf('Travel Time for Laundry');
+  if(/travel.*shop/.test(t))return cols.indexOf('Travel Time for Shopping');
+  if(/^shopping|shopping for (food|meds)/.test(t))return cols.indexOf('Shopping');
+  for(var j=0;j<cols.length;j++){ var c=cols[j].toLowerCase(); if(c===t)continue; if(c.indexOf(t)>=0||t.indexOf(c)>=0)return j; }
+  return -1;
+}
+// Turn a frequency phrase into the day indices to check across `days`. The form gives frequency,
+// not calendar days — this is a reviewable starting pattern (the provider adjusts), not a claim.
+function _dhsFreqToDays(freq, days){
+  var f=String(freq||'').toLowerCase(), out=[], i;
+  if(/7 days? per week|daily|every day/.test(f)){ for(i=0;i<days;i++)out.push(i); return out; }
+  var wk=f.match(/(\d+)\s*days?\s*per\s*week/);
+  if(wk){ var n=Math.min(7,parseInt(wk[1])||1); for(i=0;i<days;i++){ if((i%7)<n)out.push(i); } return out; }
+  if(/once per month|1 day per month|monthly/.test(f)){ return [0]; }
+  var mo=f.match(/(\d+)\s*days?\s*per\s*month/);
+  if(mo){ var m=Math.max(1,parseInt(mo[1])||1), step=Math.max(1,Math.floor(days/m)); for(i=0;i<m&&i*step<days;i++)out.push(i*step); return out; }
+  return [0]; // unknown frequency → mark the 1st day only, provider adjusts
+}
+// Build the data for a first invoice from a parsed authorization (res) + client (prof) + period MM/YYYY.
+// Returns { data, unmapped:[taskNames] } — unmapped tasks are surfaced, never dropped silently.
+function _dhsBuildFirstInvoice(res, prof, period){
+  var pp=String(period||'').split('/'); if(pp.length!==2||pp[1].length!==4)return null;
+  var days=daysIn(pp[0],pp[1]); var cols=_dhsSvcColNames();
+  var grid=[]; for(var d=0;d<days;d++){ var row=[]; for(var c=0;c<cols.length;c++)row.push(false); grid.push(row); }
+  var unmapped=[];
+  (res.tasks||[]).forEach(function(t){
+    var col=_dhsMapTaskToCol(t.task);
+    if(col<0){ unmapped.push(t.task); return; }
+    _dhsFreqToDays(t.freq, days).forEach(function(di){ if(di>=0&&di<days)grid[di][col]=true; });
+  });
+  var hours=res.hours!=null?String(res.hours):'', mins=res.minutes!=null?String(res.minutes):'';
+  var rate=(res.rate!=null&&res.rate!=='')?Number(res.rate).toFixed(2):stateRate();
+  var T=today();
+  return {
+    data:{
+      clientName:(prof&&prof.clientName)||'', medicaidId:(prof&&prof.medicaidId)||'', worker:(prof&&prof.worker)||'',
+      billingPeriod:period, hourlyRate:rate,
+      svcHH:hours, svcMM:mins, cplxHH:'', cplxMM:'', p1HH:'', p1MM:'', grandHH:hours, grandMM:mins,
+      dateSubmitted:T, sigDate1:T, sigDate2:T, hasComplex:false, tasks:{svc:grid, cplx:[]}
+    },
+    unmapped:unmapped
+  };
+}
+
 // Returns list of clients eligible for auto-gen (active, missing invoice for period, has a prior)
 function findClientsEligibleForAutoGen(period){
   var profiles=getProfiles();var out=[];
