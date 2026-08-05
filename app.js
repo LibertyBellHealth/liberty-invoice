@@ -73,6 +73,74 @@ async function refreshApiToken() {
     } catch(e2) { console.warn('API token redirect failed:', e2); }
   }
 }
+
+// ── Reactive auth-expiry handling ────────────────────────────────────────────
+// The proactive timer above refreshes ~10min before expiry, but it MISSES when a device sleeps
+// (laptop lid closed) and wakes with an already-expired token: setTimeout doesn't fire on a
+// sleeping tab, so the very next save/upload 401s silently while the UI still looks signed-in.
+// Unattended workers on their own devices hit exactly this. So we also react to any 401 from OUR
+// API: attempt a silent refresh (fixes the token for the next call) AND show a visible banner so a
+// worker never keeps typing into saves that are quietly failing. A later successful API call
+// clears the banner.
+var _authBannerShown = false, _authRecovering = false;
+function _showAuthExpiredBanner(){
+  if(_authBannerShown) return; _authBannerShown = true;
+  var bar = document.getElementById('authExpiredBar');
+  if(!bar){
+    bar = document.createElement('div');
+    bar.id = 'authExpiredBar';
+    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#b03030;color:#fff;'+
+      'font-size:13px;font-weight:600;text-align:center;padding:10px 14px;box-shadow:0 2px 8px rgba(0,0,0,.25);';
+    bar.innerHTML = 'Your sign-in expired — a recent change may not have saved. '+
+      '<a href="#" style="color:#fff;text-decoration:underline;" onclick="_reauthNow();return false;">Sign in again</a>';
+    (document.body||document.documentElement).appendChild(bar);
+  }
+  bar.style.display = 'block';
+}
+function _hideAuthExpiredBanner(){ _authBannerShown = false; var b=document.getElementById('authExpiredBar'); if(b) b.style.display='none'; }
+function _reauthNow(){
+  try{ if(msalInstance){ msalInstance.acquireTokenRedirect({ scopes:[API_SCOPE] }); return; } }
+  catch(e){ console.warn('reauth redirect failed:', e); }
+  try{ location.reload(); }catch(e2){}
+}
+// Called when an API response returns 401. Shows the banner and kicks ONE silent refresh so the
+// next call can succeed; we never auto-redirect (that would yank a worker mid-edit) — the banner's
+// link does that on demand.
+function _onApiAuthFail(){
+  _showAuthExpiredBanner();
+  if(_authRecovering) return; _authRecovering = true;
+  Promise.resolve().then(function(){
+    if(!msalInstance) return;
+    var accounts = msalInstance.getAllAccounts();
+    if(!accounts.length) return;
+    return msalInstance.acquireTokenSilent({ scopes:[API_SCOPE], account:accounts[0] })
+      .then(function(res){ if(res && res.accessToken) _apiToken = res.accessToken; })
+      .catch(function(){ /* leave the banner up; the worker must click Sign in again */ });
+  }).catch(function(){}).then(function(){ _authRecovering = false; });
+}
+// One-time fetch wrapper: watch ONLY our API responses. On 401 → surface auth expiry; on any OK
+// response → clear a stale banner. Everything is passed through untouched (the body is never read).
+(function installApiAuthWatch(){
+  if(typeof window==='undefined' || window.__apiAuthWatch) return;
+  var _origFetch = window.fetch;
+  if(typeof _origFetch !== 'function') return; // jsdom test env has no fetch — no-op there
+  window.__apiAuthWatch = true;
+  window.fetch = function(input, init){
+    var p = _origFetch.apply(this, arguments);
+    try{
+      var url = (typeof input === 'string') ? input : (input && input.url) || '';
+      if(url && typeof API_BASE === 'string' && API_BASE && url.indexOf(API_BASE) === 0){
+        p.then(function(resp){
+          if(!resp) return;
+          if(resp.status === 401) _onApiAuthFail();
+          else if(resp.ok && _authBannerShown) _hideAuthExpiredBanner();
+        }, function(){});
+      }
+    }catch(e){}
+    return p;
+  };
+})();
+
 function getIdMap() {
   try { return JSON.parse(localStorage.getItem('lhca_id_map') || '{}'); } catch(e) { return {}; }
 }
