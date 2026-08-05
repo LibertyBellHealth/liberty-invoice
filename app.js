@@ -6413,7 +6413,10 @@ function loadProfilesAPI() {
       // the destructive full-store replace — otherwise it reverts the pending save's local
       // writes (content + dbId/rowVersion writebacks). A later revalidate will refresh.
       if (_savesInFlight > 0) { syncEnd(); return; }
-      saveProfilesLS(profiles);
+      // Merge (not blind-replace) so a client save that FAILED — its data left only in LS after
+      // _savesInFlight fell back to 0 — isn't reverted by this background refresh. Server wins for
+      // clean synced clients; unsynced local adds/edits are preserved; deletes still propagate.
+      saveProfilesLS(_mergeProfilesLoad(profiles, getProfiles()));
       localStorage.setItem('lhca_id_map', JSON.stringify(idMap));
       hideDbError(); // fresh data arrived — clear any stale connection-error banner
       var now = new Date().toLocaleString(); localStorage.setItem('lhca_last_synced', now);
@@ -6552,6 +6555,45 @@ function _clientSig(d) {
     d.ssn||'', d.startDate||'', d.liveIn?1:0, d.clientNotes||'',
     d.authorization?JSON.stringify(d.authorization):'',
   ]);
+}
+// Does a locally-cached client profile hold changes not yet confirmed by the server? True if its
+// own fields differ from the last-synced baseline, or ANY invoice is new (no dbId) or edited since
+// its baseline. Used to protect a pending/failed save from being reverted by a background load's
+// store refresh. Errs toward TRUE (keep local) on any uncertainty — the safe direction is to never
+// discard local work.
+function _profileHasUnsyncedChanges(loc){
+  if(!loc) return false;
+  try{
+    if(typeof _clientSig==='function' && loc._clientSynced !== _clientSig(loc)) return true;
+    var invs = loc.invoices || [];
+    for(var i=0;i<invs.length;i++){
+      var inv = invs[i]; if(!inv) continue;
+      if(!inv.dbId) return true;                                                    // never-synced new invoice
+      if(typeof _invoiceSig==='function' && inv._synced !== _invoiceSig(inv)) return true; // edited since baseline
+    }
+  }catch(e){ return true; }
+  return false;
+}
+// Merge a freshly-loaded client store over the local one WITHOUT reverting unsynced local work.
+// loadProfilesAPI used to blind-replace, so a client save that FAILED (data left only in LS, with
+// _savesInFlight already back to 0) was silently wiped by the next background revalidate. Rules,
+// mirroring the roster/task merges: server wins for clean synced clients; a local client with
+// unsynced changes is kept; a local-only unsynced ADD (no _dbId) is kept; a local client that WAS
+// synced (_dbId) but is gone from the server was deleted elsewhere → dropped.
+function _mergeProfilesLoad(serverProfiles, localProfiles){
+  var out = {}, name;
+  for(name in serverProfiles) if(_rosterHas(serverProfiles,name)) out[name]=serverProfiles[name];
+  for(name in localProfiles){
+    if(!_rosterHas(localProfiles,name)) continue;
+    var loc = localProfiles[name]; if(!loc) continue;
+    if(_rosterHas(out,name)){
+      if(_profileHasUnsyncedChanges(loc)) out[name]=loc;                // protect a pending/failed edit
+    } else if(!loc._dbId || _profileHasUnsyncedChanges(loc)){
+      out[name]=loc;                                                    // unsynced add (or edited row deleted elsewhere)
+    }
+    // else: previously-synced, clean, and gone from the server → deleted elsewhere → drop.
+  }
+  return out;
 }
 // DHS-1210 authorization JSON may arrive as a string (from SQL) or already-parsed object.
 function _parseAuth(v){
