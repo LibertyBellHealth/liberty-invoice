@@ -9662,16 +9662,10 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
   var periodLabel=(_pParts.length===2 && parseInt(_pParts[0],10)>=1 && parseInt(_pParts[0],10)<=12)
     ? _months[parseInt(_pParts[0],10)-1]+' '+_pParts[1]
     : period;
-  // Lead client first name (used in subject for the personal touch)
-  var leadFirst=((attachments[0]&&attachments[0].clientName)||'').split(/\s+/)[0]||'';
-  var extraCount=Math.max(0,attachments.length-1);
-  // Subject always leads with "Invoice" + the month/year (agency direction), then the lead
-  // client for context. Signed as Thomas Jaboro.
   var isFollowUp=alreadySentCount>0;
-  // Subject stays human — just the month/year (the client list lives in the body). A
-  // single-client batch still names that client; multi-client batches don't itemize.
-  var _oneClient=(attachments.length===1 && attachments[0] && attachments[0].clientName)?(' – '+attachments[0].clientName):'';
-  var subj='Invoice '+periodLabel+_oneClient+(isFollowUp?' – additional':'');
+  // Subject is exactly "INVOICE" (agency direction — caseworkers file/match on that word). The
+  // month/year and the client list live in the email body, not the subject.
+  var subj='INVOICE';
   var _list='<ul>'+attachments.map(function(a){return '<li>'+esc(a.clientName)+'</li>';}).join('')+'</ul>';
   var multi=attachments.length>1;
   var _seed=(email||'')+'|'+(period||'');
