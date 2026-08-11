@@ -1264,7 +1264,12 @@ function saveClientInfo(){
   var p=getProfiles();
   var rec=p[activeProfileName];
   if(((document.getElementById('ei-status')||{}).value||'')==='active' && !((document.getElementById('ei-start-date')||{}).value||'').trim()){showAlert('Service Start Date is required when the status is Active.');return;}
-  if(((document.getElementById('ei-status')||{}).value||'')==='active' && !hasAuthorization(rec)){showAlert('A DHS-1210 authorization is required before a client can be Active.\n\nImport one on the Authorization tab first — that’s what officially makes you their agency.');return;}
+  // Require a DHS-1210 only when TURNING a client active — not on every edit of one that's already
+  // active. Existing active clients (from before this rule, or before their PDF was imported) must
+  // stay editable without being forced to import an authorization first.
+  var _newStatus=((document.getElementById('ei-status')||{}).value||'');
+  var _wasActive=(rec && rec.clientStatus==='active');
+  if(_newStatus==='active' && !_wasActive && !hasAuthorization(rec)){showAlert('A DHS-1210 authorization is required before a client can be Active.\n\nImport one on the Authorization tab first — that’s what officially makes you their agency.');return;}
   var first=(document.getElementById('ei-first').value||'').trim();
   var middle=(document.getElementById('ei-middle').value||'').trim();
   var last=(document.getElementById('ei-last').value||'').trim();
@@ -1561,7 +1566,13 @@ function parseDHS1210(pages){
   var lines=[].concat.apply([],pages);
   var flat=lines.join(' ').replace(/\s+/g,' ');
   var out={warnings:[]};
-  var m=flat.match(/approved for\s+(\d+)\s+Hours?\s+and\s+(\d+)\s+Minutes? per month/i);
+  // Read "approved for 29 Hours and 47 Minutes per month". Be tolerant of formatting the PDF text
+  // extractor may vary: optional "and", optional "per month", flexible spacing. Fallbacks widen the
+  // anchor — safe because no task row uses the WORDS Hours/Minutes (task times are HH:MM with colons),
+  // so a bare "N Hours M Minutes" can only be the approval line.
+  var m=flat.match(/approved for\s+(\d+)\s*Hours?\s+(?:and\s+)?(\d+)\s*Minutes?/i)
+       || flat.match(/(\d+)\s*Hours?\s+(?:and\s+)?(\d+)\s*Minutes?\s+per\s+month/i)
+       || flat.match(/(\d+)\s*Hours?\s+(?:and\s+)?(\d+)\s*Minutes?/i);
   if(m){out.hours=+m[1];out.minutes=+m[2];} else out.warnings.push('approved hours');
   var e=flat.match(/effective\s+(\d{2}\/\d{2}\/\d{4})/i); if(e)out.effectiveDate=e[1]; else out.warnings.push('effective date');
   var em=flat.match(/([A-Za-z][A-Za-z.]*@michigan\.gov)/i); if(em)out.aswEmail=em[1];
@@ -1647,7 +1658,13 @@ function _dhsSuggestedUpdates(res, prof, cw){
   };
   if(cw){
     add('Caseworker email','caseworker','email',cw.email,res.aswEmail,cw.id);
-    add('Caseworker phone','caseworker','phone',cw.phone,res.aswPhone,cw.id);
+    // Compare phones by DIGITS only — a stored "3135051660" and a form "313-505-1660" are the same
+    // number, so a formatting-only difference must not be flagged as a change (mirrors the rate
+    // normalization below). Only suggest when the actual digits differ.
+    var _digits=function(s){return (s==null?'':String(s)).replace(/\D/g,'');};
+    if(_digits(res.aswPhone) && _digits(res.aswPhone)!==_digits(cw.phone)){
+      add('Caseworker phone','caseworker','phone',cw.phone,res.aswPhone,cw.id);
+    }
   }
   add('Client Medicaid ID','client','medicaidId',prof&&prof.medicaidId,res.medicaidId,null);
   // #1: the form's provider rate becomes the client's invoice rate (normalized to 2 decimals so

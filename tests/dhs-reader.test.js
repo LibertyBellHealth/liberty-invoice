@@ -100,6 +100,33 @@ test('parseDHS1210: extracts Client ID (Medicaid #) without grabbing the Case Nu
   assert.strictEqual(r.medicaidId, '1234567890', 'Client ID captured, not the case number');
 });
 
+test('parseDHS1210: reads approved hours despite formatting variations (no "and", no "per month")', () => {
+  const w = loadApp();
+  // Same headline data, three real-world formatting variants the PDF text extractor can produce.
+  const variants = [
+    'Services have been approved for 29 Hours 47 Minutes per month.',   // no "and"
+    'have been approved for 29 Hours and 47 Minutes.',                  // no "per month"
+    'Approved for 29 Hours and 47 Minutes each month',                 // different tail wording
+  ];
+  variants.forEach(function(line){
+    const r = w.parseDHS1210([[line]]);
+    assert.strictEqual(r.hours, 29, 'hours read from: ' + line);
+    assert.strictEqual(r.minutes, 47, 'minutes read from: ' + line);
+    assert.ok(!r.warnings.includes('approved hours'), 'no approved-hours warning for: ' + line);
+  });
+});
+
+test('_dhsSuggestedUpdates: a caseworker phone differing only by dashes is NOT flagged (#3)', () => {
+  const w = loadApp();
+  const res = { aswPhone: '313-505-1660' };
+  const cw = { id: 'cw1', phone: '3135051660' };            // same number, no dashes
+  const ups = w._dhsSuggestedUpdates(res, {}, cw);
+  assert.ok(!ups.some(u => u.field === 'phone'), 'formatting-only phone difference is not suggested');
+  // but a genuinely different number IS flagged
+  const ups2 = w._dhsSuggestedUpdates({ aswPhone: '313-505-9999' }, {}, cw);
+  assert.ok(ups2.some(u => u.field === 'phone'), 'a real number change is still suggested');
+});
+
 test('parseDHS1210: missing approved-hours line produces a warning, not a crash', () => {
   const w = loadApp();
   const r = w.parseDHS1210([['Bathing 00:18 7 days per week 09:02 $243.81']]);
