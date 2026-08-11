@@ -1008,6 +1008,7 @@ function renderInfoPane(){
     '<input id="ei-ssn" type="password" autocomplete="off" maxlength="11" placeholder="XXX-XX-XXXX" value="'+esc(prof.ssn||'')+'" oninput="formatSSN(this);unsavedChanges=true;" onfocus="this.type=\'text\'" onblur="this.type=\'password\'">';
   g.appendChild(dSsn);
   mkField('ei-phone','Client Phone',prof.phone||'',false);
+  mkField('ei-home-phone','Home Phone',prof.homePhone||'',false);
   mkField('ei-cemail','Client Email',prof.clientEmail||'',false);
   mkField('ei-street','Street',prof.street||'',true);
 
@@ -1278,6 +1279,7 @@ function saveClientInfo(){
   var dlEl=document.getElementById('ei-dl');if(dlEl)rec.driversLicense=dlEl.value;
   var ssnEl=document.getElementById('ei-ssn');if(ssnEl)rec.ssn=ssnEl.value;
   rec.phone=document.getElementById('ei-phone').value;rec.clientEmail=document.getElementById('ei-cemail').value;
+  rec.homePhone=(document.getElementById('ei-home-phone')||{}).value||'';
   rec.street=document.getElementById('ei-street').value;
   rec.city=document.getElementById('ei-city').value;
   rec.state=document.getElementById('ei-state').value;
@@ -6393,7 +6395,7 @@ function loadProfilesAPI() {
           worker: c.worker || '', caseworkerId: c.caseworker_id || '',
           street: c.street || '', city: c.city || '', state: c.state || '',
           zip: c.zip || '', county: c.county || '',
-          phone: c.phone || '', clientEmail: c.client_email || '', caregiverId: c.caregiver_id || '',
+          phone: c.phone || '', homePhone: c.home_phone || '', clientEmail: c.client_email || '', caregiverId: c.caregiver_id || '',
           dob: c.dob || '', gender: c.gender || '',
           driversLicense: c.drivers_license || '', ssn: c.ssn || '',
           startDate: c.start_date || '', liveIn: !!c.live_in,
@@ -6448,7 +6450,7 @@ function saveProfileSP(name, data, quiet) {
     worker: data.worker || '', caseworker_id: data.caseworkerId || '',
     street: data.street || '', city: data.city || '', state: data.state || '',
     zip: data.zip || '', county: data.county || '',
-    phone: data.phone || '', client_email: data.clientEmail || '', caregiver_id: data.caregiverId || '',
+    phone: data.phone || '', home_phone: data.homePhone || '', client_email: data.clientEmail || '', caregiver_id: data.caregiverId || '',
     client_status: data.clientStatus || 'active', has_complex: data.hasComplex ? 1 : 0,
     // Newly persisted fields
     dob: data.dob || '', gender: data.gender || '',
@@ -6550,7 +6552,7 @@ function _clientSig(d) {
   return JSON.stringify([
     d.firstName||'', d.lastName||'', d.middleName||'', d.nickname||'', d.medicaidId||'',
     d.hourlyRate||'', d.worker||'', d.caseworkerId||'', d.street||'', d.city||'', d.state||'',
-    d.zip||'', d.county||'', d.phone||'', d.clientEmail||'', d.caregiverId||'',
+    d.zip||'', d.county||'', d.phone||'', d.homePhone||'', d.clientEmail||'', d.caregiverId||'',
     d.clientStatus||'active', d.hasComplex?1:0, d.dob||'', d.gender||'', d.driversLicense||'',
     d.ssn||'', d.startDate||'', d.liveIn?1:0, d.clientNotes||'',
     d.authorization?JSON.stringify(d.authorization):'',
