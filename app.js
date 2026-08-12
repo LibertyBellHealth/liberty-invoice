@@ -1988,9 +1988,9 @@ async function shareCaregiverTaskImage(){
   var metaBits=[a.effectiveDate?('Effective '+esc(a.effectiveDate)):'',
     a.aswName?('ASW '+esc(a.aswName)+(a.aswPhone?' · '+esc(a.aswPhone):'')):''].filter(Boolean).join(' &nbsp;·&nbsp; ');
   var approvedBox=totalHours
-    ? '<div style="display:inline-block;background:#eef4fb;border:1px solid #d5e4f3;border-radius:8px;padding:7px 15px;margin:8px 0 0;">'+
-        '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#5c7590;">Approved per month</div>'+
-        '<div style="font-size:20px;font-weight:700;color:#1a3a5c;line-height:1.15;">'+esc(totalHours)+'</div>'+
+    ? '<div style="background:#eef4fb;border:1px solid #d5e4f3;border-radius:7px;padding:4px 11px;text-align:center;white-space:nowrap;">'+
+        '<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#5c7590;">Approved / month</div>'+
+        '<div style="font-size:15px;font-weight:700;color:#1a3a5c;line-height:1.1;">'+esc(totalHours)+'</div>'+
       '</div>'
     : '';
   var host=document.createElement('div');
@@ -2000,11 +2000,11 @@ async function shareCaregiverTaskImage(){
     '<div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #1a2b45;padding-bottom:8px;margin-bottom:12px;">'+
       '<div style="font-size:15px;font-weight:700;">Liberty Bell Health — Home Care</div>'+
       '<div style="font-size:11px;color:#5c7590;text-transform:uppercase;letter-spacing:.06em;">Authorized Tasks · '+esc(formLabel)+'</div></div>'+
-    '<div style="font-size:20px;font-weight:700;">'+esc(clientName)+'</div>'+
-    '<div style="margin:3px 0 14px;">'+
-      (metaBits?'<div style="font-size:12px;color:#5c7590;">'+metaBits+'</div>':'')+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">'+
+      '<div style="font-size:20px;font-weight:700;">'+esc(clientName)+'</div>'+
       approvedBox+
     '</div>'+
+    (metaBits?'<div style="font-size:12px;color:#5c7590;margin:2px 0 14px;">'+metaBits+'</div>':'<div style="height:12px;"></div>')+
     '<table style="width:100%;border-collapse:collapse;font-size:13px;">'+
       '<thead><tr style="background:#eef4fb;color:#2b4a6b;">'+
         '<th style="text-align:left;padding:7px 9px;border-bottom:2px solid #d5e4f3;">Authorized Task</th>'+
