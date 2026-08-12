@@ -1871,6 +1871,30 @@ function exportCaregiverTaskSheet(){
   var today=new Date();
   var todayStr=(today.getMonth()+1)+'/'+today.getDate()+'/'+today.getFullYear();
 
+  // Purpose-built PLAIN-TEXT body for the "Email" button. The old button emailed
+  // document.body.innerText, which flattened the task table into run-on lines and swept in the
+  // on-screen action buttons ("Print / Save PDF", "Copy text", "Email"). This keeps it readable —
+  // each task on its own line — with no UI text.
+  var _emailLines=[
+    'Liberty Bell Health — Home Care',
+    'Authorized Tasks ('+formLabel+')', '',
+    'Client: '+clientName,
+  ];
+  if(effective)  _emailLines.push('Effective: '+effective);
+  if(reassess)   _emailLines.push('Reassessment due: '+reassess);
+  if(totalHours) _emailLines.push('Approved per month: '+totalHours);
+  if(a.aswName)  _emailLines.push('Caseworker (ASW): '+a.aswName+(a.aswPhone?' — '+a.aswPhone:''));
+  _emailLines.push('', 'Authorized tasks (perform during each scheduled visit):');
+  (a.tasks||[]).forEach(function(t){
+    _emailLines.push('• '+(t.task||'')+' — '+(t.perDay||'—')+'/day · '+(t.freq||'')+(t.perMonth?(' · '+t.perMonth+'/month'):''));
+  });
+  _emailLines.push('', 'Note: Complete each authorized task during each scheduled visit. If a task cannot be performed on a given day, note the reason in your visit log. Do not perform tasks outside this authorization list without checking with the office first.');
+  var _plainBody=_emailLines.join('\n');
+  var _mailtoHref='mailto:?subject='+encodeURIComponent('Authorized Tasks — '+clientName)+'&body='+encodeURIComponent(_plainBody);
+  // SMS deep link — same readable body, no subject. "?&body=" is the form Apple Messages + most
+  // Android messengers accept.
+  var _smsHref='sms:?&body='+encodeURIComponent(_plainBody);
+
   var html='<!doctype html><html><head><meta charset="utf-8">'+
     '<title>Authorized Tasks — '+_escHtml(clientName)+'</title>'+
     '<meta name="viewport" content="width=device-width,initial-scale=1">'+
@@ -1896,10 +1920,10 @@ function exportCaregiverTaskSheet(){
       '.notes{margin-top:16px;padding:10px 12px;background:#fff9e6;'+
         'border:1px solid #f0e0a0;border-radius:6px;font-size:12px;color:#5b4a1f}'+
       '.actions{position:fixed;bottom:14px;right:14px;display:flex;gap:8px}'+
-      '.actions button{background:#1a2b45;color:#fff;border:0;padding:9px 14px;'+
-        'border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;'+
-        'box-shadow:0 2px 8px rgba(0,0,0,.18)}'+
-      '.actions button.sec{background:#4d6c88}'+
+      '.actions button,.actions a{background:#1a2b45;color:#fff;border:0;padding:9px 14px;'+
+        'border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;'+
+        'display:inline-flex;align-items:center;box-shadow:0 2px 8px rgba(0,0,0,.18)}'+
+      '.actions .sec{background:#4d6c88}'+
       '@media print{.actions{display:none}}'+
     '</style></head><body>'+
     '<div class="brand">'+
@@ -1925,10 +1949,13 @@ function exportCaregiverTaskSheet(){
     '<div class="notes"><b>Caregiver note:</b> Complete each authorized task during each scheduled visit. '+
       'If a task cannot be performed on a given day, note the reason in your visit log. '+
       'Do not perform tasks outside this authorization list without checking with the office first.</div>'+
+    // Clean text used by Copy / Email / Text (hidden; escaped so quotes/brackets can't break markup).
+    '<pre id="plainBody" style="display:none;white-space:pre-wrap;">'+_escHtml(_plainBody)+'</pre>'+
     '<div class="actions">'+
       '<button onclick="window.print()">Print / Save PDF</button>'+
-      '<button class="sec" onclick="var t=document.body.innerText;navigator.clipboard&&navigator.clipboard.writeText(t);this.textContent=\'Copied ✓\';setTimeout(()=>this.textContent=\'Copy text\',1400)">Copy text</button>'+
-      '<button class="sec" onclick="var s=\'Authorized Tasks for '+_jsSafe(clientName)+'\';window.location.href=\'mailto:?subject=\'+encodeURIComponent(s)+\'&body=\'+encodeURIComponent(document.body.innerText)">Email</button>'+
+      '<button class="sec" onclick="var t=document.getElementById(\'plainBody\').textContent;navigator.clipboard&&navigator.clipboard.writeText(t);this.textContent=\'Copied ✓\';setTimeout(()=>this.textContent=\'Copy text\',1400)">Copy text</button>'+
+      '<a class="sec" href="'+_escHtml(_mailtoHref)+'">Email</a>'+
+      '<a class="sec" href="'+_escHtml(_smsHref)+'">Text</a>'+
     '</div>'+
     '</body></html>';
 
@@ -1937,10 +1964,9 @@ function exportCaregiverTaskSheet(){
   w.document.write(html); w.document.close(); w.focus();
 }
 
-// tiny escapers used by exportCaregiverTaskSheet so the generated HTML tab
+// tiny escaper used by exportCaregiverTaskSheet so the generated HTML tab
 // stays safe even if a task name or client name contains angle brackets/quotes
 function _escHtml(s){s=(s==null?'':String(s));return s.replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-function _jsSafe(s){return String(s==null?'':s).replace(/[\\'"\r\n]/g,function(c){return {'\\':'\\\\',"'":"\\'",'"':'\\"','\r':'','\n':' '}[c];});}
 
 function renderDocsPane(){
   var c=document.getElementById('docsContent');c.innerHTML='';
