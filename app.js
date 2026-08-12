@@ -1893,9 +1893,6 @@ function exportCaregiverTaskSheet(){
       'td{padding:9px 10px;border-bottom:1px solid #edf1f6;vertical-align:top}'+
       'td.c{text-align:center;color:#334a68}'+
       'tr:last-child td{border-bottom:1px solid #edf1f6}'+
-      '.foot{margin-top:22px;padding-top:12px;border-top:1px solid #edf1f6;'+
-        'display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:12px;color:#5c7590}'+
-      '.foot .sig-line{border-bottom:1px solid #1a2b45;height:22px;margin-bottom:4px}'+
       '.notes{margin-top:16px;padding:10px 12px;background:#fff9e6;'+
         'border:1px solid #f0e0a0;border-radius:6px;font-size:12px;color:#5b4a1f}'+
       '.actions{position:fixed;bottom:14px;right:14px;display:flex;gap:8px}'+
@@ -1928,10 +1925,6 @@ function exportCaregiverTaskSheet(){
     '<div class="notes"><b>Caregiver note:</b> Complete each authorized task during each scheduled visit. '+
       'If a task cannot be performed on a given day, note the reason in your visit log. '+
       'Do not perform tasks outside this authorization list without checking with the office first.</div>'+
-    '<div class="foot">'+
-      '<div><div class="sig-line"></div>Caregiver signature</div>'+
-      '<div><div class="sig-line"></div>Date received</div>'+
-    '</div>'+
     '<div class="actions">'+
       '<button onclick="window.print()">Print / Save PDF</button>'+
       '<button class="sec" onclick="var t=document.body.innerText;navigator.clipboard&&navigator.clipboard.writeText(t);this.textContent=\'Copied ✓\';setTimeout(()=>this.textContent=\'Copy text\',1400)">Copy text</button>'+
