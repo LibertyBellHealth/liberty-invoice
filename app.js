@@ -1140,7 +1140,7 @@ function renderAuthPane(edit){
   if(!a || (a.hours==null && !(a.tasks&&a.tasks.length) && !a.effectiveDate)){
     host.innerHTML='<div class="form-card" style="max-width:640px;text-align:center;padding:28px;">'+
       '<div style="font-size:13px;color:#5c7590;margin-bottom:12px;">No DHS-1210 authorization on file for this client yet.</div>'+
-      '<button class="btn btn-primary" onclick="importDHS1210()">Import DHS-1210</button>'+
+      '<button class="btn btn-primary" onclick="importDHS1210()">Import DHS-1210 / MDHHS-6064</button>'+
       '<div style="font-size:11px;color:#94a7bd;margin-top:10px;">or <a href="#" onclick="renderAuthPane(true);return false;">enter it manually</a></div>'+
     '</div>';
     return;
@@ -1158,10 +1158,11 @@ function renderAuthPane(edit){
   var _canCreateInv=_effPeriod && !((prof.invoices||[]).some(function(i){return i.billingPeriod===_effPeriod;}));
   host.innerHTML='<div class="form-card" style="max-width:720px;">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap;">'+
-      '<h3 style="margin:0;">Authorization (DHS-1210)</h3>'+
+      '<h3 style="margin:0;">Authorization ('+esc(a.formType||'DHS-1210')+')</h3>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
         (_canCreateInv?'<button class="btn btn-primary btn-sm" onclick="createFirstInvoiceFromAuth()">Create '+esc(_effPeriod)+' invoice</button>':'')+
-        '<button class="btn btn-secondary btn-sm" onclick="importDHS1210()">Import DHS-1210</button>'+
+        ((a.tasks&&a.tasks.length)?'<button class="btn btn-secondary btn-sm" onclick="exportCaregiverTaskSheet()" title="Export authorized tasks (no pricing) to send to a caregiver">Export tasks for caregiver</button>':'')+
+        '<button class="btn btn-secondary btn-sm" onclick="importDHS1210()">Import DHS-1210 / MDHHS-6064</button>'+
         '<button class="btn btn-secondary btn-sm" onclick="renderAuthPane(true)">Edit</button>'+
       '</div>'+
     '</div>'+
@@ -1182,7 +1183,7 @@ function _authEditHtml(a){
   return '<div class="form-card" style="max-width:720px;">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:10px;flex-wrap:wrap;">'+
       '<h3 style="margin:0;">Edit Authorization</h3>'+
-      '<button type="button" class="btn btn-secondary btn-sm" onclick="importDHS1210()">Import DHS-1210</button>'+
+      '<button type="button" class="btn btn-secondary btn-sm" onclick="importDHS1210()">Import DHS-1210 / MDHHS-6064</button>'+
     '</div>'+
     '<div class="info-field-row" style="grid-template-columns:1fr 1fr;margin-bottom:16px;">'+
       '<div class="info-field"><label for="ei-auth-permonth">Approved Hours / Month <span style="font-weight:400;font-size:10px;color:#5c7590;">(HH:MM)</span></label><input id="ei-auth-permonth" placeholder="HH:MM" value="'+esc(_authHM(a))+'"></div>'+
@@ -1564,19 +1565,35 @@ async function _dhsPageLines(page){
 
 // Parse the grouped lines into a structured authorization. Self-checks the extraction
 // against the form's own printed totals (task $ = total; task minutes = approved hours).
+// Handles both DHS-1210 (older) and MDHHS-6064-P (newer, effective 9-25) — the two
+// forms share the same Section 3 task table structure, only the header/labels differ.
 function parseDHS1210(pages){
   var lines=[].concat.apply([],pages);
   var flat=lines.join(' ').replace(/\s+/g,' ');
   var out={warnings:[]};
-  // Read "approved for 29 Hours and 47 Minutes per month". Be tolerant of formatting the PDF text
-  // extractor may vary: optional "and", optional "per month", flexible spacing. Fallbacks widen the
-  // anchor — safe because no task row uses the WORDS Hours/Minutes (task times are HH:MM with colons),
-  // so a bare "N Hours M Minutes" can only be the approval line.
+  // Detect which form this is so downstream UI can label it correctly
+  out.formType = /MDHHS-?6064/i.test(flat) ? 'MDHHS-6064' : 'DHS-1210';
+  // Read "approved for 29 Hours and 47 Minutes per month" (DHS-1210 style).
+  // MDHHS-6064 doesn't have this line — it uses the "Total per month" row instead,
+  // which we back-fill from a sibling regex below if the primary miss.
   var m=flat.match(/approved for\s+(\d+)\s*Hours?\s+(?:and\s+)?(\d+)\s*Minutes?/i)
        || flat.match(/(\d+)\s*Hours?\s+(?:and\s+)?(\d+)\s*Minutes?\s+per\s+month/i)
        || flat.match(/(\d+)\s*Hours?\s+(?:and\s+)?(\d+)\s*Minutes?/i);
-  if(m){out.hours=+m[1];out.minutes=+m[2];} else out.warnings.push('approved hours');
-  var e=flat.match(/effective\s+(\d{2}\/\d{2}\/\d{4})/i); if(e)out.effectiveDate=e[1]; else out.warnings.push('effective date');
+  if(m){out.hours=+m[1];out.minutes=+m[2];}
+  // MDHHS-6064 fallback: "Total per month  HH:MM  $NNN.NN" — take the HH:MM as approved hours.
+  if(out.hours==null){
+    var tm=flat.match(/Total\s*per\s*month[^0-9]*(\d{1,3}):(\d{2})/i);
+    if(tm){out.hours=+tm[1]; out.minutes=+tm[2];}
+  }
+  if(out.hours==null) out.warnings.push('approved hours');
+  // Effective date. DHS-1210 says "effective MM/DD/YYYY". MDHHS-6064 uses a plain
+  // "Date  MM/DD/YYYY" in Section 2. Try both.
+  var e=flat.match(/effective\s+(\d{2}\/\d{2}\/\d{4})/i);
+  if(!e && out.formType==='MDHHS-6064'){
+    // Grab a Date field that appears in Section 2 near the ASW block
+    e=flat.match(/(?:^|\s)Date\s+(\d{2}\/\d{2}\/\d{4})/i);
+  }
+  if(e)out.effectiveDate=e[1]; else out.warnings.push('effective date');
   var em=flat.match(/([A-Za-z][A-Za-z.]*@michigan\.gov)/i); if(em)out.aswEmail=em[1];
   var ph=flat.match(/(\d{3}-\d{3}-\d{4})/); if(ph)out.aswPhone=ph[1];
   var co=flat.match(/\b(\d{2}-[A-Z]{3,})\b/); if(co)out.county=co[1];
@@ -1636,8 +1653,8 @@ function importDHS1210(){
 }
 function handleDhsImport(input){
   var file=input&&input.files&&input.files[0]; if(!file)return;
-  if(!/\.pdf$/i.test(file.name)&&file.type!=='application/pdf'){showAlert('Please choose the DHS-1210 PDF file.');return;}
-  var status=document.getElementById('hcDocStatus'); if(status)status.textContent='Reading DHS-1210…';
+  if(!/\.pdf$/i.test(file.name)&&file.type!=='application/pdf'){showAlert('Please choose the DHS-1210 or MDHHS-6064 PDF file.');return;}
+  var status=document.getElementById('hcDocStatus'); if(status)status.textContent='Reading authorization…';
   readDHS1210File(file).then(function(res){
     if(status)status.textContent='';
     showDhsReview(file,res);
@@ -1713,7 +1730,7 @@ function showDhsReview(file,res){
   var ov=document.createElement('div');
   ov.id='dhsReviewModal'; ov.className='modal-overlay open';
   ov.innerHTML='<div class="modal-box" style="max-width:560px;max-height:88vh;overflow:auto;">'+
-    '<h3>DHS-1210 — review before saving</h3>'+
+    '<h3>'+esc(res.formType||'DHS-1210')+' — review before saving</h3>'+
     '<p style="font-size:12px;color:#5c7590;margin:-4px 0 8px;">Read from <b>'+esc(file.name)+'</b>. Nothing was sent anywhere — parsed in your browser.</p>'+
     warn+
     '<div style="background:#f4f6f9;border-radius:8px;padding:10px 12px;">'+
@@ -1765,6 +1782,7 @@ function _applyDhsImport(file,res,opts){
     providerName:res.providerName||'', county:res.county||'',
     tasks:res.tasks||[], aswName:res.aswName||'', aswEmail:res.aswEmail||'', aswPhone:res.aswPhone||'',
     importedAt:new Date().toLocaleString(), sourceFile:file.name,
+    formType:res.formType||'DHS-1210',   // tracks which form (older DHS-1210 vs newer MDHHS-6064)
   };
   // Caseworker verify/match/add (the "verify and match; if not there, add it" ask).
   if(opts.match && opts.link){ prof.caseworkerId=opts.match.id; prof.worker=opts.match.name; }
@@ -1819,14 +1837,126 @@ function _applyDhsImport(file,res,opts){
   if(ap && ap.classList.contains('active') && typeof renderAuthPane==='function')renderAuthPane(false);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Caregiver task sheet — export the authorized tasks (NO dollar amounts) as a
+// printable / emailable one-pager so caregivers know exactly what's approved.
+// Everything runs locally in the browser; opens a new tab with a print-ready
+// layout, plus buttons for Print / Copy / Email so Row can send it however
+// works best (AirDrop, iMessage, email attachment, printed handout).
+// ═══════════════════════════════════════════════════════════════════════════
+function exportCaregiverTaskSheet(){
+  if(!activeProfileName){showAlert('Open a client first.');return;}
+  var prof=getProfiles()[activeProfileName]||{};
+  var a=prof.authorization;
+  if(!a || !a.tasks || !a.tasks.length){showAlert('No authorized tasks to export. Import a DHS-1210 / MDHHS-6064 first.');return;}
+
+  var clientName=activeProfileName;
+  var effective=a.effectiveDate||'';
+  var reassess=a.reassessDate||'';
+  var totalHours=(a.hours!=null)? a.hours+'h '+(a.minutes||0)+'m' : '';
+  var formLabel=a.formType||'DHS-1210';
+
+  // Build rows: task · time per day · number of days · time per month
+  // Intentionally omits Amount and any $/hr — the caregiver never needs to
+  // see the rate, and Row asked for this specifically.
+  var rows=(a.tasks||[]).map(function(t){
+    return '<tr>'+
+      '<td>'+_escHtml(t.task||'')+'</td>'+
+      '<td class="c">'+_escHtml(t.perDay||'—')+'</td>'+
+      '<td class="c">'+_escHtml(t.freq||'')+'</td>'+
+      '<td class="c">'+_escHtml(t.perMonth||'')+'</td>'+
+    '</tr>';
+  }).join('');
+
+  var today=new Date();
+  var todayStr=(today.getMonth()+1)+'/'+today.getDate()+'/'+today.getFullYear();
+
+  var html='<!doctype html><html><head><meta charset="utf-8">'+
+    '<title>Authorized Tasks — '+_escHtml(clientName)+'</title>'+
+    '<meta name="viewport" content="width=device-width,initial-scale=1">'+
+    '<style>'+
+      '*{box-sizing:border-box}'+
+      'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;'+
+        'color:#1a2b45;margin:0;padding:32px 40px;background:#fff;line-height:1.4}'+
+      'h1{margin:0 0 4px;font-size:22px;color:#1a2b45}'+
+      '.sub{color:#5c7590;font-size:13px;margin-bottom:20px}'+
+      '.brand{display:flex;justify-content:space-between;align-items:baseline;'+
+        'border-bottom:2px solid #1a2b45;padding-bottom:10px;margin-bottom:18px}'+
+      '.brand .co{font-size:14px;font-weight:700;color:#1a2b45}'+
+      '.brand .doc{font-size:12px;color:#5c7590;text-transform:uppercase;letter-spacing:.06em}'+
+      '.meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;margin-bottom:18px;font-size:13px}'+
+      '.meta .l{color:#5c7590}'+
+      '.meta .v{font-weight:600}'+
+      'table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}'+
+      'th{background:#eef4fb;color:#2b4a6b;text-align:left;padding:8px 10px;'+
+        'font-size:11px;text-transform:uppercase;letter-spacing:.06em;border-bottom:2px solid #d5e4f3}'+
+      'td{padding:9px 10px;border-bottom:1px solid #edf1f6;vertical-align:top}'+
+      'td.c{text-align:center;color:#334a68}'+
+      'tr:last-child td{border-bottom:1px solid #edf1f6}'+
+      '.foot{margin-top:22px;padding-top:12px;border-top:1px solid #edf1f6;'+
+        'display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:12px;color:#5c7590}'+
+      '.foot .sig-line{border-bottom:1px solid #1a2b45;height:22px;margin-bottom:4px}'+
+      '.notes{margin-top:16px;padding:10px 12px;background:#fff9e6;'+
+        'border:1px solid #f0e0a0;border-radius:6px;font-size:12px;color:#5b4a1f}'+
+      '.actions{position:fixed;bottom:14px;right:14px;display:flex;gap:8px}'+
+      '.actions button{background:#1a2b45;color:#fff;border:0;padding:9px 14px;'+
+        'border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;'+
+        'box-shadow:0 2px 8px rgba(0,0,0,.18)}'+
+      '.actions button.sec{background:#4d6c88}'+
+      '@media print{.actions{display:none}}'+
+    '</style></head><body>'+
+    '<div class="brand">'+
+      '<div class="co">Liberty Bell Health — Home Care</div>'+
+      '<div class="doc">Authorized Tasks · '+_escHtml(formLabel)+'</div>'+
+    '</div>'+
+    '<h1>'+_escHtml(clientName)+'</h1>'+
+    '<div class="sub">Authorized services approved by the Michigan Department of Health &amp; Human Services (MDHHS). Perform these tasks during each visit as scheduled below.</div>'+
+    '<div class="meta">'+
+      (effective ? '<div><span class="l">Effective:</span> <span class="v">'+_escHtml(effective)+'</span></div>':'')+
+      (reassess  ? '<div><span class="l">Reassessment due:</span> <span class="v">'+_escHtml(reassess)+'</span></div>':'')+
+      (totalHours? '<div><span class="l">Approved per month:</span> <span class="v">'+_escHtml(totalHours)+'</span></div>':'')+
+      (a.aswName ? '<div><span class="l">Caseworker (ASW):</span> <span class="v">'+_escHtml(a.aswName)+'</span></div>':'')+
+      (a.aswPhone? '<div><span class="l">ASW phone:</span> <span class="v">'+_escHtml(a.aswPhone)+'</span></div>':'')+
+      '<div><span class="l">Prepared:</span> <span class="v">'+_escHtml(todayStr)+'</span></div>'+
+    '</div>'+
+    '<table><thead><tr>'+
+      '<th>Authorized Task</th>'+
+      '<th style="text-align:center;">Time / Day</th>'+
+      '<th style="text-align:center;">Frequency</th>'+
+      '<th style="text-align:center;">Time / Month</th>'+
+    '</tr></thead><tbody>'+rows+'</tbody></table>'+
+    '<div class="notes"><b>Caregiver note:</b> Complete each authorized task during each scheduled visit. '+
+      'If a task cannot be performed on a given day, note the reason in your visit log. '+
+      'Do not perform tasks outside this authorization list without checking with the office first.</div>'+
+    '<div class="foot">'+
+      '<div><div class="sig-line"></div>Caregiver signature</div>'+
+      '<div><div class="sig-line"></div>Date received</div>'+
+    '</div>'+
+    '<div class="actions">'+
+      '<button onclick="window.print()">Print / Save PDF</button>'+
+      '<button class="sec" onclick="var t=document.body.innerText;navigator.clipboard&&navigator.clipboard.writeText(t);this.textContent=\'Copied ✓\';setTimeout(()=>this.textContent=\'Copy text\',1400)">Copy text</button>'+
+      '<button class="sec" onclick="var s=\'Authorized Tasks for '+_jsSafe(clientName)+'\';window.location.href=\'mailto:?subject=\'+encodeURIComponent(s)+\'&body=\'+encodeURIComponent(document.body.innerText)">Email</button>'+
+    '</div>'+
+    '</body></html>';
+
+  var w=window.open('','_blank');
+  if(!w){showAlert('Pop-up was blocked. Allow pop-ups from this site to open the task sheet.');return;}
+  w.document.write(html); w.document.close(); w.focus();
+}
+
+// tiny escapers used by exportCaregiverTaskSheet so the generated HTML tab
+// stays safe even if a task name or client name contains angle brackets/quotes
+function _escHtml(s){s=(s==null?'':String(s));return s.replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function _jsSafe(s){return String(s==null?'':s).replace(/[\\'"\r\n]/g,function(c){return {'\\':'\\\\',"'":"\\'",'"':'\\"','\r':'','\n':' '}[c];});}
+
 function renderDocsPane(){
   var c=document.getElementById('docsContent');c.innerHTML='';
   if(!activeProfileName)return;
   var clientId=getHcClientId();
   c.innerHTML=
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;background:#eef4fb;border:1px solid #d5e4f3;border-radius:8px;padding:10px 14px;margin-bottom:12px;flex-wrap:wrap;">'+
-      '<div style="font-size:12px;color:#2b4a6b;"><b>📄 DHS-1210?</b> Import it to auto-fill authorized hours &amp; tasks — and file the PDF here.</div>'+
-      '<button class="btn btn-primary btn-sm" onclick="importDHS1210()" style="white-space:nowrap;">Import DHS-1210</button>'+
+      '<div style="font-size:12px;color:#2b4a6b;"><b>📄 DHS-1210 or MDHHS-6064?</b> Import it to auto-fill authorized hours &amp; tasks — and file the PDF here.</div>'+
+      '<button class="btn btn-primary btn-sm" onclick="importDHS1210()" style="white-space:nowrap;">Import DHS-1210 / MDHHS-6064</button>'+
     '</div>'+
     docUploaderHtml({title:'Client Documents',subtitle:"SSN cards, driver's licenses, insurance cards, authorizations, etc.",hasCategory:true,catId:'hcDocCategory',fileId:'hcDocFileInput',scanId:'docScanInput',scanFn:'handleDocScan(this)',uploadFn:'uploadHcDoc()',statusId:'hcDocStatus',listId:'hcDocList'});
   if(clientId){loadHcDocs(clientId);}
