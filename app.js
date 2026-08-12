@@ -1844,13 +1844,25 @@ function _applyDhsImport(file,res,opts){
 // layout, plus buttons for Print / Copy / Email so Row can send it however
 // works best (AirDrop, iMessage, email attachment, printed handout).
 // ═══════════════════════════════════════════════════════════════════════════
+// PHI-minimized client label for caregiver-facing outputs: first name + last initial (e.g.
+// "Darnelle D.") instead of the full name. Reduces the identifier that leaves the system when the
+// sheet is texted/emailed. Prefers the structured first/last fields; falls back to parsing the name.
+function _caregiverClientLabel(prof, fullName){
+  var first=((prof&&prof.firstName)||'').trim();
+  var last=((prof&&prof.lastName)||'').trim();
+  if(!first && !last){
+    var parts=String(fullName||'').trim().split(/\s+/).filter(Boolean);
+    first=parts[0]||''; last=parts.length>1?parts[parts.length-1]:'';
+  }
+  return (first+(last?(' '+last.charAt(0).toUpperCase()+'.'):'')).trim() || String(fullName||'').trim();
+}
 function exportCaregiverTaskSheet(){
   if(!activeProfileName){showAlert('Open a client first.');return;}
   var prof=getProfiles()[activeProfileName]||{};
   var a=prof.authorization;
   if(!a || !a.tasks || !a.tasks.length){showAlert('No authorized tasks to export. Import a DHS-1210 / MDHHS-6064 first.');return;}
 
-  var clientName=activeProfileName;
+  var clientName=_caregiverClientLabel(prof, activeProfileName);  // first name + last initial (PHI-minimized)
   var effective=a.effectiveDate||'';
   var reassess=a.reassessDate||'';
   var totalHours=(a.hours!=null)? a.hours+'h '+(a.minutes||0)+'m' : '';
@@ -1972,7 +1984,7 @@ async function shareCaregiverTaskImage(){
   var a=prof.authorization;
   if(!a||!a.tasks||!a.tasks.length){showAlert('No authorized tasks to export. Import a DHS-1210 / MDHHS-6064 first.');return;}
   if(typeof html2canvas!=='function'){showAlert('The image tool is still loading — give it a second and try again.');return;}
-  var clientName=activeProfileName, esc=_escHtml;
+  var clientName=_caregiverClientLabel(prof, activeProfileName), esc=_escHtml;  // first name + last initial (PHI-minimized)
   var formLabel=a.formType||'DHS-1210';
   var totalHours=(a.hours!=null)?(a.hours+'h '+(a.minutes||0)+'m'):'';
   var td='padding:7px 9px;border-bottom:1px solid #edf1f6;', tdc=td+'text-align:center;color:#334a68;';
