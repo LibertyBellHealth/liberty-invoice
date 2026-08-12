@@ -2007,30 +2007,44 @@ async function shareCaregiverTaskImage(){
   document.body.appendChild(host);
   try{
     var canvas=await html2canvas(host,{scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false});
-    await new Promise(function(resolve){
-      canvas.toBlob(async function(blob){
-        try{
-          if(!blob){showAlert('Could not generate the image. Please try again.');return;}
-          var copied=false;
-          try{
-            if(navigator.clipboard && window.ClipboardItem){
-              await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]); copied=true;
-            }
-          }catch(_){ /* clipboard blocked — fall back to a download */ }
-          if(copied){
-            showToast('✓ Task chart copied — paste it into Messages or Mail');
-          }else{
-            var url=URL.createObjectURL(blob);
-            var link=document.createElement('a'); link.href=url; link.download='Authorized Tasks - '+clientName+'.png';
-            document.body.appendChild(link); link.click(); link.remove();
-            setTimeout(function(){URL.revokeObjectURL(url);},5000);
-            showToast('✓ Task chart image saved — attach it to your message');
-          }
-        }finally{ resolve(); }
-      },'image/png');
-    });
+    var dataUrl=canvas.toDataURL('image/png');
+    canvas.toBlob(function(blob){ _showTaskImagePreview(dataUrl, blob, clientName); }, 'image/png');
   }catch(e){ console.error('Task image failed',e); showAlert('Could not generate the image: '+((e&&e.message)||'error')); }
   finally{ host.remove(); }
+}
+// Show the generated chart image so the user can SEE it, then copy / download / drag it into a
+// message. (The first version copied to the clipboard invisibly — nothing appeared on screen, so
+// it looked like nothing happened.)
+function _showTaskImagePreview(dataUrl, blob, clientName){
+  var ex=document.getElementById('taskImgModal'); if(ex)ex.remove();
+  var ov=document.createElement('div');
+  ov.id='taskImgModal'; ov.className='modal-overlay open';
+  ov.innerHTML='<div class="modal-box" style="max-width:640px;max-height:92vh;overflow:auto;">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'+
+      '<h3 style="margin:0;">Task chart image</h3>'+
+      '<button class="btn btn-secondary btn-sm" onclick="var m=document.getElementById(\'taskImgModal\');if(m)m.remove();">Close</button>'+
+    '</div>'+
+    '<div style="font-size:12px;color:#5c7590;margin-bottom:10px;">Drag this image straight into a text or email — or use the buttons below.</div>'+
+    '<img src="'+dataUrl+'" alt="Authorized tasks for '+esc(clientName)+'" style="width:100%;border:1px solid #e2e8f0;border-radius:8px;display:block;">'+
+    '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">'+
+      '<button class="btn btn-primary btn-sm" id="taskImgCopyBtn">Copy image</button>'+
+      '<button class="btn btn-secondary btn-sm" id="taskImgDlBtn">Download</button>'+
+    '</div></div>';
+  document.body.appendChild(ov);
+  var copyBtn=document.getElementById('taskImgCopyBtn');
+  copyBtn.onclick=async function(){
+    try{
+      if(!blob || !navigator.clipboard || !window.ClipboardItem) throw new Error('clipboard unavailable');
+      await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
+      copyBtn.textContent='Copied ✓'; setTimeout(function(){copyBtn.textContent='Copy image';},1500);
+    }catch(e){ showToast("Copy isn't available here — use Download, or drag the image into your message."); }
+  };
+  document.getElementById('taskImgDlBtn').onclick=function(){
+    var url=(blob?URL.createObjectURL(blob):dataUrl);
+    var link=document.createElement('a'); link.href=url; link.download='Authorized Tasks - '+clientName+'.png';
+    document.body.appendChild(link); link.click(); link.remove();
+    if(blob) setTimeout(function(){URL.revokeObjectURL(url);},5000);
+  };
 }
 
 function renderDocsPane(){
