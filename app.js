@@ -1161,7 +1161,8 @@ function renderAuthPane(edit){
       '<h3 style="margin:0;">Authorization ('+esc(a.formType||'DHS-1210')+')</h3>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
         (_canCreateInv?'<button class="btn btn-primary btn-sm" onclick="createFirstInvoiceFromAuth()">Create '+esc(_effPeriod)+' invoice</button>':'')+
-        ((a.tasks&&a.tasks.length)?'<button class="btn btn-secondary btn-sm" onclick="exportCaregiverTaskSheet()" title="Export authorized tasks (no pricing) to send to a caregiver">Export tasks for caregiver</button>':'')+
+        ((a.tasks&&a.tasks.length)?'<button class="btn btn-secondary btn-sm" onclick="shareCaregiverTaskImage()" title="Copy the task chart (with times) as an image — paste into Messages or Mail">Task chart image</button>':'')+
+        ((a.tasks&&a.tasks.length)?'<button class="btn btn-secondary btn-sm" onclick="exportCaregiverTaskSheet()" title="Open the printable task sheet (Print / Save PDF)">Task sheet (print/PDF)</button>':'')+
         '<button class="btn btn-secondary btn-sm" onclick="importDHS1210()">Import DHS-1210 / MDHHS-6064</button>'+
         '<button class="btn btn-secondary btn-sm" onclick="renderAuthPane(true)">Edit</button>'+
       '</div>'+
@@ -1889,11 +1890,7 @@ function exportCaregiverTaskSheet(){
     _emailLines.push('• '+(t.task||'')+' — '+(t.perDay||'—')+'/day · '+(t.freq||'')+(t.perMonth?(' · '+t.perMonth+'/month'):''));
   });
   _emailLines.push('', 'Note: Complete each authorized task during each scheduled visit. If a task cannot be performed on a given day, note the reason in your visit log. Do not perform tasks outside this authorization list without checking with the office first.');
-  var _plainBody=_emailLines.join('\n');
-  var _mailtoHref='mailto:?subject='+encodeURIComponent('Authorized Tasks — '+clientName)+'&body='+encodeURIComponent(_plainBody);
-  // SMS deep link — same readable body, no subject. "?&body=" is the form Apple Messages + most
-  // Android messengers accept.
-  var _smsHref='sms:?&body='+encodeURIComponent(_plainBody);
+  var _plainBody=_emailLines.join('\n');  // used by the "Copy text" button (clean, no page chrome)
 
   var html='<!doctype html><html><head><meta charset="utf-8">'+
     '<title>Authorized Tasks — '+_escHtml(clientName)+'</title>'+
@@ -1954,8 +1951,6 @@ function exportCaregiverTaskSheet(){
     '<div class="actions">'+
       '<button onclick="window.print()">Print / Save PDF</button>'+
       '<button class="sec" onclick="var t=document.getElementById(\'plainBody\').textContent;navigator.clipboard&&navigator.clipboard.writeText(t);this.textContent=\'Copied ✓\';setTimeout(()=>this.textContent=\'Copy text\',1400)">Copy text</button>'+
-      '<a class="sec" href="'+_escHtml(_mailtoHref)+'">Email</a>'+
-      '<a class="sec" href="'+_escHtml(_smsHref)+'">Text</a>'+
     '</div>'+
     '</body></html>';
 
@@ -1967,6 +1962,76 @@ function exportCaregiverTaskSheet(){
 // tiny escaper used by exportCaregiverTaskSheet so the generated HTML tab
 // stays safe even if a task name or client name contains angle brackets/quotes
 function _escHtml(s){s=(s==null?'':String(s));return s.replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+
+// Render the authorized-task chart (WITH times) to a PNG the user can paste into Messages/Mail —
+// the format Row wanted: a real chart, not a wall of text, and easy to read on a phone. Copies to
+// the clipboard when the browser allows (secure context + this click gesture); otherwise downloads
+// the PNG to attach manually. Uses html2canvas (already loaded for invoice PDFs).
+async function shareCaregiverTaskImage(){
+  if(!activeProfileName){showAlert('Open a client first.');return;}
+  var prof=getProfiles()[activeProfileName]||{};
+  var a=prof.authorization;
+  if(!a||!a.tasks||!a.tasks.length){showAlert('No authorized tasks to export. Import a DHS-1210 / MDHHS-6064 first.');return;}
+  if(typeof html2canvas!=='function'){showAlert('The image tool is still loading — give it a second and try again.');return;}
+  var clientName=activeProfileName, esc=_escHtml;
+  var formLabel=a.formType||'DHS-1210';
+  var totalHours=(a.hours!=null)?(a.hours+'h '+(a.minutes||0)+'m'):'';
+  var td='padding:7px 9px;border-bottom:1px solid #edf1f6;', tdc=td+'text-align:center;color:#334a68;';
+  var rows=(a.tasks||[]).map(function(t){
+    return '<tr><td style="'+td+'">'+esc(t.task||'')+'</td>'+
+      '<td style="'+tdc+'">'+esc(t.perDay||'—')+'</td>'+
+      '<td style="'+tdc+'">'+esc(t.freq||'')+'</td>'+
+      '<td style="'+tdc+'">'+esc(t.perMonth||'')+'</td></tr>';
+  }).join('');
+  var metaBits=[a.effectiveDate?('Effective '+esc(a.effectiveDate)):'',
+    a.reassessDate?('Reassessment due '+esc(a.reassessDate)):'',
+    totalHours?('Approved '+esc(totalHours)+'/month'):'',
+    a.aswName?('ASW '+esc(a.aswName)+(a.aswPhone?' · '+esc(a.aswPhone):'')):''].filter(Boolean).join(' &nbsp;·&nbsp; ');
+  var host=document.createElement('div');
+  host.style.cssText='position:fixed;left:-99999px;top:0;width:680px;background:#fff;color:#1a2b45;'+
+    'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;padding:26px 30px;line-height:1.4;';
+  host.innerHTML=
+    '<div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #1a2b45;padding-bottom:8px;margin-bottom:12px;">'+
+      '<div style="font-size:15px;font-weight:700;">Liberty Bell Health — Home Care</div>'+
+      '<div style="font-size:11px;color:#5c7590;text-transform:uppercase;letter-spacing:.06em;">Authorized Tasks · '+esc(formLabel)+'</div></div>'+
+    '<div style="font-size:20px;font-weight:700;">'+esc(clientName)+'</div>'+
+    (metaBits?'<div style="font-size:12px;color:#5c7590;margin:2px 0 12px;">'+metaBits+'</div>':'<div style="height:8px;"></div>')+
+    '<table style="width:100%;border-collapse:collapse;font-size:13px;">'+
+      '<thead><tr style="background:#eef4fb;color:#2b4a6b;">'+
+        '<th style="text-align:left;padding:7px 9px;border-bottom:2px solid #d5e4f3;">Authorized Task</th>'+
+        '<th style="padding:7px 9px;border-bottom:2px solid #d5e4f3;">Time/Day</th>'+
+        '<th style="padding:7px 9px;border-bottom:2px solid #d5e4f3;">Frequency</th>'+
+        '<th style="padding:7px 9px;border-bottom:2px solid #d5e4f3;">Time/Month</th>'+
+      '</tr></thead><tbody>'+rows+'</tbody></table>'+
+    '<div style="margin-top:12px;font-size:11px;color:#5c7590;">Perform each authorized task during each scheduled visit. Do not perform tasks outside this list without checking with the office first.</div>';
+  document.body.appendChild(host);
+  try{
+    var canvas=await html2canvas(host,{scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false});
+    await new Promise(function(resolve){
+      canvas.toBlob(async function(blob){
+        try{
+          if(!blob){showAlert('Could not generate the image. Please try again.');return;}
+          var copied=false;
+          try{
+            if(navigator.clipboard && window.ClipboardItem){
+              await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]); copied=true;
+            }
+          }catch(_){ /* clipboard blocked — fall back to a download */ }
+          if(copied){
+            showToast('✓ Task chart copied — paste it into Messages or Mail');
+          }else{
+            var url=URL.createObjectURL(blob);
+            var link=document.createElement('a'); link.href=url; link.download='Authorized Tasks - '+clientName+'.png';
+            document.body.appendChild(link); link.click(); link.remove();
+            setTimeout(function(){URL.revokeObjectURL(url);},5000);
+            showToast('✓ Task chart image saved — attach it to your message');
+          }
+        }finally{ resolve(); }
+      },'image/png');
+    });
+  }catch(e){ console.error('Task image failed',e); showAlert('Could not generate the image: '+((e&&e.message)||'error')); }
+  finally{ host.remove(); }
+}
 
 function renderDocsPane(){
   var c=document.getElementById('docsContent');c.innerHTML='';
