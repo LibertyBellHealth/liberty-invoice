@@ -1983,10 +1983,16 @@ async function shareCaregiverTaskImage(){
       '<td style="'+tdc+'">'+esc(t.freq||'')+'</td>'+
       '<td style="'+tdc+'">'+esc(t.perMonth||'')+'</td></tr>';
   }).join('');
+  // Caregivers don't need the reassessment date, so it's left off this sheet. The approved hours
+  // get their own prominent callout (below) instead of being buried in this small line.
   var metaBits=[a.effectiveDate?('Effective '+esc(a.effectiveDate)):'',
-    a.reassessDate?('Reassessment due '+esc(a.reassessDate)):'',
-    totalHours?('Approved '+esc(totalHours)+'/month'):'',
     a.aswName?('ASW '+esc(a.aswName)+(a.aswPhone?' · '+esc(a.aswPhone):'')):''].filter(Boolean).join(' &nbsp;·&nbsp; ');
+  var approvedBox=totalHours
+    ? '<div style="display:inline-block;background:#eef4fb;border:1px solid #d5e4f3;border-radius:8px;padding:7px 15px;margin:8px 0 0;">'+
+        '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#5c7590;">Approved per month</div>'+
+        '<div style="font-size:20px;font-weight:700;color:#1a3a5c;line-height:1.15;">'+esc(totalHours)+'</div>'+
+      '</div>'
+    : '';
   var host=document.createElement('div');
   host.style.cssText='position:fixed;left:-99999px;top:0;width:680px;background:#fff;color:#1a2b45;'+
     'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;padding:26px 30px;line-height:1.4;';
@@ -1995,7 +2001,10 @@ async function shareCaregiverTaskImage(){
       '<div style="font-size:15px;font-weight:700;">Liberty Bell Health — Home Care</div>'+
       '<div style="font-size:11px;color:#5c7590;text-transform:uppercase;letter-spacing:.06em;">Authorized Tasks · '+esc(formLabel)+'</div></div>'+
     '<div style="font-size:20px;font-weight:700;">'+esc(clientName)+'</div>'+
-    (metaBits?'<div style="font-size:12px;color:#5c7590;margin:2px 0 12px;">'+metaBits+'</div>':'<div style="height:8px;"></div>')+
+    '<div style="margin:3px 0 14px;">'+
+      (metaBits?'<div style="font-size:12px;color:#5c7590;">'+metaBits+'</div>':'')+
+      approvedBox+
+    '</div>'+
     '<table style="width:100%;border-collapse:collapse;font-size:13px;">'+
       '<thead><tr style="background:#eef4fb;color:#2b4a6b;">'+
         '<th style="text-align:left;padding:7px 9px;border-bottom:2px solid #d5e4f3;">Authorized Task</th>'+
