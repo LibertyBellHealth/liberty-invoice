@@ -1887,7 +1887,7 @@ function exportCaregiverTaskSheet(){
   // on-screen action buttons ("Print / Save PDF", "Copy text", "Email"). This keeps it readable —
   // each task on its own line — with no UI text.
   var _emailLines=[
-    'Liberty Bell Health — Home Care',
+    'Liberty Home Care Assistance',
     'Authorized Tasks', '',
     'Client: '+clientName,
   ];
@@ -1934,7 +1934,7 @@ function exportCaregiverTaskSheet(){
       '@media print{.actions{display:none}}'+
     '</style></head><body>'+
     '<div class="brand">'+
-      '<div class="co">Liberty Bell Health — Home Care</div>'+
+      '<div class="co">Liberty Home Care Assistance</div>'+
       '<div class="doc">Authorized Tasks</div>'+
     '</div>'+
     '<h1>'+_escHtml(clientName)+'</h1>'+
@@ -2010,7 +2010,7 @@ async function shareCaregiverTaskImage(){
     'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;padding:26px 30px;line-height:1.4;';
   host.innerHTML=
     '<div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #1a2b45;padding-bottom:8px;margin-bottom:12px;">'+
-      '<div style="font-size:15px;font-weight:700;">Liberty Bell Health — Home Care</div>'+
+      '<div style="font-size:15px;font-weight:700;">Liberty Home Care Assistance</div>'+
       '<div style="font-size:11px;color:#5c7590;text-transform:uppercase;letter-spacing:.06em;">Authorized Tasks</div></div>'+
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">'+
       '<div style="font-size:20px;font-weight:700;">'+esc(clientName)+'</div>'+
