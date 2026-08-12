@@ -1844,17 +1844,28 @@ function _applyDhsImport(file,res,opts){
 // layout, plus buttons for Print / Copy / Email so Row can send it however
 // works best (AirDrop, iMessage, email attachment, printed handout).
 // ═══════════════════════════════════════════════════════════════════════════
+// PHI-minimized client label for caregiver-facing outputs: first name + last initial (e.g.
+// "Darnelle D.") instead of the full name. Reduces the identifier that leaves the system when the
+// sheet is texted/emailed. Prefers the structured first/last fields; falls back to parsing the name.
+function _caregiverClientLabel(prof, fullName){
+  var first=((prof&&prof.firstName)||'').trim();
+  var last=((prof&&prof.lastName)||'').trim();
+  if(!first && !last){
+    var parts=String(fullName||'').trim().split(/\s+/).filter(Boolean);
+    first=parts[0]||''; last=parts.length>1?parts[parts.length-1]:'';
+  }
+  return (first+(last?(' '+last.charAt(0).toUpperCase()+'.'):'')).trim() || String(fullName||'').trim();
+}
 function exportCaregiverTaskSheet(){
   if(!activeProfileName){showAlert('Open a client first.');return;}
   var prof=getProfiles()[activeProfileName]||{};
   var a=prof.authorization;
   if(!a || !a.tasks || !a.tasks.length){showAlert('No authorized tasks to export. Import a DHS-1210 / MDHHS-6064 first.');return;}
 
-  var clientName=activeProfileName;
+  var clientName=_caregiverClientLabel(prof, activeProfileName);  // first name + last initial (PHI-minimized)
   var effective=a.effectiveDate||'';
   var reassess=a.reassessDate||'';
   var totalHours=(a.hours!=null)? a.hours+'h '+(a.minutes||0)+'m' : '';
-  var formLabel=a.formType||'DHS-1210';
 
   // Build rows: task · time per day · number of days · time per month
   // Intentionally omits Amount and any $/hr — the caregiver never needs to
@@ -1877,7 +1888,7 @@ function exportCaregiverTaskSheet(){
   // each task on its own line — with no UI text.
   var _emailLines=[
     'Liberty Bell Health — Home Care',
-    'Authorized Tasks ('+formLabel+')', '',
+    'Authorized Tasks', '',
     'Client: '+clientName,
   ];
   if(effective)  _emailLines.push('Effective: '+effective);
@@ -1924,7 +1935,7 @@ function exportCaregiverTaskSheet(){
     '</style></head><body>'+
     '<div class="brand">'+
       '<div class="co">Liberty Bell Health — Home Care</div>'+
-      '<div class="doc">Authorized Tasks · '+_escHtml(formLabel)+'</div>'+
+      '<div class="doc">Authorized Tasks</div>'+
     '</div>'+
     '<h1>'+_escHtml(clientName)+'</h1>'+
     '<div class="sub">Authorized services approved by the Michigan Department of Health &amp; Human Services (MDHHS). Perform these tasks during each visit as scheduled below.</div>'+
@@ -1932,8 +1943,8 @@ function exportCaregiverTaskSheet(){
       (effective ? '<div><span class="l">Effective:</span> <span class="v">'+_escHtml(effective)+'</span></div>':'')+
       (reassess  ? '<div><span class="l">Reassessment due:</span> <span class="v">'+_escHtml(reassess)+'</span></div>':'')+
       (totalHours? '<div><span class="l">Approved per month:</span> <span class="v">'+_escHtml(totalHours)+'</span></div>':'')+
-      (a.aswName ? '<div><span class="l">Caseworker (ASW):</span> <span class="v">'+_escHtml(a.aswName)+'</span></div>':'')+
-      (a.aswPhone? '<div><span class="l">ASW phone:</span> <span class="v">'+_escHtml(a.aswPhone)+'</span></div>':'')+
+      (a.aswName ? '<div><span class="l">Adult Services Worker:</span> <span class="v">'+_escHtml(a.aswName)+(a.aswPhone?' · '+_escHtml(a.aswPhone):'')+'</span></div>':'')+
+      '<div><span class="l">Agency Manager:</span> <span class="v">Thomas Jaboro · 248-291-4106</span></div>'+
       '<div><span class="l">Prepared:</span> <span class="v">'+_escHtml(todayStr)+'</span></div>'+
     '</div>'+
     '<table><thead><tr>'+
@@ -1972,8 +1983,7 @@ async function shareCaregiverTaskImage(){
   var a=prof.authorization;
   if(!a||!a.tasks||!a.tasks.length){showAlert('No authorized tasks to export. Import a DHS-1210 / MDHHS-6064 first.');return;}
   if(typeof html2canvas!=='function'){showAlert('The image tool is still loading — give it a second and try again.');return;}
-  var clientName=activeProfileName, esc=_escHtml;
-  var formLabel=a.formType||'DHS-1210';
+  var clientName=_caregiverClientLabel(prof, activeProfileName), esc=_escHtml;  // first name + last initial (PHI-minimized)
   var totalHours=(a.hours!=null)?(a.hours+'h '+(a.minutes||0)+'m'):'';
   var td='padding:7px 9px;border-bottom:1px solid #edf1f6;', tdc=td+'text-align:center;color:#334a68;';
   var rows=(a.tasks||[]).map(function(t){
@@ -1982,10 +1992,13 @@ async function shareCaregiverTaskImage(){
       '<td style="'+tdc+'">'+esc(t.freq||'')+'</td>'+
       '<td style="'+tdc+'">'+esc(t.perMonth||'')+'</td></tr>';
   }).join('');
-  // Caregivers don't need the reassessment date, so it's left off this sheet. The approved hours
-  // get their own prominent callout (below) instead of being buried in this small line.
-  var metaBits=[a.effectiveDate?('Effective '+esc(a.effectiveDate)):'',
-    a.aswName?('ASW '+esc(a.aswName)+(a.aswPhone?' · '+esc(a.aswPhone):'')):''].filter(Boolean).join(' &nbsp;·&nbsp; ');
+  // Caregivers don't need the reassessment date, so it's left off. Contacts are spelled out (no
+  // "ASW" abbreviation a caregiver wouldn't recognize) and include the agency manager to call.
+  var metaLines=[];
+  if(a.effectiveDate) metaLines.push('Effective '+esc(a.effectiveDate));
+  if(a.aswName) metaLines.push('Adult Services Worker: '+esc(a.aswName)+(a.aswPhone?' · '+esc(a.aswPhone):''));
+  metaLines.push('Agency Manager: Thomas Jaboro · 248-291-4106');
+  var metaBits=metaLines.join('<br>');
   var approvedBox=totalHours
     ? '<div style="background:#eef4fb;border:1px solid #d5e4f3;border-radius:7px;padding:4px 11px;text-align:center;white-space:nowrap;">'+
         '<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#5c7590;">Approved / month</div>'+
@@ -1998,12 +2011,12 @@ async function shareCaregiverTaskImage(){
   host.innerHTML=
     '<div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #1a2b45;padding-bottom:8px;margin-bottom:12px;">'+
       '<div style="font-size:15px;font-weight:700;">Liberty Bell Health — Home Care</div>'+
-      '<div style="font-size:11px;color:#5c7590;text-transform:uppercase;letter-spacing:.06em;">Authorized Tasks · '+esc(formLabel)+'</div></div>'+
+      '<div style="font-size:11px;color:#5c7590;text-transform:uppercase;letter-spacing:.06em;">Authorized Tasks</div></div>'+
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">'+
       '<div style="font-size:20px;font-weight:700;">'+esc(clientName)+'</div>'+
       approvedBox+
     '</div>'+
-    (metaBits?'<div style="font-size:12px;color:#5c7590;margin:2px 0 14px;">'+metaBits+'</div>':'<div style="height:12px;"></div>')+
+    (metaBits?'<div style="font-size:12px;color:#5c7590;margin:3px 0 14px;line-height:1.55;">'+metaBits+'</div>':'<div style="height:12px;"></div>')+
     '<table style="width:100%;border-collapse:collapse;font-size:13px;">'+
       '<thead><tr style="background:#eef4fb;color:#2b4a6b;">'+
         '<th style="text-align:left;padding:7px 9px;border-bottom:2px solid #d5e4f3;">Authorized Task</th>'+
