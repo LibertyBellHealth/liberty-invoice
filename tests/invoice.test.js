@@ -75,25 +75,26 @@ test('clientDueForInvoice: only flags a missing invoice when a start date is on/
   assert.strictEqual(w.clientDueForInvoice({ startDate: '2026-07-15' }, '07/2026'), true, 'starts within the period -> due');
 });
 
-test('clientInvoiceRate: client rate if set (from DHS or manual), else the Settings default (#1)', () => {
+test('clientInvoiceRate: ALWAYS the state rate — the client hourly field never bills', () => {
   const w = loadApp();
   w.localStorage.setItem('lhca_state_rate', '27.00');
-  assert.strictEqual(w.clientInvoiceRate({ hourlyRate: '30.00' }), '30.00', 'client rate used');
-  assert.strictEqual(w.clientInvoiceRate({ hourlyRate: '' }), '27.00', 'empty -> state default');
-  assert.strictEqual(w.clientInvoiceRate({}), '27.00', 'no rate -> state default');
-  assert.strictEqual(w.clientInvoiceRate({ hourlyRate: '0' }), '27.00', 'zero -> state default');
-  assert.strictEqual(w.clientInvoiceRate({ hourlyRate: '$28.50' }), '28.50', 'strips formatting');
+  // Whatever is in the client's own rate field, the invoice bills the flat state rate.
+  assert.strictEqual(w.clientInvoiceRate({ hourlyRate: '30.00' }), '27.00', 'client field ignored');
+  assert.strictEqual(w.clientInvoiceRate({ hourlyRate: '13.50' }), '27.00', 'caregiver-pay value ignored');
+  assert.strictEqual(w.clientInvoiceRate({ hourlyRate: '' }), '27.00', 'empty -> state rate');
+  assert.strictEqual(w.clientInvoiceRate({}), '27.00', 'no field -> state rate');
+  // Honors a changed Settings rate (the once-a-year state change).
+  w.localStorage.setItem('lhca_state_rate', '28.00');
+  assert.strictEqual(w.clientInvoiceRate({ hourlyRate: '30.00' }), '28.00', 'follows the Settings state rate');
 });
 
-test('DHS rate is suggested as the client hourly rate, normalized to 2 decimals (#1)', () => {
+test('DHS import no longer pushes the provider rate into the client hourly field (#1)', () => {
   const w = loadApp();
-  const ups = w._dhsSuggestedUpdates({ rate: 27 }, { hourlyRate: '' }, null);
-  const rate = ups.find(u => u.field === 'hourlyRate');
-  assert.ok(rate, 'rate is suggested when client has none');
-  assert.strictEqual(rate.to, '27.00', 'normalized to 2 decimals');
-  // stored "27.00" vs form 27 must NOT be flagged (same value, different format)
-  const same = w._dhsSuggestedUpdates({ rate: 27 }, { hourlyRate: '27.00' }, null);
-  assert.ok(!same.some(u => u.field === 'hourlyRate'), 'identical rate not flagged');
+  // Even with a client rate that differs from the DHS provider rate, no hourlyRate change is suggested.
+  const ups = w._dhsSuggestedUpdates({ rate: 27, medicaidId: '111' }, { hourlyRate: '', medicaidId: '000' }, null);
+  assert.ok(!ups.some(u => u.field === 'hourlyRate'), 'client hourly rate is never suggested from the form');
+  // other genuine suggestions still work (e.g. Medicaid ID)
+  assert.ok(ups.some(u => u.field === 'medicaidId'), 'unrelated suggestions still fire');
 });
 
 test('_dhsMapTaskToCol: every DHS-1210 task maps to the right service column (#1)', () => {
@@ -119,8 +120,9 @@ test('_dhsFreqToDays: frequency -> a reviewable day pattern', () => {
 
 test('_dhsBuildFirstInvoice: builds a correct draft from the authorization, flags unmapped (#1)', () => {
   const w = loadApp();
+  w.localStorage.setItem('lhca_state_rate', '27.00');  // invoice rate always comes from Settings state rate
   const res = {
-    hours: 29, minutes: 47, rate: 27,
+    hours: 29, minutes: 47, rate: 99,   // form's printed rate is IGNORED — the invoice bills the state rate
     tasks: [
       { task: 'Bathing', freq: '7 days per week' },
       { task: 'Shopping for Food/Meds', freq: 'Once per month' },
@@ -137,7 +139,7 @@ test('_dhsBuildFirstInvoice: builds a correct draft from the authorization, flag
   assert.strictEqual(svc[5][cols.indexOf('Shopping')], false, 'Shopping not checked mid-month');
   assert.strictEqual(built.data.svcHH, '29', 'hours from authorization');
   assert.strictEqual(built.data.grandHH, '29', 'grand hours from authorization');
-  assert.strictEqual(built.data.hourlyRate, '27.00', 'rate from the form');
+  assert.strictEqual(built.data.hourlyRate, '27.00', 'invoice bills the state rate, not the form rate (99)');
   assert.strictEqual(built.data.billingPeriod, '08/2026');
   assert.deepStrictEqual([...built.unmapped], ['Mystery Service'], 'unmapped task surfaced, not dropped');
 });

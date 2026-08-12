@@ -1687,9 +1687,8 @@ function _dhsSuggestedUpdates(res, prof, cw){
     }
   }
   add('Client Medicaid ID','client','medicaidId',prof&&prof.medicaidId,res.medicaidId,null);
-  // #1: the form's provider rate becomes the client's invoice rate (normalized to 2 decimals so
-  // "27" vs a stored "27.00" isn't flagged as a change).
-  add('Client hourly rate','client','hourlyRate',prof&&prof.hourlyRate,(res.rate!=null&&res.rate!=='')?Number(res.rate).toFixed(2):'',null);
+  // The client "Hourly Rate" field is NOT the invoice rate — invoices always bill the state rate
+  // ($27) — so the DHS provider rate is no longer pushed into it (that mismatch was confusing).
   return out;
 }
 function showDhsReview(file,res){
@@ -6028,11 +6027,11 @@ async function sendEmail(){
 // The government/state hourly rate billed on every invoice (NOT the caregiver pay rate).
 // Configurable in Settings so the once-a-year rate change is a setting, not a code edit.
 function stateRate(){ var v=(localStorage.getItem('lhca_state_rate')||'').trim(); return v||'27.00'; }
-// The rate to bill a client's invoices at: the client's own hourly rate (set from their DHS-1210
-// or manually) if it's a valid positive number, otherwise the Settings state rate as a fallback.
+// The rate to bill a client's invoices at: ALWAYS the state rate ($27). The state pays a flat
+// provider rate, so every invoice uses it — the client "Hourly Rate" field is NOT a billing rate
+// (it does not affect invoices). prof kept for call-site compatibility.
 function clientInvoiceRate(prof){
-  var r=prof&&prof.hourlyRate!=null?String(prof.hourlyRate).replace(/[^0-9.]/g,'').trim():'';
-  return (r!=='' && parseFloat(r)>0) ? r : stateRate();
+  return stateRate();
 }
 function saveStateRate(){
   var el=document.getElementById('stateRateInput'); if(!el)return;
@@ -9579,7 +9578,7 @@ function _dhsBuildFirstInvoice(res, prof, period){
     _dhsFreqToDays(t.freq, days).forEach(function(di){ if(di>=0&&di<days)grid[di][col]=true; });
   });
   var hours=res.hours!=null?String(res.hours):'', mins=res.minutes!=null?String(res.minutes):'';
-  var rate=(res.rate!=null&&res.rate!=='')?Number(res.rate).toFixed(2):stateRate();
+  var rate=stateRate();  // invoices always bill the flat state rate ($27), not the form's printed rate
   var T=today();
   return {
     data:{
