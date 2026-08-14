@@ -168,14 +168,64 @@ test('_dhsBuildFirstInvoice: builds a correct draft from the authorization, flag
   const cols = w._dhsSvcColNames();
   const svc = built.data.tasks.svc;
   assert.strictEqual(svc.length, 31, 'August has 31 day-rows');
-  assert.ok(svc.every(r => r[cols.indexOf('Bathing')] === true), 'Bathing checked every day');
-  assert.strictEqual(svc[0][cols.indexOf('Shopping')], true, 'Shopping checked on the 1st');
-  assert.strictEqual(svc[5][cols.indexOf('Shopping')], false, 'Shopping not checked mid-month');
+  assert.ok(svc.every(r => r[cols.indexOf('Bathing')] === true), 'Bathing (7 days/week) checked EVERY day');
+  // Shopping is "Once per month" -> exactly ONE checked day (which day now varies by billing period).
+  const shopCount = svc.reduce((n, r) => n + (r[cols.indexOf('Shopping')] ? 1 : 0), 0);
+  assert.strictEqual(shopCount, 1, 'Once per month -> exactly one Shopping day');
   assert.strictEqual(built.data.svcHH, '29', 'hours from authorization');
   assert.strictEqual(built.data.grandHH, '29', 'grand hours from authorization');
   assert.strictEqual(built.data.hourlyRate, '27.00', 'invoice bills the state rate, not the form rate (99)');
   assert.strictEqual(built.data.billingPeriod, '08/2026');
   assert.deepStrictEqual([...built.unmapped], ['Mystery Service'], 'unmapped task surfaced, not dropped');
+});
+
+test('_dhsTaskDays: daily task (7 days/week) -> every day of the month', () => {
+  const w = loadApp();
+  assert.strictEqual(w._dhsTaskDays({ freq: '7 days per week' }, 31, 5).length, 31, 'Jul -> 31');
+  assert.strictEqual(w._dhsTaskDays({ freq: '7 days per week' }, 30, 5).length, 30, 'Jun -> 30');
+});
+
+test('_dhsTaskDays: count = floor(Time/Month ÷ Time/Day), never over-documents', () => {
+  const w = loadApp();
+  // Mobility: 2:00/month at 0:14/day -> floor(120/14)=8 (8*14=112=1:52, under 2:00 — the safe side).
+  assert.strictEqual(w._dhsTaskDays({ freq: '2 days per week', perDay: '00:14', perMonth: '02:00' }, 31, 3).length, 8);
+  // Laundry: 2:00/month at 1:00/day -> exactly 2.
+  assert.strictEqual(w._dhsTaskDays({ freq: 'Twice per month', perDay: '01:00', perMonth: '02:00' }, 31, 3).length, 2);
+});
+
+test('_dhsTaskDays: same count each month but DIFFERENT days (varied, not identical)', () => {
+  const w = loadApp();
+  const task = { freq: '2 days per week', perDay: '00:14', perMonth: '02:00' };
+  const jul = w._dhsTaskDays(task, 31, w._dhsPeriodSeed('07/2026')).join(',');
+  const aug = w._dhsTaskDays(task, 31, w._dhsPeriodSeed('08/2026')).join(',');
+  assert.strictEqual(jul.split(',').length, aug.split(',').length, 'same number of days each month');
+  assert.notStrictEqual(jul, aug, 'but the specific days differ month to month');
+});
+
+test('_dhsSpreadDays / _dhsHmToMin / _dhsPeriodSeed: building blocks', () => {
+  const w = loadApp();
+  assert.strictEqual(w._dhsHmToMin('02:00'), 120);
+  assert.strictEqual(w._dhsHmToMin('00:14'), 14);
+  assert.strictEqual(w._dhsSpreadDays(2, 30, 0).join(','), '0,15', '2 spread across 30 with no offset');
+  assert.strictEqual(w._dhsSpreadDays(2, 30, 5).join(','), '5,20', 'offset by seed');
+  assert.strictEqual(w._dhsSpreadDays(40, 31, 0).length, 31, 'count>=days -> every day, no overflow');
+  assert.notStrictEqual(w._dhsPeriodSeed('07/2026'), w._dhsPeriodSeed('08/2026'), 'consecutive months seed differs');
+});
+
+test('_dhsBuildFirstInvoice: only authorized tasks are checked; the rest stay empty', () => {
+  const w = loadApp();
+  const cols = w._dhsSvcColNames();
+  const res = { hours: 2, minutes: 0, tasks: [
+    { task: 'Bathing', freq: '7 days per week', perDay: '00:16', perMonth: '08:02' },
+    { task: 'Laundry', freq: 'Twice per month', perDay: '01:00', perMonth: '02:00' },
+  ]};
+  const svc = w._dhsBuildFirstInvoice(res, { clientName: 'X' }, '07/2026').data.tasks.svc;
+  const count = (name) => svc.reduce((n, r) => n + (r[cols.indexOf(name)] ? 1 : 0), 0);
+  assert.strictEqual(count('Bathing'), 31, 'daily -> every day');
+  assert.strictEqual(count('Laundry'), 2, 'twice per month -> 2');
+  // Unauthorized columns must be entirely empty.
+  ['Dressing', 'Eating', 'Toileting', 'Transferring', 'Medication', 'Hospital/Nursing Facility Stay']
+    .forEach(n => assert.strictEqual(count(n), 0, n + ' not authorized -> empty'));
 });
 
 test('_dhsBuildFirstInvoice: bad period -> null (no garbage invoice)', () => {
