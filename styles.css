@@ -413,6 +413,11 @@ body{font-family:Arial,sans-serif;font-size:13px;color:#1a2b45;background:#f4f5f
 .tt td.mc.on .box::before{transform:rotate(45deg);}
 .tt td.mc.on .box::after{transform:rotate(-45deg);}
 .tt tr.inactive td.mc{cursor:default;}
+/* On screen, grey out days that don't exist in this month (e.g. day 31 in June) so they read as
+   "not a real day" and can't be confused for an unchecked visit. Reset for print (below). */
+.tt tr.inactive{background:#eef1f4;}
+.tt tr.inactive td.dc{color:#c3ccd6;}
+.tt tr.inactive td.mc .box{opacity:.18;}
 .allrow{background:#ddeeff;}
 /* DB sync-in-progress banner — top of page during initial DB load */
 .db-sync-banner{display:none;position:fixed;top:0;left:0;right:0;z-index:9998;background:linear-gradient(90deg,#fff8e1,#fff3cd);color:#856404;padding:8px 16px;font-family:Arial,sans-serif;font-size:13px;border-bottom:1px solid #ffeaa7;box-shadow:0 2px 6px rgba(0,0,0,0.08);text-align:center;}
@@ -823,7 +828,9 @@ body.db-syncing button[data-sync-disable="1"]{opacity:0.5!important;cursor:not-a
   .tt th.th{height:110px!important;word-break:break-word!important;}
   .tt td.mc{height:18px!important;}
   .tt td.dc{font-size:8.5pt!important;padding:1px 0!important;}
-  .tt tr.inactive{opacity:1!important;}
+  .tt tr.inactive{opacity:1!important;background:transparent!important;}
+  .tt tr.inactive td.dc{color:inherit!important;}
+  .tt tr.inactive td.mc .box{opacity:1!important;}
   .bi td{padding:2px 4px!important;font-size:9pt!important;}
   .bi .lbl{font-size:8pt!important;}
   .pg-title{margin-bottom:3px!important;}

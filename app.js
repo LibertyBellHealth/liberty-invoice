@@ -9586,17 +9586,49 @@ function _dhsFreqToDays(freq, days){
   }
   return [0]; // unknown frequency → mark the 1st day only, provider adjusts
 }
-// Build the data for a first invoice from a parsed authorization (res) + client (prof) + period MM/YYYY.
-// Returns { data, unmapped:[taskNames] } — unmapped tasks are surfaced, never dropped silently.
+// "HH:MM" → minutes (e.g. "02:00" → 120). 0 if unparseable.
+function _dhsHmToMin(s){ var m=String(s||'').match(/(\d+):(\d+)/); return m?(parseInt(m[1],10)*60+parseInt(m[2],10)):0; }
+// A stable per-month seed from "MM/YYYY" — a distinct integer per month so each month's generated
+// pattern differs from the last, but regenerating the SAME month reproduces it (no randomness).
+function _dhsPeriodSeed(period){ var p=String(period||'').split('/'); var mm=parseInt(p[0],10)||1, yy=parseInt(p[1],10)||2000; return yy*12+(mm-1); }
+// Place `count` day-indices spread EVENLY across a `days`-long month, rotated by `seed` so the exact
+// days vary month to month. Always returns `count` distinct in-range indices (or all days if count≥days).
+function _dhsSpreadDays(count, days, seed){
+  count=Math.max(0,Math.min(days, count|0)); if(count<=0)return [];
+  if(count>=days){ var all=[]; for(var i=0;i<days;i++)all.push(i); return all; }
+  var offset=(((seed|0)%days)+days)%days, used={}, out=[];
+  for(var k=0;k<count;k++){
+    var pos=(Math.round(k*days/count)+offset)%days;
+    while(used[pos])pos=(pos+1)%days;   // resolve a rare post-rotation collision
+    used[pos]=1; out.push(pos);
+  }
+  return out.sort(function(a,b){return a-b;});
+}
+// The day-indices to check for one authorized task in a `days`-long month:
+//  • "7 days per week" (daily) → EVERY day the month has (owner's rule).
+//  • otherwise → the authorized monthly count = Time/Month ÷ Time/Day (falls back to the frequency
+//    pattern's length if those times are missing), spread evenly and varied by the period seed.
+function _dhsTaskDays(task, days, seed){
+  var freq=String((task&&task.freq)||'').toLowerCase();
+  if(/7 days? per week|daily|every day/.test(freq)){ var all=[]; for(var i=0;i<days;i++)all.push(i); return all; }
+  var pd=_dhsHmToMin(task&&task.perDay), pm=_dhsHmToMin(task&&task.perMonth);
+  // FLOOR so days×Time/Day never EXCEEDS the authorized Time/Month (never document more than
+  // authorized); at least 1 day for any task that has a frequency at all.
+  var count=(pd>0&&pm>0)?Math.max(1,Math.floor(pm/pd)):_dhsFreqToDays(task&&task.freq, days).length;
+  return _dhsSpreadDays(count, days, seed);
+}
+// Build the data for an invoice from a parsed authorization (res) + client (prof) + period MM/YYYY.
+// The day grid is derived from each task's authorized frequency/count (see _dhsTaskDays), varied per
+// month. Returns { data, unmapped:[taskNames] } — unmapped tasks are surfaced, never dropped silently.
 function _dhsBuildFirstInvoice(res, prof, period){
   var pp=String(period||'').split('/'); if(pp.length!==2||pp[1].length!==4)return null;
   var days=daysIn(pp[0],pp[1]); var cols=_dhsSvcColNames();
   var grid=[]; for(var d=0;d<days;d++){ var row=[]; for(var c=0;c<cols.length;c++)row.push(false); grid.push(row); }
-  var unmapped=[];
+  var unmapped=[]; var seed=_dhsPeriodSeed(period);
   (res.tasks||[]).forEach(function(t){
     var col=_dhsMapTaskToCol(t.task);
     if(col<0){ unmapped.push(t.task); return; }
-    _dhsFreqToDays(t.freq, days).forEach(function(di){ if(di>=0&&di<days)grid[di][col]=true; });
+    _dhsTaskDays(t, days, seed).forEach(function(di){ if(di>=0&&di<days)grid[di][col]=true; });
   });
   var hours=res.hours!=null?String(res.hours):'', mins=res.minutes!=null?String(res.minutes):'';
   var rate=stateRate();  // invoices always bill the flat state rate ($27), not the form's printed rate
@@ -9665,10 +9697,11 @@ function autoGenerateMonthlyInvoices(period){
   showConfirm(
     'Auto-generate '+eligible.length+' invoice'+(eligible.length>1?'s':'')+' for '+period+'?\n\n'+
     names+'\n\n'+
-    'For each client, this copies their most recent invoice and:\n'+
-    '• Keeps daily tasks (Bathing, Dressing, etc.) checked every day\n'+
-    '• Shifts weekly tasks (Laundry, Shopping, Travel) by 1 day so it varies from last month\n'+
-    '• Leaves Hospital column empty (must be added manually if needed)\n'+
+    'For each client WITH a DHS authorization, this builds the grid from the authorized tasks:\n'+
+    '• Daily tasks (7 days/week) checked every day of the month\n'+
+    '• Weekly/monthly tasks get their authorized count, spread out and varied so each month differs\n'+
+    '• Only authorized tasks are checked (others stay empty)\n'+
+    '(Clients without an authorization fall back to copying last month.)\n'+
     '• Sets Date Submitted to today\n\n'+
     'All generated invoices are marked Draft — review before sending.',
     function(){_doAutoGenerateInvoices(eligible,period);},
@@ -9681,7 +9714,15 @@ function _doAutoGenerateInvoices(eligible,period){
   var generated=0,skipped=0;
   var undoBatch={id:'b_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),period:period,when:Date.now(),invoices:[]};
   eligible.forEach(function(e){
-    var newInv=generateNextMonthInvoiceData(e.prevInv,period);
+    // Prefer building from the client's DHS authorization (correct counts per the authorized
+    // frequency, varied each month). Fall back to carrying last month's grid forward only when
+    // there's no authorization to build from.
+    var prof=profiles[e.name], a=prof&&prof.authorization, newInv=null;
+    if(a && a.tasks && a.tasks.length && hasAuthorization(prof)){
+      var built=_dhsBuildFirstInvoice({hours:a.hours,minutes:a.minutes,rate:a.rate,tasks:a.tasks}, prof, period);
+      if(built) newInv={ billingPeriod:period, savedAt:new Date().toLocaleString(), status:'draft', invoiceNote:'', data:built.data };
+    }
+    if(!newInv) newInv=generateNextMonthInvoiceData(e.prevInv,period);
     if(!newInv){skipped++;return;}
     if(!newInv.id)newInv.id='auto_'+Date.now()+'_'+Math.random().toString(36).slice(2,9);
     if(!profiles[e.name].invoices)profiles[e.name].invoices=[];
