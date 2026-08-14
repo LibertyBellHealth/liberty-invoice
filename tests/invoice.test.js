@@ -31,71 +31,6 @@ test('_quickInvoiceHash: stable for same data, changes on an hours edit', () => 
   assert.strictEqual(w._quickInvoiceHash(null), '', 'null -> empty, no crash');
 });
 
-// Build a [days][cols] boolean service grid.
-function grid(days, cols, fill) {
-  const g = [];
-  for (let d = 0; d < days; d++) { const r = []; for (let c = 0; c < cols; c++) r.push(fill(d, c)); g.push(r); }
-  return g;
-}
-
-test('generateNextMonthInvoiceData: carries service-day patterns forward correctly', () => {
-  const w = loadApp();
-  const COLS = 15, HOSP = 14;
-  // Prior month = July 2026 (31 days). Column patterns exercise each carry-forward rule:
-  const svc = grid(31, COLS, (d, c) => {
-    if (c === 0) return true;      // checked every day -> "daily" -> stays daily
-    if (c === 1) return false;     // never checked -> stays cleared
-    if (c === 2) return d <= 4;    // 5 checks -> "shift" by +1 day
-    if (c === HOSP) return true;   // Hospital (last col) -> ALWAYS cleared (by-exception)
-    return false;
-  });
-  const prevInv = {
-    billingPeriod: '07/2026', savedAt: 'x', status: 'submitted',
-    data: { billingPeriod: '07/2026', svcHH: '29', svcMM: '47', tasks: { svc, cplx: [] } },
-  };
-  const r = w.generateNextMonthInvoiceData(prevInv, '08/2026');
-  assert.ok(r, 'returns a new invoice');
-  assert.strictEqual(r.billingPeriod, '08/2026', 'new billing period');
-  assert.strictEqual(r.status, 'draft', 'auto-generated invoice is a Draft');
-  assert.strictEqual(r.data.svcHH, '29', 'hours carried over from the prior invoice');
-  const ns = r.data.tasks.svc;
-  assert.strictEqual(ns.length, 31, 'August has 31 rows');
-  assert.ok(ns.every(row => row[0] === true), 'daily column stays daily');
-  assert.ok(ns.every(row => row[1] === false), 'empty column stays empty');
-  assert.ok(ns.every(row => row[HOSP] === false), 'Hospital column always cleared');
-  assert.strictEqual(ns[1][2], true, 'shift +1: new day 1 = prior day 0 (checked)');
-  assert.strictEqual(ns[0][2], false, 'shift +1: new day 0 wraps to prior last day (unchecked)');
-});
-
-test('generateNextMonthInvoiceData: a 2x/month task keeps 2 checks across a 30->31 month (no phantom 3rd)', () => {
-  const w = loadApp();
-  const COLS = 15, LAUNDRY = 3;
-  // June (30 days): Laundry on day 15 and day 30 (indices 14 and 29 — 29 is June's LAST day).
-  const svc = grid(30, COLS, (d, c) => c === LAUNDRY && (d === 14 || d === 29));
-  const prevInv = { billingPeriod: '06/2026', savedAt: 'x', status: 'submitted',
-    data: { billingPeriod: '06/2026', svcHH: '3', svcMM: '13', tasks: { svc, cplx: [] } } };
-  const r = w.generateNextMonthInvoiceData(prevInv, '07/2026');
-  const ns = r.data.tasks.svc;
-  assert.strictEqual(ns.length, 31, 'July has 31 rows');
-  const checkedDays = ns.map((row, i) => row[LAUNDRY] ? i + 1 : null).filter(Boolean);
-  // June 15 & 30 shift forward one day -> July 16 & 31 (exactly two, NOT the old buggy 1/16/31).
-  // .join() keeps the compare realm-safe (jsdom array vs Node literal would fail deepStrictEqual).
-  assert.strictEqual(checkedDays.join(','), '16,31', 'exactly two laundry days, shifted +1 — no phantom day 1');
-});
-
-test('generateNextMonthInvoiceData: a check on the last day of a longer month wraps once (no dupe)', () => {
-  const w = loadApp();
-  const COLS = 15, COL = 4;
-  // A 31-day month with the task on its LAST day (index 30); next month is shorter (30 days).
-  const svc = grid(31, COLS, (d, c) => c === COL && d === 30);
-  const prevInv = { billingPeriod: '07/2026', savedAt: 'x', status: 'submitted',
-    data: { billingPeriod: '07/2026', tasks: { svc, cplx: [] } } };
-  const r = w.generateNextMonthInvoiceData(prevInv, '08/2026'); // Aug has 31, but test the shorter path:
-  const r2 = w.generateNextMonthInvoiceData(prevInv, '09/2026'); // Sep has 30
-  const count = r2.data.tasks.svc.reduce((n, row) => n + (row[COL] ? 1 : 0), 0);
-  assert.strictEqual(count, 1, 'the single check is preserved exactly once (wrapped), never duplicated');
-});
-
 test('clientDueForInvoice: only flags a missing invoice when a start date is on/before the period (#10)', () => {
   const w = loadApp();
   assert.strictEqual(w.clientDueForInvoice({}, '07/2026'), false, 'no start date -> not due (this was the bug)');
@@ -231,11 +166,4 @@ test('_dhsBuildFirstInvoice: only authorized tasks are checked; the rest stay em
 test('_dhsBuildFirstInvoice: bad period -> null (no garbage invoice)', () => {
   const w = loadApp();
   assert.strictEqual(w._dhsBuildFirstInvoice({ tasks: [] }, {}, 'bad'), null);
-});
-
-test('generateNextMonthInvoiceData: guards bad input instead of producing a garbage bill', () => {
-  const w = loadApp();
-  assert.strictEqual(w.generateNextMonthInvoiceData(null, '08/2026'), null, 'no prior invoice -> null');
-  assert.strictEqual(w.generateNextMonthInvoiceData({ data: null }, '08/2026'), null, 'no data -> null');
-  assert.strictEqual(w.generateNextMonthInvoiceData({ data: { billingPeriod: '07/2026' } }, 'bad'), null, 'bad period -> null');
 });

@@ -9470,81 +9470,6 @@ function renderUndoBanner(){
   }).join('');
 }
 
-function generateNextMonthInvoiceData(prevInv,newPeriod){
-  if(!prevInv||!prevInv.data)return null;
-  var prevPeriod=(prevInv.data&&prevInv.data.billingPeriod)||prevInv.billingPeriod;
-  if(!prevPeriod)return null;
-  var prevParts=prevPeriod.split('/'),newParts=newPeriod.split('/');
-  if(prevParts.length!==2||newParts.length!==2)return null;
-  var prevDays=daysIn(prevParts[0],prevParts[1]);
-  var newDays=daysIn(newParts[0],newParts[1]);
-
-  var prevSvc=(prevInv.data.tasks&&prevInv.data.tasks.svc)||[];
-  var prevCplx=(prevInv.data.tasks&&prevInv.data.tasks.cplx)||[];
-
-  // Service columns: 15 total (Bathing through Hospital). Hospital is the LAST column.
-  var SVC_COLS=15, HOSP_IDX=SVC_COLS-1;
-
-  // Decide per-column action based on check count in previous month:
-  //  - Hospital column → always clear (by-exception entry)
-  //  - 0 checks → keep at 0
-  //  - 1-25 checks → SHIFT by +1 day (covers 1x/wk through ~6x/wk patterns)
-  //  - 26+ checks → daily — keep every day checked (gov gives X days/wk authorization)
-  var colAction=[];
-  for(var c=0;c<SVC_COLS;c++){
-    if(c===HOSP_IDX){colAction.push('clear');continue;}
-    var count=0;
-    for(var d=0;d<prevDays;d++){if(prevSvc[d]&&prevSvc[d][c])count++;}
-    if(count===0)colAction.push('clear');
-    else if(count>=26)colAction.push('daily');
-    else colAction.push('shift');
-  }
-
-  // Build new svc[] for newDays.
-  var newSvc=[];
-  for(var d=0;d<newDays;d++){ var row=[]; for(var c=0;c<SVC_COLS;c++)row.push(false); newSvc.push(row); }
-  for(var c=0;c<SVC_COLS;c++){
-    var act=colAction[c];
-    if(act==='daily'){ for(var d=0;d<newDays;d++)newSvc[d][c]=true; }
-    else if(act==='shift'){
-      // Move each prior check FORWARD one day. Only wrap to the start when the shifted day lands
-      // past the end of the new month. The old code did BOTH — it always copied the prior last day
-      // to new-day-0 (wrap) AND let the shift place it at new-day-prevDays when the month was longer
-      // (e.g. June 30 → July 31) — so a 2x/month task (Laundry 15 & 30) came out 3x (1, 16, 31).
-      // This maps each check exactly once (June 15 & 30 → July 16 & 31), preserving the count.
-      for(var s=0;s<prevDays;s++){
-        if(prevSvc[s]&&prevSvc[s][c]){ var dst=s+1; if(dst>=newDays)dst=dst%newDays; newSvc[dst][c]=true; }
-      }
-    }
-    // 'clear' (and Hospital) stay all-false — already initialized above.
-  }
-
-  // Complex tasks: copy as-is, truncated/extended to newDays
-  var newCplx=[];
-  var cplxCols=(prevCplx[0]&&prevCplx[0].length)||9;
-  for(var d=0;d<newDays;d++){
-    if(d<prevDays&&prevCplx[d])newCplx.push(prevCplx[d].slice());
-    else { var blank=[];for(var k=0;k<cplxCols;k++)blank.push(false);newCplx.push(blank); }
-  }
-
-  // Build new invoice data — preserve hours/totals/etc from prev, update dates
-  var T=today();
-  var newData=Object.assign({},prevInv.data,{
-    billingPeriod:newPeriod,
-    dateSubmitted:T,
-    sigDate1:T,
-    sigDate2:T,
-    tasks:{svc:newSvc,cplx:newCplx}
-  });
-  return {
-    billingPeriod:newPeriod,
-    savedAt:new Date().toLocaleString(),
-    status:'draft',
-    invoiceNote:'',
-    data:newData
-  };
-}
-
 // ── First invoice from a DHS-1210 authorization ────────────────────────────────
 // The invoice's 15 service columns (order matters — it's the grid column order).
 function _dhsSvcColNames(){
@@ -9669,18 +9594,20 @@ function createFirstInvoiceFromAuth(){
   if(typeof switchTab==='function')switchTab('history');
 }
 
-// Returns list of clients eligible for auto-gen (active, missing invoice for period, has a prior)
+// Returns clients eligible for auto-gen: active in the period, missing this period's invoice, and
+// (required) with a DHS authorization to build from. No authorization → no auto-generated invoice.
 function findClientsEligibleForAutoGen(period){
   var profiles=getProfiles();var out=[];
   Object.keys(profiles).forEach(function(name){
     var p=profiles[name];
     if(p.clientStatus==='inactive'||p.clientStatus==='terminated'||p.clientStatus==='lost')return;
     if(!clientWasActiveInPeriod(p,period))return;
+    if(!hasAuthorization(p))return;   // only generate from an authorization
     var hasCurrent=(p.invoices||[]).some(function(i){return i.billingPeriod===period;});
     if(hasCurrent)return;
-    // Find most recent prior invoice (highest savedAt)
+    // Most recent prior invoice (if any) — kept only as a fallback signal; the grid is built fresh
+    // from the authorization, not copied from it.
     var prior=(p.invoices||[]).slice().sort(function(a,b){return new Date(b.savedAt||0)-new Date(a.savedAt||0);})[0];
-    if(!prior)return;
     out.push({name:name,prevInv:prior});
   });
   return out;
@@ -9690,7 +9617,7 @@ function findClientsEligibleForAutoGen(period){
 function autoGenerateMonthlyInvoices(period){
   var eligible=findClientsEligibleForAutoGen(period);
   if(!eligible.length){
-    showAlert('No clients need auto-generation. Either everyone has an invoice for '+period+', or no one has a prior invoice to copy from.',{title:'Nothing to Generate'});
+    showAlert('No clients need auto-generation. Either everyone active already has an invoice for '+period+', or the active clients don’t have a DHS authorization to build from.',{title:'Nothing to Generate'});
     return;
   }
   var names=eligible.map(function(e){return '• '+e.name;}).join('\n');
@@ -9714,15 +9641,11 @@ function _doAutoGenerateInvoices(eligible,period){
   var generated=0,skipped=0;
   var undoBatch={id:'b_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),period:period,when:Date.now(),invoices:[]};
   eligible.forEach(function(e){
-    // Prefer building from the client's DHS authorization (correct counts per the authorized
-    // frequency, varied each month). Fall back to carrying last month's grid forward only when
-    // there's no authorization to build from.
+    // Build the month's grid from the client's DHS authorization (correct counts per the authorized
+    // frequency, varied each month). Eligibility already requires an authorization.
     var prof=profiles[e.name], a=prof&&prof.authorization, newInv=null;
-    if(a && a.tasks && a.tasks.length && hasAuthorization(prof)){
-      var built=_dhsBuildFirstInvoice({hours:a.hours,minutes:a.minutes,rate:a.rate,tasks:a.tasks}, prof, period);
-      if(built) newInv={ billingPeriod:period, savedAt:new Date().toLocaleString(), status:'draft', invoiceNote:'', data:built.data };
-    }
-    if(!newInv) newInv=generateNextMonthInvoiceData(e.prevInv,period);
+    var built=(a && hasAuthorization(prof)) ? _dhsBuildFirstInvoice({hours:a.hours,minutes:a.minutes,rate:a.rate,tasks:a.tasks||[]}, prof, period) : null;
+    if(built) newInv={ billingPeriod:period, savedAt:new Date().toLocaleString(), status:'draft', invoiceNote:'', data:built.data };
     if(!newInv){skipped++;return;}
     if(!newInv.id)newInv.id='auto_'+Date.now()+'_'+Math.random().toString(36).slice(2,9);
     if(!profiles[e.name].invoices)profiles[e.name].invoices=[];
