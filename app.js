@@ -9500,26 +9500,23 @@ function generateNextMonthInvoiceData(prevInv,newPeriod){
     else colAction.push('shift');
   }
 
-  // Build new svc[] for newDays — shift by +1 day means take prev[d-1] for shifted columns
+  // Build new svc[] for newDays.
   var newSvc=[];
-  for(var d=0;d<newDays;d++){
-    var row=[];
-    for(var c=0;c<SVC_COLS;c++){
-      var act=colAction[c];
-      if(act==='clear'){row.push(false);}
-      else if(act==='daily'){row.push(true);}
-      else if(act==='shift'){
-        var srcDay=d-1;
-        if(srcDay<0)row.push(!!(prevSvc[prevDays-1]&&prevSvc[prevDays-1][c])); // wrap last day to first
-        else if(srcDay>=prevDays)row.push(false);
-        else row.push(!!(prevSvc[srcDay]&&prevSvc[srcDay][c]));
-      }
-      else { // 'keep' — copy same day
-        if(d<prevDays)row.push(!!(prevSvc[d]&&prevSvc[d][c]));
-        else row.push(false);
+  for(var d=0;d<newDays;d++){ var row=[]; for(var c=0;c<SVC_COLS;c++)row.push(false); newSvc.push(row); }
+  for(var c=0;c<SVC_COLS;c++){
+    var act=colAction[c];
+    if(act==='daily'){ for(var d=0;d<newDays;d++)newSvc[d][c]=true; }
+    else if(act==='shift'){
+      // Move each prior check FORWARD one day. Only wrap to the start when the shifted day lands
+      // past the end of the new month. The old code did BOTH — it always copied the prior last day
+      // to new-day-0 (wrap) AND let the shift place it at new-day-prevDays when the month was longer
+      // (e.g. June 30 → July 31) — so a 2x/month task (Laundry 15 & 30) came out 3x (1, 16, 31).
+      // This maps each check exactly once (June 15 & 30 → July 16 & 31), preserving the count.
+      for(var s=0;s<prevDays;s++){
+        if(prevSvc[s]&&prevSvc[s][c]){ var dst=s+1; if(dst>=newDays)dst=dst%newDays; newSvc[dst][c]=true; }
       }
     }
-    newSvc.push(row);
+    // 'clear' (and Hospital) stay all-false — already initialized above.
   }
 
   // Complex tasks: copy as-is, truncated/extended to newDays
