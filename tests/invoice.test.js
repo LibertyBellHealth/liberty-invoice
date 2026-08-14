@@ -67,6 +67,35 @@ test('generateNextMonthInvoiceData: carries service-day patterns forward correct
   assert.strictEqual(ns[0][2], false, 'shift +1: new day 0 wraps to prior last day (unchecked)');
 });
 
+test('generateNextMonthInvoiceData: a 2x/month task keeps 2 checks across a 30->31 month (no phantom 3rd)', () => {
+  const w = loadApp();
+  const COLS = 15, LAUNDRY = 3;
+  // June (30 days): Laundry on day 15 and day 30 (indices 14 and 29 — 29 is June's LAST day).
+  const svc = grid(30, COLS, (d, c) => c === LAUNDRY && (d === 14 || d === 29));
+  const prevInv = { billingPeriod: '06/2026', savedAt: 'x', status: 'submitted',
+    data: { billingPeriod: '06/2026', svcHH: '3', svcMM: '13', tasks: { svc, cplx: [] } } };
+  const r = w.generateNextMonthInvoiceData(prevInv, '07/2026');
+  const ns = r.data.tasks.svc;
+  assert.strictEqual(ns.length, 31, 'July has 31 rows');
+  const checkedDays = ns.map((row, i) => row[LAUNDRY] ? i + 1 : null).filter(Boolean);
+  // June 15 & 30 shift forward one day -> July 16 & 31 (exactly two, NOT the old buggy 1/16/31).
+  // .join() keeps the compare realm-safe (jsdom array vs Node literal would fail deepStrictEqual).
+  assert.strictEqual(checkedDays.join(','), '16,31', 'exactly two laundry days, shifted +1 — no phantom day 1');
+});
+
+test('generateNextMonthInvoiceData: a check on the last day of a longer month wraps once (no dupe)', () => {
+  const w = loadApp();
+  const COLS = 15, COL = 4;
+  // A 31-day month with the task on its LAST day (index 30); next month is shorter (30 days).
+  const svc = grid(31, COLS, (d, c) => c === COL && d === 30);
+  const prevInv = { billingPeriod: '07/2026', savedAt: 'x', status: 'submitted',
+    data: { billingPeriod: '07/2026', tasks: { svc, cplx: [] } } };
+  const r = w.generateNextMonthInvoiceData(prevInv, '08/2026'); // Aug has 31, but test the shorter path:
+  const r2 = w.generateNextMonthInvoiceData(prevInv, '09/2026'); // Sep has 30
+  const count = r2.data.tasks.svc.reduce((n, row) => n + (row[COL] ? 1 : 0), 0);
+  assert.strictEqual(count, 1, 'the single check is preserved exactly once (wrapped), never duplicated');
+});
+
 test('clientDueForInvoice: only flags a missing invoice when a start date is on/before the period (#10)', () => {
   const w = loadApp();
   assert.strictEqual(w.clientDueForInvoice({}, '07/2026'), false, 'no start date -> not due (this was the bug)');
