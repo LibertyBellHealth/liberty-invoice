@@ -116,6 +116,11 @@ test('_dhsFreqToDays: frequency -> a reviewable day pattern', () => {
   const wk = w._dhsFreqToDays('2 days per week', 14);
   assert.deepStrictEqual([...wk], [0, 1, 7, 8], '2x/week -> 2 days each week');
   assert.deepStrictEqual([...w._dhsFreqToDays('weird', 31)], [0], 'unknown -> 1st day only');
+  // Word-form per-month counts (MDHHS forms spell these out) — must place the right COUNT.
+  assert.strictEqual(w._dhsFreqToDays('Twice per month', 31).length, 2, '"Twice per month" -> 2 days');
+  assert.deepStrictEqual([...w._dhsFreqToDays('Twice per month', 30)], [0, 15], '2/month spread evenly');
+  assert.strictEqual(w._dhsFreqToDays('three times per month', 31).length, 3, '"three times per month" -> 3 days');
+  assert.strictEqual(w._dhsFreqToDays('2 times per month', 31).length, 2, 'numeric "times per month" too');
 });
 
 test('_dhsBuildFirstInvoice: builds a correct draft from the authorization, flags unmapped (#1)', () => {

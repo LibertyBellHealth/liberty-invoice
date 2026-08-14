@@ -9573,9 +9573,20 @@ function _dhsFreqToDays(freq, days){
   if(/7 days? per week|daily|every day/.test(f)){ for(i=0;i<days;i++)out.push(i); return out; }
   var wk=f.match(/(\d+)\s*days?\s*per\s*week/);
   if(wk){ var n=Math.min(7,parseInt(wk[1])||1); for(i=0;i<days;i++){ if((i%7)<n)out.push(i); } return out; }
-  if(/once per month|1 day per month|monthly/.test(f)){ return [0]; }
-  var mo=f.match(/(\d+)\s*days?\s*per\s*month/);
-  if(mo){ var m=Math.max(1,parseInt(mo[1])||1), step=Math.max(1,Math.floor(days/m)); for(i=0;i<m&&i*step<days;i++)out.push(i*step); return out; }
+  // Per-month frequency — numeric ("2 days/times per month") OR spelled out ("Twice per month",
+  // "three times per month"), since MDHHS forms use the word forms. Spread the days evenly; the
+  // count is what matters (provider adjusts exact days).
+  var perMonth=null, mo=f.match(/(\d+)\s*(?:days?|times?)\s*(?:per|a)\s*month/);
+  if(mo){ perMonth=parseInt(mo[1])||1; }
+  else if(/\bonce\b[^.]*month|1\s*day\s*per\s*month|\bmonthly\b/.test(f)){ perMonth=1; }
+  else if(/\btwice\b[^.]*month/.test(f)){ perMonth=2; }
+  else if(/(?:three\s*times|\bthrice\b)[^.]*month/.test(f)){ perMonth=3; }
+  else if(/four\s*times[^.]*month/.test(f)){ perMonth=4; }
+  if(perMonth!=null){
+    var m=Math.max(1,perMonth), step=Math.max(1,Math.floor(days/m));
+    for(i=0;i<m&&i*step<days;i++)out.push(i*step);
+    return out;
+  }
   return [0]; // unknown frequency → mark the 1st day only, provider adjusts
 }
 // Build the data for a first invoice from a parsed authorization (res) + client (prof) + period MM/YYYY.
