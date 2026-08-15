@@ -6005,7 +6005,31 @@ function saveStateRate(){
   if(!raw||isNaN(n)||n<=0){ if(st){st.style.color='#c0392b';st.textContent='Enter a valid rate';} return; }
   var val=n.toFixed(2);
   localStorage.setItem('lhca_state_rate',val); el.value=val;
+  _pushSettings({state_rate:val});   // sync to the backend so it follows the owner across devices
   if(st){st.style.color='#1a7740';st.textContent='✓ Saved — $'+val+'/hr on all invoices';}
+}
+// ── App settings sync (state rate + agency) across the owner's devices ──
+// These two were localStorage-only, so they didn't follow the owner device-to-device. Now mirrored
+// to a backend AppSettings store: pushed on save, pulled on load (server is the source of truth).
+function _pushSettings(obj){
+  if(typeof _apiToken==='undefined' || !_apiToken || typeof API_BASE!=='string') return; // only when signed in
+  try{
+    fetch(API_BASE+'/settings',{method:'POST',headers:apiHeaders(),body:JSON.stringify(obj)})
+      .then(function(r){ if(!r.ok) console.warn('settings sync failed:', r.status); })
+      .catch(function(e){ console.warn('settings sync failed:', e); });
+  }catch(e){}
+}
+function loadSettingsAPI(){
+  return fetch(API_BASE+'/settings',{headers:apiHeaders()})
+    .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); return r.json(); })
+    .then(function(s){
+      if(!s||typeof s!=='object') return;
+      if(s.state_rate!=null && s.state_rate!=='') localStorage.setItem('lhca_state_rate', String(s.state_rate));
+      if(s.agency && typeof s.agency==='object') localStorage.setItem('lhca_agency', JSON.stringify(s.agency));
+      if(typeof renderAgencySettings==='function' && document.getElementById('ag-name')) renderAgencySettings();
+      var sr=document.getElementById('stateRateInput'); if(sr && s.state_rate) sr.value=String(s.state_rate);
+    })
+    .catch(function(e){ console.warn('Load settings failed (using local):', e); });
 }
 function copyMonth(){
   var bp=document.getElementById('billingPeriod').value.trim();if(!bp||bp.length<7){showAlert('Enter a billing period first (MM/YYYY).');return;}
@@ -6544,6 +6568,7 @@ function loadProfilesAPI() {
   if (typeof loadCaregiversAPI === 'function') loadCaregiversAPI();
   if (typeof loadCaseworkersAPI === 'function') loadCaseworkersAPI();
   if (typeof loadSupervisorsAPI === 'function') loadSupervisorsAPI();
+  if (typeof loadSettingsAPI === 'function') loadSettingsAPI();   // state rate + agency, synced across devices
   if (typeof loadTasksAPI === 'function') loadTasksAPI();
   if (typeof loadSignaturesAPI === 'function') loadSignaturesAPI();
   // Return the promise so callers (e.g. OneDrive backup) can await freshness
@@ -7192,10 +7217,12 @@ function loadSupervisorsAPI(){
     .then(function(rows){
       var map={};
       (rows||[]).forEach(function(s){
-        map[s.id]={id:s.id,name:s.name||'',title:s.title||'',phone:s.phone||'',email:s.email||''};
+        map[s.id]={id:s.id,name:s.name||'',title:s.title||'',phone:s.phone||'',email:s.email||'',
+          _rowVersion:s.row_version_hex||null};   // optimistic-concurrency token
       });
       // Merge so an unsynced local addition survives the load and a transient empty response
-      // doesn't wipe the cache (supervisors carry no _rowVersion, so local-only rows are kept).
+      // doesn't wipe the cache (a synced supervisor now carries _rowVersion, so cross-device
+      // deletes propagate just like caregivers/caseworkers).
       saveSupervisorsLS(_mergeRosterMap(map, getSupervisors()));
       // If a caseworker form is open, refresh its dropdown
       refreshSupervisorDropdowns();
@@ -7205,9 +7232,24 @@ function loadSupervisorsAPI(){
 }
 function saveSupervisorAPI(sup){
   return trackSave('supervisor: '+(sup.name||sup.id||''), function(){
+    // Optimistic concurrency (mirror of caseworkers): send the row_version we last read so a stale
+    // save is rejected (409) instead of silently overwriting another device's edit.
+    var body=Object.assign({},sup);
+    if(sup._rowVersion) body.expected_version=sup._rowVersion;
+    delete body._rowVersion;   // internal token, not a DB column
     return fetch(API_BASE+'/supervisors',{
-      method:'POST',headers:apiHeaders(),body:JSON.stringify(sup)
-    }).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();});
+      method:'POST',headers:apiHeaders(),body:JSON.stringify(body)
+    }).then(function(r){
+      if(r.status===409){ var ce=new Error("This supervisor was changed by someone else. Reload to get the latest, then re-apply your edit."); ce.isConflict=true; throw ce; }
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      return r.json();
+    }).then(function(result){
+      if(result&&result.row_version){
+        sup._rowVersion=result.row_version;
+        var sups=getSupervisors(); if(sups[sup.id]){ sups[sup.id]._rowVersion=result.row_version; saveSupervisorsLS(sups); }
+      }
+      return result;
+    });
   });
 }
 function deleteSupervisorAPI(id){
@@ -8399,6 +8441,7 @@ function saveAgencyInfo(obj){
   var D=_agencyDefaults();
   var clean={}; for(var k in D){ clean[k]=(obj&&obj[k]!=null)?String(obj[k]):D[k]; }
   localStorage.setItem('lhca_agency', JSON.stringify(clean));
+  if(typeof _pushSettings==='function') _pushSettings({agency:clean});   // sync across devices
   return clean;
 }
 // Settings > Agency Information — populate the inputs from the stored/default values.
