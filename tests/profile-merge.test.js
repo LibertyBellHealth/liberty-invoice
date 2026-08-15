@@ -25,6 +25,19 @@ test('_profileHasUnsyncedChanges: clean client = false; an edited field = true',
   assert.strictEqual(w._profileHasUnsyncedChanges(c), true, 'a changed field is detected as unsynced');
 });
 
+test('fresh session (no _clientSynced baseline) is NOT dirty -> server SSN wins, not blank local', () => {
+  const w = loadApp();
+  // On the FIRST load of a session, local profiles have SSN + _clientSynced stripped (memory-only).
+  const local = { firstName: 'Jane', _dbId: 7, invoices: [], ssn: '' };   // no _clientSynced, no ssn
+  assert.strictEqual(w._profileHasUnsyncedChanges(local), false,
+    'without a baseline a client must NOT be treated as unsynced (that blanked the SSN)');
+  // The merge must therefore take the SERVER copy, which carries the decrypted SSN.
+  const server = { Jane: { clientName: 'Jane', firstName: 'Jane', _dbId: 7, ssn: '123-45-6789',
+    invoices: [], _clientSynced: 'baseline' } };
+  const out = w._mergeProfilesLoad(server, { Jane: local });
+  assert.strictEqual(out.Jane.ssn, '123-45-6789', 'fresh load keeps the server SSN, not the blank local');
+});
+
 test('_profileHasUnsyncedChanges: a never-synced invoice (no dbId) counts as pending', () => {
   const w = loadApp();
   const c = cleanClient(w, { _dbId: 7 });

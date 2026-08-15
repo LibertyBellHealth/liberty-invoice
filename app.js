@@ -6832,7 +6832,12 @@ function _clientSig(d) {
 function _profileHasUnsyncedChanges(loc){
   if(!loc) return false;
   try{
-    if(typeof _clientSig==='function' && loc._clientSynced !== _clientSig(loc)) return true;
+    // Only judge client-field dirtiness when there's an actual saved baseline to compare against.
+    // _clientSynced is MEMORY-ONLY (stripped from localStorage, like SSN), so on the FIRST load of a
+    // session it's absent for every client — without this guard the merge treated every client as
+    // "unsynced" and kept the local (SSN-stripped) copy instead of the fresh server copy, making the
+    // SSN field show blank. With no baseline, the server is authoritative.
+    if(typeof _clientSig==='function' && loc._clientSynced!=null && loc._clientSynced !== _clientSig(loc)) return true;
     var invs = loc.invoices || [];
     for(var i=0;i<invs.length;i++){
       var inv = invs[i]; if(!inv) continue;
