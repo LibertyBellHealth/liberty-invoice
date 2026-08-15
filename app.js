@@ -823,7 +823,6 @@ function renderOverviewPane(){
   // Caseworker lookup
   var cwRec=getCaseworkers().find(function(c){return c.id===prof.caseworkerId||c.name===prof.worker;})||null;
   var cwName=cwRec?cwRec.name:(prof.worker||'');
-  // Address
   var addrStr=(prof.street||'')+( prof.city?', '+prof.city:'')+(prof.state?' '+prof.state:'')+(prof.zip?' '+prof.zip:'');
   // Client tasks
   var clientTasks=getTodos().filter(function(t){return t.client===activeProfileName&&!t.done;});
@@ -3377,7 +3376,6 @@ function showPrompt(message,initialValue,onSave,opts){
   setTimeout(function(){inp.focus();inp.select();},50);
 }
 
-// Toggle masking on a sensitive input (SSN). Auto re-masks after 8 seconds.
 // Fetch a caregiver's MI Login password on demand (it is never preloaded or cached),
 // then reveal it via the normal mask toggle (which auto-re-masks after 8s).
 function revealMilogin(inputId,btn,cgIdArg){
@@ -4349,7 +4347,7 @@ function exportProfiles(){
 // ──────────────────────────────────────────────────────────────────
 //  AUTOMATIC WEEKLY ONEDRIVE BACKUP
 //  Fires once per 7 days on first sign-in, silently uploads to
-//  /Liberty Home Care Backups/. Keeps 12 most recent (auto-deletes older).
+//  /Liberty Home Care Backups/. Keeps 26 most recent (auto-deletes older).
 // ──────────────────────────────────────────────────────────────────
 var ONEDRIVE_BACKUP_RETENTION=26;          // keep 26 weekly backups (~6 months)
 var ONEDRIVE_BACKUP_INTERVAL_DAYS=7;
@@ -5107,7 +5105,6 @@ function applyStates(states){
   });
 }
 
-// FIX #6: copyMonth preserves clientName and medicaidId
 // ── Toast ─────────────────────────────────────────────────────
 // a11y: announce a message to screen readers via a visually-hidden aria-live region, so
 // toasts / "Saved ✓" / "Save failed" (visual-only otherwise) are spoken. WCAG 4.1.3.
@@ -6273,7 +6270,6 @@ function removeHorizontalLinesFromCanvas(c){
       if(px[i+3]>100&&(px[i]+px[i+1]+px[i+2])<300)dark++;
     }
     // Heuristic: row is a "line" if >=50% of its pixels are dark
-    // AND the row above/below it are NOT both equally dense (so we don't erase real glyph rows)
     if(dark>=w*0.5){
       // Erase this row + 2px above/below (typical line is 1-3px tall)
       for(var dy=-2;dy<=2;dy++){
@@ -7071,7 +7067,6 @@ function saveCaregiverAPI(id, cg, quiet) {
         phone: cg.phone || '', email: cg.email || '',
         start_date: cg.hireDate || '', hire_date: cg.hireDate || '',
         status: cg.status || 'active', notes: cg.notes || '',
-        // Address
         street: cg.street || cg.address || '', city: cg.city || '',
         state: cg.state || '', zip: cg.zip || '', county: cg.county || '',
         // Employment
@@ -8249,7 +8244,7 @@ window.addEventListener('pagehide',function(e){
 });
 
 // ============================================================
-//  AUTO SESSION TIMEOUT (HIPAA — 15 min inactivity)
+//  AUTO SESSION TIMEOUT (HIPAA — 45 min inactivity)
 // ============================================================
 var SESSION_TIMEOUT_MS  = 45 * 60 * 1000; // sign out after 45 min idle
 var SESSION_WARN_MS     = 43 * 60 * 1000; // warn at 43 min
