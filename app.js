@@ -3620,6 +3620,7 @@ function logActivity(type,text){
   log.unshift({type:type,text:text,ts:new Date().toLocaleString()});
   if(log.length>40)log=log.slice(0,40);
   try{localStorage.setItem('lhca_activity',JSON.stringify(log));}catch(e){}
+  // Persist to DB (fire-and-forget)
   if(spToken){
     fetch(API_BASE+'/audit',{method:'POST',headers:apiHeaders(),body:JSON.stringify({event_type:type,client_name:'',action:text,who:currentUserEmail()})})
       .catch(function(e){console.error('Audit log error:',e);});
@@ -3676,6 +3677,7 @@ function addAuditEntry(clientName,action){
   log.unshift({client:clientName,action:action,who:who,ts:new Date().toLocaleString()});
   if(log.length>200)log=log.slice(0,200);
   try{localStorage.setItem('lhca_audit',JSON.stringify(log));}catch(e){}
+  // Persist to DB (fire-and-forget)
   if(spToken){
     fetch(API_BASE+'/audit',{method:'POST',headers:apiHeaders(),body:JSON.stringify({event_type:'audit',client_name:clientName,action:action,who:who})})
       .catch(function(e){console.error('Audit save error:',e);});
