@@ -6860,7 +6860,14 @@ function _mergeProfilesLoad(serverProfiles, localProfiles){
     if(!_rosterHas(localProfiles,name)) continue;
     var loc = localProfiles[name]; if(!loc) continue;
     if(_rosterHas(out,name)){
-      if(_profileHasUnsyncedChanges(loc)) out[name]=loc;                // protect a pending/failed edit
+      if(_profileHasUnsyncedChanges(loc)){
+        // Keep the pending local copy — but SSN is stripped from localStorage (PHI), so on a COLD
+        // load loc has no SSN. Backfill it from the fresh server copy so keeping-local never blanks
+        // the SSN. Only when loc has none: an in-session SSN edit lives in _ssnMem and wins.
+        var srv=out[name];
+        if(srv && !loc.ssn && srv.ssn) loc.ssn=srv.ssn;
+        out[name]=loc;                                                  // protect a pending/failed edit
+      }
     } else if(!loc._dbId || _profileHasUnsyncedChanges(loc)){
       out[name]=loc;                                                    // unsynced add (or edited row deleted elsewhere)
     }
