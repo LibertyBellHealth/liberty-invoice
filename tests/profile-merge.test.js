@@ -25,6 +25,28 @@ test('_profileHasUnsyncedChanges: clean client = false; an edited field = true',
   assert.strictEqual(w._profileHasUnsyncedChanges(c), true, 'a changed field is detected as unsynced');
 });
 
+test('kept-local client (unsynced invoice) still keeps its SSN — backfilled from server (cold load)', () => {
+  const w = loadApp();
+  // Cold load: local copy has SSN stripped (blank) and an unsynced invoice (no dbId) -> the merge
+  // KEEPS local (to protect the invoice). Without backfill, that blanked the SSN. Now it must not.
+  const local = { clientName: 'Jane', firstName: 'Jane', _dbId: 7, ssn: '',
+    invoices: [{ billingPeriod: '08/2026', status: 'draft', data: {} }] };   // invoice has no dbId
+  assert.strictEqual(w._profileHasUnsyncedChanges(local), true, 'unsynced invoice -> kept local');
+  const server = { Jane: { clientName: 'Jane', firstName: 'Jane', _dbId: 7, ssn: '123-45-6789', invoices: [] } };
+  const out = w._mergeProfilesLoad(server, { Jane: local });
+  assert.strictEqual(out.Jane.ssn, '123-45-6789', 'SSN backfilled from server even though local copy was kept');
+  assert.strictEqual(out.Jane.invoices.length, 1, 'the unsynced local invoice is still preserved');
+});
+
+test('an in-session SSN edit is NOT overwritten by the server backfill', () => {
+  const w = loadApp();
+  const local = { clientName: 'Jane', firstName: 'Jane', _dbId: 7, ssn: '999-99-9999',   // edited this session
+    invoices: [{ billingPeriod: '08/2026', status: 'draft', data: {} }] };
+  const server = { Jane: { clientName: 'Jane', firstName: 'Jane', _dbId: 7, ssn: '123-45-6789', invoices: [] } };
+  const out = w._mergeProfilesLoad(server, { Jane: local });
+  assert.strictEqual(out.Jane.ssn, '999-99-9999', 'a present local SSN (in-session edit) is kept, not backfilled');
+});
+
 test('fresh session (no _clientSynced baseline) is NOT dirty -> server SSN wins, not blank local', () => {
   const w = loadApp();
   // On the FIRST load of a session, local profiles have SSN + _clientSynced stripped (memory-only).
