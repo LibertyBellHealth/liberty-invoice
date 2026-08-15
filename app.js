@@ -6715,7 +6715,11 @@ function saveProfileSP(name, data, quiet) {
       var lsl0 = document.getElementById('lastSyncedLabel'); if (lsl0) lsl0.textContent = 'Last synced: ' + now0;
       return syncNewInvoices(name, data).then(function(){ return { skipped: true }; });
     }
-    return fetch(API_BASE + '/homecare-clients', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(body) })
+    // keepalive: a note save flushed on pagehide/tab-close (F4 flush via clearPHIFromStorage)
+    // must survive the page dying — a normal fetch is aborted on unload and the note is lost
+    // (LS is wiped right after). The body here is one client record (no invoice blobs), so it's
+    // well under keepalive's 64KB cap. Harmless for ordinary saves.
+    return fetch(API_BASE + '/homecare-clients', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(body), keepalive: true })
       .then(function (r) {
         if (r.status === 409) {
           // Someone else changed this client since we loaded it. The stale write was
