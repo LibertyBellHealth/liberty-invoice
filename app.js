@@ -318,7 +318,6 @@ function navInvoice(loadSpecific){
   if(!activeProfileName){showAlert('Select a client first.');return;}
   var prof=getProfiles()[activeProfileName];
   if(loadSpecific){
-    // Opening a saved invoice file
     showPage('invoice');
     document.getElementById('invClientTag').textContent=activeProfileName;
     document.getElementById('saveInvoiceBtn').style.display='inline-block';
@@ -329,7 +328,6 @@ function navInvoice(loadSpecific){
     syncBillingPeriodFields();
     return;
   }
-  // Show choice modal — New or Copy from last?
   var invs=prof.invoices||[];
   var copyBtn=document.getElementById('copyLastInvBtn');
   var copyMeta=document.getElementById('copyLastInvMeta');
@@ -631,7 +629,6 @@ function renderClientTable(forceStatus){
   });
   keys.sort(function(a,b){return _clientSortCompare(a,b,profiles,cgs,cwsArr);});
 
-  // Reflect sort state on column headers
   var headers=document.querySelectorAll('#clientTable thead th.sortable');
   headers.forEach(function(h){
     h.classList.remove('sort-asc','sort-desc');
@@ -640,7 +637,6 @@ function renderClientTable(forceStatus){
   // Restore user-set column widths on every render (headers rebuild if the page reloads)
   applyClientColWidths();
 
-  // Pagination — slice keys[] to the current page
   var totalMatched=keys.length;
   var totalPages=Math.max(1,Math.ceil(totalMatched/_clientPageSize));
   if(_clientPage>totalPages)_clientPage=totalPages;
@@ -820,12 +816,9 @@ function renderOverviewPane(){
   var submitted=invoices.filter(function(i){return i.status==='submitted';}).length;
   var draft=invoices.filter(function(i){return !i.status||i.status==='draft';}).length;
   var notesPreview=prof.clientNotes?prof.clientNotes.slice(0,200):'No notes yet.';
-  // Caseworker lookup
   var cwRec=getCaseworkers().find(function(c){return c.id===prof.caseworkerId||c.name===prof.worker;})||null;
   var cwName=cwRec?cwRec.name:(prof.worker||'');
-  // Address
   var addrStr=(prof.street||'')+( prof.city?', '+prof.city:'')+(prof.state?' '+prof.state:'')+(prof.zip?' '+prof.zip:'');
-  // Client tasks
   var clientTasks=getTodos().filter(function(t){return t.client===activeProfileName&&!t.done;});
   var tasksHtml='';
   if(clientTasks.length){
@@ -955,7 +948,6 @@ function renderInfoPane(){
     storedFirst=parts[0]||'';storedLast=parts.slice(1).join(' ')||'';
   }
 
-  // Helper to create simple text field
   function mkField(id,label,val,full){
     var d=document.createElement('div');d.className='info-field'+(full?' full':'');
     // autocomplete=off: keep PHI (DL, phone, email, address, medicaid id) out of the
@@ -963,19 +955,16 @@ function renderInfoPane(){
     d.innerHTML='<label for="'+id+'">'+label+'</label><input id="'+id+'" value="'+esc(val)+'" autocomplete="off" oninput="unsavedChanges=true;">';
     g.appendChild(d);
   }
-  // Helper for divider
   function mkDivider(label){
     var div=document.createElement('div');div.className='form-section-divider full';div.innerHTML='<span>'+label+'</span>';g.appendChild(div);
   }
 
-  // Name row: First / Middle / Last
   var dName=document.createElement('div');dName.className='info-field-row full';dName.style.gridTemplateColumns='1fr 1fr 1fr';
   dName.innerHTML='<div class="info-field"><label for="ei-first">First Name *</label><input id="ei-first" value="'+esc(storedFirst)+'" oninput="unsavedChanges=true;"></div>'+
     '<div class="info-field"><label for="ei-middle">Middle Name</label><input id="ei-middle" value="'+esc(prof.middleName||'')+'" oninput="unsavedChanges=true;"></div>'+
     '<div class="info-field"><label for="ei-last">Last Name *</label><input id="ei-last" value="'+esc(storedLast)+'" oninput="unsavedChanges=true;"></div>';
   g.appendChild(dName);
 
-  // Nickname + Status row
   var dNickSt=document.createElement('div');dNickSt.className='info-field-row full';
   dNickSt.innerHTML='<div class="info-field"><label for="ei-nickname">Nickname / Goes By</label><input id="ei-nickname" value="'+esc(prof.nickname||'')+'" oninput="unsavedChanges=true;"></div>'+
     '<div class="info-field"><label for="ei-status">Client Status</label><select id="ei-status">'+
@@ -1012,13 +1001,11 @@ function renderInfoPane(){
   mkField('ei-cemail','Client Email',prof.clientEmail||'',false);
   mkField('ei-street','Street',prof.street||'',true);
 
-  // City + State row
   var dCityState=document.createElement('div');dCityState.className='info-field-row full';
   dCityState.innerHTML='<div class="info-field"><label for="ei-city">City</label><input id="ei-city" value="'+esc(prof.city||'')+'" oninput="unsavedChanges=true;"></div>'+
     '<div class="info-field"><label for="ei-state">State</label><input id="ei-state" value="'+esc(prof.state||'')+'" oninput="unsavedChanges=true;"></div>';
   g.appendChild(dCityState);
 
-  // ZIP + County row
   var dZipCounty=document.createElement('div');dZipCounty.className='info-field-row full';
   dZipCounty.innerHTML='<div class="info-field"><label for="ei-zip">ZIP</label><input id="ei-zip" value="'+esc(prof.zip||'')+'" oninput="unsavedChanges=true;lookupZip(\'ei-zip\',\'ei-city\',\'ei-state\',\'ei-county\')"></div>'+
     '<div class="info-field"><label for="ei-county">County</label><input id="ei-county" value="'+esc(prof.county||'')+'" oninput="unsavedChanges=true;"></div>';
@@ -1145,7 +1132,6 @@ function renderAuthPane(edit){
     '</div>';
     return;
   }
-  // Reassessment countdown color
   var dueTxt='',dueColor='#1a2b45';
   if(a.reassessDate){var dp=a.reassessDate.split('/');if(dp.length===3){var dd=new Date(+dp[2],(+dp[0])-1,+dp[1]);var days=Math.floor((dd-new Date())/86400000);
     if(days<0){dueTxt=' · overdue';dueColor='#b03030';}else if(days<=30){dueTxt=' · '+days+' days';dueColor='#c67605';}}}
@@ -2467,12 +2453,10 @@ function renderCaregiverGrid(){
   });
   ids.sort(function(a,b){return _cgSortCompare(a,b,cgs,profiles);});
 
-  // Sort arrows + column widths
   var headers=document.querySelectorAll('#cgTable thead th.sortable');
   headers.forEach(function(h){h.classList.remove('sort-asc','sort-desc');if(h.dataset.sortkey===_cgSort.key)h.classList.add(_cgSort.dir==='asc'?'sort-asc':'sort-desc');});
   applyCgColWidths();
 
-  // Pagination
   var totalMatched=ids.length;
   var totalPages=Math.max(1,Math.ceil(totalMatched/_cgPageSize));
   if(_cgPage>totalPages)_cgPage=totalPages;
@@ -2526,7 +2510,6 @@ function renderCaregiverGrid(){
     tbody.appendChild(tr);
   });
 
-  // Sync the page-size selector with saved value
   var sel=document.getElementById('cgPageSize');
   if(sel){var savedPs=_cgPageSize===Infinity?'all':String(_cgPageSize);if(sel.value!==savedPs)sel.value=savedPs;}
 }
@@ -2552,7 +2535,6 @@ function bulkSetCaregiverStatus(status){
   var cgs=getCaregivers(),changed=0;
   ids.forEach(function(id){if(cgs[id]){cgs[id].status=status;changed++;}});
   saveCaregiversLS(cgs);
-  // Persist to backend
   batchSaveWithSummary('Caregiver status', ids.filter(function(id){return cgs[id];}).map(function(id){var th=function(){return saveCaregiverAPI(id,cgs[id],true);};th._label=(cgs[id]&&cgs[id].name)||id;return th;}));
   logActivity('status','Bulk caregiver update: '+changed+' set to '+status);
   clearCgBulkSelect();updateStats();
@@ -3101,7 +3083,6 @@ function renderCgInfoPane(){
     var d=document.createElement('div');d.className='info-field-row full';d.innerHTML=children;g.appendChild(d);
   }
 
-  // Name row (3 cols)
   var dName=document.createElement('div');dName.className='info-field-row full';dName.style.gridTemplateColumns='1fr 1fr 1fr';
   var storedFirst=cg.firstName||cg.first_name||(cg.name||'').split(' ')[0]||'';
   var storedLast=cg.lastName||cg.last_name||(cg.name||'').split(' ').slice(1).join(' ')||'';
@@ -3114,7 +3095,6 @@ function renderCgInfoPane(){
   mkRow('<div class="info-field"><label for="cgi-dob">Date of Birth</label><input id="cgi-dob" type="date" value="'+esc(cg.dob||cg.dateOfBirth||'')+'" autocomplete="off"></div>'+
     '<div class="info-field"><label for="cgi-gender">Gender</label><select id="cgi-gender"><option value=""'+(!cg.gender?' selected':'')+'>—</option><option value="Male"'+(cg.gender==='Male'?' selected':'')+'>Male</option><option value="Female"'+(cg.gender==='Female'?' selected':'')+'>Female</option></select></div>');
 
-  // Nickname + Status row
   mkRow('<div class="info-field"><label for="cgi-nickname">Nickname</label><input id="cgi-nickname" value="'+esc(cg.nickname||'')+'"></div>'+
     '<div class="info-field"><label for="cgi-status">Status</label><select id="cgi-status"><option value="active"'+((!cg.status||cg.status==="active")?" selected":"")+'>Active</option><option value="inactive"'+(cg.status==="inactive"?" selected":"")+'>Inactive</option><option value="terminated"'+(cg.status==="terminated"?" selected":"")+'>Terminated</option></select></div>');
 
@@ -3148,7 +3128,6 @@ function renderCgInfoPane(){
     '<div class="info-field"><label for="cgi-emptype">Employment Type</label><select id="cgi-emptype"><option value="full-time"'+(cg.emptype==='full-time'?' selected':'')+'>Full-Time</option><option value="part-time"'+(cg.emptype==='part-time'?' selected':'')+'>Part-Time</option><option value="per-diem"'+(cg.emptype==='per-diem'?' selected':'')+'>Per Diem</option></select></div>');
   mkRow('<div class="info-field"><label for="cgi-pay">Pay Rate ($/hr)</label><input id="cgi-pay" value="'+esc(cg.payRate||'')+'" inputmode="decimal" oninput="formatRate(this)"></div>');
 
-  // Save + Delete buttons
   var actions=document.createElement('div');actions.style.cssText='margin-top:16px;display:flex;gap:8px;';
   actions.innerHTML='<button class="btn btn-primary" id="cgSaveInfoBtn" onclick="saveCgInfoPane()">Save Changes</button>'+
     '<button class="btn btn-danger btn-sm" onclick="deleteCaregiverFromDetail()" style="padding:6px 14px;">Delete Caregiver</button>';
@@ -3177,7 +3156,6 @@ function saveCgInfoPane(){
   var cgiMiu=document.getElementById('cgi-milogin-user');if(cgiMiu)cg.miloginUsername=cgiMiu.value;
   var cgiMip=document.getElementById('cgi-milogin-pass');if(cgiMip)cg.miloginPassword=cgiMip.value;
   saveCaregiversLS(cgs);saveCaregiverAPI(activeCgId,cg);
-  // Update header
   document.getElementById('cgDetailName').textContent=cg.name;
   var st=cg.status||'active';
   document.getElementById('cgDetailMeta').innerHTML=esc(cg.emptype||'')+(cg.payRate?' · $'+cg.payRate+'/hr':'')+' &nbsp;<span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span>';
@@ -3425,7 +3403,6 @@ function doDeleteSig(idOrIdx){
   // idOrIdx may be a string ID or a legacy numeric index
   var sigId_=typeof idOrIdx==='number'?null:(idOrIdx||null);
   if(sigId_){
-    // Remove from DB
     fetch(API_BASE+'/signatures/'+encodeURIComponent(sigId_),{method:'DELETE',headers:apiHeaders()})
       .catch(function(e){console.error('Sig delete error:',e);});
     saveSigsLS(sigs.filter(function(s){return s.id!==sigId_;}));
@@ -3437,7 +3414,6 @@ function doDeleteSig(idOrIdx){
 function openAddSigModal(){
   document.getElementById('sigLabel').value='';
   var tn=document.getElementById('sigTypeName');if(tn)tn.value='';
-  // Reset upload state
   window._sigUploadOriginal=null;window._sigUploadProcessed=null;
   var uf=document.getElementById('sigUploadFile');if(uf)uf.value='';
   var uh=document.getElementById('sigUploadHint');if(uh)uh.textContent='Click to choose file or drag & drop';
@@ -3464,7 +3440,6 @@ function clearAllData(){
     'IMPORTANT: This does NOT delete data from the Azure SQL database. After you reload, the app will re-download everything from the cloud.\n\n'+
     'Use this only when you want to force a fresh sync — for example, if local data looks out-of-date or corrupted.',
     function(){
-      // Second confirmation
       showConfirm('Last chance — clear local cache now?\n\n(Server data is safe; it will re-download on next reload.)',function(){
         var keys=['lhca_profiles','lhca_caregivers','lhca_caseworkers','lhca_signatures','lhca_sig','lhca_todos','lhca_email_audit','lhca_activity','lhca_id_map','lhca_last_synced'];
         keys=keys.concat(Object.keys(localStorage).filter(function(k){return k.startsWith('lhca_draft_');}));
@@ -3721,7 +3696,6 @@ function renderAuditPane(){
   if(!activeProfileName)return;
   var pane=document.getElementById('dpane-audit');pane.innerHTML='';
   if(spToken){
-    // Load from DB for the active client
     pane.innerHTML='<div style="color:#5c7590;font-size:13px;padding:8px 0;">Loading audit history…</div>';
     fetch(API_BASE+'/audit/search',{method:'POST',headers:apiHeaders(),body:JSON.stringify({client:activeProfileName,limit:100})})
       .then(function(r){return r.ok?r.json():Promise.reject(r.status);})
@@ -3790,7 +3764,6 @@ function showTaskEditModal(opts){
   nameInp.value=opts.name||'';
   dueInp.value=opts.due||'';
   noteInp.value=opts.note||'';
-  // Populate client picker
   if(clientSel){
     var profs=getProfiles();
     // Any status — tasks get attached to In Progress / onboarding clients too, not just active
@@ -4081,7 +4054,6 @@ function addWfStep(){
 }
 function saveWorkflow(){
   var client=document.getElementById('wfClientSelect').value;
-  // Filter out empty step rows
   var validSteps=wfSteps.filter(function(s){return s.text&&s.text.trim();});
   if(!validSteps.length){
     showConfirm('Add at least one step before saving the workflow.',function(){},{title:'No Steps',okText:'OK',danger:false});
@@ -4109,7 +4081,6 @@ function saveWorkflow(){
   // Insert in reverse so the parent ends up at the top, follow-ups directly below
   todos.unshift.apply(todos,newTasks);
   saveTodos(todos);
-  // Sync to API
   newTasks.forEach(function(t){saveTaskAPI(t);});
   updateTaskBadge();
   document.getElementById('workflowModal').classList.remove('open');
@@ -4705,7 +4676,6 @@ async function _doExportClientsAsPDFFolders(clientsWithInvoices,profiles){
         try{
           await loadInvoiceForCapture(name,inv,inv.billingPeriod||'');
           var base64=await captureInvoicePDF();
-          // Convert to bytes
           var bin=atob(base64);
           var bytes=new Uint8Array(bin.length);
           for(var k=0;k<bin.length;k++)bytes[k]=bin.charCodeAt(k);
@@ -5031,12 +5001,9 @@ function buildAllRow(rowId,tbodyId,cols){
 }
 function rebuild(days){active=days;buildRows('svcBody',SVC);buildRows('cplxBody',CPLX);buildAllRow('svcAllRow','svcBody',SVC);buildAllRow('cplxAllRow','cplxBody',CPLX);}
 function onBillingTextInput(el){
-  // Strip non-digits
   var raw=el.value.replace(/\D/g,'');
-  // Auto-format as user types
   var formatted=raw;
   if(raw.length>2)formatted=raw.slice(0,2)+'/'+raw.slice(2);
-  // Cap at 7 chars (MM/YYYY)
   if(formatted.length>7)formatted=formatted.slice(0,7);
   el.value=formatted;
   document.getElementById('billingPeriod2').value=formatted;
@@ -5302,7 +5269,6 @@ async function printInvoiceAsPDF(){
   if(btn){btn.disabled=true;btn.textContent='Generating…';}
   try{
     var base64=await captureInvoicePDF();
-    // Convert base64 to blob and download
     var bin=atob(base64);
     var bytes=new Uint8Array(bin.length);
     for(var i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
@@ -5801,7 +5767,6 @@ function renderEmailAuditTable(){
 function _renderEmailAuditTableFromArray(arr){
   var wrap=document.getElementById('emailAuditTableWrap');if(!wrap)return;
   if(!arr.length){wrap.innerHTML='<div style="padding:14px;color:#5c7590;text-align:center;">No log entries yet.</div>';return;}
-  // Newest first
   var rows=arr.slice().reverse().map(function(r){
     var dt=new Date(r.timestamp);var when=dt.toLocaleDateString()+' '+dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
     var clientList=(r.clientNames||[]).join(', ');
@@ -7064,10 +7029,8 @@ function saveCaregiverAPI(id, cg, quiet) {
         phone: cg.phone || '', email: cg.email || '',
         start_date: cg.hireDate || '', hire_date: cg.hireDate || '',
         status: cg.status || 'active', notes: cg.notes || '',
-        // Address
         street: cg.street || cg.address || '', city: cg.city || '',
         state: cg.state || '', zip: cg.zip || '', county: cg.county || '',
-        // Employment
         pay_rate: cg.payRate || '', max_hours: cg.maxHours || '',
         certifications: cg.certs || cg.certifications || '',
         ec_name: cg.ecName || '', ec_phone: cg.ecPhone || '',
@@ -7971,7 +7934,6 @@ function renderCwOverviewPane(){
   var assignedNames=Object.keys(profiles).filter(function(k){return profiles[k].worker===cw.name||profiles[k].caseworkerId===cw.id;}).sort();
   var addrParts=[cw.street,cw.city?(cw.city+(cw.state?' '+cw.state:'')+(cw.zip?' '+cw.zip:'')):''].filter(Boolean);
   var addrStr=addrParts.join(', ');
-  // Build clickable client list
   var clientListHtml='';
   if(assignedNames.length){
     clientListHtml='<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;">'+
@@ -8020,7 +7982,6 @@ function renderCwInfoPane(){
   function mkDiv(label){var d=document.createElement('div');d.className='form-section-divider full';d.innerHTML='<span>'+label+'</span>';g.appendChild(d);}
   function mkRow(html){var d=document.createElement('div');d.className='info-field-row full';d.innerHTML=html;g.appendChild(d);}
 
-  // Name row
   var firstName=cw.first_name||(cw.name||'').split(' ')[0]||'';
   var lastName=cw.last_name||(cw.name||'').split(' ').slice(1).join(' ')||'';
   var dName=document.createElement('div');dName.className='info-field-row full';dName.style.gridTemplateColumns='84px 1fr 1fr 1fr';
@@ -9152,7 +9113,6 @@ function _previewMonthlyInvoicesRender(period){
     var hasInv=g.clients.filter(function(c){return c.inv;}).length;
     var missingInv=g.clients.length-hasInv;
     html+='<div class="cw-email-card">';
-    // Header row
     html+='<div class="cw-email-hdr">';
     html+='<div style="width:34px;height:34px;border-radius:50%;background:#e8f0f9;color:#185FA5;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">'+
       esc((wname.split(' ').map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase()||'?'))+
@@ -9170,7 +9130,6 @@ function _previewMonthlyInvoicesRender(period){
       html+='<button class="btn btn-secondary btn-sm" onclick="closeMonthlyInvModal();navCaseworkers()">Add Email</button>';
     }
     html+='</div>';
-    // Client list
     html+='<div class="cw-client-list">';
     g.clients.forEach(function(c){
       var st=c.inv?(c.inv.status||'draft'):'none';
