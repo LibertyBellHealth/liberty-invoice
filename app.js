@@ -318,7 +318,6 @@ function navInvoice(loadSpecific){
   if(!activeProfileName){showAlert('Select a client first.');return;}
   var prof=getProfiles()[activeProfileName];
   if(loadSpecific){
-    // Opening a saved invoice file
     showPage('invoice');
     document.getElementById('invClientTag').textContent=activeProfileName;
     document.getElementById('saveInvoiceBtn').style.display='inline-block';
@@ -329,7 +328,6 @@ function navInvoice(loadSpecific){
     syncBillingPeriodFields();
     return;
   }
-  // Show choice modal — New or Copy from last?
   var invs=prof.invoices||[];
   var copyBtn=document.getElementById('copyLastInvBtn');
   var copyMeta=document.getElementById('copyLastInvMeta');
@@ -3928,7 +3926,6 @@ function renderTodos(filterClient){
 
       parents.forEach(function(parent){
         var fups=followUpsByParent[parent.id]||[];
-        // Parent row
         var parentRow=renderTaskRow(parent);
         // If has follow-ups, append a small toggle bar inside the parent row
         if(fups.length){
@@ -4121,7 +4118,6 @@ function renderReports(){
       allInvoices.push({client:name,inv:inv});
     });
   });
-  // --- Invoice Status Summary ---
   var statusCounts={draft:0,submitted:0,paid:0};
   allInvoices.forEach(function(r){statusCounts[r.inv.status||'draft']++;});
   var s1=document.createElement('div');s1.className='report-section';
@@ -4136,7 +4132,6 @@ function renderReports(){
     }).join('')+
     '<tr class="total-row"><td>Total</td><td>'+allInvoices.length+'</td><td></td></tr></tbody></table>';
   c.appendChild(s1);
-  // --- Per-Client Invoice Breakdown ---
   var s2=document.createElement('div');s2.className='report-section';
   var clientRows=Object.keys(profiles).map(function(name){
     var invs=profiles[name].invoices||[];
@@ -4151,7 +4146,6 @@ function renderReports(){
         '<td style="color:#1e7e34;font-weight:600;">'+r.paid+'</td><td style="color:'+(r.open?'#b07800':'#aaa')+';font-weight:600;">'+r.open+'</td></tr>';
     }).join('')+'</tbody></table>':'<div style="color:#5c7590;font-size:13px;">No client data yet.</div>');
   c.appendChild(s2);
-  // --- Monthly Invoice Volume ---
   var byMonth={};
   allInvoices.forEach(function(r){var bp=r.inv.billingPeriod||'Unknown';byMonth[bp]=(byMonth[bp]||0)+1;});
   var months=Object.keys(byMonth).sort(function(a,b){
@@ -4169,7 +4163,6 @@ function renderReports(){
         '<td style="width:200px;"><div class="report-bar"><div class="report-bar-fill" style="width:'+pct+'%;"></div></div></td></tr>';
     }).join('')+'</tbody></table>':'<div style="color:#5c7590;font-size:13px;">No invoices yet.</div>');
   c.appendChild(s3);
-  // --- Missing Invoices for Month ---
   var s4=document.createElement('div');s4.className='report-section';
   var allPeriods=Object.keys(byMonth).sort(function(a,b){
     var pa=a.split('/'),pb=b.split('/');
