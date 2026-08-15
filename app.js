@@ -631,7 +631,6 @@ function renderClientTable(forceStatus){
   });
   keys.sort(function(a,b){return _clientSortCompare(a,b,profiles,cgs,cwsArr);});
 
-  // Reflect sort state on column headers
   var headers=document.querySelectorAll('#clientTable thead th.sortable');
   headers.forEach(function(h){
     h.classList.remove('sort-asc','sort-desc');
@@ -640,7 +639,6 @@ function renderClientTable(forceStatus){
   // Restore user-set column widths on every render (headers rebuild if the page reloads)
   applyClientColWidths();
 
-  // Pagination — slice keys[] to the current page
   var totalMatched=keys.length;
   var totalPages=Math.max(1,Math.ceil(totalMatched/_clientPageSize));
   if(_clientPage>totalPages)_clientPage=totalPages;
@@ -649,7 +647,6 @@ function renderClientTable(forceStatus){
   var visibleKeys=keys.slice(startIdx,endIdx);
 
   var tbody=document.getElementById('clientTableBody'),empty=document.getElementById('clientTableEmpty');
-  // Count + page controls
   var countEl=document.getElementById('clientTableCount');
   if(countEl){
     if(!totalMatched){countEl.textContent='';}
@@ -820,12 +817,9 @@ function renderOverviewPane(){
   var submitted=invoices.filter(function(i){return i.status==='submitted';}).length;
   var draft=invoices.filter(function(i){return !i.status||i.status==='draft';}).length;
   var notesPreview=prof.clientNotes?prof.clientNotes.slice(0,200):'No notes yet.';
-  // Caseworker lookup
   var cwRec=getCaseworkers().find(function(c){return c.id===prof.caseworkerId||c.name===prof.worker;})||null;
   var cwName=cwRec?cwRec.name:(prof.worker||'');
-  // Address
   var addrStr=(prof.street||'')+( prof.city?', '+prof.city:'')+(prof.state?' '+prof.state:'')+(prof.zip?' '+prof.zip:'');
-  // Client tasks
   var clientTasks=getTodos().filter(function(t){return t.client===activeProfileName&&!t.done;});
   var tasksHtml='';
   if(clientTasks.length){
@@ -839,7 +833,6 @@ function renderOverviewPane(){
   } else {
     tasksHtml='<div style="color:#5c7590;font-size:12px;padding:4px 0;">No open tasks.</div>';
   }
-  // Recent invoices — read-only badges
   var recentInvHtmlRO='';
   if(!invoices.length){recentInvHtmlRO='<div style="color:#5c7590;font-size:12px;padding:6px 0;">No invoices yet.</div>';}
   else{invoices.slice(0,4).forEach(function(inv){
@@ -955,7 +948,6 @@ function renderInfoPane(){
     storedFirst=parts[0]||'';storedLast=parts.slice(1).join(' ')||'';
   }
 
-  // Helper to create simple text field
   function mkField(id,label,val,full){
     var d=document.createElement('div');d.className='info-field'+(full?' full':'');
     // autocomplete=off: keep PHI (DL, phone, email, address, medicaid id) out of the
@@ -963,19 +955,16 @@ function renderInfoPane(){
     d.innerHTML='<label for="'+id+'">'+label+'</label><input id="'+id+'" value="'+esc(val)+'" autocomplete="off" oninput="unsavedChanges=true;">';
     g.appendChild(d);
   }
-  // Helper for divider
   function mkDivider(label){
     var div=document.createElement('div');div.className='form-section-divider full';div.innerHTML='<span>'+label+'</span>';g.appendChild(div);
   }
 
-  // Name row: First / Middle / Last
   var dName=document.createElement('div');dName.className='info-field-row full';dName.style.gridTemplateColumns='1fr 1fr 1fr';
   dName.innerHTML='<div class="info-field"><label for="ei-first">First Name *</label><input id="ei-first" value="'+esc(storedFirst)+'" oninput="unsavedChanges=true;"></div>'+
     '<div class="info-field"><label for="ei-middle">Middle Name</label><input id="ei-middle" value="'+esc(prof.middleName||'')+'" oninput="unsavedChanges=true;"></div>'+
     '<div class="info-field"><label for="ei-last">Last Name *</label><input id="ei-last" value="'+esc(storedLast)+'" oninput="unsavedChanges=true;"></div>';
   g.appendChild(dName);
 
-  // Nickname + Status row
   var dNickSt=document.createElement('div');dNickSt.className='info-field-row full';
   dNickSt.innerHTML='<div class="info-field"><label for="ei-nickname">Nickname / Goes By</label><input id="ei-nickname" value="'+esc(prof.nickname||'')+'" oninput="unsavedChanges=true;"></div>'+
     '<div class="info-field"><label for="ei-status">Client Status</label><select id="ei-status">'+
@@ -1012,13 +1001,11 @@ function renderInfoPane(){
   mkField('ei-cemail','Client Email',prof.clientEmail||'',false);
   mkField('ei-street','Street',prof.street||'',true);
 
-  // City + State row
   var dCityState=document.createElement('div');dCityState.className='info-field-row full';
   dCityState.innerHTML='<div class="info-field"><label for="ei-city">City</label><input id="ei-city" value="'+esc(prof.city||'')+'" oninput="unsavedChanges=true;"></div>'+
     '<div class="info-field"><label for="ei-state">State</label><input id="ei-state" value="'+esc(prof.state||'')+'" oninput="unsavedChanges=true;"></div>';
   g.appendChild(dCityState);
 
-  // ZIP + County row
   var dZipCounty=document.createElement('div');dZipCounty.className='info-field-row full';
   dZipCounty.innerHTML='<div class="info-field"><label for="ei-zip">ZIP</label><input id="ei-zip" value="'+esc(prof.zip||'')+'" oninput="unsavedChanges=true;lookupZip(\'ei-zip\',\'ei-city\',\'ei-state\',\'ei-county\')"></div>'+
     '<div class="info-field"><label for="ei-county">County</label><input id="ei-county" value="'+esc(prof.county||'')+'" oninput="unsavedChanges=true;"></div>';
@@ -1136,7 +1123,6 @@ function renderAuthPane(edit){
   var prof=getProfiles()[activeProfileName]; if(!prof)return;
   var a=prof.authorization;
   if(edit){ host.innerHTML=_authEditHtml(a||{}); _renderAuthTaskRows((a&&a.tasks)||[]); return; }
-  // Empty state
   if(!a || (a.hours==null && !(a.tasks&&a.tasks.length) && !a.effectiveDate)){
     host.innerHTML='<div class="form-card" style="max-width:640px;text-align:center;padding:28px;">'+
       '<div style="font-size:13px;color:#5c7590;margin-bottom:12px;">No DHS-1210 authorization on file for this client yet.</div>'+
@@ -1145,7 +1131,6 @@ function renderAuthPane(edit){
     '</div>';
     return;
   }
-  // Reassessment countdown color
   var dueTxt='',dueColor='#1a2b45';
   if(a.reassessDate){var dp=a.reassessDate.split('/');if(dp.length===3){var dd=new Date(+dp[2],(+dp[0])-1,+dp[1]);var days=Math.floor((dd-new Date())/86400000);
     if(days<0){dueTxt=' · overdue';dueColor='#b03030';}else if(days<=30){dueTxt=' · '+days+' days';dueColor='#c67605';}}}
@@ -1292,7 +1277,6 @@ function saveClientInfo(){
   rec.state=document.getElementById('ei-state').value;
   rec.zip=document.getElementById('ei-zip').value;
   rec.county=document.getElementById('ei-county').value;
-  // Searchable autocomplete fields
   var cgValEl=document.getElementById('ei-caregiver-val');rec.caregiverId=cgValEl?cgValEl.value:'';
   var liveInEl=document.getElementById('ei-live-in');if(liveInEl)rec.liveIn=liveInEl.checked;
   var startDateEl=document.getElementById('ei-start-date');if(startDateEl)rec.startDate=startDateEl.value||'';
@@ -2467,12 +2451,10 @@ function renderCaregiverGrid(){
   });
   ids.sort(function(a,b){return _cgSortCompare(a,b,cgs,profiles);});
 
-  // Sort arrows + column widths
   var headers=document.querySelectorAll('#cgTable thead th.sortable');
   headers.forEach(function(h){h.classList.remove('sort-asc','sort-desc');if(h.dataset.sortkey===_cgSort.key)h.classList.add(_cgSort.dir==='asc'?'sort-asc':'sort-desc');});
   applyCgColWidths();
 
-  // Pagination
   var totalMatched=ids.length;
   var totalPages=Math.max(1,Math.ceil(totalMatched/_cgPageSize));
   if(_cgPage>totalPages)_cgPage=totalPages;
@@ -2526,7 +2508,6 @@ function renderCaregiverGrid(){
     tbody.appendChild(tr);
   });
 
-  // Sync the page-size selector with saved value
   var sel=document.getElementById('cgPageSize');
   if(sel){var savedPs=_cgPageSize===Infinity?'all':String(_cgPageSize);if(sel.value!==savedPs)sel.value=savedPs;}
 }
@@ -2552,7 +2533,6 @@ function bulkSetCaregiverStatus(status){
   var cgs=getCaregivers(),changed=0;
   ids.forEach(function(id){if(cgs[id]){cgs[id].status=status;changed++;}});
   saveCaregiversLS(cgs);
-  // Persist to backend
   batchSaveWithSummary('Caregiver status', ids.filter(function(id){return cgs[id];}).map(function(id){var th=function(){return saveCaregiverAPI(id,cgs[id],true);};th._label=(cgs[id]&&cgs[id].name)||id;return th;}));
   logActivity('status','Bulk caregiver update: '+changed+' set to '+status);
   clearCgBulkSelect();updateStats();
@@ -2871,7 +2851,6 @@ async function openSendForSignatureModal(){
   var cg=getCaregivers()[activeCgId];if(!cg){showAlert('Caregiver not found.');return;}
   if(!cg.email){showAlert('This caregiver has no email on file. Add one in their Profile tab first.',{title:'Email Required'});return;}
 
-  // Fetch active templates
   var templates=[];
   try{
     var resp=await fetch(API_BASE+'/signing/templates',{headers:apiHeaders()});
@@ -3101,7 +3080,6 @@ function renderCgInfoPane(){
     var d=document.createElement('div');d.className='info-field-row full';d.innerHTML=children;g.appendChild(d);
   }
 
-  // Name row (3 cols)
   var dName=document.createElement('div');dName.className='info-field-row full';dName.style.gridTemplateColumns='1fr 1fr 1fr';
   var storedFirst=cg.firstName||cg.first_name||(cg.name||'').split(' ')[0]||'';
   var storedLast=cg.lastName||cg.last_name||(cg.name||'').split(' ').slice(1).join(' ')||'';
@@ -3114,7 +3092,6 @@ function renderCgInfoPane(){
   mkRow('<div class="info-field"><label for="cgi-dob">Date of Birth</label><input id="cgi-dob" type="date" value="'+esc(cg.dob||cg.dateOfBirth||'')+'" autocomplete="off"></div>'+
     '<div class="info-field"><label for="cgi-gender">Gender</label><select id="cgi-gender"><option value=""'+(!cg.gender?' selected':'')+'>—</option><option value="Male"'+(cg.gender==='Male'?' selected':'')+'>Male</option><option value="Female"'+(cg.gender==='Female'?' selected':'')+'>Female</option></select></div>');
 
-  // Nickname + Status row
   mkRow('<div class="info-field"><label for="cgi-nickname">Nickname</label><input id="cgi-nickname" value="'+esc(cg.nickname||'')+'"></div>'+
     '<div class="info-field"><label for="cgi-status">Status</label><select id="cgi-status"><option value="active"'+((!cg.status||cg.status==="active")?" selected":"")+'>Active</option><option value="inactive"'+(cg.status==="inactive"?" selected":"")+'>Inactive</option><option value="terminated"'+(cg.status==="terminated"?" selected":"")+'>Terminated</option></select></div>');
 
@@ -3148,7 +3125,6 @@ function renderCgInfoPane(){
     '<div class="info-field"><label for="cgi-emptype">Employment Type</label><select id="cgi-emptype"><option value="full-time"'+(cg.emptype==='full-time'?' selected':'')+'>Full-Time</option><option value="part-time"'+(cg.emptype==='part-time'?' selected':'')+'>Part-Time</option><option value="per-diem"'+(cg.emptype==='per-diem'?' selected':'')+'>Per Diem</option></select></div>');
   mkRow('<div class="info-field"><label for="cgi-pay">Pay Rate ($/hr)</label><input id="cgi-pay" value="'+esc(cg.payRate||'')+'" inputmode="decimal" oninput="formatRate(this)"></div>');
 
-  // Save + Delete buttons
   var actions=document.createElement('div');actions.style.cssText='margin-top:16px;display:flex;gap:8px;';
   actions.innerHTML='<button class="btn btn-primary" id="cgSaveInfoBtn" onclick="saveCgInfoPane()">Save Changes</button>'+
     '<button class="btn btn-danger btn-sm" onclick="deleteCaregiverFromDetail()" style="padding:6px 14px;">Delete Caregiver</button>';
@@ -3177,7 +3153,6 @@ function saveCgInfoPane(){
   var cgiMiu=document.getElementById('cgi-milogin-user');if(cgiMiu)cg.miloginUsername=cgiMiu.value;
   var cgiMip=document.getElementById('cgi-milogin-pass');if(cgiMip)cg.miloginPassword=cgiMip.value;
   saveCaregiversLS(cgs);saveCaregiverAPI(activeCgId,cg);
-  // Update header
   document.getElementById('cgDetailName').textContent=cg.name;
   var st=cg.status||'active';
   document.getElementById('cgDetailMeta').innerHTML=esc(cg.emptype||'')+(cg.payRate?' · $'+cg.payRate+'/hr':'')+' &nbsp;<span class="cs-badge cs-'+st+'">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span>';
@@ -3235,7 +3210,6 @@ function uploadCgDocAzure(){
   var status=document.getElementById('cgDocUploadStatus');status.textContent='Uploading...';
   var fd=new FormData();fd.append('clientType','caregiver');fd.append('clientId',activeCgId);fd.append('category',cat);
   Array.from(input.files).forEach(function(f){
-    // prefix filename with category
     var prefixedFile=new File([f],cat+'__'+f.name,{type:f.type});
     fd.append('file',prefixedFile);
   });
@@ -3368,7 +3342,6 @@ function showPrompt(message,initialValue,onSave,opts){
   inp.value=initialValue||'';
   var okBtn=document.getElementById('promptOkBtn'),cancelBtn=document.getElementById('promptCancelBtn');
   okBtn.textContent=opts.okText||'Save';
-  // Replace handlers
   var newOk=okBtn.cloneNode(true),newCancel=cancelBtn.cloneNode(true);
   okBtn.parentNode.replaceChild(newOk,okBtn);cancelBtn.parentNode.replaceChild(newCancel,cancelBtn);
   newOk.addEventListener('click',function(){modal.classList.remove('open');if(typeof onSave==='function')onSave(inp.value);});
@@ -3425,7 +3398,6 @@ function doDeleteSig(idOrIdx){
   // idOrIdx may be a string ID or a legacy numeric index
   var sigId_=typeof idOrIdx==='number'?null:(idOrIdx||null);
   if(sigId_){
-    // Remove from DB
     fetch(API_BASE+'/signatures/'+encodeURIComponent(sigId_),{method:'DELETE',headers:apiHeaders()})
       .catch(function(e){console.error('Sig delete error:',e);});
     saveSigsLS(sigs.filter(function(s){return s.id!==sigId_;}));
@@ -3437,7 +3409,6 @@ function doDeleteSig(idOrIdx){
 function openAddSigModal(){
   document.getElementById('sigLabel').value='';
   var tn=document.getElementById('sigTypeName');if(tn)tn.value='';
-  // Reset upload state
   window._sigUploadOriginal=null;window._sigUploadProcessed=null;
   var uf=document.getElementById('sigUploadFile');if(uf)uf.value='';
   var uh=document.getElementById('sigUploadHint');if(uh)uh.textContent='Click to choose file or drag & drop';
@@ -3464,7 +3435,6 @@ function clearAllData(){
     'IMPORTANT: This does NOT delete data from the Azure SQL database. After you reload, the app will re-download everything from the cloud.\n\n'+
     'Use this only when you want to force a fresh sync — for example, if local data looks out-of-date or corrupted.',
     function(){
-      // Second confirmation
       showConfirm('Last chance — clear local cache now?\n\n(Server data is safe; it will re-download on next reload.)',function(){
         var keys=['lhca_profiles','lhca_caregivers','lhca_caseworkers','lhca_signatures','lhca_sig','lhca_todos','lhca_email_audit','lhca_activity','lhca_id_map','lhca_last_synced'];
         keys=keys.concat(Object.keys(localStorage).filter(function(k){return k.startsWith('lhca_draft_');}));
@@ -3595,7 +3565,6 @@ function cgSearch(input, hiddenId, dropId) {
   }
   drop.style.display = 'block';
 }
-// Focus handler — opens the dropdown showing all options
 
 // Inline "quick create" popup for a new caregiver/caseworker from an assignment
 // field. Captures just the essentials (name + contact); the full record is
@@ -3721,7 +3690,6 @@ function renderAuditPane(){
   if(!activeProfileName)return;
   var pane=document.getElementById('dpane-audit');pane.innerHTML='';
   if(spToken){
-    // Load from DB for the active client
     pane.innerHTML='<div style="color:#5c7590;font-size:13px;padding:8px 0;">Loading audit history…</div>';
     fetch(API_BASE+'/audit/search',{method:'POST',headers:apiHeaders(),body:JSON.stringify({client:activeProfileName,limit:100})})
       .then(function(r){return r.ok?r.json():Promise.reject(r.status);})
@@ -3790,7 +3758,6 @@ function showTaskEditModal(opts){
   nameInp.value=opts.name||'';
   dueInp.value=opts.due||'';
   noteInp.value=opts.note||'';
-  // Populate client picker
   if(clientSel){
     var profs=getProfiles();
     // Any status — tasks get attached to In Progress / onboarding clients too, not just active
@@ -4109,7 +4076,6 @@ function saveWorkflow(){
   // Insert in reverse so the parent ends up at the top, follow-ups directly below
   todos.unshift.apply(todos,newTasks);
   saveTodos(todos);
-  // Sync to API
   newTasks.forEach(function(t){saveTaskAPI(t);});
   updateTaskBadge();
   document.getElementById('workflowModal').classList.remove('open');
@@ -4206,7 +4172,6 @@ function renderReports(){
   c.appendChild(s3);
   // --- Missing Invoices for Month ---
   var s4=document.createElement('div');s4.className='report-section';
-  // Get all billing periods sorted recent first
   var allPeriods=Object.keys(byMonth).sort(function(a,b){
     var pa=a.split('/'),pb=b.split('/');
     if(pa.length<2||pb.length<2)return 0;
@@ -4705,7 +4670,6 @@ async function _doExportClientsAsPDFFolders(clientsWithInvoices,profiles){
         try{
           await loadInvoiceForCapture(name,inv,inv.billingPeriod||'');
           var base64=await captureInvoicePDF();
-          // Convert to bytes
           var bin=atob(base64);
           var bytes=new Uint8Array(bin.length);
           for(var k=0;k<bin.length;k++)bytes[k]=bin.charCodeAt(k);
@@ -4937,7 +4901,6 @@ function buildRows(tbodyId,cols){
       tdAll.appendChild(allBtn);
     }
     tr.appendChild(tdAll);
-    // Second cell: plain day number
     var td0=document.createElement('td');td0.className='dc';td0.textContent=d;
     tr.appendChild(td0);
     for(var c=0;c<cols;c++){
@@ -5031,9 +4994,7 @@ function buildAllRow(rowId,tbodyId,cols){
 }
 function rebuild(days){active=days;buildRows('svcBody',SVC);buildRows('cplxBody',CPLX);buildAllRow('svcAllRow','svcBody',SVC);buildAllRow('cplxAllRow','cplxBody',CPLX);}
 function onBillingTextInput(el){
-  // Strip non-digits
   var raw=el.value.replace(/\D/g,'');
-  // Auto-format as user types
   var formatted=raw;
   if(raw.length>2)formatted=raw.slice(0,2)+'/'+raw.slice(2);
   // Cap at 7 chars (MM/YYYY)
@@ -5801,7 +5762,6 @@ function renderEmailAuditTable(){
 function _renderEmailAuditTableFromArray(arr){
   var wrap=document.getElementById('emailAuditTableWrap');if(!wrap)return;
   if(!arr.length){wrap.innerHTML='<div style="padding:14px;color:#5c7590;text-align:center;">No log entries yet.</div>';return;}
-  // Newest first
   var rows=arr.slice().reverse().map(function(r){
     var dt=new Date(r.timestamp);var when=dt.toLocaleDateString()+' '+dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
     var clientList=(r.clientNames||[]).join(', ');
@@ -6106,7 +6066,6 @@ function placeSignature(target){
   var sigs=getSigs();
   if(!sigs.length){openAddSigModal();return;}
   if(sigs.length===1){stampSignatureData(target,sigs[0].data);return;}
-  // Multiple sigs — show picker
   var list=document.getElementById('pickSigList');list.innerHTML='';
   sigs.forEach(function(s,i){
     var item=document.createElement('div');item.style.cssText='display:flex;align-items:center;gap:10px;padding:8px;border:1px solid #e1e5ea;border-radius:6px;cursor:pointer;';
@@ -6176,12 +6135,10 @@ function cropDataURL(dataUrl){
 function confirmSig(){
   var data=sigCanvas.toDataURL('image/png'),blank=document.createElement('canvas');blank.width=sigCanvas.width;blank.height=sigCanvas.height;
   if(blank.toDataURL()===data){showAlert('Please draw your signature first.');return;}
-  // Trim padding
   var trimmed=trimCanvasToContent(sigCanvas,4);if(trimmed)data=trimmed;
   var label=document.getElementById('sigLabel').value.trim()||'Signature';
   var id=sigId();
   var sigs=getSigs();sigs.push({id:id,label:label,data:data});saveSigsLS(sigs);
-  // Persist to DB
   // D6/D12: identity comes from Easy Auth (apiHeaders), NOT the Graph token —
   // persist unconditionally and surface a failure/retry instead of saving to LS only.
   trackSave('signature',function(){
@@ -6323,7 +6280,6 @@ function previewCursiveSig(){
   ctx.fillStyle='#000';
   ctx.textBaseline='middle';
   var metrics=ctx.measureText(name);
-  // Shrink to fit if too wide
   if(metrics.width>tc.width-16){
     fontSize=Math.floor(fontSize*(tc.width-16)/metrics.width);
     ctx.font=fontSize+'px "'+fontFamily+'", cursive';
@@ -6345,7 +6301,6 @@ function confirmTypedSig(){
   var label=document.getElementById('sigLabel').value.trim()||name;
   var id=sigId();
   var sigs=getSigs();sigs.push({id:id,label:label,data:data});saveSigsLS(sigs);
-  // Persist to DB
   // D6/D12: identity comes from Easy Auth (apiHeaders), NOT the Graph token —
   // persist unconditionally and surface a failure/retry instead of saving to LS only.
   trackSave('signature',function(){
@@ -6385,13 +6340,11 @@ window.addEventListener('beforeprint',function(){
   });
 });
 window.addEventListener('afterprint',function(){
-  // Restore complex section
   var cs=document.getElementById('complexSection');
   if(cs.getAttribute('data-print-hidden')==='1'){
     cs.removeAttribute('data-print-hidden');
     if(document.getElementById('showComplex').checked)cs.style.display='block';
   }
-  // Restore column headers to screen version
   document.querySelectorAll('.tt th.th').forEach(function(th){
     if(th.dataset.printOrigHtml!==undefined){
       th.innerHTML=th.dataset.printOrigHtml;
@@ -6718,7 +6671,6 @@ function saveProfileSP(name, data, quiet) {
     zip: data.zip || '', county: data.county || '',
     phone: data.phone || '', home_phone: data.homePhone || '', client_email: data.clientEmail || '', caregiver_id: data.caregiverId || '',
     client_status: data.clientStatus || 'active', has_complex: data.hasComplex ? 1 : 0,
-    // Newly persisted fields
     dob: data.dob || '', gender: data.gender || '',
     drivers_license: data.driversLicense || '', ssn: data.ssn || '',
     start_date: data.startDate || '', live_in: data.liveIn ? 1 : 0,
@@ -7071,10 +7023,8 @@ function saveCaregiverAPI(id, cg, quiet) {
         phone: cg.phone || '', email: cg.email || '',
         start_date: cg.hireDate || '', hire_date: cg.hireDate || '',
         status: cg.status || 'active', notes: cg.notes || '',
-        // Address
         street: cg.street || cg.address || '', city: cg.city || '',
         state: cg.state || '', zip: cg.zip || '', county: cg.county || '',
-        // Employment
         pay_rate: cg.payRate || '', max_hours: cg.maxHours || '',
         certifications: cg.certs || cg.certifications || '',
         ec_name: cg.ecName || '', ec_phone: cg.ecPhone || '',
@@ -7550,12 +7500,10 @@ function renderSupervisorList(){
   });
   ids.sort(function(a,b){return _supSortCompare(a,b,sups,countBySup);});
 
-  // Sort arrows + widths
   var headers=document.querySelectorAll('#supTable thead th.sortable');
   headers.forEach(function(h){h.classList.remove('sort-asc','sort-desc');if(h.dataset.sortkey===_supSort.key)h.classList.add(_supSort.dir==='asc'?'sort-asc':'sort-desc');});
   applySupColWidths();
 
-  // Pagination
   var totalMatched=ids.length;
   var totalPages=Math.max(1,Math.ceil(totalMatched/_supPageSize));
   if(_supPage>totalPages)_supPage=totalPages;
@@ -7603,7 +7551,6 @@ function renderSupervisorList(){
     tbody.appendChild(tr);
   });
 
-  // Sync page-size selector
   var sel=document.getElementById('supPageSize');
   if(sel){var savedPs=_supPageSize===Infinity?'all':String(_supPageSize);if(sel.value!==savedPs)sel.value=savedPs;}
 }
@@ -7665,7 +7612,6 @@ function showCaseworkerForm(id){
   if(id){
     var cw=getCaseworkers().find(function(c){return c.id===id;});
     if(cw){
-      // Split name into first/last
       var nameParts=(cw.name||'').trim().split(' ');
       var firstName=nameParts[0]||'';
       var lastName=nameParts.slice(1).join(' ')||'';
@@ -7822,12 +7768,10 @@ function renderCaseworkerList(){
   var filtered=cws.filter(function(cw){return !q||(cw.name||'').toLowerCase().includes(q)||(cw.agency||'').toLowerCase().includes(q)||(cw.email||'').toLowerCase().includes(q);});
   filtered.sort(function(a,b){return _cwSortCompare(a,b,profiles,sups);});
 
-  // Sort arrows + widths
   var headers=document.querySelectorAll('#cwTable thead th.sortable');
   headers.forEach(function(h){h.classList.remove('sort-asc','sort-desc');if(h.dataset.sortkey===_cwSort.key)h.classList.add(_cwSort.dir==='asc'?'sort-asc':'sort-desc');});
   applyCwColWidths();
 
-  // Pagination
   var totalMatched=filtered.length;
   var totalPages=Math.max(1,Math.ceil(totalMatched/_cwPageSize));
   if(_cwPage>totalPages)_cwPage=totalPages;
@@ -7878,7 +7822,6 @@ function renderCaseworkerList(){
     tbody.appendChild(tr);
   });
 
-  // Sync page-size selector
   var sel=document.getElementById('cwPageSize');
   if(sel){var savedPs=_cwPageSize===Infinity?'all':String(_cwPageSize);if(sel.value!==savedPs)sel.value=savedPs;}
 }
@@ -7978,7 +7921,6 @@ function renderCwOverviewPane(){
   var assignedNames=Object.keys(profiles).filter(function(k){return profiles[k].worker===cw.name||profiles[k].caseworkerId===cw.id;}).sort();
   var addrParts=[cw.street,cw.city?(cw.city+(cw.state?' '+cw.state:'')+(cw.zip?' '+cw.zip:'')):''].filter(Boolean);
   var addrStr=addrParts.join(', ');
-  // Build clickable client list
   var clientListHtml='';
   if(assignedNames.length){
     clientListHtml='<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;">'+
@@ -8027,7 +7969,6 @@ function renderCwInfoPane(){
   function mkDiv(label){var d=document.createElement('div');d.className='form-section-divider full';d.innerHTML='<span>'+label+'</span>';g.appendChild(d);}
   function mkRow(html){var d=document.createElement('div');d.className='info-field-row full';d.innerHTML=html;g.appendChild(d);}
 
-  // Name row
   var firstName=cw.first_name||(cw.name||'').split(' ')[0]||'';
   var lastName=cw.last_name||(cw.name||'').split(' ').slice(1).join(' ')||'';
   var dName=document.createElement('div');dName.className='info-field-row full';dName.style.gridTemplateColumns='84px 1fr 1fr 1fr';
@@ -8352,7 +8293,6 @@ function openStateForm(type){
       '<iframe id="sfPreviewFrame" style="width:100%;height:calc(100vh - 130px);border:1px solid #d0d8e4;border-radius:8px;background:#f0f3f7;" title="Form"></iframe>'+
     '</div>';
   scheduleSfPreview(0);
-  // Topbar buttons
   var topbar=document.querySelector('.form-topbar');
   if(topbar){
     var titleSpan=document.getElementById('formFillTitle');
@@ -8508,14 +8448,11 @@ function _buildFormDataDict(){
   var cgFirst=assignedCg.firstName||cgParts[0]||'';
   var cgLast=assignedCg.lastName||cgParts.slice(1).join(' ')||'';
   var dict={
-    // Client
     client_name:fullName, client_first_name:firstN, client_last_name:lastN,
     client_dob:_normalizeDate(prof.dob||''), medicaid_id:prof.medicaidId||'', case_number:'', recipient_id:prof.medicaidId||'',
     client_address:prof.street||prof.address||'', client_city:prof.city||'', client_state:prof.state||'MI', client_zip:prof.zip||'',
     client_phone:prof.phone||'', client_email:prof.clientEmail||prof.cemail||'', client_county:prof.county||'',
-    // Caseworker
     worker_name:cw.name||prof.worker||'', worker_phone:cw.phone||'', worker_email:cw.email||'', worker_fax:'',
-    // Caregiver
     caregiver_first_name:cgFirst, caregiver_last_name:cgLast, caregiver_full_name:cgFull,
     caregiver_dob:_normalizeDate(assignedCg.dob||''), caregiver_address:assignedCg.street||assignedCg.address||'',
     caregiver_city:assignedCg.city||'', caregiver_state:assignedCg.state||'MI', caregiver_zip:assignedCg.zip||'',
@@ -8530,7 +8467,6 @@ function _buildFormDataDict(){
     agency_zip:_agency.agency_zip,
     agency_phone:_agency.agency_phone,
     agency_relationship:_agency.agency_relationship,
-    // Common
     today_date:td, signature_date:td, log_number:''
   };
   // Final pass: normalize any date-key in the dict that's still YYYY-MM-DD (defensive)
@@ -8997,7 +8933,6 @@ async function generateStateFormPdf(){
     var fname=def.title+'_'+clientTag+'_'+today().replace(/\//g,'-')+'.pdf';
     // Open in a new tab so user can print or save
     var w=window.open(url,'_blank');
-    // Also offer download
     var a=document.createElement('a');a.href=url;a.download=fname;a.style.display='none';document.body.appendChild(a);a.click();setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},2000);
     showToast('✓ Generated '+fname,5000);
   }catch(e){
@@ -9159,7 +9094,6 @@ function _previewMonthlyInvoicesRender(period){
     var hasInv=g.clients.filter(function(c){return c.inv;}).length;
     var missingInv=g.clients.length-hasInv;
     html+='<div class="cw-email-card">';
-    // Header row
     html+='<div class="cw-email-hdr">';
     html+='<div style="width:34px;height:34px;border-radius:50%;background:#e8f0f9;color:#185FA5;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">'+
       esc((wname.split(' ').map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase()||'?'))+
@@ -9177,7 +9111,6 @@ function _previewMonthlyInvoicesRender(period){
       html+='<button class="btn btn-secondary btn-sm" onclick="closeMonthlyInvModal();navCaseworkers()">Add Email</button>';
     }
     html+='</div>';
-    // Client list
     html+='<div class="cw-client-list">';
     g.clients.forEach(function(c){
       var st=c.inv?(c.inv.status||'draft'):'none';
@@ -9225,7 +9158,6 @@ function onMonthlyPeriodInput(el){
   // Allow auto-format as user types digits
   var raw=el.value.replace(/\D/g,'');
   if(raw.length<=2){el.value=raw;return;}
-  // Insert / after MM
   var formatted=raw.slice(0,2)+'/'+raw.slice(2,6);
   el.value=formatted;
 }
@@ -9233,7 +9165,6 @@ function onMonthlyPeriodBlur(el){
   var v=el.value.trim();
   // Already in correct MM/YYYY form
   if(/^\d{2}\/\d{4}$/.test(v))return;
-  // Strip non-digits and try to interpret
   var raw=v.replace(/\D/g,'');
   var mm,yyyy;
   if(raw.length===4){
@@ -9352,7 +9283,6 @@ function _getAutoGenUndoStack(){
   try{
     var arr=JSON.parse(localStorage.getItem('lhca_autogen_undo')||'[]');
     if(!Array.isArray(arr))return [];
-    // Drop expired
     var now=Date.now();
     arr=arr.filter(function(b){return b&&b.when&&(now-b.when)<AUTOGEN_UNDO_TTL_MS;});
     return arr;
@@ -9840,7 +9770,6 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
   var profiles=getProfiles();
   var withInv=readyToSend; // only the ready ones
 
-  // Show progress
   var po=document.getElementById('monthlyProgressOverlay');
   var pb=document.getElementById('monthlyProgressBar');
   var pl=document.getElementById('monthlyProgressLabel');
@@ -9871,7 +9800,6 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
     }catch(e){console.error('PDF capture failed',e);}
   }
 
-  // Restore page state
   invPage.classList.remove('active');
   invPage.style.position='';invPage.style.left='';invPage.style.top='';invPage.style.zIndex='';
   document.querySelectorAll('.page').forEach(function(el){el.classList.remove('active');});
