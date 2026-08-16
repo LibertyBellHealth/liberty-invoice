@@ -20,7 +20,7 @@ var API_BASE    = _IS_LOCAL
   : 'https://liberty-crm-api-cyb3dkhnd2e7a3cy.centralus-01.azurewebsites.net/api';
 var API_APP_ID  = '0c1627c1-c186-4e46-b919-e4a12f2f3952'; // Easy Auth app registration
 var _apiToken   = null; // cached Bearer token, refreshed automatically
-var _savesInFlight = 0; // count of in-flight client saves; blocks a background reload from clobbering them
+var _savesInFlight = 0; // count of in-flight entity saves (client + roster); blocks a background reload from clobbering them
 var _apiTokenTimer = null; // handle for the self-rescheduling refresh; cleared on sign-out/idle
 
 // Microsoft identity — kept for Sign In and Outlook email
@@ -7032,6 +7032,16 @@ function loadCaregiversAPI() {
       syncEnd();
     }).catch(function (e) { console.error('Load caregivers error:', e); showDbError('caregivers'); syncEnd(); });
 }
+// Roster saves (caregiver/caseworker/supervisor) join the SAME in-flight counter that client
+// saves use (saveProfileSP), so a background revalidate / loadProfilesAPI can't reload the roster
+// mid-save and briefly show pre-save data. Increment synchronously as the save starts; decrement
+// when it settles (success OR failure). 409/data-loss is already handled by row_version; this only
+// closes the transient-staleness window.
+function _trackRosterSave(p){
+  _savesInFlight++;
+  Promise.resolve(p).then(function(){_savesInFlight--;},function(){_savesInFlight--;});
+  return p;
+}
 function saveCaregiverAPI(id, cg, quiet) {
   var _doSave = function(){
     var body = {
@@ -7076,7 +7086,7 @@ function saveCaregiverAPI(id, cg, quiet) {
       return result;
     });
   };
-  return quiet ? _doSave() : trackSave(cg.name||id, _doSave);
+  return _trackRosterSave(quiet ? _doSave() : trackSave(cg.name||id, _doSave));
 }
 function deleteCaregiverAPI(id) {
   // D10: surface a failure/retry so a "deleted" caregiver can't reappear on next sync.
@@ -7194,7 +7204,7 @@ function saveCaseworkerAPI(cw, quiet){
       return result;
     });
   };
-  return quiet ? _doSave() : trackSave(cw.name||cw.id||'caseworker', _doSave);
+  return _trackRosterSave(quiet ? _doSave() : trackSave(cw.name||cw.id||'caseworker', _doSave));
 }
 function deleteCaseworkerAPI(id){
   // Surface a failure/retry (parity with deleteCaregiverAPI) so a "deleted" caseworker
@@ -7235,7 +7245,7 @@ function loadSupervisorsAPI(){
     .catch(function(e){console.error('Load supervisors error:',e);showDbError('supervisors');syncEnd();});
 }
 function saveSupervisorAPI(sup){
-  return trackSave('supervisor: '+(sup.name||sup.id||''), function(){
+  return _trackRosterSave(trackSave('supervisor: '+(sup.name||sup.id||''), function(){
     // Optimistic concurrency (mirror of caseworkers): send the row_version we last read so a stale
     // save is rejected (409) instead of silently overwriting another device's edit.
     var body=Object.assign({},sup);
@@ -7254,7 +7264,7 @@ function saveSupervisorAPI(sup){
       }
       return result;
     });
-  });
+  }));
 }
 function deleteSupervisorAPI(id){
   // Surface a failure/retry (parity with deleteCaregiverAPI) so a "deleted" supervisor
