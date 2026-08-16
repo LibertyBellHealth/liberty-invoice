@@ -588,7 +588,7 @@ function aiTrack(name, props){
         <input type="file" id="importFile" accept=".json" style="display:none;" onchange="importProfiles(event)">
       </div>
       <!-- DHS-1210 import (global hidden input so it works from the Documents pane and the Overview card) -->
-      <input type="file" id="dhsImportFile" accept="application/pdf" style="display:none;" onchange="handleDhsImport(this)">
+      <input type="file" id="dhsImportFile" accept="application/pdf,image/*" style="display:none;" onchange="handleDhsImport(this)">
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed #e1e5ea;">
         <button class="btn btn-primary" onclick="backupToOneDrive()" id="oneDriveBackupBtn">☁ Backup to OneDrive Now</button>
         <span style="font-size:11px;color:#5c7590;align-self:center;line-height:1.5;">Auto-backs up <b>weekly</b> on first sign-in (keeps 26 most recent ~6 months). <b>Manual backups (this button) are kept forever</b> — never auto-deleted. Saves to <b>OneDrive / Liberty Home Care Backups /</b></span>
