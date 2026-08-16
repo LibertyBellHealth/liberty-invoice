@@ -296,7 +296,7 @@ document.addEventListener('click',function(e){
 
 function navNewClient(){
   showPage('new-client');bc([{l:'Clients',fn:navHome},{l:'New Client'}]);document.getElementById('topbarActions').innerHTML='';
-  ['nc-first','nc-middle','nc-last','nc-nickname','nc-medicaid','nc-rate','nc-dl','nc-ssn','nc-phone','nc-cemail','nc-street','nc-city','nc-state','nc-zip','nc-county','nc-start-date','nc-worker-search','nc-worker-val','nc-caregiver-search','nc-caregiver-val'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  ['nc-first','nc-middle','nc-last','nc-nickname','nc-medicaid','nc-medicare','nc-rate','nc-dl','nc-ssn','nc-phone','nc-cemail','nc-street','nc-city','nc-state','nc-zip','nc-county','nc-start-date','nc-worker-search','nc-worker-val','nc-caregiver-search','nc-caregiver-val'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
   var drop=document.getElementById('nc-worker-drop');if(drop)drop.style.display='none';
   var cgDrop=document.getElementById('nc-caregiver-drop');if(cgDrop)cgDrop.style.display='none';
 }
@@ -863,6 +863,7 @@ function renderOverviewPane(){
   pane.innerHTML='<div class="overview-grid">'+
     '<div class="ov-card"><h4>Client Info</h4>'+
       '<div class="ov-row"><span class="ov-label">Medicaid ID</span><span class="ov-value">'+esc(prof.medicaidId||'—')+'</span></div>'+
+      (prof.medicare?'<div class="ov-row"><span class="ov-label">Medicare #</span><span class="ov-value">'+esc(prof.medicare)+'</span></div>':'')+
       '<div class="ov-row"><span class="ov-label">Hourly Rate</span><span class="ov-value">'+(prof.hourlyRate?'$'+esc(prof.hourlyRate)+'/hr':'—')+'</span></div>'+
       '<div class="ov-row"><span class="ov-label">Phone</span><span class="ov-value">'+esc(prof.phone||'—')+'</span></div>'+
       (addrStr.trim()?'<div class="ov-row"><span class="ov-label">Address</span><span class="ov-value">'+esc(addrStr.trim())+'</span></div>':'')+
@@ -971,6 +972,7 @@ function renderInfoPane(){
   g.appendChild(dNickSt);
 
   mkField('ei-medicaid','Medicaid ID',prof.medicaidId||'',false);
+  mkField('ei-medicare','Medicare #',prof.medicare||'',false);
   // Date of Birth — needed on DHS-390 / MDHHS-6200 / MSA-4676 state forms
   var dDob=document.createElement('div');dDob.className='info-field';
   dDob.innerHTML='<label for="ei-dob">Date of Birth <span style="font-weight:400;font-size:11px;color:#5c7590;">(double-click to copy)</span></label><input id="ei-dob" type="date" value="'+esc(prof.dob||'')+'" autocomplete="off" oninput="unsavedChanges=true;" ondblclick="_copyField(this,\'mdy\')" title="Double-click to copy as MM/DD/YYYY">';
@@ -1264,6 +1266,7 @@ function saveClientInfo(){
   var newName=((first+' '+last).trim())||activeProfileName;
   rec.firstName=first;rec.middleName=middle;rec.lastName=last;rec.nickname=nickname;
   rec.clientName=newName;rec.medicaidId=document.getElementById('ei-medicaid').value;
+  rec.medicare=(document.getElementById('ei-medicare')||{}).value||'';
   var dobEl=document.getElementById('ei-dob');if(dobEl)rec.dob=dobEl.value||'';
   var genderEl=document.getElementById('ei-gender');if(genderEl)rec.gender=genderEl.value||'';
   rec.hourlyRate=document.getElementById('ei-rate').value;
@@ -2242,9 +2245,9 @@ function _docToBase64(url){
 // already on the client: blanks are offered to fill, matches are shown verified, and differences
 // are flagged for you to choose. Never auto-applies; you click Apply. Name fields are intentionally
 // NOT applied here (the client's name is its record key — renaming is its own Save-Changes flow).
-var _CARD_TYPE={Drivers_License:'drivers_license',SSN_Card:'ssn',Medicaid_Card:'medicaid'};
-var _CARD_FIELD_LABEL={dob:'Date of Birth',driversLicense:"Driver's License #",street:'Street',city:'City',state:'State',zip:'ZIP',ssn:'Social Security #',medicaidId:'Medicaid ID'};
-var _CARD_FIELD_INPUT={dob:'ei-dob',driversLicense:'ei-dl',street:'ei-street',city:'ei-city',state:'ei-state',zip:'ei-zip',ssn:'ei-ssn',medicaidId:'ei-medicaid'};
+var _CARD_TYPE={Drivers_License:'drivers_license',SSN_Card:'ssn',Medicaid_Card:'medicaid',Medicare_Card:'medicare'};
+var _CARD_FIELD_LABEL={dob:'Date of Birth',driversLicense:"Driver's License #",street:'Street',city:'City',state:'State',zip:'ZIP',ssn:'Social Security #',medicaidId:'Medicaid ID',medicare:'Medicare #'};
+var _CARD_FIELD_INPUT={dob:'ei-dob',driversLicense:'ei-dl',street:'ei-street',city:'ei-city',state:'ei-state',zip:'ei-zip',ssn:'ei-ssn',medicaidId:'ei-medicaid',medicare:'ei-medicare'};
 function extractCardFields(index){
   var ctx=_docEditCtx; if(!ctx||ctx.clientType!=='homecare')return;
   var d=ctx.docs[index]; if(!d)return;
@@ -2267,7 +2270,7 @@ function extractCardFields(index){
 // everything else case-insensitively.
 function _cardNorm(field,v){
   v=(v==null?'':String(v)).trim();
-  if(field==='ssn'||field==='medicaidId'||field==='driversLicense') return v.replace(/[^0-9A-Za-z]/g,'').toLowerCase();
+  if(field==='ssn'||field==='medicaidId'||field==='medicare'||field==='driversLicense') return v.replace(/[^0-9A-Za-z]/g,'').toLowerCase();
   return v.toLowerCase();
 }
 function _showCardReview(fields){
@@ -2550,6 +2553,7 @@ function _doCreateClient(name,first,middle,last,nickname){
   if(!p[name])p[name]={invoices:[],clientNotes:''};
   p[name].clientName=name;p[name].firstName=first;p[name].middleName=middle;p[name].lastName=last;p[name].nickname=nickname;
   p[name].medicaidId=document.getElementById('nc-medicaid').value.trim();
+  p[name].medicare=(document.getElementById('nc-medicare')||{}).value.trim()||'';
   p[name].hourlyRate=document.getElementById('nc-rate').value.trim();
   p[name].driversLicense=document.getElementById('nc-dl').value.trim();
   p[name].ssn=document.getElementById('nc-ssn').value.trim();
@@ -6873,7 +6877,7 @@ function loadProfilesAPI() {
         profiles[name] = {
           clientName: name, firstName: c.first_name || '', lastName: c.last_name || '',
           middleName: c.middle_name || '', nickname: c.nickname || '',
-          medicaidId: c.medicaid_id || '', hourlyRate: c.hourly_rate || '',
+          medicaidId: c.medicaid_id || '', medicare: c.medicare || '', hourlyRate: c.hourly_rate || '',
           worker: c.worker || '', caseworkerId: c.caseworker_id || '',
           street: c.street || '', city: c.city || '', state: c.state || '',
           zip: c.zip || '', county: c.county || '',
@@ -6928,7 +6932,7 @@ function saveProfileSP(name, data, quiet) {
     id: dbId || undefined, client_name: name,
     first_name: data.firstName || '', last_name: data.lastName || '',
     middle_name: data.middleName || '', nickname: data.nickname || '',
-    medicaid_id: data.medicaidId || '', hourly_rate: data.hourlyRate || '',
+    medicaid_id: data.medicaidId || '', medicare: data.medicare || '', hourly_rate: data.hourlyRate || '',
     worker: data.worker || '', caseworker_id: data.caseworkerId || '',
     street: data.street || '', city: data.city || '', state: data.state || '',
     zip: data.zip || '', county: data.county || '',
@@ -7035,7 +7039,7 @@ function _invoiceSig(inv) {
 // into memory after the load-time baseline.
 function _clientSig(d) {
   return JSON.stringify([
-    d.firstName||'', d.lastName||'', d.middleName||'', d.nickname||'', d.medicaidId||'',
+    d.firstName||'', d.lastName||'', d.middleName||'', d.nickname||'', d.medicaidId||'', d.medicare||'',
     d.hourlyRate||'', d.worker||'', d.caseworkerId||'', d.street||'', d.city||'', d.state||'',
     d.zip||'', d.county||'', d.phone||'', d.homePhone||'', d.clientEmail||'', d.caregiverId||'',
     d.clientStatus||'active', d.hasComplex?1:0, d.dob||'', d.gender||'', d.driversLicense||'',
