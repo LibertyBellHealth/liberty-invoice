@@ -2297,8 +2297,9 @@ function extractCardFields(index){
     return r.json().then(function(j){throw new Error((j&&j.error)||('HTTP '+r.status));},function(){throw new Error('HTTP '+r.status);});
   }).then(function(j){
     var fields=(j&&j.fields)||{};
+    var conf=(j&&j.confidence)||{};
     if(!Object.keys(fields).length){showAlert('Couldn’t read any fields off that card. Try a clearer photo/scan.');return;}
-    _showCardReview(fields);
+    _showCardReview(fields,conf);
   }).catch(function(e){showAlert('Could not read the card: '+((e&&e.message)||e));});
 }
 // Normalize for comparison: numbers by their digits/letters only (so 123-45-6789 == 123456789),
@@ -2308,7 +2309,8 @@ function _cardNorm(field,v){
   if(field==='ssn'||field==='medicaidId'||field==='medicare'||field==='driversLicense') return v.replace(/[^0-9A-Za-z]/g,'').toLowerCase();
   return v.toLowerCase();
 }
-function _showCardReview(fields){
+function _showCardReview(fields,conf){
+  conf=conf||{};
   var prof=getProfiles()[activeProfileName]||{};
   var rows=[];
   Object.keys(fields).forEach(function(k){
@@ -2316,16 +2318,19 @@ function _showCardReview(fields){
     var ext=String(fields[k]||'').trim(); if(!ext)return;
     var cur=String(prof[k]||'').trim();
     var same=cur && _cardNorm(k,cur)===_cardNorm(k,ext);
-    rows.push({field:k,label:_CARD_FIELD_LABEL[k],cur:cur,ext:ext,state:(!cur?'fill':(same?'match':'differ'))});
+    // low-confidence = the number was only a format-fallback (not found next to its label). It is
+    // flagged and NOT pre-checked, so a possibly-wrong ID can't be silently applied.
+    rows.push({field:k,label:_CARD_FIELD_LABEL[k],cur:cur,ext:ext,lowconf:conf[k]==='guess',state:(!cur?'fill':(same?'match':'differ'))});
   });
   if(!rows.length){showAlert('Nothing new to apply from that card.');return;}
+  var warnTag='<span style="color:#b8860b;font-weight:600;font-size:11px;"> ⚠ verify — not clearly labeled on the card</span>';
   var bodyHtml=rows.map(function(r,i){
     if(r.state==='match') return '<div style="padding:6px 0;font-size:13px;"><span style="color:#1a7740;font-weight:700;">✓</span> <b>'+esc(r.label)+'</b> matches the card ('+esc(r.ext)+')</div>';
-    if(r.state==='fill') return '<label style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;font-size:13px;"><input type="checkbox" data-idx="'+i+'" class="cardfill" checked style="margin-top:3px;"><span>Fill <b>'+esc(r.label)+'</b> → <span style="color:#185FA5;font-weight:600;">'+esc(r.ext)+'</span></span></label>';
+    if(r.state==='fill') return '<label style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;font-size:13px;"><input type="checkbox" data-idx="'+i+'" class="cardfill"'+(r.lowconf?'':' checked')+' style="margin-top:3px;"><span>Fill <b>'+esc(r.label)+'</b> → <span style="color:#185FA5;font-weight:600;">'+esc(r.ext)+'</span>'+(r.lowconf?warnTag:'')+'</span></label>';
     return '<div style="padding:6px 0;font-size:13px;border-top:1px dashed #e1e5ea;">'+
       '<div style="color:#b8860b;font-weight:700;">⚠ '+esc(r.label)+' differs from the card</div>'+
       '<label style="display:block;margin-top:3px;"><input type="radio" name="card'+i+'" value="keep" checked> Keep on file: <b>'+esc(r.cur)+'</b></label>'+
-      '<label style="display:block;"><input type="radio" name="card'+i+'" value="use"> Use card: <span style="color:#185FA5;font-weight:600;">'+esc(r.ext)+'</span></label>'+
+      '<label style="display:block;"><input type="radio" name="card'+i+'" value="use"> Use card: <span style="color:#185FA5;font-weight:600;">'+esc(r.ext)+'</span>'+(r.lowconf?warnTag:'')+'</label>'+
     '</div>';
   }).join('');
   var ov=document.createElement('div');ov.className='modal-overlay open';ov.id='cardReviewModal';
