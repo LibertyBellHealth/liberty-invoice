@@ -237,6 +237,19 @@ function routeFromHash(){
   }catch(e){console.warn('Route error:',e);}
 }
 window.addEventListener('hashchange',routeFromHash);
+// On a cold load / hard refresh the router runs before the roster has downloaded (and a refresh
+// wipes the local roster for HIPAA), so a deep link like #/client/5 can't resolve yet and falls
+// back to the list. Re-run the router once a roster loader finishes — but only while no detail is
+// open, so a background revalidation never yanks a user off a record they're viewing.
+function _restoreRouteAfterLoad(){
+  var h=window.location.hash||'';
+  if(!h || h==='#/' || h==='#') return;
+  var onDetail=(typeof activeProfileName!=='undefined'&&activeProfileName)
+             ||(typeof activeCgId!=='undefined'&&activeCgId)
+             ||(typeof activeCwId!=='undefined'&&activeCwId);
+  if(onDetail) return;
+  if(typeof routeFromHash==='function') routeFromHash();
+}
 
 // Explicit nav click helper — guarantees the target page renders even when the
 // current URL already matches the target hash (in which case hashchange doesn't
@@ -247,8 +260,11 @@ function navClick(e, targetHash, targetFn){
   if(e && typeof e.preventDefault==='function')e.preventDefault();
   var cur=window.location.hash||'';
   if(cur===targetHash){
-    // Already on target — force a re-render since hashchange won't fire
+    // Already on target — force a re-render since hashchange won't fire. Record links pass no
+    // targetFn, so fall back to re-running the router for the current hash (fixes: re-clicking the
+    // client/caregiver/caseworker already in the URL did nothing).
     if(typeof targetFn==='function')targetFn();
+    else if(typeof routeFromHash==='function')routeFromHash();
   } else {
     // hashchange will fire and routeFromHash will call the appropriate nav function
     window.location.hash=targetHash;
@@ -690,7 +706,7 @@ function renderClientTable(forceStatus){
     var hrefCl=buildClientUrl(name);
     tr.innerHTML=
       '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" '+checked+' onchange="toggleBulkClient(\''+escJsAttr(name)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
-      '<td><a href="'+hrefCl+'" class="link-plain" style="display:block;"><div class="ct-name">'+esc(name)+(prof.nickname?'<span style="font-weight:normal;color:var(--text-subtle);"> ('+esc(prof.nickname)+')</span>':'')+'</div><div class="ct-id">'+esc(prof.medicaidId||'No Medicaid ID')+'</div></a></td>'+
+      '<td><a href="'+hrefCl+'" class="link-plain" style="display:block;" onclick="return navClick(event,this.getAttribute(\'href\'))"><div class="ct-name">'+esc(name)+(prof.nickname?'<span style="font-weight:normal;color:var(--text-subtle);"> ('+esc(prof.nickname)+')</span>':'')+'</div><div class="ct-id">'+esc(prof.medicaidId||'No Medicaid ID')+'</div></a></td>'+
       '<td><span class="status-inline"><span class="status-dot '+st+'"></span>'+stLabel+'</span></td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(phone)+'</td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cgName)+'</td>'+
@@ -2121,6 +2137,10 @@ function loadHcDocs(clientId){
 // ── Shared modern document grid (client / caregiver / caseworker) ──
 var DOC_CATS=[['Other','Other'],['SSN_Card','SSN Card'],['Drivers_License',"Driver's License"],['Insurance_Card','Insurance Card'],['Medicare_Card','Medicare Card'],['Medicaid_Card','Medicaid Card'],['Authorization','Authorization'],['Certification','Certification'],['Background_Check','Background Check'],['I9_W4','I-9 / W-4']];
 function _docCatLabel(c){for(var i=0;i<DOC_CATS.length;i++){if(DOC_CATS[i][0]===c)return DOC_CATS[i][1];}return c||'Other';}
+// Category values are free-text (chips insert a LABEL, and users can type their own). Resolve any
+// value — a DOC_CATS key, its label, or custom text — to the canonical KEY so key-based gating
+// (_idCat, _CARD_TYPE) matches no matter how the document was tagged. Unknown values pass through.
+function _catKey(c){for(var i=0;i<DOC_CATS.length;i++){if(DOC_CATS[i][0]===c||DOC_CATS[i][1]===c)return DOC_CATS[i][0];}return c;}
 function _fmtDocSize(n){if(!n)return '';return n<1048576?Math.round(n/1024)+' KB':(n/1048576).toFixed(1)+' MB';}
 var _docEditCtx=null;
 function renderDocGrid(list,docs,opts){
@@ -2136,9 +2156,10 @@ function renderDocGrid(list,docs,opts){
     // Email-to-caregiver is offered on client docs EXCEPT sensitive ID cards (you'd never email
     // a caregiver an SSN card or license). The 4676 / Authorizations / Other get the button.
     var _idCat={SSN_Card:1,Drivers_License:1,Insurance_Card:1,Medicare_Card:1,Medicaid_Card:1};
-    var canEmail=(opts.clientType==='homecare')&&!_idCat[d.category];
+    var _catk=_catKey(d.category);   // normalize label/free-text → canonical key before gating
+    var canEmail=(opts.clientType==='homecare')&&!_idCat[_catk];
     // Extract (OCR → fill client fields) is offered only on the ID/benefit cards we can read.
-    var canExtract=(opts.clientType==='homecare')&&_CARD_TYPE[d.category];
+    var canExtract=(opts.clientType==='homecare')&&_CARD_TYPE[_catk];
     var thumb=isImg
       ?'<span class="doc-thumb" style="background-image:url(\''+escJsAttr(d.url)+'\')"></span>'
       :'<span class="doc-thumb doc-thumb-file">'+_docFileIcon(ext)+'</span>';
@@ -2153,10 +2174,24 @@ function renderDocGrid(list,docs,opts){
         (canEmail?'<button class="doc-act" title="Email to caregiver" onclick="emailDocToCaregiver('+i+')">✉</button>':'')+
         '<a class="doc-act" href="'+esc(d.downloadUrl||d.url||'#')+'" title="Download" download>⬇</a>'+
         '<button class="doc-act" title="Rename / relabel" onclick="openDocEditModal('+i+')">✎</button>'+
-        '<button class="doc-act doc-act-del" title="Delete" onclick="'+opts.deleteExpr(d.name)+'">✕</button>'+
+        '<button class="doc-act doc-act-del" title="Delete" onclick="deleteDocAt('+i+')">✕</button>'+
       '</div>'+
     '</div>';
   }).join('');
+}
+// Delete the document at grid index i via the shared render context. Index-based on purpose: no
+// filename is ever interpolated into an inline handler — an apostrophe in the name (e.g. from a
+// "Driver's License" category prefix) used to break the onclick with a syntax error, and a crafted
+// filename was an XSS vector. Works for all three panes (homecare / caregiver / caseworker).
+function deleteDocAt(i){
+  var ctx=_docEditCtx; if(!ctx||!ctx.docs||!ctx.docs[i])return;
+  var d=ctx.docs[i];
+  showConfirm('Delete this document?',function(){
+    fetch(API_BASE+'/documents?clientType='+encodeURIComponent(ctx.clientType)+'&clientId='+encodeURIComponent(ctx.clientId),
+      {method:'DELETE',headers:apiHeaders(),body:JSON.stringify({name:d.name})})
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);if(typeof ctx.refresh==='function')ctx.refresh();})
+      .catch(function(e){showAlert('Delete failed: '+((e&&e.message)||e));});
+  },{title:'Delete Document',okText:'Delete'});
 }
 // Email a client document (e.g. the MSA-4676) to the client's assigned caregiver, with a default
 // draft tuned to the document + a first-time self-introduction. Everything is editable before send.
@@ -2251,7 +2286,7 @@ var _CARD_FIELD_INPUT={dob:'ei-dob',driversLicense:'ei-dl',street:'ei-street',ci
 function extractCardFields(index){
   var ctx=_docEditCtx; if(!ctx||ctx.clientType!=='homecare')return;
   var d=ctx.docs[index]; if(!d)return;
-  var type=_CARD_TYPE[d.category];
+  var type=_CARD_TYPE[_catKey(d.category)];
   if(!type){showAlert('This document type can’t be auto-read.');return;}
   if(typeof spToken==='undefined'||!spToken){showAlert('Sign in first (Settings) to read a card.');return;}
   if(typeof showToast==='function')showToast('Reading card…',1500);
@@ -2433,7 +2468,7 @@ function uploadHcDoc(){
   if(!clientId){showAlert('Save this client first before uploading documents.');return;}
   var input=document.getElementById('hcDocFileInput');
   if(!input||!input.files||!input.files.length){showAlert('Please select a file first.');return;}
-  var cat=(document.getElementById('hcDocCategory')&&document.getElementById('hcDocCategory').value)||'Other';
+  var cat=_catKey((document.getElementById('hcDocCategory')&&document.getElementById('hcDocCategory').value)||'Other');
   var status=document.getElementById('hcDocStatus');
   status.textContent='Uploading...';
   var fd=new FormData();
@@ -2455,7 +2490,7 @@ function handleDocScan(input){
   var clientId=getHcClientId();
   if(!clientId){showAlert('Save this client first before uploading documents.');return;}
   if(!input||!input.files||!input.files.length)return;
-  var cat=(document.getElementById('hcDocCategory')&&document.getElementById('hcDocCategory').value)||'Other';
+  var cat=_catKey((document.getElementById('hcDocCategory')&&document.getElementById('hcDocCategory').value)||'Other');
   var status=document.getElementById('hcDocStatus');
   if(status)status.textContent='Uploading scanned image…';
   var fd=new FormData();
@@ -2708,7 +2743,7 @@ function renderCaregiverGrid(){
     var checked=cgBulkSelected[id]?'checked':'';
     tr.innerHTML=
       '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" class="cg-select" data-id="'+esc(id)+'" '+checked+' onchange="toggleBulkCaregiver(\''+escJsAttr(id)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
-      '<td><a href="'+hrefCg+'" class="link-plain" style="display:block;"><div class="ct-name">'+esc(displayName)+(cg.nickname?'<span style="font-weight:normal;color:var(--text-subtle);"> ('+esc(cg.nickname)+')</span>':'')+'</div><div class="ct-id">'+esc(cg.email||'No email')+'</div></a></td>'+
+      '<td><a href="'+hrefCg+'" class="link-plain" style="display:block;" onclick="return navClick(event,this.getAttribute(\'href\'))"><div class="ct-name">'+esc(displayName)+(cg.nickname?'<span style="font-weight:normal;color:var(--text-subtle);"> ('+esc(cg.nickname)+')</span>':'')+'</div><div class="ct-id">'+esc(cg.email||'No email')+'</div></a></td>'+
       '<td><span class="status-inline"><span class="status-dot '+st+'"></span>'+stLabel+'</span></td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cg.phone||'—')+'</td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cg.emptype||'—')+'</td>'+
@@ -6911,6 +6946,7 @@ function loadProfilesAPI() {
       renderSidebarClients(); renderClientTable(); updateStats();
       var lsl = document.getElementById('lastSyncedLabel');
       if (lsl) lsl.textContent = 'Last synced: ' + now;
+      _restoreRouteAfterLoad();
       syncEnd();
     })
     .catch(function (e) {
@@ -7281,6 +7317,7 @@ function loadCaregiversAPI() {
       // never shows a false "0 caregivers" or blank caregiver names once the data lands.
       if (typeof updateStats === 'function') updateStats();
       if (typeof renderClientTable === 'function' && document.getElementById('clientTableBody')) renderClientTable();
+      _restoreRouteAfterLoad();
       syncEnd();
     }).catch(function (e) { console.error('Load caregivers error:', e); showDbError('caregivers'); syncEnd(); });
 }
@@ -7427,6 +7464,7 @@ function loadCaseworkersAPI(){
       // propagate: a row that had a _rowVersion but is gone from the server is dropped).
       saveCaseworkersLS(_mergeRosterArr(arr, getCaseworkers()));
       if (typeof renderCaseworkerList === 'function' && document.getElementById('cwList')) renderCaseworkerList();
+      _restoreRouteAfterLoad();
       syncEnd();
     })
     .catch(function(e){ console.error('Load caseworkers error:', e); showDbError('caseworkers'); syncEnd(); });
@@ -8107,7 +8145,7 @@ function renderCaseworkerList(){
     var checked=cwBulkSelected[cw.id]?'checked':'';
     tr.innerHTML=
       '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" class="cw-select" data-id="'+esc(cw.id)+'" '+checked+' onchange="toggleBulkCaseworker(\''+escJsAttr(cw.id)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
-      '<td><a href="'+hrefCw+'" class="link-plain" style="display:block;"><div class="ct-name">'+esc(cw.name||'')+'</div><div class="ct-id">'+esc(cw.agency||'No agency')+'</div></a></td>'+
+      '<td><a href="'+hrefCw+'" class="link-plain" style="display:block;" onclick="return navClick(event,this.getAttribute(\'href\'))"><div class="ct-name">'+esc(cw.name||'')+'</div><div class="ct-id">'+esc(cw.agency||'No agency')+'</div></a></td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cw.phone||'—')+'</td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cw.email||'—')+'</td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cw.county||'—')+'</td>'+
