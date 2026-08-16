@@ -2096,6 +2096,10 @@ function renderDocGrid(list,docs,opts){
     var ext=(display.split('.').pop()||'').toLowerCase();
     var isImg=['jpg','jpeg','png','gif','webp','heic','bmp'].indexOf(ext)>=0;
     var isPdf=ext==='pdf';
+    // Email-to-caregiver is offered on client docs EXCEPT sensitive ID cards (you'd never email
+    // a caregiver an SSN card or license). The 4676 / Authorizations / Other get the button.
+    var _idCat={SSN_Card:1,Drivers_License:1,Insurance_Card:1,Medicare_Card:1,Medicaid_Card:1};
+    var canEmail=(opts.clientType==='homecare')&&!_idCat[d.category];
     var thumb=isImg
       ?'<span class="doc-thumb" style="background-image:url(\''+escJsAttr(d.url)+'\')"></span>'
       :'<span class="doc-thumb doc-thumb-file">'+_docFileIcon(ext)+'</span>';
@@ -2106,12 +2110,95 @@ function renderDocGrid(list,docs,opts){
         '<div class="doc-card-meta"><span class="doc-cat-pill">'+esc(_docCatLabel(d.category))+'</span>'+(d.size?'<span class="doc-size">'+_fmtDocSize(d.size)+'</span>':'')+'</div>'+
       '</div>'+
       '<div class="doc-card-actions">'+
+        (canEmail?'<button class="doc-act" title="Email to caregiver" onclick="emailDocToCaregiver('+i+')">✉</button>':'')+
         '<a class="doc-act" href="'+esc(d.downloadUrl||d.url||'#')+'" title="Download" download>⬇</a>'+
         '<button class="doc-act" title="Rename / relabel" onclick="openDocEditModal('+i+')">✎</button>'+
         '<button class="doc-act doc-act-del" title="Delete" onclick="'+opts.deleteExpr(d.name)+'">✕</button>'+
       '</div>'+
     '</div>';
   }).join('');
+}
+// Email a client document (e.g. the MSA-4676) to the client's assigned caregiver, with a default
+// draft tuned to the document + a first-time self-introduction. Everything is editable before send.
+// The intro is NOT tracked in localStorage (that wouldn't survive across devices/accounts) — it's
+// just seeded into the draft with a hint to delete it if you've emailed the caregiver before.
+function emailDocToCaregiver(index){
+  var ctx=_docEditCtx; if(!ctx||ctx.clientType!=='homecare')return;
+  var d=ctx.docs[index]; if(!d)return;
+  var prof=getProfiles()[activeProfileName]||{};
+  var clientName=prof.clientName||activeProfileName||'the client';
+  var cgs=getCaregivers(); var cg=(prof.caregiverId&&cgs[prof.caregiverId])?cgs[prof.caregiverId]:null;
+  var cgEmail=cg?(cg.email||''):'';
+  var cgFirst=cg?((cg.firstName||(cg.name||'').split(' ')[0])||''):'';
+  var ag=getAgencyInfo()||{}; var agName=ag.name||'our agency'; var agPhone=ag.phone||'';
+  var display=d.displayName||d.name||'the document';
+  var is4676=/4676/i.test(display)||/4676/i.test(_docCatLabel(d.category));
+  var greet='Hello'+(cgFirst?(' '+cgFirst):'')+',';
+  var subject, body;
+  if(is4676){
+    subject='MSA-4676 Home Help Services Agreement — '+clientName;
+    body=greet+'\n\n'+
+      'My name is [your name] with '+agName+(agPhone?(' ('+agPhone+')'):'')+'. I am reaching out about '+clientName+'’s Home Help services.\n\n'+
+      'Attached is the MSA-4676 Home Help Services Agreement for '+clientName+'. Please review and sign it so we can transition '+clientName+'’s Home Help services to '+agName+'.\n\n'+
+      'Once signed, please reply to this email with the completed form, or let me know if you have any questions.\n\n'+
+      'Thank you,\n'+agName;
+  } else {
+    subject=display+' — '+clientName;
+    body=greet+'\n\n'+
+      'Attached is '+display+' for '+clientName+' from '+agName+'. Please review and let me know if you have any questions.\n\n'+
+      'Thank you,\n'+agName;
+  }
+  _openDocEmailModal(d, cgEmail, subject, body);
+}
+function _openDocEmailModal(d, to, subject, body){
+  var ov=document.createElement('div');ov.className='modal-overlay open';
+  ov.innerHTML='<div class="modal-box" style="max-width:520px;">'+
+    '<h3>Email document to caregiver</h3>'+
+    '<p style="font-size:12px;color:#5c7590;margin-top:-4px;">Sends “'+esc(d.displayName||d.name||'')+'” as an attachment from your Microsoft account. Edit anything below before sending.</p>'+
+    '<label class="qc-l" for="dem-to">To</label><input id="dem-to" class="qc-i" value="'+esc(to)+'" placeholder="caregiver@email.com">'+
+    '<label class="qc-l" for="dem-subj">Subject</label><input id="dem-subj" class="qc-i" value="'+esc(subject)+'">'+
+    '<label class="qc-l" for="dem-body">Message <span style="font-weight:400;color:#5c7590;">(delete the intro line if you’ve emailed them before)</span></label>'+
+    '<textarea id="dem-body" class="qc-i" style="min-height:180px;resize:vertical;font-family:Arial,sans-serif;">'+esc(body)+'</textarea>'+
+    '<div id="dem-status" style="font-size:12px;color:#c0392b;min-height:16px;margin-top:4px;"></div>'+
+    '<div class="modal-row"><button class="btn btn-primary" id="dem-send">Send Email</button><button class="btn btn-secondary" id="dem-cancel">Cancel</button></div>'+
+  '</div>';
+  document.body.appendChild(ov);
+  var close=function(){if(ov.parentNode)ov.parentNode.removeChild(ov);};
+  ov.querySelector('#dem-cancel').addEventListener('click',close);
+  ov.addEventListener('mousedown',function(e){if(e.target===ov)close();});
+  ov.querySelector('#dem-send').addEventListener('click',function(){
+    var toV=(ov.querySelector('#dem-to').value||'').trim();
+    var subjV=(ov.querySelector('#dem-subj').value||'').trim();
+    var bodyText=ov.querySelector('#dem-body').value||'';
+    var status=ov.querySelector('#dem-status');
+    if(!toV||!/@/.test(toV)){status.style.color='#c0392b';status.textContent='Enter a valid recipient email.';return;}
+    if(typeof spToken==='undefined'||!spToken){status.style.color='#c0392b';status.textContent='Sign in first (Settings) to send email.';return;}
+    var btn=ov.querySelector('#dem-send');btn.disabled=true;btn.textContent='Sending…';status.style.color='#5c7590';status.textContent='Attaching document…';
+    _docToBase64(d.url||d.downloadUrl).then(function(b64){
+      status.textContent='Sending…';
+      var bodyHtml=esc(bodyText).replace(/\n/g,'<br>');
+      return sendMailWithPDF(toV,subjV,bodyHtml,[{name:(d.displayName||d.name||'document.pdf'),base64:b64}]);
+    }).then(function(){
+      if(typeof showToast==='function')showToast('✓ Emailed '+(d.displayName||'document')+' to '+toV,3500);
+      if(typeof addAuditEntry==='function')addAuditEntry(activeProfileName,'Emailed “'+(d.displayName||d.name)+'” to caregiver '+toV);
+      if(typeof aiTrack==='function')aiTrack('DocEmailedToCaregiver',{doc:d.displayName||d.name,to:toV});
+      close();
+    }).catch(function(err){
+      btn.disabled=false;btn.textContent='Send Email';status.style.color='#c0392b';
+      status.textContent='Could not send: '+((err&&err.message)||'error')+'. Try again.';
+    });
+  });
+}
+// Fetch a stored document (blob-storage URL) and return its base64 (no data: prefix) for attaching.
+function _docToBase64(url){
+  if(!url)return Promise.reject(new Error('no document URL'));
+  return fetch(url).then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); return r.blob(); })
+    .then(function(blob){ return new Promise(function(res,rej){
+      var fr=new FileReader();
+      fr.onload=function(){ var s=String(fr.result||''); var i=s.indexOf(','); res(i>=0?s.slice(i+1):s); };
+      fr.onerror=function(){rej(new Error('read failed'));};
+      fr.readAsDataURL(blob);
+    }); });
 }
 function openDocEditModal(index){
   var ctx=_docEditCtx;if(!ctx)return; var d=ctx.docs[index];if(!d)return;
