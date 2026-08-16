@@ -2134,6 +2134,8 @@ function renderDocGrid(list,docs,opts){
     // a caregiver an SSN card or license). The 4676 / Authorizations / Other get the button.
     var _idCat={SSN_Card:1,Drivers_License:1,Insurance_Card:1,Medicare_Card:1,Medicaid_Card:1};
     var canEmail=(opts.clientType==='homecare')&&!_idCat[d.category];
+    // Extract (OCR → fill client fields) is offered only on the ID/benefit cards we can read.
+    var canExtract=(opts.clientType==='homecare')&&_CARD_TYPE[d.category];
     var thumb=isImg
       ?'<span class="doc-thumb" style="background-image:url(\''+escJsAttr(d.url)+'\')"></span>'
       :'<span class="doc-thumb doc-thumb-file">'+_docFileIcon(ext)+'</span>';
@@ -2144,6 +2146,7 @@ function renderDocGrid(list,docs,opts){
         '<div class="doc-card-meta"><span class="doc-cat-pill">'+esc(_docCatLabel(d.category))+'</span>'+(d.size?'<span class="doc-size">'+_fmtDocSize(d.size)+'</span>':'')+'</div>'+
       '</div>'+
       '<div class="doc-card-actions">'+
+        (canExtract?'<button class="doc-act" title="Read this card &amp; fill client fields" onclick="extractCardFields('+i+')">🔍</button>':'')+
         (canEmail?'<button class="doc-act" title="Email to caregiver" onclick="emailDocToCaregiver('+i+')">✉</button>':'')+
         '<a class="doc-act" href="'+esc(d.downloadUrl||d.url||'#')+'" title="Download" download>⬇</a>'+
         '<button class="doc-act" title="Rename / relabel" onclick="openDocEditModal('+i+')">✎</button>'+
@@ -2233,6 +2236,92 @@ function _docToBase64(url){
       fr.onerror=function(){rej(new Error('read failed'));};
       fr.readAsDataURL(blob);
     }); });
+}
+// ── ID / benefit card autofill (Driver's License, SSN, Medicaid) ─────────────
+// Read a labeled card via backend OCR and offer to apply the fields — comparing against what's
+// already on the client: blanks are offered to fill, matches are shown verified, and differences
+// are flagged for you to choose. Never auto-applies; you click Apply. Name fields are intentionally
+// NOT applied here (the client's name is its record key — renaming is its own Save-Changes flow).
+var _CARD_TYPE={Drivers_License:'drivers_license',SSN_Card:'ssn',Medicaid_Card:'medicaid'};
+var _CARD_FIELD_LABEL={dob:'Date of Birth',driversLicense:"Driver's License #",street:'Street',city:'City',state:'State',zip:'ZIP',ssn:'Social Security #',medicaidId:'Medicaid ID'};
+var _CARD_FIELD_INPUT={dob:'ei-dob',driversLicense:'ei-dl',street:'ei-street',city:'ei-city',state:'ei-state',zip:'ei-zip',ssn:'ei-ssn',medicaidId:'ei-medicaid'};
+function extractCardFields(index){
+  var ctx=_docEditCtx; if(!ctx||ctx.clientType!=='homecare')return;
+  var d=ctx.docs[index]; if(!d)return;
+  var type=_CARD_TYPE[d.category];
+  if(!type){showAlert('This document type can’t be auto-read.');return;}
+  if(typeof spToken==='undefined'||!spToken){showAlert('Sign in first (Settings) to read a card.');return;}
+  if(typeof showToast==='function')showToast('Reading card…',1500);
+  _docToBase64(d.url||d.downloadUrl).then(function(b64){
+    return fetch(API_BASE+'/id-extract',{method:'POST',headers:apiHeaders(),body:JSON.stringify({fileBase64:b64,cardType:type})});
+  }).then(function(r){
+    if(r.ok)return r.json();
+    return r.json().then(function(j){throw new Error((j&&j.error)||('HTTP '+r.status));},function(){throw new Error('HTTP '+r.status);});
+  }).then(function(j){
+    var fields=(j&&j.fields)||{};
+    if(!Object.keys(fields).length){showAlert('Couldn’t read any fields off that card. Try a clearer photo/scan.');return;}
+    _showCardReview(fields);
+  }).catch(function(e){showAlert('Could not read the card: '+((e&&e.message)||e));});
+}
+// Normalize for comparison: numbers by their digits/letters only (so 123-45-6789 == 123456789),
+// everything else case-insensitively.
+function _cardNorm(field,v){
+  v=(v==null?'':String(v)).trim();
+  if(field==='ssn'||field==='medicaidId'||field==='driversLicense') return v.replace(/[^0-9A-Za-z]/g,'').toLowerCase();
+  return v.toLowerCase();
+}
+function _showCardReview(fields){
+  var prof=getProfiles()[activeProfileName]||{};
+  var rows=[];
+  Object.keys(fields).forEach(function(k){
+    if(!_CARD_FIELD_LABEL[k])return;                      // only known, applyable fields (skips name)
+    var ext=String(fields[k]||'').trim(); if(!ext)return;
+    var cur=String(prof[k]||'').trim();
+    var same=cur && _cardNorm(k,cur)===_cardNorm(k,ext);
+    rows.push({field:k,label:_CARD_FIELD_LABEL[k],cur:cur,ext:ext,state:(!cur?'fill':(same?'match':'differ'))});
+  });
+  if(!rows.length){showAlert('Nothing new to apply from that card.');return;}
+  var bodyHtml=rows.map(function(r,i){
+    if(r.state==='match') return '<div style="padding:6px 0;font-size:13px;"><span style="color:#1a7740;font-weight:700;">✓</span> <b>'+esc(r.label)+'</b> matches the card ('+esc(r.ext)+')</div>';
+    if(r.state==='fill') return '<label style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;font-size:13px;"><input type="checkbox" data-idx="'+i+'" class="cardfill" checked style="margin-top:3px;"><span>Fill <b>'+esc(r.label)+'</b> → <span style="color:#185FA5;font-weight:600;">'+esc(r.ext)+'</span></span></label>';
+    return '<div style="padding:6px 0;font-size:13px;border-top:1px dashed #e1e5ea;">'+
+      '<div style="color:#b8860b;font-weight:700;">⚠ '+esc(r.label)+' differs from the card</div>'+
+      '<label style="display:block;margin-top:3px;"><input type="radio" name="card'+i+'" value="keep" checked> Keep on file: <b>'+esc(r.cur)+'</b></label>'+
+      '<label style="display:block;"><input type="radio" name="card'+i+'" value="use"> Use card: <span style="color:#185FA5;font-weight:600;">'+esc(r.ext)+'</span></label>'+
+    '</div>';
+  }).join('');
+  var ov=document.createElement('div');ov.className='modal-overlay open';ov.id='cardReviewModal';
+  ov.innerHTML='<div class="modal-box" style="max-width:480px;">'+
+    '<h3>Apply card details to '+esc(activeProfileName||'client')+'?</h3>'+
+    '<p style="font-size:12px;color:#5c7590;margin-top:-4px;">Blanks are filled, matches are confirmed, and differences are yours to choose. Nothing changes until you click Apply.</p>'+
+    '<div style="max-height:340px;overflow:auto;">'+bodyHtml+'</div>'+
+    '<div class="modal-row"><button class="btn btn-primary" id="card-apply">Apply</button><button class="btn btn-secondary" id="card-cancel">Cancel</button></div>'+
+  '</div>';
+  document.body.appendChild(ov);
+  var close=function(){if(ov.parentNode)ov.parentNode.removeChild(ov);};
+  ov.querySelector('#card-cancel').addEventListener('click',close);
+  ov.addEventListener('mousedown',function(e){if(e.target===ov)close();});
+  ov.querySelector('#card-apply').addEventListener('click',function(){
+    var apply={};
+    rows.forEach(function(r,i){
+      if(r.state==='fill'){ var cb=ov.querySelector('.cardfill[data-idx="'+i+'"]'); if(cb&&cb.checked)apply[r.field]=r.ext; }
+      else if(r.state==='differ'){ var rd=ov.querySelector('input[name="card'+i+'"][value="use"]'); if(rd&&rd.checked)apply[r.field]=r.ext; }
+    });
+    close();
+    if(Object.keys(apply).length)_applyCardFields(apply);
+  });
+}
+function _applyCardFields(apply){
+  var p=getProfiles(); var prof=p[activeProfileName]; if(!prof){showAlert('Open a client first.');return;}
+  Object.keys(apply).forEach(function(k){
+    prof[k]=apply[k];
+    var inputId=_CARD_FIELD_INPUT[k]; var el=inputId&&document.getElementById(inputId);
+    if(el)el.value=apply[k];                              // reflect in the Profile form if it's open
+  });
+  saveProfilesLS(p);
+  if(typeof saveProfileSP==='function')saveProfileSP(activeProfileName,prof);
+  if(typeof addAuditEntry==='function')addAuditEntry(activeProfileName,'Applied card details: '+Object.keys(apply).map(function(k){return _CARD_FIELD_LABEL[k]||k;}).join(', '));
+  if(typeof showToast==='function')showToast('✓ Applied '+Object.keys(apply).length+' field(s) from the card',3000);
 }
 function openDocEditModal(index){
   var ctx=_docEditCtx;if(!ctx)return; var d=ctx.docs[index];if(!d)return;
