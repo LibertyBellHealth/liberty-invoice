@@ -973,7 +973,7 @@ function renderInfoPane(){
   mkField('ei-medicaid','Medicaid ID',prof.medicaidId||'',false);
   // Date of Birth — needed on DHS-390 / MDHHS-6200 / MSA-4676 state forms
   var dDob=document.createElement('div');dDob.className='info-field';
-  dDob.innerHTML='<label for="ei-dob">Date of Birth</label><input id="ei-dob" type="date" value="'+esc(prof.dob||'')+'" autocomplete="off" oninput="unsavedChanges=true;">';
+  dDob.innerHTML='<label for="ei-dob">Date of Birth <span style="font-weight:400;font-size:11px;color:#5c7590;">(double-click to copy)</span></label><input id="ei-dob" type="date" value="'+esc(prof.dob||'')+'" autocomplete="off" oninput="unsavedChanges=true;" ondblclick="_copyField(this,\'mdy\')" title="Double-click to copy as MM/DD/YYYY">';
   g.appendChild(dDob);
   var dGender=document.createElement('div');dGender.className='info-field';
   var gv=prof.gender||'';
@@ -989,10 +989,11 @@ function renderInfoPane(){
   dRate.innerHTML='<label for="ei-rate">Hourly Rate</label><input id="ei-rate" value="'+esc(prof.hourlyRate||'')+'" inputmode="decimal" oninput="formatRate(this);unsavedChanges=true;">';
   g.appendChild(dRate);
   mkField('ei-dl',"Driver's License #",prof.driversLicense||'',false);
-  // SSN masked by default; reveals while the field is focused, re-masks on blur
+  // SSN masked by default; reveals on focus, re-masks a few seconds after blur (#9).
+  // Double-click copies the 9 digits with no dashes (#6).
   var dSsn=document.createElement('div');dSsn.className='info-field';
-  dSsn.innerHTML='<label for="ei-ssn">Social Security #</label>'+
-    '<input id="ei-ssn" type="password" autocomplete="off" maxlength="11" placeholder="XXX-XX-XXXX" value="'+esc(prof.ssn||'')+'" oninput="formatSSN(this);unsavedChanges=true;" onfocus="this.type=\'text\'" onblur="this.type=\'password\'">';
+  dSsn.innerHTML='<label for="ei-ssn">Social Security # <span style="font-weight:400;font-size:11px;color:#5c7590;">(double-click to copy, no dashes)</span></label>'+
+    '<input id="ei-ssn" type="password" autocomplete="off" maxlength="11" placeholder="XXX-XX-XXXX" value="'+esc(prof.ssn||'')+'" oninput="formatSSN(this);unsavedChanges=true;" onfocus="_revealSecret(this)" onblur="_maskSecretSoon(this)" ondblclick="_copyField(this,\'digits\')" title="Double-click to copy without dashes">';
   g.appendChild(dSsn);
   mkField('ei-phone','Client Phone',prof.phone||'',false);
   mkField('ei-home-phone','Home Phone',prof.homePhone||'',false);
@@ -1013,7 +1014,7 @@ function renderInfoPane(){
 
   // Service Start Date — moved ABOVE caregiver per user
   var dStart=document.createElement('div');dStart.className='info-field full';
-  dStart.innerHTML='<label for="ei-start-date">Service Start Date <span style="font-weight:400;font-size:11px;color:#5c7590;">(prevents missing-invoice warnings for months before this date)</span></label><input type="date" id="ei-start-date" value="'+esc(prof.startDate||'')+'" oninput="unsavedChanges=true;">';
+  dStart.innerHTML='<label for="ei-start-date">Service Start Date <span style="font-weight:400;font-size:11px;color:#5c7590;">(prevents missing-invoice warnings for months before this date)</span></label><input type="date" id="ei-start-date" value="'+esc(prof.startDate||'')+'" oninput="unsavedChanges=true;" ondblclick="_copyField(this,\'mdy\')" title="Double-click to copy as MM/DD/YYYY">';
   g.appendChild(dStart);
 
   // Assigned Caregiver — full width, with Open button (now matches the Caseworker layout below)
@@ -3087,7 +3088,7 @@ function renderCgInfoPane(){
   g.appendChild(dName);
 
   // DOB + Gender row (moved up — needed for state forms / identity)
-  mkRow('<div class="info-field"><label for="cgi-dob">Date of Birth</label><input id="cgi-dob" type="date" value="'+esc(cg.dob||cg.dateOfBirth||'')+'" autocomplete="off"></div>'+
+  mkRow('<div class="info-field"><label for="cgi-dob">Date of Birth <span style="font-weight:400;font-size:11px;color:#5c7590;">(double-click to copy)</span></label><input id="cgi-dob" type="date" value="'+esc(cg.dob||cg.dateOfBirth||'')+'" autocomplete="off" ondblclick="_copyField(this,\'mdy\')" title="Double-click to copy as MM/DD/YYYY"></div>'+
     '<div class="info-field"><label for="cgi-gender">Gender</label><select id="cgi-gender"><option value=""'+(!cg.gender?' selected':'')+'>—</option><option value="Male"'+(cg.gender==='Male'?' selected':'')+'>Male</option><option value="Female"'+(cg.gender==='Female'?' selected':'')+'>Female</option></select></div>');
 
   mkRow('<div class="info-field"><label for="cgi-nickname">Nickname</label><input id="cgi-nickname" value="'+esc(cg.nickname||'')+'"></div>'+
@@ -3096,10 +3097,11 @@ function renderCgInfoPane(){
   mkF('cgi-phone','Phone',cg.phone,false);
   mkF('cgi-email','Email',cg.email,false);
   mkF('cgi-dl',"Driver's License #",cg.driversLicense,false);
-  // SSN masked; reveals while the field is focused, re-masks on blur
+  // SSN masked; reveals on focus, re-masks a few seconds after blur (#9). Double-click copies
+  // the 9 digits with no dashes (#6).
   var cgSsnDiv=document.createElement('div');cgSsnDiv.className='info-field';
-  cgSsnDiv.innerHTML='<label for="cgi-ssn">Social Security #</label>'+
-    '<input id="cgi-ssn" type="password" autocomplete="off" maxlength="11" placeholder="XXX-XX-XXXX" value="'+esc(cg.ssn||'')+'" oninput="formatSSN(this);" onfocus="this.type=\'text\'" onblur="this.type=\'password\'">';
+  cgSsnDiv.innerHTML='<label for="cgi-ssn">Social Security # <span style="font-weight:400;font-size:11px;color:#5c7590;">(double-click to copy, no dashes)</span></label>'+
+    '<input id="cgi-ssn" type="password" autocomplete="off" maxlength="11" placeholder="XXX-XX-XXXX" value="'+esc(cg.ssn||'')+'" oninput="formatSSN(this);" onfocus="_revealSecret(this)" onblur="_maskSecretSoon(this)" ondblclick="_copyField(this,\'digits\')" title="Double-click to copy without dashes">';
   g.appendChild(cgSsnDiv);
   mkF('cgi-street','Street',cg.street||cg.address,true);
   mkRow('<div class="info-field"><label for="cgi-city">City</label><input id="cgi-city" value="'+esc(cg.city||'')+'"></div>'+
@@ -3110,16 +3112,13 @@ function renderCgInfoPane(){
   mkRow('<div class="info-field full"><label for="cgi-champs">CHAMPS Provider ID <span style="font-weight:400;color:#5c7590;">(used on BPHASA-2421)</span></label><input id="cgi-champs" value="'+esc(cg.champsId||cg.champs_id||'')+'" placeholder="e.g. 6221933"></div>');
   mkRow(
     '<div class="info-field"><label for="cgi-milogin-user">MI Login Username <span style="font-weight:400;color:#5c7590;">(state portal)</span></label><input id="cgi-milogin-user" value="'+esc(cg.miloginUsername||cg.milogin_username||'')+'" placeholder="username" autocomplete="off"></div>'+
-    '<div class="info-field"><label for="cgi-milogin-pass">MI Login Password</label>'+
-      '<div style="display:flex;gap:4px;align-items:center;">'+
-        '<input id="cgi-milogin-pass" type="password" value="" placeholder="•••••• (click Show)" autocomplete="off" style="flex:1;">'+
-        '<button type="button" class="btn btn-secondary btn-sm" onclick="revealMilogin(\'cgi-milogin-pass\',this,\''+escJsAttr(activeCgId)+'\')" style="padding:4px 8px;font-size:11px;white-space:nowrap;">Show</button>'+
-      '</div>'+
+    '<div class="info-field"><label for="cgi-milogin-pass">MI Login Password <span style="font-weight:400;font-size:11px;color:#5c7590;">(click to reveal)</span></label>'+
+      '<input id="cgi-milogin-pass" type="password" value="" placeholder="•••••• (click to reveal)" autocomplete="off" onfocus="_revealMiloginField(this,\''+escJsAttr(activeCgId)+'\')" onblur="_maskSecretSoon(this)" style="width:100%;">'+
     '</div>'
   );
 
   mkDiv('Employment');
-  mkRow('<div class="info-field"><label for="cgi-hire">Hire Date</label><input id="cgi-hire" type="date" value="'+esc(cg.hireDate||'')+'"></div>'+
+  mkRow('<div class="info-field"><label for="cgi-hire">Hire Date <span style="font-weight:400;font-size:11px;color:#5c7590;">(double-click to copy)</span></label><input id="cgi-hire" type="date" value="'+esc(cg.hireDate||'')+'" ondblclick="_copyField(this,\'mdy\')" title="Double-click to copy as MM/DD/YYYY"></div>'+
     '<div class="info-field"><label for="cgi-emptype">Employment Type</label><select id="cgi-emptype"><option value="full-time"'+(cg.emptype==='full-time'?' selected':'')+'>Full-Time</option><option value="part-time"'+(cg.emptype==='part-time'?' selected':'')+'>Part-Time</option><option value="per-diem"'+(cg.emptype==='per-diem'?' selected':'')+'>Per Diem</option></select></div>');
   mkRow('<div class="info-field"><label for="cgi-pay">Pay Rate ($/hr)</label><input id="cgi-pay" value="'+esc(cg.payRate||'')+'" inputmode="decimal" oninput="formatRate(this)"></div>');
 
@@ -3350,6 +3349,45 @@ function showPrompt(message,initialValue,onSave,opts){
 
 // Fetch a caregiver's MI Login password on demand (it is never preloaded or cached),
 // then reveal it via the normal mask toggle (which auto-re-masks after 8s).
+// ── Secret-field reveal / copy helpers (SSN, MI Login password, dates) ──────────
+// Reveal a masked field and cancel any pending auto re-mask.
+function _revealSecret(inp){ if(!inp)return; if(inp._maskTimeout){clearTimeout(inp._maskTimeout);inp._maskTimeout=null;} inp.type='text'; }
+// Re-mask a few seconds AFTER the field loses focus — not instantly — so you can alt-tab to
+// another window/tab and paste the value before it snaps back to dots (#9). Cancelled if the
+// field is re-focused (via _revealSecret) before the timer fires.
+function _maskSecretSoon(inp,ms){ if(!inp)return; if(inp._maskTimeout)clearTimeout(inp._maskTimeout); inp._maskTimeout=setTimeout(function(){ if(inp&&inp.type==='text')inp.type='password'; if(inp)inp._maskTimeout=null; },ms||4000); }
+// MI Login password: fetch on FOCUS (never preloaded/cached) then reveal — replaces the old
+// "Show" button (#8). Empty-on-save is safe (backend pwProvided guard preserves the stored value).
+function _revealMiloginField(inp,id){
+  if(!inp)return;
+  _revealSecret(inp);
+  if(inp.value||!id)return;                 // already fetched / user typed one / new caregiver
+  fetch(API_BASE+'/caregivers/'+encodeURIComponent(id)+'/milogin',{headers:apiHeaders()})
+    .then(function(r){return r.ok?r.json():null;})
+    .then(function(d){ if(d&&typeof d.milogin_password==='string'&&!inp.value)inp.value=d.milogin_password; })
+    .catch(function(){});
+}
+// Copy a field's value to the clipboard for quick paste into state portals/forms, with a brief
+// "Copied ✓" flash. transform: 'digits' → strip non-digits (SSN without dashes, #6);
+// 'mdy' → YYYY-MM-DD to MM/DD/YYYY (date inputs, #7). Wired to ondblclick.
+function _copyField(el,transform){
+  if(!el)return;
+  var v=(el.value!=null&&el.value!=='')?el.value:(el.textContent||'');
+  if(transform==='digits') v=String(v).replace(/\D/g,'');
+  else if(transform==='mdy'){ var m=String(v).match(/^(\d{4})-(\d{2})-(\d{2})$/); if(m)v=m[2]+'/'+m[3]+'/'+m[1]; }
+  v=String(v).trim(); if(!v)return;
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(v); }catch(e){}
+  _flashCopied(el);
+}
+function _flashCopied(el){
+  try{
+    var tip=document.createElement('span'); tip.textContent='Copied ✓';
+    tip.style.cssText='position:absolute;background:#1a7740;color:#fff;font-size:11px;font-weight:600;padding:2px 7px;border-radius:4px;z-index:99999;pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,.2);';
+    var r=el.getBoundingClientRect();
+    tip.style.left=(r.left+window.scrollX)+'px'; tip.style.top=(r.top+window.scrollY-24)+'px';
+    document.body.appendChild(tip); setTimeout(function(){if(tip&&tip.parentNode)tip.parentNode.removeChild(tip);},1000);
+  }catch(e){}
+}
 function revealMilogin(inputId,btn,cgIdArg){
   var inp=document.getElementById(inputId);if(!inp)return;
   // Already revealed, or the user has typed a value — just toggle visibility.

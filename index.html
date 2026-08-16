@@ -497,62 +497,9 @@ function aiTrack(name, props){
   <!-- SETTINGS PAGE -->
   <div class="page" id="page-settings">
     <div class="home-title" style="margin-bottom:4px;">Settings</div>
-    <div class="page-subtitle">Manage signatures, data, and preferences.</div>
+    <div class="page-subtitle">Account, billing, documents, and data.</div>
 
-    <div class="settings-section">
-      <h3>Signatures</h3>
-      <div class="sig-stored-list" id="sigStoredList"></div>
-      <button class="btn btn-secondary" onclick="openAddSigModal()">+ Add Signature</button>
-      <p style="font-size:11px;color:#5c7590;margin-top:10px;">Signatures are stored locally in this browser. When placing a signature on an invoice, you'll choose from saved signatures here.</p>
-    </div>
-
-    <div class="settings-section">
-      <h3>Signing Templates <span style="font-weight:400;font-size:11px;color:#5c7590;">(documents you send caregivers for e-signature)</span></h3>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">
-        <input type="file" id="signTplFile" accept="application/pdf" style="flex:1;min-width:200px;font-size:12px;">
-        <input type="text" id="signTplName" placeholder="Display name (e.g. Employee Handbook)" maxlength="100" style="flex:1;min-width:200px;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:12px;outline:none;">
-        <input type="text" id="signTplVersion" placeholder="Version (e.g. v1.0)" maxlength="40" style="width:140px;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:12px;outline:none;">
-        <button class="btn btn-primary" onclick="uploadSigningTemplate()">Upload</button>
-      </div>
-      <div id="signTplList" style="max-height:260px;overflow:auto;border:1px solid #e1e5ea;border-radius:6px;font-size:12px;">
-        <div style="padding:14px;color:#5c7590;text-align:center;">Loading templates…</div>
-      </div>
-      <p style="font-size:11px;color:#5c7590;margin-top:10px;">Upload the PDF version of each onboarding document. Caregivers receive a link via email and sign on a separate page (no CRM login). Drafts are in <code>~/Documents/Claude/onboarding-drafts/</code>.</p>
-    </div>
-
-    <div class="settings-section">
-      <h3>Email Audit Log <span style="font-weight:400;font-size:11px;color:#5c7590;">(HIPAA accounting of disclosures)</span></h3>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-        <button class="btn btn-primary" onclick="downloadEmailAuditCSV()">Download CSV</button>
-        <button class="btn btn-secondary" onclick="renderEmailAuditTable()">Refresh</button>
-      </div>
-      <div id="emailAuditTableWrap" style="max-height:280px;overflow:auto;border:1px solid #e1e5ea;border-radius:6px;font-size:11px;">
-        <div style="padding:14px;color:#5c7590;text-align:center;">No log entries yet. Audit log will populate after you send an invoice email.</div>
-      </div>
-      <p style="font-size:11px;color:#5c7590;margin-top:10px;">Records every PHI-bearing email sent — recipient, caseworker, billing period, clients included, success/failure. Useful for resolving "did you send X?" disputes and HIPAA accounting requirements. Stored locally; download CSV for permanent records.</p>
-    </div>
-
-    <div class="settings-section">
-      <h3>Client Data</h3>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-secondary" onclick="exportProfiles()">Export All Clients (JSON)</button>
-        <button class="btn btn-secondary" onclick="exportClientsXLSX()">Export All Clients (Excel)</button>
-        <button class="btn btn-primary" onclick="exportClientsAsPDFFolders()" id="exportPDFFoldersBtn">Export Clients + Invoices (PDFs)</button>
-        <button class="btn btn-secondary" onclick="document.getElementById('importFile').click()">Import Clients from File</button>
-        <input type="file" id="importFile" accept=".json" style="display:none;" onchange="importProfiles(event)">
-      </div>
-      <!-- DHS-1210 import (global hidden input so it works from the Documents pane and the Overview card) -->
-      <input type="file" id="dhsImportFile" accept="application/pdf" style="display:none;" onchange="handleDhsImport(this)">
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed #e1e5ea;">
-        <button class="btn btn-primary" onclick="backupToOneDrive()" id="oneDriveBackupBtn">☁ Backup to OneDrive Now</button>
-        <span style="font-size:11px;color:#5c7590;align-self:center;line-height:1.5;">Auto-backs up <b>weekly</b> on first sign-in (keeps 26 most recent ~6 months). <b>Manual backups (this button) are kept forever</b> — never auto-deleted. Saves to <b>OneDrive / Liberty Home Care Backups /</b></span>
-      </div>
-      <p style="font-size:11px;color:#5c7590;margin-top:10px;line-height:1.6;">
-        <b>JSON</b>: backup for re-import. <span style="color:#1e7e34;">SSN masked by default</span> — opt in to "Include Full SSN" if you need to preserve them across a restore.<br>
-        <b>Excel</b>: spreadsheet of all client/invoice/caregiver data. <span style="color:#1e7e34;">SSN auto-masked to last 4 digits.</span><br>
-        <b>PDFs</b>: ZIP with one folder per client containing their invoice PDFs (no SSN — invoices don't include SSN by design).
-      </p>
-    </div>
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#7089a3;margin:22px 0 8px;padding-bottom:5px;border-bottom:2px solid #e1e5ea;">Account &amp; Billing</div>
 
     <div class="settings-section">
       <h3>Azure Database &amp; Email Sync</h3>
@@ -592,6 +539,65 @@ function aiTrack(name, props){
         <button class="btn btn-primary" onclick="saveAgencyFromSettings()">Save Agency Info</button>
         <span id="agencyStatus" style="font-size:12px;color:#1a7740;"></span>
       </div>
+    </div>
+
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#7089a3;margin:26px 0 8px;padding-bottom:5px;border-bottom:2px solid #e1e5ea;">Signatures &amp; Documents</div>
+
+    <div class="settings-section">
+      <h3>Signatures</h3>
+      <div class="sig-stored-list" id="sigStoredList"></div>
+      <button class="btn btn-secondary" onclick="openAddSigModal()">+ Add Signature</button>
+      <p style="font-size:11px;color:#5c7590;margin-top:10px;">Signatures are stored locally in this browser. When placing a signature on an invoice, you'll choose from saved signatures here.</p>
+    </div>
+
+    <div class="settings-section">
+      <h3>Signing Templates <span style="font-weight:400;font-size:11px;color:#5c7590;">(documents you send caregivers for e-signature)</span></h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">
+        <input type="file" id="signTplFile" accept="application/pdf" style="flex:1;min-width:200px;font-size:12px;">
+        <input type="text" id="signTplName" placeholder="Display name (e.g. Employee Handbook)" maxlength="100" style="flex:1;min-width:200px;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:12px;outline:none;">
+        <input type="text" id="signTplVersion" placeholder="Version (e.g. v1.0)" maxlength="40" style="width:140px;padding:7px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:12px;outline:none;">
+        <button class="btn btn-primary" onclick="uploadSigningTemplate()">Upload</button>
+      </div>
+      <div id="signTplList" style="max-height:260px;overflow:auto;border:1px solid #e1e5ea;border-radius:6px;font-size:12px;">
+        <div style="padding:14px;color:#5c7590;text-align:center;">Loading templates…</div>
+      </div>
+      <p style="font-size:11px;color:#5c7590;margin-top:10px;">Upload the PDF version of each onboarding document. Caregivers receive a link via email and sign on a separate page (no CRM login). Drafts are in <code>~/Documents/Claude/onboarding-drafts/</code>.</p>
+    </div>
+
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#7089a3;margin:26px 0 8px;padding-bottom:5px;border-bottom:2px solid #e1e5ea;">Data &amp; Records</div>
+
+    <div class="settings-section">
+      <h3>Email Audit Log <span style="font-weight:400;font-size:11px;color:#5c7590;">(HIPAA accounting of disclosures)</span></h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        <button class="btn btn-primary" onclick="downloadEmailAuditCSV()">Download CSV</button>
+        <button class="btn btn-secondary" onclick="renderEmailAuditTable()">Refresh</button>
+      </div>
+      <div id="emailAuditTableWrap" style="max-height:280px;overflow:auto;border:1px solid #e1e5ea;border-radius:6px;font-size:11px;">
+        <div style="padding:14px;color:#5c7590;text-align:center;">No log entries yet. Audit log will populate after you send an invoice email.</div>
+      </div>
+      <p style="font-size:11px;color:#5c7590;margin-top:10px;">Records every PHI-bearing email sent — recipient, caseworker, billing period, clients included, success/failure. Useful for resolving "did you send X?" disputes and HIPAA accounting requirements. Stored locally; download CSV for permanent records.</p>
+    </div>
+
+    <div class="settings-section">
+      <h3>Client Data</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-secondary" onclick="exportProfiles()">Export All Clients (JSON)</button>
+        <button class="btn btn-secondary" onclick="exportClientsXLSX()">Export All Clients (Excel)</button>
+        <button class="btn btn-primary" onclick="exportClientsAsPDFFolders()" id="exportPDFFoldersBtn">Export Clients + Invoices (PDFs)</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('importFile').click()">Import Clients from File</button>
+        <input type="file" id="importFile" accept=".json" style="display:none;" onchange="importProfiles(event)">
+      </div>
+      <!-- DHS-1210 import (global hidden input so it works from the Documents pane and the Overview card) -->
+      <input type="file" id="dhsImportFile" accept="application/pdf" style="display:none;" onchange="handleDhsImport(this)">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed #e1e5ea;">
+        <button class="btn btn-primary" onclick="backupToOneDrive()" id="oneDriveBackupBtn">☁ Backup to OneDrive Now</button>
+        <span style="font-size:11px;color:#5c7590;align-self:center;line-height:1.5;">Auto-backs up <b>weekly</b> on first sign-in (keeps 26 most recent ~6 months). <b>Manual backups (this button) are kept forever</b> — never auto-deleted. Saves to <b>OneDrive / Liberty Home Care Backups /</b></span>
+      </div>
+      <p style="font-size:11px;color:#5c7590;margin-top:10px;line-height:1.6;">
+        <b>JSON</b>: backup for re-import. <span style="color:#1e7e34;">SSN masked by default</span> — opt in to "Include Full SSN" if you need to preserve them across a restore.<br>
+        <b>Excel</b>: spreadsheet of all client/invoice/caregiver data. <span style="color:#1e7e34;">SSN auto-masked to last 4 digits.</span><br>
+        <b>PDFs</b>: ZIP with one folder per client containing their invoice PDFs (no SSN — invoices don't include SSN by design).
+      </p>
     </div>
 
     <div class="settings-section">
@@ -854,40 +860,12 @@ function aiTrack(name, props){
       <span style="font-size:11px;color:#5c7590;">All fields can be edited after opening</span>
     </div>
     <!-- Form cards -->
-    <div class="form-type-card" onclick="openStateForm('dhs390')">
-      <div class="form-type-info">
-        <div class="form-type-name">DHS-390 — Adult Services Application</div>
-        <div class="form-type-desc">Application for Home Help, Adult Community Placement, or other adult services. Sections for client info, program selection, current situation, and signature.</div>
-      </div>
-      <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openStateForm('dhs390')">Fill Out</button>
-    </div>
-    <div class="form-type-card" onclick="openStateForm('dhs4771')">
-      <div class="form-type-info">
-        <div class="form-type-name">DHS-4771 — FICA Tax Authorization (Home Help)</div>
-        <div class="form-type-desc">Authorization for withholding of FICA tax in Home Help payments. Client authorizes MDHHS to act as tax-filing agent for Social Security purposes.</div>
-      </div>
-      <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openStateForm('dhs4771')">Fill Out</button>
-    </div>
-    <div class="form-type-card" onclick="openStateForm('mdhhs6200')">
-      <div class="form-type-info">
-        <div class="form-type-name">MDHHS-6200 — Adult Services Medical Needs Certification</div>
-        <div class="form-type-desc">Medical certification completed by a physician, PA, NP, OT, PT, or CNS. Certifies patient's need for home help services with ADL/IADL and complex care selection.</div>
-      </div>
-      <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openStateForm('mdhhs6200')">Fill Out</button>
-    </div>
     <div class="form-type-card" onclick="openStateForm('msa4676')">
       <div class="form-type-info">
         <div class="form-type-name">MSA-4676 — Home Help Services Agreement</div>
         <div class="form-type-desc">Agreement between the beneficiary and caregiver/agency provider. Documents terms of Home Help service delivery, caregiver information, and start date.</div>
       </div>
       <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openStateForm('msa4676')">Fill Out</button>
-    </div>
-    <div class="form-type-card" onclick="openStateForm('bphasa2421')">
-      <div class="form-type-info">
-        <div class="form-type-name">BPHASA-2421 — Live-In Caregiver Attestation</div>
-        <div class="form-type-desc">Required annually for caregivers who live with the beneficiary and qualify for the EVV exemption. Signed by the caregiver, then submitted to MDHHS or an Approving Entity for countersignature.</div>
-      </div>
-      <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openStateForm('bphasa2421')">Fill Out</button>
     </div>
   </div>
 
