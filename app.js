@@ -1625,7 +1625,37 @@ function readDHS1210File(file){
   }).then(function(pdf){
     var jobs=[]; for(var p=1;p<=pdf.numPages;p++)jobs.push(pdf.getPage(p).then(_dhsPageLines));
     return Promise.all(jobs);
-  }).then(parseDHS1210);
+  }).then(function(pages){
+    // A clean digital PDF has a text layer — parse it here (free + instant). A SCANNED/photographed
+    // PDF has essentially no extractable text, so pdf.js returns almost nothing; fall back to server
+    // OCR (Azure Document Intelligence), which reads scans and returns the same pages shape.
+    var totalText=pages.reduce(function(a,p){return a+p.join('').length;},0);
+    if(totalText>=200) return parseDHS1210(pages);
+    return _dhsOcrFile(file).then(function(ocrPages){
+      return parseDHS1210(ocrPages&&ocrPages.length?ocrPages:pages);
+    });
+  });
+}
+// Read a File to base64 (no data: prefix) for the OCR endpoint.
+function _fileToBase64(file){
+  return new Promise(function(res,rej){
+    var fr=new FileReader();
+    fr.onload=function(){ var s=String(fr.result||''); var i=s.indexOf(','); res(i>=0?s.slice(i+1):s); };
+    fr.onerror=function(){rej(new Error('read failed'));};
+    fr.readAsDataURL(file);
+  });
+}
+// Send a scanned/photo authorization to the backend OCR (Document Intelligence) and return
+// pages = [[line,...],...] — the same shape pdf.js produces — for parseDHS1210().
+function _dhsOcrFile(file){
+  var status=document.getElementById('hcDocStatus'); if(status)status.textContent='Reading scanned authorization (OCR)…';
+  return _fileToBase64(file).then(function(b64){
+    return fetch(API_BASE+'/dhs-ocr',{method:'POST',headers:apiHeaders(),body:JSON.stringify({fileBase64:b64})});
+  }).then(function(r){
+    if(r.status===401) throw new Error('Sign in first (Settings) to read a scanned authorization.');
+    if(!r.ok) throw new Error('OCR service error (HTTP '+r.status+')');
+    return r.json();
+  }).then(function(j){ return (j&&Array.isArray(j.pages))?j.pages:[]; });
 }
 
 // Entry point — triggered from the client Documents pane.
@@ -1637,14 +1667,18 @@ function importDHS1210(){
 }
 function handleDhsImport(input){
   var file=input&&input.files&&input.files[0]; if(!file)return;
-  if(!/\.pdf$/i.test(file.name)&&file.type!=='application/pdf'){showAlert('Please choose the DHS-1210 or MDHHS-6064 PDF file.');return;}
+  var isPdf=/\.pdf$/i.test(file.name)||file.type==='application/pdf';
+  var isImg=/\.(jpe?g|png|tiff?|bmp|heic|webp)$/i.test(file.name)||/^image\//.test(file.type);
+  if(!isPdf&&!isImg){showAlert('Please choose the DHS-1210 / MDHHS-6064 PDF, or a photo/scan of it.');return;}
   var status=document.getElementById('hcDocStatus'); if(status)status.textContent='Reading authorization…';
-  readDHS1210File(file).then(function(res){
+  // PDFs: try pdf.js first, OCR-fallback for scans. Images (phone photos): straight to OCR.
+  var work=isPdf?readDHS1210File(file):_dhsOcrFile(file).then(parseDHS1210);
+  work.then(function(res){
     if(status)status.textContent='';
     showDhsReview(file,res);
   }).catch(function(e){
     if(status)status.textContent='';
-    showAlert('Could not read that PDF: '+e);
+    showAlert('Could not read that file: '+((e&&e.message)||e));
   });
 }
 
