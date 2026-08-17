@@ -951,6 +951,42 @@ function openInvFromModal(clientName,idx){
   navInvoice(inv.data);
 }
 
+// ── Hover-copy on detail-form fields (ported from the Health CRM's wireCopyableFields) ──
+var _SVG_COPY='<svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+var _SVG_CHECK='<svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+// Format the value for copying: SSN / Medicaid / Medicare / Driver's-License → digits only (dash-free
+// for pasting into state portals); date fields → MM/DD/YYYY; everything else copied as shown.
+function _copyFmt(inp){
+  var v=(inp.value||'').trim(); if(!v)return '';
+  var id=inp.id||'';
+  // ID numbers → strip separators only (dashes/spaces), keeping letters — Medicare MBI and many
+  // driver's licenses are alphanumeric, so digits-only would corrupt them.
+  if(/ssn|medicaid|medicare/i.test(id) || /-dl$/i.test(id)) return v.replace(/[^0-9A-Za-z]/g,'');
+  if(inp.type==='date'){ var m=v.match(/^(\d{4})-(\d{2})-(\d{2})$/); return m?(m[2]+'/'+m[3]+'/'+m[1]):v; }
+  return v;
+}
+// Attach a hover-only copy button to every text/date input in a detail form (client/caregiver use
+// .info-field, caseworker uses .ff). Idempotent via data-copyable; skips checkboxes/hidden/buttons
+// and fields with no id. The SSN double-click shortcut still works too.
+function wireCopyableFields(c){
+  var root=(typeof c==='string')?document.getElementById(c):c; if(!root)return;
+  root.querySelectorAll('input:not([type=checkbox]):not([type=hidden]):not([type=button]):not([data-copyable])').forEach(function(inp){
+    if(!inp.id)return;
+    inp.setAttribute('data-copyable','1');
+    var field=inp.closest('.info-field, .ff'); if(!field)return;
+    field.classList.add('field-copyable');
+    var btn=document.createElement('button');
+    btn.type='button'; btn.className='copy-hover-btn'; btn.title='Copy'; btn.tabIndex=-1; btn.innerHTML=_SVG_COPY;
+    btn.addEventListener('click',function(e){
+      e.preventDefault(); e.stopPropagation();
+      var v=_copyFmt(inp); if(!v)return;
+      try{ if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(v); }catch(_){}
+      btn.classList.add('copied'); btn.innerHTML=_SVG_CHECK;
+      setTimeout(function(){ btn.classList.remove('copied'); btn.innerHTML=_SVG_COPY; },1200);
+    });
+    field.appendChild(btn);
+  });
+}
 function renderInfoPane(){
   if(!activeProfileName)return;
   var prof=getProfiles()[activeProfileName],g=document.getElementById('infoGrid');g.innerHTML='';
@@ -1069,6 +1105,7 @@ function renderInfoPane(){
       (cwOpenId?'<button class="btn-open" onclick="navCaseworkers();setTimeout(function(){openCwDetail(\''+escJsAttr(cwOpenId)+'\');},50)">Open ↗</button>':'')+
     '</div>';
   g.appendChild(dCw);
+  wireCopyableFields('infoGrid');
 }
 // Editable task rows for the Authorization section.
 function _renderAuthTaskRows(tasks){
@@ -3407,6 +3444,7 @@ function renderCgInfoPane(){
   actions.innerHTML='<button class="btn btn-primary" id="cgSaveInfoBtn" onclick="saveCgInfoPane()">Save Changes</button>'+
     '<button class="btn btn-danger btn-sm" onclick="deleteCaregiverFromDetail()" style="padding:6px 14px;">Delete Caregiver</button>';
   c.appendChild(actions);
+  wireCopyableFields('cgInfoContent');
 }
 function saveCgInfoPane(){
   if(!activeCgId)return;
@@ -8009,6 +8047,7 @@ function showCaseworkerForm(id){
     populateSupervisorDropdown(document.getElementById('cw-supervisor'),'');
     document.getElementById('cwDeleteBtn').style.display='none';
   }
+  wireCopyableFields('cwFormWrap');
   document.getElementById('cwFormWrap').scrollIntoView({behavior:'smooth'});
 }
 function hideCaseworkerForm(){
