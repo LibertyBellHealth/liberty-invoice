@@ -15,7 +15,12 @@ var unsavedChanges=false;
 // so it is safe to ship. Run locally on a FIXED port (4280) that is registered as an
 // Azure AD redirect URI, e.g.:  cd liberty-invoice-site && python3 -m http.server 4280
 var _IS_LOCAL   = (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
-var API_BASE    = _IS_LOCAL
+// The FIXED staging URL is a throwaway sandbox on the DEV backend (fake data) so destructive testing
+// there can NEVER touch a real client record. localhost also uses dev. Every OTHER deployed host
+// (the prod site + random PR previews) uses prod. Prod's own hostname never matches this, so prod is
+// unaffected; its CSP stays tight (only the staging branch's CSP allows the dev backend host).
+var _IS_STAGING = (location.hostname === 'zealous-forest-01e406a10-2.centralus.7.azurestaticapps.net');
+var API_BASE    = (_IS_LOCAL || _IS_STAGING)
   ? 'https://liberty-crm-api-dev.azurewebsites.net/api'
   : 'https://liberty-crm-api-cyb3dkhnd2e7a3cy.centralus-01.azurewebsites.net/api';
 var API_APP_ID  = '0c1627c1-c186-4e46-b919-e4a12f2f3952'; // Easy Auth app registration
