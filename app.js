@@ -2260,16 +2260,41 @@ function emailDocToCaregiver(index){
       'Attached is '+display+' for '+clientName+' from '+agName+'. Please review and let me know if you have any questions.\n\n'+
       'Thank you,\n'+agName;
   }
-  _openDocEmailModal(d, cgEmail, subject, body);
+  _openDocEmailModal(d, cgEmail, subject, body, {clientName:clientName, caregiverFirst:cgFirst, agencyName:agName, agencyPhone:agPhone, is4676:is4676});
 }
-function _openDocEmailModal(d, to, subject, body){
+// Draft/rewrite the email body with Azure OpenAI (via /ai-draft). Uses ONLY the facts we pass so it
+// can't invent names/dates; fills subject + body for the user to review before sending — never auto-sends.
+function _aiDraftForEmail(ov, d, ctx){
+  ctx=ctx||{};
+  var btn=ov.querySelector('#dem-ai'), status=ov.querySelector('#dem-status');
+  if(typeof spToken==='undefined'||!spToken){status.style.color='#c0392b';status.textContent='Sign in first (Settings) to use AI.';return;}
+  var orig=btn.innerHTML; btn.disabled=true; btn.innerHTML='Drafting…';
+  status.style.color='#5c7590'; status.textContent='Drafting with AI…';
+  var instruction=ctx.is4676
+    ? 'Write a warm, professional email to the caregiver introducing our agency and asking them to review and sign the attached MSA-4676 Home Help Services Agreement so we can transition the client’s Home Help services to us.'
+    : 'Write a short, professional email to the caregiver about the attached document for this client.';
+  var facts={ caregiver_first_name:ctx.caregiverFirst||'', client_name:ctx.clientName||'',
+    agency_name:ctx.agencyName||'', agency_phone:ctx.agencyPhone||'', attached_document:(d&&(d.displayName||d.name))||'' };
+  fetch(API_BASE+'/ai-draft',{method:'POST',headers:apiHeaders(),body:JSON.stringify({instruction:instruction,facts:facts})})
+    .then(function(r){ if(r.ok)return r.json(); return r.json().then(function(j){throw new Error((j&&j.error)||('HTTP '+r.status));},function(){throw new Error('HTTP '+r.status);}); })
+    .then(function(j){
+      var draft=(j&&j.draft)||''; if(!draft){status.style.color='#c0392b';status.textContent='The AI returned an empty draft — try again.';return;}
+      var m=draft.match(/^\s*subject:\s*(.+?)\r?\n([\s\S]*)$/i);
+      if(m){ ov.querySelector('#dem-subj').value=m[1].trim(); ov.querySelector('#dem-body').value=m[2].trim(); }
+      else { ov.querySelector('#dem-body').value=draft; }
+      status.style.color='#1a7740'; status.textContent='✓ Draft ready — review and edit before sending.'+((j&&j.truncated)?' (may be cut off at the end)':'');
+    })
+    .catch(function(e){ status.style.color='#c0392b'; status.textContent='Draft failed: '+((e&&e.message)||e); })
+    .then(function(){ btn.disabled=false; btn.innerHTML=orig; });
+}
+function _openDocEmailModal(d, to, subject, body, ctx){
   var ov=document.createElement('div');ov.className='modal-overlay open';
   ov.innerHTML='<div class="modal-box" style="max-width:520px;">'+
     '<h3>Email document to caregiver</h3>'+
     '<p style="font-size:12px;color:#5c7590;margin-top:-4px;">Sends “'+esc(d.displayName||d.name||'')+'” as an attachment from your Microsoft account. Edit anything below before sending.</p>'+
     '<label class="qc-l" for="dem-to">To</label><input id="dem-to" class="qc-i" value="'+esc(to)+'" placeholder="caregiver@email.com">'+
     '<label class="qc-l" for="dem-subj">Subject</label><input id="dem-subj" class="qc-i" value="'+esc(subject)+'">'+
-    '<label class="qc-l" for="dem-body">Message <span style="font-weight:400;color:#5c7590;">(delete the intro line if you’ve emailed them before)</span></label>'+
+    '<label class="qc-l" for="dem-body">Message <button type="button" id="dem-ai" class="btn btn-secondary btn-sm" style="float:right;padding:2px 9px;font-size:11px;font-weight:600;">✨ Draft with AI</button><span style="font-weight:400;color:#5c7590;">(delete the intro line if you’ve emailed them before)</span></label>'+
     '<textarea id="dem-body" class="qc-i" style="min-height:180px;resize:vertical;font-family:Arial,sans-serif;">'+esc(body)+'</textarea>'+
     '<div id="dem-status" style="font-size:12px;color:#c0392b;min-height:16px;margin-top:4px;"></div>'+
     '<div class="modal-row"><button class="btn btn-primary" id="dem-send">Send Email</button><button class="btn btn-secondary" id="dem-cancel">Cancel</button></div>'+
@@ -2277,6 +2302,7 @@ function _openDocEmailModal(d, to, subject, body){
   document.body.appendChild(ov);
   var close=function(){if(ov.parentNode)ov.parentNode.removeChild(ov);};
   ov.querySelector('#dem-cancel').addEventListener('click',close);
+  ov.querySelector('#dem-ai').addEventListener('click',function(){_aiDraftForEmail(ov,d,ctx);});
   ov.addEventListener('mousedown',function(e){if(e.target===ov)close();});
   ov.querySelector('#dem-send').addEventListener('click',function(){
     var toV=(ov.querySelector('#dem-to').value||'').trim();
