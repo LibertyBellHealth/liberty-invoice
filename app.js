@@ -2264,6 +2264,33 @@ function _openDocEmailModal(d, to, subject, body){
     });
   });
 }
+// For OCR: fetch an image, downscale to <= maxDim on the long edge, and return JPEG base64. Azure's
+// free OCR tier caps a document at 4 MB and rejects HEIC — a full-res phone photo blows past both, so
+// re-encoding to a right-sized JPEG in the browser makes any photo work (and reads more accurately).
+// PDFs, or images the browser can't decode, fall back to the raw bytes.
+function _imageToOcrBase64(url, maxDim){
+  maxDim = maxDim || 2200;
+  return fetch(url).then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); return r.blob(); })
+    .then(function(blob){
+      if((blob.type&&blob.type.indexOf('pdf')>=0) || /\.pdf(\?|$)/i.test(url)) return _fileToBase64(blob);
+      return new Promise(function(res){
+        var objUrl=URL.createObjectURL(blob), img=new Image();
+        img.onload=function(){
+          try{
+            var sc=Math.min(1, maxDim/Math.max(img.naturalWidth||1, img.naturalHeight||1));
+            var cw=Math.max(1,Math.round((img.naturalWidth||1)*sc)), ch=Math.max(1,Math.round((img.naturalHeight||1)*sc));
+            var cv=document.createElement('canvas'); cv.width=cw; cv.height=ch;
+            cv.getContext('2d').drawImage(img,0,0,cw,ch);
+            var dataUrl=cv.toDataURL('image/jpeg',0.85);
+            URL.revokeObjectURL(objUrl);
+            res(dataUrl.slice(dataUrl.indexOf(',')+1));
+          }catch(e){ URL.revokeObjectURL(objUrl); _fileToBase64(blob).then(res); }
+        };
+        img.onerror=function(){ URL.revokeObjectURL(objUrl); _fileToBase64(blob).then(res); }; // e.g. HEIC on a browser that can't decode it
+        img.src=objUrl;
+      });
+    });
+}
 // Fetch a stored document (blob-storage URL) and return its base64 (no data: prefix) for attaching.
 function _docToBase64(url){
   if(!url)return Promise.reject(new Error('no document URL'));
@@ -2290,7 +2317,7 @@ function extractCardFields(index){
   if(!type){showAlert('This document type can’t be auto-read.');return;}
   if(typeof spToken==='undefined'||!spToken){showAlert('Sign in first (Settings) to read a card.');return;}
   if(typeof showToast==='function')showToast('Reading card…',1500);
-  _docToBase64(d.url||d.downloadUrl).then(function(b64){
+  _imageToOcrBase64(d.url||d.downloadUrl).then(function(b64){
     return fetch(API_BASE+'/id-extract',{method:'POST',headers:apiHeaders(),body:JSON.stringify({fileBase64:b64,cardType:type})});
   }).then(function(r){
     if(r.ok)return r.json();
