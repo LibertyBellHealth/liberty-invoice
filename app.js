@@ -2270,9 +2270,19 @@ function _aiDraftForEmail(ov, d, ctx){
   if(typeof spToken==='undefined'||!spToken){status.style.color='#c0392b';status.textContent='Sign in first (Settings) to use AI.';return;}
   var orig=btn.innerHTML; btn.disabled=true; btn.innerHTML='Drafting…';
   status.style.color='#5c7590'; status.textContent='Drafting with AI…';
-  var instruction=ctx.is4676
-    ? 'Introduce yourself and the agency, then tell the caregiver you are SENDING the attached MSA-4676 form for this client to move them over to your agency. Do NOT ask them to sign it (it is sent for an ink signature). End with a short offer to answer questions.'
-    : 'Let the caregiver know you are sending the attached document for this client, with a short offer to answer any questions.';
+  var pEl=ov.querySelector('#dem-ai-prompt'); var custom=(pEl&&pEl.value||'').trim();
+  var instruction;
+  if(custom){
+    // The user's own instruction drives the email; append the attachment context so the AI knows
+    // what's attached (and, for a 4676, that it's sent for ink signature, not e-signed).
+    instruction=custom+(ctx.is4676
+      ? ' (You are SENDING the attached MSA-4676 form for this client to move them over to your agency — do NOT ask them to sign it by email.)'
+      : ' (There is a document attached for this client.)');
+  } else {
+    instruction=ctx.is4676
+      ? 'Introduce yourself and the agency, then tell the caregiver you are SENDING the attached MSA-4676 form for this client to move them over to your agency. Do NOT ask them to sign it (it is sent for an ink signature). End with a short offer to answer questions.'
+      : 'Let the caregiver know you are sending the attached document for this client, with a short offer to answer any questions.';
+  }
   var _hr=(new Date()).getHours(), _tod=_hr<12?'morning':(_hr<17?'afternoon':'evening');
   var facts={ time_of_day:_tod, caregiver_first_name:ctx.caregiverFirst||'', client_name:ctx.clientName||'',
     sender_name:ctx.senderName||'', agency_name:ctx.agencyName||'', sender_direct:ctx.senderDirect||'', sender_fax:ctx.senderFax||'' };
@@ -2295,7 +2305,15 @@ function _openDocEmailModal(d, to, subject, body, ctx){
     '<p style="font-size:12px;color:#5c7590;margin-top:-4px;">Sends “'+esc(d.displayName||d.name||'')+'” as an attachment from your Microsoft account. Edit anything below before sending.</p>'+
     '<label class="qc-l" for="dem-to">To</label><input id="dem-to" class="qc-i" value="'+esc(to)+'" placeholder="caregiver@email.com">'+
     '<label class="qc-l" for="dem-subj">Subject</label><input id="dem-subj" class="qc-i" value="'+esc(subject)+'">'+
-    '<label class="qc-l" for="dem-body">Message <button type="button" id="dem-ai" class="btn btn-secondary btn-sm" style="float:right;padding:2px 9px;font-size:11px;font-weight:600;">✨ Draft with AI</button><span style="font-weight:400;color:#5c7590;">(delete the intro line if you’ve emailed them before)</span></label>'+
+    '<div style="background:#f5f8fc;border:1px solid #dbe6f2;border-radius:8px;padding:10px 12px;margin:6px 0 12px;">'+
+      '<div style="font-size:12px;font-weight:700;color:#2b4a6b;margin-bottom:6px;">✨ Draft with AI</div>'+
+      '<div style="display:flex;gap:8px;align-items:center;">'+
+        '<input id="dem-ai-prompt" class="qc-i" style="flex:1;margin:0;" placeholder="Optional — tell it what to say (e.g. ‘let them know we can start Monday and ask them to call me’)">'+
+        '<button type="button" id="dem-ai" class="btn btn-primary btn-sm" style="white-space:nowrap;">Draft</button>'+
+      '</div>'+
+      '<div style="font-size:11px;color:#7089a3;margin-top:5px;">Leave blank for the standard message, or type any instruction and it writes it in your voice.</div>'+
+    '</div>'+
+    '<label class="qc-l" for="dem-body">Message</label>'+
     '<textarea id="dem-body" class="qc-i" style="min-height:180px;resize:vertical;font-family:Arial,sans-serif;">'+esc(body)+'</textarea>'+
     '<div id="dem-status" style="font-size:12px;color:#c0392b;min-height:16px;margin-top:4px;"></div>'+
     '<div class="modal-row"><button class="btn btn-primary" id="dem-send">Send Email</button><button class="btn btn-secondary" id="dem-cancel">Cancel</button></div>'+
