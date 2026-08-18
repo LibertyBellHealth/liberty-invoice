@@ -2274,7 +2274,7 @@ function _aiDraftForEmail(ov, d, ctx){
     ? 'Write a warm, professional email to the caregiver introducing our agency and asking them to review and sign the attached MSA-4676 Home Help Services Agreement so we can transition the client’s Home Help services to us.'
     : 'Write a short, professional email to the caregiver about the attached document for this client.';
   var facts={ caregiver_first_name:ctx.caregiverFirst||'', client_name:ctx.clientName||'',
-    agency_name:ctx.agencyName||'', agency_phone:ctx.agencyPhone||'', attached_document:(d&&(d.displayName||d.name))||'' };
+    agency_name:ctx.agencyName||'', agency_phone:ctx.agencyPhone||'' };  // no raw filename — the instruction already says what's attached
   fetch(API_BASE+'/ai-draft',{method:'POST',headers:apiHeaders(),body:JSON.stringify({instruction:instruction,facts:facts})})
     .then(function(r){ if(r.ok)return r.json(); return r.json().then(function(j){throw new Error((j&&j.error)||('HTTP '+r.status));},function(){throw new Error('HTTP '+r.status);}); })
     .then(function(j){
