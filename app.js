@@ -2265,51 +2265,14 @@ function emailDocToCaregiver(index){
       'Attached is '+display+' for '+clientName+' from '+agName+'. Please review and let me know if you have any questions.\n\n'+
       'Thank you,\n'+agName;
   }
-  _openDocEmailModal(d, cgEmail, subject, body, {clientName:clientName, caregiverFirst:cgFirst, agencyName:agName, agencyPhone:agPhone, senderName:(ag.agency_provider_name||''), senderDirect:(ag.agency_phone||''), senderFax:(ag.agency_fax||''), is4676:is4676});
-}
-// Draft/rewrite the email body with Azure OpenAI (via /ai-draft). Uses ONLY the facts we pass so it
-// can't invent names/dates; fills subject + body for the user to review before sending — never auto-sends.
-function _aiDraftForEmail(ov, d, ctx){
-  ctx=ctx||{};
-  var btn=ov.querySelector('#dem-ai'), status=ov.querySelector('#dem-status');
-  if(typeof spToken==='undefined'||!spToken){status.style.color='#c0392b';status.textContent='Sign in first (Settings) to use AI.';return;}
-  var orig=btn.innerHTML; btn.disabled=true; btn.innerHTML='Drafting…';
-  status.style.color='#5c7590'; status.textContent='Drafting with AI…';
-  var pEl=ov.querySelector('#dem-ai-prompt'); var custom=(pEl&&pEl.value||'').trim();
-  var instruction;
-  if(custom){
-    // The user's own instruction drives the email; append the attachment context so the AI knows
-    // what's attached (and, for a 4676, that it's sent for ink signature, not e-signed).
-    instruction=custom+(ctx.is4676
-      ? ' (You are SENDING the attached MSA-4676 form for this client to move them over to your agency — do NOT ask them to sign it by email.)'
-      : ' (There is a document attached for this client.)');
-  } else {
-    instruction=ctx.is4676
-      ? 'Introduce yourself and the agency, then tell the caregiver you are SENDING the attached MSA-4676 form for this client to move them over to your agency. Do NOT ask them to sign it (it is sent for an ink signature). End with a short offer to answer questions.'
-      : 'Let the caregiver know you are sending the attached document for this client, with a short offer to answer any questions.';
-  }
-  var _hr=(new Date()).getHours(), _tod=_hr<12?'morning':(_hr<17?'afternoon':'evening');
-  var facts={ time_of_day:_tod, caregiver_first_name:ctx.caregiverFirst||'', client_name:ctx.clientName||'',
-    sender_name:ctx.senderName||'', agency_name:ctx.agencyName||'', sender_direct:ctx.senderDirect||'', sender_fax:ctx.senderFax||'' };
-  fetch(API_BASE+'/ai-draft',{method:'POST',headers:apiHeaders(),body:JSON.stringify({instruction:instruction,facts:facts})})
-    .then(function(r){ if(r.ok)return r.json(); return r.json().then(function(j){throw new Error((j&&j.error)||('HTTP '+r.status));},function(){throw new Error('HTTP '+r.status);}); })
-    .then(function(j){
-      var draft=(j&&j.draft)||''; if(!draft){status.style.color='#c0392b';status.textContent='The AI returned an empty draft — try again.';return;}
-      var m=draft.match(/^\s*subject:\s*(.+?)\r?\n([\s\S]*)$/i);
-      if(m){ ov.querySelector('#dem-subj').value=m[1].trim(); ov.querySelector('#dem-body').value=m[2].trim(); }
-      else { ov.querySelector('#dem-body').value=draft; }
-      status.style.color='#1a7740'; status.textContent='✓ Draft ready — review and edit before sending.'+((j&&j.truncated)?' (may be cut off at the end)':'');
-    })
-    .catch(function(e){ status.style.color='#c0392b'; status.textContent='Draft failed: '+((e&&e.message)||e); })
-    .then(function(){ btn.disabled=false; btn.innerHTML=orig; });
+  _openDocEmailModal(d, cgEmail, subject, body);
 }
 // d may be null → plain email with no attachment (the Assistant uses this for a note with no form).
-// ctx.auditClient names the client to log the send under (defaults to the active profile) — the
-// Assistant emails for a client that isn't necessarily the one currently open. ctx also carries the
-// AI-draft facts (clientName, caregiverFirst, senderName, …) used by the in-modal ✨ Draft button.
-function _openDocEmailModal(d, to, subject, body, ctx){
-  ctx=ctx||{};
-  var _auditClient=ctx.auditClient||activeProfileName;
+// opts.auditClient names the client to log the send under (defaults to the active profile) — the
+// Assistant emails for a client that isn't necessarily the one currently open.
+function _openDocEmailModal(d, to, subject, body, opts){
+  opts=opts||{};
+  var _auditClient=opts.auditClient||activeProfileName;
   var _lbl=d?(d.displayName||d.name||'document'):'email';
   var ov=document.createElement('div');ov.className='modal-overlay open';
   ov.innerHTML='<div class="modal-box" style="max-width:520px;">'+
@@ -2317,15 +2280,7 @@ function _openDocEmailModal(d, to, subject, body, ctx){
     '<p style="font-size:12px;color:#5c7590;margin-top:-4px;">'+(d?('Sends “'+esc(_lbl)+'” as an attachment from your Microsoft account. '):'Sends from your Microsoft account. ')+'Edit anything below before sending.</p>'+
     '<label class="qc-l" for="dem-to">To</label><input id="dem-to" class="qc-i" value="'+esc(to)+'" placeholder="caregiver@email.com">'+
     '<label class="qc-l" for="dem-subj">Subject</label><input id="dem-subj" class="qc-i" value="'+esc(subject)+'">'+
-    '<div style="background:#f5f8fc;border:1px solid #dbe6f2;border-radius:8px;padding:10px 12px;margin:6px 0 12px;">'+
-      '<div style="font-size:12px;font-weight:700;color:#2b4a6b;margin-bottom:6px;">✨ Draft with AI</div>'+
-      '<div style="display:flex;gap:8px;align-items:center;">'+
-        '<input id="dem-ai-prompt" class="qc-i" style="flex:1;margin:0;" placeholder="Optional — tell it what to say (e.g. ‘let them know we can start Monday and ask them to call me’)">'+
-        '<button type="button" id="dem-ai" class="btn btn-primary btn-sm" style="white-space:nowrap;">Draft</button>'+
-      '</div>'+
-      '<div style="font-size:11px;color:#7089a3;margin-top:5px;">Leave blank for the standard message, or type any instruction and it writes it in your voice.</div>'+
-    '</div>'+
-    '<label class="qc-l" for="dem-body">Message</label>'+
+    '<label class="qc-l" for="dem-body">Message <span style="font-weight:400;color:#5c7590;">(delete the intro line if you’ve emailed them before)</span></label>'+
     '<textarea id="dem-body" class="qc-i" style="min-height:180px;resize:vertical;font-family:Arial,sans-serif;">'+esc(body)+'</textarea>'+
     '<div id="dem-status" style="font-size:12px;color:#c0392b;min-height:16px;margin-top:4px;"></div>'+
     '<div class="modal-row"><button class="btn btn-primary" id="dem-send">Send Email</button><button class="btn btn-secondary" id="dem-cancel">Cancel</button></div>'+
@@ -2333,7 +2288,6 @@ function _openDocEmailModal(d, to, subject, body, ctx){
   document.body.appendChild(ov);
   var close=function(){if(ov.parentNode)ov.parentNode.removeChild(ov);};
   ov.querySelector('#dem-cancel').addEventListener('click',close);
-  ov.querySelector('#dem-ai').addEventListener('click',function(){_aiDraftForEmail(ov,d,ctx);});
   ov.addEventListener('mousedown',function(e){if(e.target===ov)close();});
   ov.querySelector('#dem-send').addEventListener('click',function(){
     var toV=(ov.querySelector('#dem-to').value||'').trim();
@@ -8854,14 +8808,12 @@ function _normalizeDate(v){
 function _agencyDefaults(){
   return {
     agency_provider_name:'Thomas Jaboro',
-    agency_name:'Liberty Home Care Assistance',
     agency_provider_id:'6221933',
     agency_address:'2741 Balsam Way Dr',
     agency_city:'Sterling Heights',
     agency_state:'MI',
     agency_zip:'48314',
     agency_phone:'(248) 291-4106',
-    agency_fax:'(586) 200-0851',
     agency_relationship:'N/A - Agency'
   };
 }
@@ -10465,6 +10417,24 @@ function _asstListClients(args){
   return { count:rows.length, clients:capped, truncated: rows.length>capped.length };
 }
 
+// ── Tool: roster_stats ── EXACT counts computed in code (so the model never eyeballs/miscounts).
+function _asstRosterStats(){
+  var profs=getProfiles(), cgs=getCaregivers(), cws=getCaseworkers();
+  var total=0,active=0,inactive=0,noCg=0,noCw=0, byCw={}, byCg={};
+  Object.keys(profs).forEach(function(key){
+    var p=profs[key]; total++;
+    if((p.clientStatus||'active')==='active')active++; else inactive++;
+    var cg=(p.caregiverId&&cgs[p.caregiverId])?cgs[p.caregiverId]:null;
+    if(!cg)noCg++; else { var gn=cg.name||'(unnamed caregiver)'; byCg[gn]=(byCg[gn]||0)+1; }
+    var cwRec=p.caseworkerId?cws.find(function(c){return c.id===p.caseworkerId;}):null;
+    var cwn=cwRec?cwRec.name:(p.worker||'');
+    if(!cwn)noCw++; else byCw[cwn]=(byCw[cwn]||0)+1;
+  });
+  var toArr=function(o){return Object.keys(o).map(function(k){return {name:k,count:o[k]};})
+    .sort(function(a,b){return b.count-a.count;});};
+  return { total:total, active:active, inactive:inactive, without_caregiver:noCg, without_caseworker:noCw,
+    clients_by_caseworker:toArr(byCw), clients_by_caregiver:toArr(byCg) };
+}
 // ── Tool: open_email ── resolve recipient, generate/attach a form if asked, open the compose modal.
 function _asstOpenEmail(args){
   args=args||{};
@@ -10475,6 +10445,9 @@ function _asstOpenEmail(args){
   if(!p)return Promise.resolve({error:'No client named "'+cname+'" was found.'});
   var cgs=getCaregivers(), cws=getCaseworkers();
   var recipient=(args.recipient||'').trim(), toEmail='', recipLabel='';
+  // The MSA-4676 goes to the caseworker — never the caregiver. Block a caregiver recipient outright.
+  if(/4676/i.test(args.attach_form||'')&&/caregiver/i.test(recipient)&&!/@/.test(recipient))
+    return Promise.resolve({error:'The MSA-4676 goes to the client’s caseworker, not the caregiver. Send it to the caseworker or a specific email address.'});
   if(/@/.test(recipient)){ toEmail=recipient; recipLabel='recipient'; }
   else if(/case|worker/i.test(recipient)){
     var cw=null;
@@ -10507,6 +10480,7 @@ function _asstRunTool(name,args){
   try{
     if(name==='find_client')return Promise.resolve(_asstFindClient(args));
     if(name==='list_clients')return Promise.resolve(_asstListClients(args));
+    if(name==='roster_stats')return Promise.resolve(_asstRosterStats());
     if(name==='open_email')return Promise.resolve(_asstOpenEmail(args));
     return Promise.resolve({error:'Unknown tool: '+name});
   }catch(e){ return Promise.resolve({error:(e&&e.message)||String(e)}); }
