@@ -2247,7 +2247,7 @@ function emailDocToCaregiver(index){
   var cgs=getCaregivers(); var cg=(prof.caregiverId&&cgs[prof.caregiverId])?cgs[prof.caregiverId]:null;
   var cgEmail=cg?(cg.email||''):'';
   var cgFirst=cg?((cg.firstName||(cg.name||'').split(' ')[0])||''):'';
-  var ag=getAgencyInfo()||{}; var agName=ag.name||'our agency'; var agPhone=ag.phone||'';
+  var ag=getAgencyInfo()||{}; var agName=ag.agency_name||ag.agency_provider_name||'our agency'; var agPhone=ag.agency_phone||'';
   var display=d.displayName||d.name||'the document';
   var is4676=/4676/i.test(display)||/4676/i.test(_docCatLabel(d.category));
   var greet='Hello'+(cgFirst?(' '+cgFirst):'')+',';
@@ -10417,6 +10417,24 @@ function _asstListClients(args){
   return { count:rows.length, clients:capped, truncated: rows.length>capped.length };
 }
 
+// ── Tool: roster_stats ── EXACT counts computed in code (so the model never eyeballs/miscounts).
+function _asstRosterStats(){
+  var profs=getProfiles(), cgs=getCaregivers(), cws=getCaseworkers();
+  var total=0,active=0,inactive=0,noCg=0,noCw=0, byCw={}, byCg={};
+  Object.keys(profs).forEach(function(key){
+    var p=profs[key]; total++;
+    if((p.clientStatus||'active')==='active')active++; else inactive++;
+    var cg=(p.caregiverId&&cgs[p.caregiverId])?cgs[p.caregiverId]:null;
+    if(!cg)noCg++; else { var gn=cg.name||'(unnamed caregiver)'; byCg[gn]=(byCg[gn]||0)+1; }
+    var cwRec=p.caseworkerId?cws.find(function(c){return c.id===p.caseworkerId;}):null;
+    var cwn=cwRec?cwRec.name:(p.worker||'');
+    if(!cwn)noCw++; else byCw[cwn]=(byCw[cwn]||0)+1;
+  });
+  var toArr=function(o){return Object.keys(o).map(function(k){return {name:k,count:o[k]};})
+    .sort(function(a,b){return b.count-a.count;});};
+  return { total:total, active:active, inactive:inactive, without_caregiver:noCg, without_caseworker:noCw,
+    clients_by_caseworker:toArr(byCw), clients_by_caregiver:toArr(byCg) };
+}
 // ── Tool: open_email ── resolve recipient, generate/attach a form if asked, open the compose modal.
 function _asstOpenEmail(args){
   args=args||{};
@@ -10427,6 +10445,9 @@ function _asstOpenEmail(args){
   if(!p)return Promise.resolve({error:'No client named "'+cname+'" was found.'});
   var cgs=getCaregivers(), cws=getCaseworkers();
   var recipient=(args.recipient||'').trim(), toEmail='', recipLabel='';
+  // The MSA-4676 goes to the caseworker — never the caregiver. Block a caregiver recipient outright.
+  if(/4676/i.test(args.attach_form||'')&&/caregiver/i.test(recipient)&&!/@/.test(recipient))
+    return Promise.resolve({error:'The MSA-4676 goes to the client’s caseworker, not the caregiver. Send it to the caseworker or a specific email address.'});
   if(/@/.test(recipient)){ toEmail=recipient; recipLabel='recipient'; }
   else if(/case|worker/i.test(recipient)){
     var cw=null;
@@ -10459,6 +10480,7 @@ function _asstRunTool(name,args){
   try{
     if(name==='find_client')return Promise.resolve(_asstFindClient(args));
     if(name==='list_clients')return Promise.resolve(_asstListClients(args));
+    if(name==='roster_stats')return Promise.resolve(_asstRosterStats());
     if(name==='open_email')return Promise.resolve(_asstOpenEmail(args));
     return Promise.resolve({error:'Unknown tool: '+name});
   }catch(e){ return Promise.resolve({error:(e&&e.message)||String(e)}); }
