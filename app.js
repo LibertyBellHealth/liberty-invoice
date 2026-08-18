@@ -2242,7 +2242,7 @@ function emailDocToCaregiver(index){
   var cgs=getCaregivers(); var cg=(prof.caregiverId&&cgs[prof.caregiverId])?cgs[prof.caregiverId]:null;
   var cgEmail=cg?(cg.email||''):'';
   var cgFirst=cg?((cg.firstName||(cg.name||'').split(' ')[0])||''):'';
-  var ag=getAgencyInfo()||{}; var agName=ag.name||'our agency'; var agPhone=ag.phone||'';
+  var ag=getAgencyInfo()||{}; var agName=ag.agency_name||ag.agency_provider_name||'our agency'; var agPhone=ag.agency_phone||'';
   var display=d.displayName||d.name||'the document';
   var is4676=/4676/i.test(display)||/4676/i.test(_docCatLabel(d.category));
   var greet='Hello'+(cgFirst?(' '+cgFirst):'')+',';
@@ -2260,7 +2260,7 @@ function emailDocToCaregiver(index){
       'Attached is '+display+' for '+clientName+' from '+agName+'. Please review and let me know if you have any questions.\n\n'+
       'Thank you,\n'+agName;
   }
-  _openDocEmailModal(d, cgEmail, subject, body, {clientName:clientName, caregiverFirst:cgFirst, agencyName:agName, agencyPhone:agPhone, is4676:is4676});
+  _openDocEmailModal(d, cgEmail, subject, body, {clientName:clientName, caregiverFirst:cgFirst, agencyName:agName, agencyPhone:agPhone, senderName:(ag.agency_provider_name||''), senderDirect:(ag.agency_phone||''), senderFax:(ag.agency_fax||''), is4676:is4676});
 }
 // Draft/rewrite the email body with Azure OpenAI (via /ai-draft). Uses ONLY the facts we pass so it
 // can't invent names/dates; fills subject + body for the user to review before sending — never auto-sends.
@@ -2271,10 +2271,11 @@ function _aiDraftForEmail(ov, d, ctx){
   var orig=btn.innerHTML; btn.disabled=true; btn.innerHTML='Drafting…';
   status.style.color='#5c7590'; status.textContent='Drafting with AI…';
   var instruction=ctx.is4676
-    ? 'Write a warm, professional email to the caregiver introducing our agency and asking them to review and sign the attached MSA-4676 Home Help Services Agreement so we can transition the client’s Home Help services to us.'
-    : 'Write a short, professional email to the caregiver about the attached document for this client.';
-  var facts={ caregiver_first_name:ctx.caregiverFirst||'', client_name:ctx.clientName||'',
-    agency_name:ctx.agencyName||'', agency_phone:ctx.agencyPhone||'' };  // no raw filename — the instruction already says what's attached
+    ? 'Introduce yourself and the agency, then tell the caregiver you are SENDING the attached MSA-4676 form for this client to move them over to your agency. Do NOT ask them to sign it (it is sent for an ink signature). End with a short offer to answer questions.'
+    : 'Let the caregiver know you are sending the attached document for this client, with a short offer to answer any questions.';
+  var _hr=(new Date()).getHours(), _tod=_hr<12?'morning':(_hr<17?'afternoon':'evening');
+  var facts={ time_of_day:_tod, caregiver_first_name:ctx.caregiverFirst||'', client_name:ctx.clientName||'',
+    sender_name:ctx.senderName||'', agency_name:ctx.agencyName||'', sender_direct:ctx.senderDirect||'', sender_fax:ctx.senderFax||'' };
   fetch(API_BASE+'/ai-draft',{method:'POST',headers:apiHeaders(),body:JSON.stringify({instruction:instruction,facts:facts})})
     .then(function(r){ if(r.ok)return r.json(); return r.json().then(function(j){throw new Error((j&&j.error)||('HTTP '+r.status));},function(){throw new Error('HTTP '+r.status);}); })
     .then(function(j){
@@ -8822,12 +8823,14 @@ function _normalizeDate(v){
 function _agencyDefaults(){
   return {
     agency_provider_name:'Thomas Jaboro',
+    agency_name:'Liberty Home Care Assistance',
     agency_provider_id:'6221933',
     agency_address:'2741 Balsam Way Dr',
     agency_city:'Sterling Heights',
     agency_state:'MI',
     agency_zip:'48314',
     agency_phone:'(248) 291-4106',
+    agency_fax:'(586) 200-0851',
     agency_relationship:'N/A - Agency'
   };
 }
