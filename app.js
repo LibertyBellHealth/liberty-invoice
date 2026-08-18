@@ -10370,7 +10370,22 @@ function _asstContext(){
     agency_phone:ag.agency_phone, agency_fax:ag.agency_fax }, today:today(), time_of_day:tod };
 }
 
-// ── Tool: find_client ── resolve a client by (partial) name → their caregiver + caseworker.
+// Parse a stored date ('YYYY-MM-DD' or 'M/D/YYYY') → {y,m} for start-date filters/aggregation.
+function _asstParseDate(v){
+  if(!v)return null; v=String(v).trim();
+  var m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if(m)return {y:+m[1],m:+m[2]};
+  m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if(m)return {y:+m[3],m:+m[1]};
+  return null;
+}
+// Turn "May" / "5" / "2026-05" into a month number 1-12 (0 = couldn't tell).
+function _asstMonthNum(s){
+  s=String(s||'').trim().toLowerCase();
+  var m=s.match(/(\d{4})-(\d{1,2})/); if(m)return +m[2];
+  if(/^\d{1,2}$/.test(s))return +s;
+  var names=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  var i=names.indexOf(s.slice(0,3)); return i>=0?i+1:0;
+}
+// ── Tool: find_client ── resolve a client by (partial) name → full record + caregiver + caseworker.
 function _asstFindClient(args){
   var q=((args&&args.name)||'').trim().toLowerCase();
   var toks=q.split(/\s+/).filter(Boolean);
@@ -10384,56 +10399,93 @@ function _asstFindClient(args){
     if(p.caseworkerId)cw=cws.find(function(c){return c.id===p.caseworkerId;});
     if(!cw&&p.worker)cw=cws.find(function(c){return (c.name||'').toLowerCase()===(p.worker||'').toLowerCase();});
     out.push({ client_name:key, status:(p.clientStatus||'active'),
+      county:p.county||'', address:p.street||p.address||'', city:p.city||'', state:p.state||'', zip:p.zip||'',
+      phone:p.phone||'', email:p.clientEmail||p.cemail||'', dob:p.dob||'', medicaid_id:p.medicaidId||'',
       caregiver: cg?{name:cg.name||'',email:cg.email||'',phone:cg.phone||''}:null,
-      caseworker: cw?{name:cw.name||'',email:cw.email||'',phone:cw.phone||''}:(p.worker?{name:p.worker,email:'',phone:''}:null),
-      medicaid_id:p.medicaidId||'' });
+      caseworker: cw?{name:cw.name||'',email:cw.email||'',phone:cw.phone||''}:(p.worker?{name:p.worker,email:'',phone:''}:null) });
   });
   var capped=out.slice(0,8);
   return { matches:capped, count:out.length, truncated: out.length>capped.length };
 }
 
-// ── Tool: list_clients ── filtered roster for reports.
-function _asstListClients(args){
-  args=args||{};
-  var status=(args.status||'any').toLowerCase();
-  var cgName=(args.caregiver_name||'').trim().toLowerCase();
-  var cwName=(args.caseworker_name||'').trim().toLowerCase();
-  var unassigned=!!args.unassigned_caregiver;
-  var profs=getProfiles(), cgs=getCaregivers(), cws=getCaseworkers();
-  var rows=[];
-  Object.keys(profs).forEach(function(key){
-    var p=profs[key]; var st=(p.clientStatus||'active');
-    if(status==='active'&&st!=='active')return;
-    if(status==='inactive'&&st==='active')return;
-    var cg=(p.caregiverId&&cgs[p.caregiverId])?cgs[p.caregiverId]:null;
-    if(unassigned&&cg)return;
-    if(cgName&&(!cg||(cg.name||'').toLowerCase().indexOf(cgName)<0))return;
-    var cwRec=p.caseworkerId?cws.find(function(c){return c.id===p.caseworkerId;}):null;
-    var cwn=cwRec?cwRec.name:(p.worker||'');
-    if(cwName&&(cwn||'').toLowerCase().indexOf(cwName)<0)return;
-    rows.push({ name:key, status:st, caregiver:(cg?cg.name:''), caseworker:cwn });
-  });
-  var capped=rows.slice(0,60);
-  return { count:rows.length, clients:capped, truncated: rows.length>capped.length };
+// Flatten one client profile into a flat field map the query engine filters/groups over. This is the
+// single place fields are exposed — add a line here and every query gets the new field for free.
+function _asstClientFields(p, cgs, cws){
+  var cg=(p.caregiverId&&cgs[p.caregiverId])?cgs[p.caregiverId]:null;
+  var cwRec=p.caseworkerId?cws.find(function(c){return c.id===p.caseworkerId;}):null;
+  var cwn=cwRec?cwRec.name:(p.worker||'');
+  return {
+    status:(p.clientStatus||'active'), county:(p.county||''), city:(p.city||''), state:(p.state||''),
+    zip:(p.zip||''), address:(p.street||p.address||''), caregiver:(cg?cg.name:''), caseworker:(cwn||''),
+    caregiver_email:(cg?(cg.email||''):''), caseworker_email:(cwRec?(cwRec.email||''):''),
+    medicaid_id:(p.medicaidId||''), medicare:(p.medicare||''), dob:(p.dob||''),
+    phone:(p.phone||p.homePhone||''), email:(p.clientEmail||p.cemail||''), start_date:(p.startDate||''),
+    hourly_rate:(p.hourlyRate||''), live_in:(p.liveIn?'yes':'no')
+  };
 }
-
-// ── Tool: roster_stats ── EXACT counts computed in code (so the model never eyeballs/miscounts).
-function _asstRosterStats(){
+function _asstFieldAlias(f){
+  f=String(f||'').toLowerCase().replace(/\s+/g,'_');
+  if(f==='medicaid'||f==='medicaid_number'||f==='medicaid_#')return 'medicaid_id';
+  if(f==='worker'||f==='case_worker')return 'caseworker';
+  if(f==='name')return 'client';
+  return f;
+}
+// Apply one {field, op, value} filter to a flat field map. Deterministic — this is where accuracy comes from.
+function _asstMatchFilter(fields, flt){
+  if(!flt||!flt.field)return true;
+  var field=_asstFieldAlias(flt.field);
+  var op=String(flt.op||'eq').toLowerCase();
+  var raw=(field in fields)?fields[field]:'';
+  var s=String(raw==null?'':raw).toLowerCase().trim();
+  var v=String(flt.value==null?'':flt.value).toLowerCase().trim();
+  switch(op){
+    case 'present': case 'has': case 'exists': return s!=='' && s!=='no';
+    case 'missing': case 'empty': case 'none': return s==='' || s==='no';
+    case 'eq': case 'is': case 'equals': return s===v;
+    case 'ne': case 'not_eq': case 'not': return s!==v;
+    case 'contains': case 'like': return v===''||s.indexOf(v)>=0;
+    case 'in_month': case 'month': { var d=_asstParseDate(raw); return !!d && d.m===_asstMonthNum(flt.value); }
+    case 'in_year': case 'year': { var d2=_asstParseDate(raw); return !!d2 && String(d2.y)===String(flt.value).replace(/\D/g,''); }
+    case 'before': { var d3=_asstParseDate(raw), t3=_asstParseDate(flt.value); return !!d3&&!!t3 && (d3.y<t3.y||(d3.y===t3.y&&d3.m<t3.m)); }
+    case 'after': { var d4=_asstParseDate(raw), t4=_asstParseDate(flt.value); return !!d4&&!!t4 && (d4.y>t4.y||(d4.y===t4.y&&d4.m>t4.m)); }
+    case 'gt': return parseFloat(s)>parseFloat(v);
+    case 'lt': return parseFloat(s)<parseFloat(v);
+    default: return v===''?true:s.indexOf(v)>=0;
+  }
+}
+function _asstGroupValue(fields, g){
+  g=_asstFieldAlias(g);
+  if(g==='start_month'||g==='month'){ var d=_asstParseDate(fields.start_date); return d?(d.y+'-'+String(d.m).padStart(2,'0')):'(no start date)'; }
+  var v=(g in fields)?fields[g]:'';
+  return (v===''||v==null)?'(none)':v;
+}
+// ── Tool: query_roster ── ONE general, deterministic query engine over the whole roster. The model
+// composes {action, filters, group_by}; CODE computes the answer (count/list/group) — so the AI never
+// counts in its head. Any field, any filter, any grouping — no per-question code needed.
+function _asstQueryRoster(args){
+  args=args||{};
+  var action=String(args.action||'list').toLowerCase();
+  var filters=Array.isArray(args.filters)?args.filters:[];
+  var groupBy=args.group_by||'';
   var profs=getProfiles(), cgs=getCaregivers(), cws=getCaseworkers();
-  var total=0,active=0,inactive=0,noCg=0,noCw=0, byCw={}, byCg={};
+  var matched=[];
   Object.keys(profs).forEach(function(key){
-    var p=profs[key]; total++;
-    if((p.clientStatus||'active')==='active')active++; else inactive++;
-    var cg=(p.caregiverId&&cgs[p.caregiverId])?cgs[p.caregiverId]:null;
-    if(!cg)noCg++; else { var gn=cg.name||'(unnamed caregiver)'; byCg[gn]=(byCg[gn]||0)+1; }
-    var cwRec=p.caseworkerId?cws.find(function(c){return c.id===p.caseworkerId;}):null;
-    var cwn=cwRec?cwRec.name:(p.worker||'');
-    if(!cwn)noCw++; else byCw[cwn]=(byCw[cwn]||0)+1;
+    var f=_asstClientFields(profs[key],cgs,cws);
+    if(filters.every(function(flt){return _asstMatchFilter(f,flt);})) matched.push({name:key,f:f});
   });
-  var toArr=function(o){return Object.keys(o).map(function(k){return {name:k,count:o[k]};})
-    .sort(function(a,b){return b.count-a.count;});};
-  return { total:total, active:active, inactive:inactive, without_caregiver:noCg, without_caseworker:noCw,
-    clients_by_caseworker:toArr(byCw), clients_by_caregiver:toArr(byCg) };
+  if(action==='count'){
+    return { action:'count', count:matched.length, matched_names:matched.slice(0,150).map(function(m){return m.name;}),
+      truncated:matched.length>150 };
+  }
+  if(action==='group'){
+    var groups={};
+    matched.forEach(function(m){ var k=String(_asstGroupValue(m.f,groupBy)); groups[k]=(groups[k]||0)+1; });
+    var arr=Object.keys(groups).map(function(k){return {value:k,count:groups[k]};}).sort(function(a,b){return b.count-a.count;});
+    return { action:'group', group_by:_asstFieldAlias(groupBy), total:matched.length, groups:arr };
+  }
+  var cap=matched.slice(0,80).map(function(m){ return { name:m.name, status:m.f.status, county:m.f.county,
+    caregiver:m.f.caregiver, caseworker:m.f.caseworker, medicaid_id:m.f.medicaid_id, start_date:m.f.start_date }; });
+  return { action:'list', count:matched.length, clients:cap, truncated:matched.length>cap.length };
 }
 // ── Tool: open_email ── resolve recipient, generate/attach a form if asked, open the compose modal.
 function _asstOpenEmail(args){
@@ -10479,8 +10531,7 @@ function _asstOpenEmail(args){
 function _asstRunTool(name,args){
   try{
     if(name==='find_client')return Promise.resolve(_asstFindClient(args));
-    if(name==='list_clients')return Promise.resolve(_asstListClients(args));
-    if(name==='roster_stats')return Promise.resolve(_asstRosterStats());
+    if(name==='query_roster')return Promise.resolve(_asstQueryRoster(args));
     if(name==='open_email')return Promise.resolve(_asstOpenEmail(args));
     return Promise.resolve({error:'Unknown tool: '+name});
   }catch(e){ return Promise.resolve({error:(e&&e.message)||String(e)}); }
@@ -10529,7 +10580,7 @@ function _asstRenderMsg(role,text){
 function _asstToolNote(name,args){
   var m=document.getElementById('asst-msgs'); if(!m)return;
   var label=name==='find_client'?('Looking up '+((args&&args.name)||'client')+'…')
-    :name==='list_clients'?'Checking the roster…'
+    :name==='query_roster'?'Checking the roster…'
     :name==='open_email'?('Preparing an email'+((args&&args.client_name)?(' for '+args.client_name):'')+'…')
     :('Working…');
   var b=document.createElement('div'); b.className='asst-tool'; b.textContent='⚙ '+label;
