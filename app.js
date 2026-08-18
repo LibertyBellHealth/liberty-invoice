@@ -2303,11 +2303,18 @@ function _aiDraftForEmail(ov, d, ctx){
     .catch(function(e){ status.style.color='#c0392b'; status.textContent='Draft failed: '+((e&&e.message)||e); })
     .then(function(){ btn.disabled=false; btn.innerHTML=orig; });
 }
+// d may be null → plain email with no attachment (the Assistant uses this for a note with no form).
+// ctx.auditClient names the client to log the send under (defaults to the active profile) — the
+// Assistant emails for a client that isn't necessarily the one currently open. ctx also carries the
+// AI-draft facts (clientName, caregiverFirst, senderName, …) used by the in-modal ✨ Draft button.
 function _openDocEmailModal(d, to, subject, body, ctx){
+  ctx=ctx||{};
+  var _auditClient=ctx.auditClient||activeProfileName;
+  var _lbl=d?(d.displayName||d.name||'document'):'email';
   var ov=document.createElement('div');ov.className='modal-overlay open';
   ov.innerHTML='<div class="modal-box" style="max-width:520px;">'+
-    '<h3>Email document to caregiver</h3>'+
-    '<p style="font-size:12px;color:#5c7590;margin-top:-4px;">Sends “'+esc(d.displayName||d.name||'')+'” as an attachment from your Microsoft account. Edit anything below before sending.</p>'+
+    '<h3>'+(d?'Email document':'Compose email')+'</h3>'+
+    '<p style="font-size:12px;color:#5c7590;margin-top:-4px;">'+(d?('Sends “'+esc(_lbl)+'” as an attachment from your Microsoft account. '):'Sends from your Microsoft account. ')+'Edit anything below before sending.</p>'+
     '<label class="qc-l" for="dem-to">To</label><input id="dem-to" class="qc-i" value="'+esc(to)+'" placeholder="caregiver@email.com">'+
     '<label class="qc-l" for="dem-subj">Subject</label><input id="dem-subj" class="qc-i" value="'+esc(subject)+'">'+
     '<div style="background:#f5f8fc;border:1px solid #dbe6f2;border-radius:8px;padding:10px 12px;margin:6px 0 12px;">'+
@@ -2335,15 +2342,16 @@ function _openDocEmailModal(d, to, subject, body, ctx){
     var status=ov.querySelector('#dem-status');
     if(!toV||!/@/.test(toV)){status.style.color='#c0392b';status.textContent='Enter a valid recipient email.';return;}
     if(typeof spToken==='undefined'||!spToken){status.style.color='#c0392b';status.textContent='Sign in first (Settings) to send email.';return;}
-    var btn=ov.querySelector('#dem-send');btn.disabled=true;btn.textContent='Sending…';status.style.color='#5c7590';status.textContent='Attaching document…';
-    _docToBase64(d.url||d.downloadUrl).then(function(b64){
+    var btn=ov.querySelector('#dem-send');btn.disabled=true;btn.textContent='Sending…';status.style.color='#5c7590';status.textContent=(d?'Attaching document…':'Sending…');
+    var bodyHtml=esc(bodyText).replace(/\n/g,'<br>');
+    var attachP=d?_docToBase64(d.url||d.downloadUrl).then(function(b64){return [{name:(d.displayName||d.name||'document.pdf'),base64:b64}];}):Promise.resolve([]);
+    attachP.then(function(atts){
       status.textContent='Sending…';
-      var bodyHtml=esc(bodyText).replace(/\n/g,'<br>');
-      return sendMailWithPDF(toV,subjV,bodyHtml,[{name:(d.displayName||d.name||'document.pdf'),base64:b64}]);
+      return sendMailWithPDF(toV,subjV,bodyHtml,atts);
     }).then(function(){
-      if(typeof showToast==='function')showToast('✓ Emailed '+(d.displayName||'document')+' to '+toV,3500);
-      if(typeof addAuditEntry==='function')addAuditEntry(activeProfileName,'Emailed “'+(d.displayName||d.name)+'” to caregiver '+toV);
-      if(typeof aiTrack==='function')aiTrack('DocEmailedToCaregiver',{doc:d.displayName||d.name,to:toV});
+      if(typeof showToast==='function')showToast('✓ Emailed '+_lbl+' to '+toV,3500);
+      if(typeof addAuditEntry==='function')addAuditEntry(_auditClient,'Emailed “'+_lbl+'” to '+toV);
+      if(typeof aiTrack==='function')aiTrack('DocEmailedToCaregiver',{doc:_lbl,to:toV});
       close();
     }).catch(function(err){
       btn.disabled=false;btn.textContent='Send Email';status.style.color='#c0392b';
@@ -8893,14 +8901,17 @@ var _DATE_DICT_KEYS={client_dob:1,caregiver_dob:1,signature_date:1,today_date:1,
 // Build the data dictionary the renderer fills AcroForm fields from.
 // CRM data is the default; any non-empty value typed into the left-pane form
 // overrides it (so live edits flow into the PDF preview).
-function _buildFormDataDict(){
-  var prof=activeFormClientName?(getProfiles()[activeFormClientName]||{}):{};
+// clientName defaults to the Forms-tab selection (activeFormClientName) so existing callers are
+// unchanged; the Assistant passes a name explicitly to build a form for any client without the UI.
+function _buildFormDataDict(clientName){
+  if(clientName==null)clientName=activeFormClientName;
+  var prof=clientName?(getProfiles()[clientName]||{}):{};
   var cw=getCaseworkers().find(function(c){return (c.name||'').toLowerCase()===(prof.worker||'').toLowerCase();})||{};
   var cgs=getCaregivers();
   var assignedCg=(prof.caregiverId&&cgs[prof.caregiverId])||{};
   var td=today();
   var _agency=getAgencyInfo();
-  var fullName=activeFormClientName||'';
+  var fullName=clientName||'';
   var fParts=fullName.split(' ');
   var firstN=fParts[0]||'',lastN=fParts.slice(1).join(' ')||'';
   var cgFull=assignedCg.name||'';
@@ -9337,6 +9348,43 @@ var STATE_FORM_OVERLAYS={
   }
 };
 
+// Build a state-form PDF for ANY client WITHOUT the Forms UI: compute the field values from CRM data
+// (the same dict the Forms tab fills from) and overlay them onto the official template. Returns the
+// PDF bytes (Uint8Array). This is what lets the Assistant generate + attach a form (e.g. the
+// MSA-4676) on command, for a client the user names, without opening the Forms page.
+async function buildStateFormBytes(formType, clientName){
+  if(!window.PDFLib) throw new Error('PDF library still loading — try again in a moment.');
+  var def=STATE_FORM_OVERLAYS[formType];
+  if(!def) throw new Error('Form not configured: '+formType);
+  var inputMap=STATE_FORM_INPUT_MAPS[formType]||{};
+  var dict=_buildFormDataDict(clientName);
+  var resp=await fetch(def.file);
+  if(!resp.ok) throw new Error('HTTP '+resp.status+' fetching '+def.file);
+  var bytes=new Uint8Array(await resp.arrayBuffer());
+  var pdfDoc=await PDFLib.PDFDocument.load(bytes);
+  var helv=await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+  var pages=pdfDoc.getPages();
+  (def.fields||[]).forEach(function(f){
+    var v=dict[inputMap[f.inputId]]; v=(v==null?'':String(v)).trim();
+    if(!v)return;
+    var page=pages[f.page||0]; if(!page)return;
+    var size=f.size||10;
+    if(f.maxWidth){ while(size>6&&helv.widthOfTextAtSize(v,size)>f.maxWidth)size-=0.5; }
+    page.drawText(v,{x:f.x,y:f.y,size:size,font:helv,color:PDFLib.rgb(0,0,0)});
+  });
+  if(def.signature){
+    var sigs=(typeof getSigs==='function')?getSigs():[];
+    if(sigs.length){
+      var sigBytes=_dataUrlToUint8(sigs[0].data);
+      if(sigBytes){
+        var img=sigs[0].data.indexOf('image/png')>=0?await pdfDoc.embedPng(sigBytes):await pdfDoc.embedJpg(sigBytes);
+        var p=pages[def.signature.page||0];
+        if(p)p.drawImage(img,{x:def.signature.x,y:def.signature.y,width:def.signature.w,height:def.signature.h});
+      }
+    }
+  }
+  return await pdfDoc.save();
+}
 async function generateStateFormPdf(){
   if(!window.PDFLib){showAlert('PDF library still loading. Please try again in a moment.');return;}
   var def=STATE_FORM_OVERLAYS[activeFormType];
@@ -10353,3 +10401,239 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
     showAlert(msg2);
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ✨ ASSISTANT — one global AI chat that can look up clients, run roster reports, and
+// assemble emails/forms for the owner to review + send. The model (backend /ai-chat) decides
+// which TOOL to call; the tools run here in the browser because they read localStorage and use the
+// user's Microsoft token. Nothing is ever sent without the owner reviewing it in the compose modal.
+// ═══════════════════════════════════════════════════════════════════════════════
+var _asstMessages=[], _asstBusy=false, _asstOpen=false;
+
+// The non-PHI facts the model needs to sign emails + greet by time of day. Sent each turn.
+function _asstContext(){
+  var ag=getAgencyInfo()||{};
+  var hr=(new Date()).getHours(), tod=hr<12?'morning':(hr<17?'afternoon':'evening');
+  return { agency:{ agency_provider_name:ag.agency_provider_name, agency_name:ag.agency_name,
+    agency_phone:ag.agency_phone, agency_fax:ag.agency_fax }, today:today(), time_of_day:tod };
+}
+
+// ── Tool: find_client ── resolve a client by (partial) name → their caregiver + caseworker.
+function _asstFindClient(args){
+  var q=((args&&args.name)||'').trim().toLowerCase();
+  var toks=q.split(/\s+/).filter(Boolean);
+  var profs=getProfiles(), cgs=getCaregivers(), cws=getCaseworkers();
+  var out=[];
+  Object.keys(profs).forEach(function(key){
+    var p=profs[key]; var hay=key.toLowerCase();
+    if(toks.length && !toks.every(function(t){return hay.indexOf(t)>=0;})) return;
+    var cg=(p.caregiverId&&cgs[p.caregiverId])?cgs[p.caregiverId]:null;
+    var cw=null;
+    if(p.caseworkerId)cw=cws.find(function(c){return c.id===p.caseworkerId;});
+    if(!cw&&p.worker)cw=cws.find(function(c){return (c.name||'').toLowerCase()===(p.worker||'').toLowerCase();});
+    out.push({ client_name:key, status:(p.clientStatus||'active'),
+      caregiver: cg?{name:cg.name||'',email:cg.email||'',phone:cg.phone||''}:null,
+      caseworker: cw?{name:cw.name||'',email:cw.email||'',phone:cw.phone||''}:(p.worker?{name:p.worker,email:'',phone:''}:null),
+      medicaid_id:p.medicaidId||'' });
+  });
+  var capped=out.slice(0,8);
+  return { matches:capped, count:out.length, truncated: out.length>capped.length };
+}
+
+// ── Tool: list_clients ── filtered roster for reports.
+function _asstListClients(args){
+  args=args||{};
+  var status=(args.status||'any').toLowerCase();
+  var cgName=(args.caregiver_name||'').trim().toLowerCase();
+  var cwName=(args.caseworker_name||'').trim().toLowerCase();
+  var unassigned=!!args.unassigned_caregiver;
+  var profs=getProfiles(), cgs=getCaregivers(), cws=getCaseworkers();
+  var rows=[];
+  Object.keys(profs).forEach(function(key){
+    var p=profs[key]; var st=(p.clientStatus||'active');
+    if(status==='active'&&st!=='active')return;
+    if(status==='inactive'&&st==='active')return;
+    var cg=(p.caregiverId&&cgs[p.caregiverId])?cgs[p.caregiverId]:null;
+    if(unassigned&&cg)return;
+    if(cgName&&(!cg||(cg.name||'').toLowerCase().indexOf(cgName)<0))return;
+    var cwRec=p.caseworkerId?cws.find(function(c){return c.id===p.caseworkerId;}):null;
+    var cwn=cwRec?cwRec.name:(p.worker||'');
+    if(cwName&&(cwn||'').toLowerCase().indexOf(cwName)<0)return;
+    rows.push({ name:key, status:st, caregiver:(cg?cg.name:''), caseworker:cwn });
+  });
+  var capped=rows.slice(0,60);
+  return { count:rows.length, clients:capped, truncated: rows.length>capped.length };
+}
+
+// ── Tool: open_email ── resolve recipient, generate/attach a form if asked, open the compose modal.
+function _asstOpenEmail(args){
+  args=args||{};
+  var cname=(args.client_name||'').trim();
+  var profs=getProfiles(); var key=cname;
+  if(!profs[key]){ var f=Object.keys(profs).find(function(k){return k.toLowerCase()===cname.toLowerCase();}); if(f)key=f; }
+  var p=profs[key];
+  if(!p)return Promise.resolve({error:'No client named "'+cname+'" was found.'});
+  var cgs=getCaregivers(), cws=getCaseworkers();
+  var recipient=(args.recipient||'').trim(), toEmail='', recipLabel='';
+  if(/@/.test(recipient)){ toEmail=recipient; recipLabel='recipient'; }
+  else if(/case|worker/i.test(recipient)){
+    var cw=null;
+    if(p.caseworkerId)cw=cws.find(function(c){return c.id===p.caseworkerId;});
+    if(!cw&&p.worker)cw=cws.find(function(c){return (c.name||'').toLowerCase()===(p.worker||'').toLowerCase();});
+    toEmail=cw?(cw.email||''):''; recipLabel='caseworker'+(cw&&cw.name?(' '+cw.name):'');
+    if(!toEmail)return Promise.resolve({error:'No email on file for '+key+'’s caseworker'+(cw&&cw.name?(' ('+cw.name+')'):'')+'. Add it on the client, then try again.'});
+  } else {
+    var cg=(p.caregiverId&&cgs[p.caregiverId])?cgs[p.caregiverId]:null;
+    toEmail=cg?(cg.email||''):''; recipLabel='caregiver'+(cg&&cg.name?(' '+cg.name):'');
+    if(!toEmail)return Promise.resolve({error:'No email on file for '+key+'’s caregiver'+(cg&&cg.name?(' ('+cg.name+')'):'')+'. Add it on the client, then try again.'});
+  }
+  var subject=(args.subject||'').trim(), body=(args.body||'').trim();
+  var attach=(args.attach_form||'none');
+  var openIt=function(d){ _openDocEmailModal(d,toEmail,subject,body,{auditClient:key});
+    return {opened:true, to:toEmail, recipient:recipLabel, attached:(d?(d.displayName||d.name):'nothing')}; };
+  if(attach&&attach!=='none'){
+    var ft=/4676/.test(attach)?'msa4676':null;
+    if(!ft)return Promise.resolve({error:'I can only attach the MSA-4676 right now.'});
+    return buildStateFormBytes(ft,key).then(function(bytes){
+      var url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
+      var fname='MSA-4676_'+key.replace(/[^a-z0-9]/gi,'_')+'.pdf';
+      return openIt({displayName:fname,name:fname,url:url});
+    }).catch(function(e){ return {error:'Could not generate the MSA-4676: '+((e&&e.message)||e)}; });
+  }
+  return Promise.resolve(openIt(null));
+}
+
+function _asstRunTool(name,args){
+  try{
+    if(name==='find_client')return Promise.resolve(_asstFindClient(args));
+    if(name==='list_clients')return Promise.resolve(_asstListClients(args));
+    if(name==='open_email')return Promise.resolve(_asstOpenEmail(args));
+    return Promise.resolve({error:'Unknown tool: '+name});
+  }catch(e){ return Promise.resolve({error:(e&&e.message)||String(e)}); }
+}
+
+// ── The chat loop: send → model → (run tools → loop) → show reply ──
+async function _asstSend(text){
+  text=(text||'').trim(); if(!text||_asstBusy)return;
+  if(typeof spToken==='undefined'||!spToken){ _asstRenderMsg('assistant','Please sign in first (Settings) so I can look up clients and send email.'); return; }
+  _asstMessages.push({role:'user',content:text});
+  _asstRenderMsg('user',text);
+  _asstBusy=true; _asstSetTyping(true);
+  try{
+    var guard=0;
+    while(guard++<6){
+      var resp=await fetch(API_BASE+'/ai-chat',{method:'POST',headers:apiHeaders(),
+        body:JSON.stringify({messages:_asstMessages,context:_asstContext()})});
+      if(!resp.ok){ var je=await resp.json().catch(function(){return{};}); throw new Error(je.error||('HTTP '+resp.status)); }
+      var msg=(await resp.json()).message;
+      _asstMessages.push(msg);
+      if(msg.tool_calls&&msg.tool_calls.length){
+        if(msg.content)_asstRenderMsg('assistant',msg.content);
+        for(var i=0;i<msg.tool_calls.length;i++){
+          var tc=msg.tool_calls[i], a={}; try{a=JSON.parse(tc.function.arguments||'{}');}catch(e){a={};}
+          _asstToolNote(tc.function.name,a);
+          var result=await _asstRunTool(tc.function.name,a);
+          _asstMessages.push({role:'tool',tool_call_id:tc.id,name:tc.function.name,content:JSON.stringify(result)});
+        }
+        continue;
+      }
+      _asstRenderMsg('assistant',msg.content||'(no response)');
+      break;
+    }
+  }catch(e){ _asstRenderMsg('assistant','⚠️ '+((e&&e.message)||e)); }
+  finally{ _asstBusy=false; _asstSetTyping(false); }
+}
+
+// ── UI ──
+function _asstScroll(){ var m=document.getElementById('asst-msgs'); if(m)m.scrollTop=m.scrollHeight; }
+function _asstRenderMsg(role,text){
+  var m=document.getElementById('asst-msgs'); if(!m)return;
+  var b=document.createElement('div'); b.className='asst-msg asst-'+role;
+  b.innerHTML=esc(text||'').replace(/\n/g,'<br>');
+  m.appendChild(b); _asstScroll();
+}
+function _asstToolNote(name,args){
+  var m=document.getElementById('asst-msgs'); if(!m)return;
+  var label=name==='find_client'?('Looking up '+((args&&args.name)||'client')+'…')
+    :name==='list_clients'?'Checking the roster…'
+    :name==='open_email'?('Preparing an email'+((args&&args.client_name)?(' for '+args.client_name):'')+'…')
+    :('Working…');
+  var b=document.createElement('div'); b.className='asst-tool'; b.textContent='⚙ '+label;
+  m.appendChild(b); _asstScroll();
+}
+function _asstSetTyping(on){
+  var m=document.getElementById('asst-msgs'); if(!m)return;
+  var ex=document.getElementById('asst-typing');
+  if(on){ if(!ex){ var t=document.createElement('div'); t.id='asst-typing'; t.className='asst-msg asst-assistant asst-typing'; t.innerHTML='<span></span><span></span><span></span>'; m.appendChild(t); _asstScroll(); } }
+  else if(ex){ ex.parentNode.removeChild(ex); }
+  var send=document.getElementById('asst-send'); if(send)send.disabled=on;
+}
+function _asstToggle(){
+  var p=document.getElementById('asst-panel'); if(!p)return;
+  _asstOpen=!_asstOpen; p.classList.toggle('open',_asstOpen);
+  if(_asstOpen){ var i=document.getElementById('asst-input'); if(i)setTimeout(function(){i.focus();},60); }
+}
+function _asstInit(){
+  try{
+    if(typeof document==='undefined'||!document.body||document.getElementById('asst-fab'))return;
+    var css=''
+      +'#asst-fab{position:fixed;right:20px;bottom:20px;z-index:9998;width:56px;height:56px;border:none;border-radius:50%;'
+      +'background:linear-gradient(135deg,#2b6fb3,#1a4e86);color:#fff;font-size:24px;cursor:pointer;box-shadow:0 6px 20px rgba(20,60,110,.35);transition:transform .15s;}'
+      +'#asst-fab:hover{transform:scale(1.07);}'
+      +'#asst-panel{position:fixed;right:20px;bottom:88px;z-index:9999;width:390px;max-width:calc(100vw - 32px);height:560px;max-height:calc(100vh - 120px);'
+      +'background:#fff;border:1px solid #d7e2ef;border-radius:14px;box-shadow:0 18px 50px rgba(20,50,90,.28);display:flex;flex-direction:column;overflow:hidden;'
+      +'opacity:0;pointer-events:none;transform:translateY(12px);transition:opacity .18s,transform .18s;}'
+      +'#asst-panel.open{opacity:1;pointer-events:auto;transform:translateY(0);}'
+      +'.asst-head{background:linear-gradient(135deg,#2b6fb3,#1a4e86);color:#fff;padding:12px 14px;display:flex;align-items:center;gap:8px;}'
+      +'.asst-head b{font-size:15px;} .asst-head .asst-sub{font-size:11px;opacity:.85;font-weight:400;}'
+      +'.asst-x{margin-left:auto;background:none;border:none;color:#fff;font-size:20px;cursor:pointer;opacity:.85;line-height:1;}'
+      +'#asst-msgs{flex:1;overflow-y:auto;padding:14px;background:#f6f9fd;display:flex;flex-direction:column;gap:8px;}'
+      +'.asst-msg{max-width:85%;padding:9px 12px;border-radius:12px;font-size:13.5px;line-height:1.45;white-space:normal;word-wrap:break-word;}'
+      +'.asst-user{align-self:flex-end;background:#2b6fb3;color:#fff;border-bottom-right-radius:4px;}'
+      +'.asst-assistant{align-self:flex-start;background:#fff;border:1px solid #dbe6f2;color:#213547;border-bottom-left-radius:4px;}'
+      +'.asst-tool{align-self:flex-start;font-size:11.5px;color:#6a86a3;font-style:italic;padding:1px 4px;}'
+      +'.asst-typing{display:flex;gap:4px;align-items:center;} .asst-typing span{width:6px;height:6px;border-radius:50%;background:#9db4cd;animation:asstb 1s infinite;}'
+      +'.asst-typing span:nth-child(2){animation-delay:.2s;} .asst-typing span:nth-child(3){animation-delay:.4s;}'
+      +'@keyframes asstb{0%,60%,100%{opacity:.3;}30%{opacity:1;}}'
+      +'.asst-chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 8px;background:#f6f9fd;}'
+      +'.asst-chip{font-size:11.5px;border:1px solid #cfe0f2;background:#fff;color:#2b5f96;border-radius:14px;padding:4px 9px;cursor:pointer;}'
+      +'.asst-chip:hover{background:#eaf3fc;}'
+      +'.asst-inbar{display:flex;gap:8px;padding:10px;border-top:1px solid #e3ecf6;background:#fff;}'
+      +'#asst-input{flex:1;resize:none;border:1px solid #cdd9e8;border-radius:10px;padding:9px 11px;font-size:13.5px;font-family:inherit;max-height:96px;}'
+      +'#asst-send{border:none;background:#2b6fb3;color:#fff;border-radius:10px;padding:0 15px;font-size:14px;cursor:pointer;}'
+      +'#asst-send:disabled{opacity:.5;cursor:default;}'
+      +'@media(max-width:480px){#asst-panel{right:8px;left:8px;width:auto;bottom:80px;height:calc(100vh - 100px);}}';
+    var st=document.createElement('style'); st.textContent=css; document.head.appendChild(st);
+
+    var fab=document.createElement('button'); fab.id='asst-fab'; fab.type='button'; fab.title='Assistant'; fab.textContent='✨';
+    var ag=getAgencyInfo()||{}; var first=((ag.agency_provider_name||'').split(' ')[0])||'there';
+    var panel=document.createElement('div'); panel.id='asst-panel';
+    panel.innerHTML=''
+      +'<div class="asst-head"><b>✨ Assistant</b><span class="asst-sub">looks up clients · drafts forms · reports</span>'
+      +'<button class="asst-x" id="asst-close" title="Close">×</button></div>'
+      +'<div id="asst-msgs"></div>'
+      +'<div class="asst-chips">'
+      +'<button class="asst-chip" data-q="Send the MSA-4676 for ">Send a 4676…</button>'
+      +'<button class="asst-chip" data-q="How many active clients do I have?">Active clients?</button>'
+      +'<button class="asst-chip" data-q="Which clients have no caregiver assigned?">No caregiver?</button>'
+      +'</div>'
+      +'<div class="asst-inbar"><textarea id="asst-input" rows="1" placeholder="Ask me anything… e.g. “send the 4676 for Jane Doe to her caseworker”"></textarea>'
+      +'<button id="asst-send" type="button">Send</button></div>';
+    document.body.appendChild(fab); document.body.appendChild(panel);
+
+    _asstRenderMsg('assistant','Hi '+first+'! I can pull up a client, generate & send their forms (like the MSA-4676), or answer quick roster questions. What do you need?');
+
+    fab.addEventListener('click',_asstToggle);
+    document.getElementById('asst-close').addEventListener('click',_asstToggle);
+    var input=document.getElementById('asst-input'), send=document.getElementById('asst-send');
+    var submit=function(){ var v=input.value; input.value=''; input.style.height='auto'; _asstSend(v); };
+    send.addEventListener('click',submit);
+    input.addEventListener('keydown',function(e){ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); submit(); } });
+    input.addEventListener('input',function(){ input.style.height='auto'; input.style.height=Math.min(input.scrollHeight,96)+'px'; });
+    Array.prototype.forEach.call(panel.querySelectorAll('.asst-chip'),function(c){
+      c.addEventListener('click',function(){ input.value=c.getAttribute('data-q'); input.focus(); input.dispatchEvent(new Event('input')); });
+    });
+  }catch(e){ if(typeof console!=='undefined')console.warn('[Assistant] init skipped:',e&&e.message); }
+}
+// app.js runs at the end of <body>, so the DOM is ready; init immediately (guarded for the jsdom tests).
+_asstInit();
