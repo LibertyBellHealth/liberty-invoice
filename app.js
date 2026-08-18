@@ -10487,6 +10487,41 @@ function _asstQueryRoster(args){
     caregiver:m.f.caregiver, caseworker:m.f.caseworker, medicaid_id:m.f.medicaid_id, start_date:m.f.start_date }; });
   return { action:'list', count:matched.length, clients:cap, truncated:matched.length>cap.length };
 }
+// ── Tool: onboarding_status ── deterministic checklist of what's left to onboard/transfer a client.
+function _asstOnboardingStatus(args){
+  args=args||{};
+  var cname=(args.client_name||'').trim();
+  var profs=getProfiles(); var key=cname;
+  if(!profs[key]){
+    var toks=cname.toLowerCase().split(/\s+/).filter(Boolean);
+    key=Object.keys(profs).find(function(k){var h=k.toLowerCase();return toks.length&&toks.every(function(t){return h.indexOf(t)>=0;});})||cname;
+  }
+  var p=profs[key];
+  if(!p)return {error:'No client named "'+cname+'" was found.'};
+  var cgs=getCaregivers(), cws=getCaseworkers();
+  var cg=(p.caregiverId&&cgs[p.caregiverId])?cgs[p.caregiverId]:null;
+  var cwRec=p.caseworkerId?cws.find(function(c){return c.id===p.caseworkerId;}):null;
+  var cwName=cwRec?cwRec.name:(p.worker||'');
+  var cwEmail=cwRec?(cwRec.email||''):'';
+  var checks=[
+    {item:'Medicaid ID', ok:!!(p.medicaidId&&String(p.medicaidId).trim())},
+    {item:'Caregiver assigned', ok:!!cg},
+    {item:'Caseworker assigned', ok:!!cwName},
+    {item:'Caseworker email', ok:!!cwEmail},
+    {item:'Date of birth', ok:!!p.dob},
+    {item:'Address', ok:!!((p.street||p.address)&&p.city&&p.zip)},
+    {item:'Phone', ok:!!(p.phone||p.homePhone)},
+    {item:'Start date', ok:!!p.startDate}
+  ];
+  // "4676 sent?" — best-effort: scan the activity log for a 4676 email logged against this client.
+  var sent4676=false;
+  try{ var log=(typeof getAuditLog==='function')?getAuditLog():[];
+    sent4676=log.some(function(e){return e && e.client===key && /4676/i.test(e.action||'');}); }catch(e){}
+  var missing=checks.filter(function(c){return !c.ok;}).map(function(c){return c.item;});
+  var present=checks.filter(function(c){return c.ok;}).map(function(c){return c.item;});
+  return { client:key, missing_fields:missing, present_fields:present, msa_4676_sent:sent4676,
+    all_fields_complete: missing.length===0 };
+}
 // ── Tool: open_email ── resolve recipient, generate/attach a form if asked, open the compose modal.
 function _asstOpenEmail(args){
   args=args||{};
@@ -10532,6 +10567,7 @@ function _asstRunTool(name,args){
   try{
     if(name==='find_client')return Promise.resolve(_asstFindClient(args));
     if(name==='query_roster')return Promise.resolve(_asstQueryRoster(args));
+    if(name==='onboarding_status')return Promise.resolve(_asstOnboardingStatus(args));
     if(name==='open_email')return Promise.resolve(_asstOpenEmail(args));
     return Promise.resolve({error:'Unknown tool: '+name});
   }catch(e){ return Promise.resolve({error:(e&&e.message)||String(e)}); }
@@ -10581,6 +10617,7 @@ function _asstToolNote(name,args){
   var m=document.getElementById('asst-msgs'); if(!m)return;
   var label=name==='find_client'?('Looking up '+((args&&args.name)||'client')+'…')
     :name==='query_roster'?'Checking the roster…'
+    :name==='onboarding_status'?('Checking onboarding'+((args&&args.client_name)?(' for '+args.client_name):'')+'…')
     :name==='open_email'?('Preparing an email'+((args&&args.client_name)?(' for '+args.client_name):'')+'…')
     :('Working…');
   var b=document.createElement('div'); b.className='asst-tool'; b.textContent='⚙ '+label;
