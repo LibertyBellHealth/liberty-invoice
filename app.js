@@ -169,6 +169,15 @@ function formatRate(el){
 // C4: one place for CLIENT status labels — 'inactive' displays as "In Progress"
 // (onboarding, not yet billing). Keeps every client-status badge consistent.
 function clientStatusLabel(s){ s=s||'active'; return s==='inactive' ? 'In Progress' : s.charAt(0).toUpperCase()+s.slice(1); }
+// A small pill showing the client's program: "CHAMPS" (green) or the carrier name (blue) for
+// managed-care. Self-contained inline styles so no CSS file change is needed. Absent = CHAMPS.
+function _programBadge(prof){
+  if(!prof)return '';
+  var carrier=prof.program==='carrier';
+  var label=carrier?(prof.carrier||'Managed Care'):'CHAMPS';
+  var bg=carrier?'#e8f0fe':'#eaf5ec', fg=carrier?'#1a56b8':'#1a7740';
+  return '<span style="display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;background:'+bg+';color:'+fg+';vertical-align:middle;">'+esc(label)+'</span>';
+}
 
 // ============================================================
 //  NAVIGATION
@@ -317,7 +326,8 @@ document.addEventListener('click',function(e){
 
 function navNewClient(){
   showPage('new-client');bc([{l:'Clients',fn:navHome},{l:'New Client'}]);document.getElementById('topbarActions').innerHTML='';
-  ['nc-first','nc-middle','nc-last','nc-nickname','nc-medicaid','nc-medicare','nc-rate','nc-dl','nc-ssn','nc-phone','nc-cemail','nc-street','nc-city','nc-state','nc-zip','nc-county','nc-start-date','nc-worker-search','nc-worker-val','nc-caregiver-search','nc-caregiver-val'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  ['nc-first','nc-middle','nc-last','nc-nickname','nc-program','nc-carrier','nc-member','nc-medicaid','nc-medicare','nc-rate','nc-dl','nc-ssn','nc-phone','nc-cemail','nc-street','nc-city','nc-state','nc-zip','nc-county','nc-start-date','nc-worker-search','nc-worker-val','nc-caregiver-search','nc-caregiver-val'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  if(typeof ncProgramToggle==='function')ncProgramToggle();   // re-hide carrier fields until a program is chosen
   var drop=document.getElementById('nc-worker-drop');if(drop)drop.style.display='none';
   var cgDrop=document.getElementById('nc-caregiver-drop');if(cgDrop)cgDrop.style.display='none';
 }
@@ -330,7 +340,9 @@ function navDetail(name,tab){
   document.getElementById('detailName').textContent=name+(prof.nickname?' ('+prof.nickname+')':'');
   var st=prof.clientStatus||'active';
   document.getElementById('detailMeta').innerHTML=(prof.medicaidId?'Medicaid: '+esc(prof.medicaidId):'No Medicaid ID')+(prof.phone?' &nbsp;·&nbsp; '+esc(prof.phone):'')+
-    ' &nbsp;<span class="cs-badge cs-'+st+'">'+clientStatusLabel(st)+'</span>';
+    ' &nbsp;<span class="cs-badge cs-'+st+'">'+clientStatusLabel(st)+'</span>'+' &nbsp;'+_programBadge(prof);
+  // Carrier (managed-care) clients aren't invoiced in the CRM — hide the + New Invoice action.
+  var _nib=document.getElementById('detailNewInvoiceBtn'); if(_nib)_nib.style.display=isCarrierClient(prof)?'none':'';
   bc([{l:'Clients',fn:navHome},{l:name}]);
   document.getElementById('topbarActions').innerHTML='';
   switchTab(tab||'overview');renderSidebarClients();
@@ -338,6 +350,7 @@ function navDetail(name,tab){
 function navInvoice(loadSpecific){
   if(!activeProfileName){showAlert('Select a client first.');return;}
   var prof=getProfiles()[activeProfileName];
+  if(isCarrierClient(prof)){showAlert('This is a managed-care (carrier) client — billing goes through the carrier’s software, so invoices aren’t created here.');return;}
   if(loadSpecific){
     showPage('invoice');
     document.getElementById('invClientTag').textContent=activeProfileName;
@@ -362,8 +375,9 @@ function navInvoice(loadSpecific){
   document.getElementById('newInvChoiceModal').classList.add('open');
 }
 function confirmNewInvoice(mode){
-  document.getElementById('newInvChoiceModal').classList.remove('open');
   var prof=getProfiles()[activeProfileName];
+  if(isCarrierClient(prof)){showAlert('This is a managed-care (carrier) client — billing goes through the carrier’s software, so no invoice is created here.');return;}
+  document.getElementById('newInvChoiceModal').classList.remove('open');
   showPage('invoice');
   document.getElementById('invClientTag').textContent=activeProfileName;
   document.getElementById('saveInvoiceBtn').style.display='inline-block';
@@ -510,8 +524,11 @@ function clientWasActiveInPeriod(prof,period){
 // A client should only be flagged as "missing an invoice" for a period if they have a service
 // start date on/before that period. No start date -> we can't say they were active, so don't nag
 // (bug #10: clients with no start date, or a start date after the period, were being flagged).
+// Managed-care (carrier) clients are billed through the carrier's own software — they never get a
+// CRM invoice, so they're excluded from every invoicing/"missing invoice" surface.
+function isCarrierClient(prof){ return !!prof && prof.program==='carrier'; }
 function clientDueForInvoice(prof, period){
-  return !!(prof && prof.startDate) && clientWasActiveInPeriod(prof, period);
+  return !!(prof && prof.startDate) && !isCarrierClient(prof) && clientWasActiveInPeriod(prof, period);
 }
 // True when a client has a real DHS-1210 authorization on file (hours, tasks, or an effective date).
 // A DHS-1210 is what officially makes you the client's agency, so it gates the Active status.
@@ -711,7 +728,7 @@ function renderClientTable(forceStatus){
     var hrefCl=buildClientUrl(name);
     tr.innerHTML=
       '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" '+checked+' onchange="toggleBulkClient(\''+escJsAttr(name)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
-      '<td><a href="'+hrefCl+'" class="link-plain" style="display:block;" onclick="return navClick(event,this.getAttribute(\'href\'))"><div class="ct-name">'+esc(name)+(prof.nickname?'<span style="font-weight:normal;color:var(--text-subtle);"> ('+esc(prof.nickname)+')</span>':'')+'</div><div class="ct-id">'+esc(prof.medicaidId||'No Medicaid ID')+'</div></a></td>'+
+      '<td><a href="'+hrefCl+'" class="link-plain" style="display:block;" onclick="return navClick(event,this.getAttribute(\'href\'))"><div class="ct-name">'+esc(name)+(prof.nickname?'<span style="font-weight:normal;color:var(--text-subtle);"> ('+esc(prof.nickname)+')</span>':'')+'</div><div class="ct-id">'+esc(prof.medicaidId||'No Medicaid ID')+' '+_programBadge(prof)+'</div></a></td>'+
       '<td><span class="status-inline"><span class="status-dot '+st+'"></span>'+stLabel+'</span></td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(phone)+'</td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cgName)+'</td>'+
@@ -1030,6 +1047,19 @@ function renderInfoPane(){
 
   mkField('ei-medicaid','Medicaid ID',prof.medicaidId||'',false);
   mkField('ei-medicare','Medicare #',prof.medicare||'',false);
+  // Program (CHAMPS vs Managed-Care carrier). Absent = champs. Carrier shows carrier + member #.
+  var _pg=prof.program||'champs';
+  var dProg=document.createElement('div');dProg.className='info-field-row full';dProg.style.gridTemplateColumns='1fr 1fr 1fr';
+  dProg.innerHTML='<div class="info-field"><label for="ei-program">Program</label><select id="ei-program" onchange="unsavedChanges=true;eiProgramToggle();">'+
+      '<option value="champs"'+(_pg!=='carrier'?' selected':'')+'>MDHHS (CHAMPS)</option>'+
+      '<option value="carrier"'+(_pg==='carrier'?' selected':'')+'>Carrier (Managed Care)</option>'+
+    '</select></div>'+
+    '<div class="info-field" id="ei-carrier-wrap"><label for="ei-carrier">Carrier</label><select id="ei-carrier" onchange="unsavedChanges=true;">'+
+      ['','Humana','Priority Health','Aetna','UnitedHealthcare','HAP','Molina','Meridian','Other'].map(function(c){return '<option value="'+esc(c)+'"'+((prof.carrier||'')===c?' selected':'')+'>'+(c||'— Select carrier —')+'</option>';}).join('')+
+    '</select></div>'+
+    '<div class="info-field" id="ei-member-wrap"><label for="ei-member">Member #</label><input id="ei-member" value="'+esc(prof.memberId||'')+'" autocomplete="off" oninput="unsavedChanges=true;"></div>';
+  g.appendChild(dProg);
+  eiProgramToggle();
   // Date of Birth — needed on DHS-390 / MDHHS-6200 / MSA-4676 state forms
   var dDob=document.createElement('div');dDob.className='info-field';
   dDob.innerHTML='<label for="ei-dob">Date of Birth <span style="font-weight:400;font-size:11px;color:#5c7590;">(double-click to copy)</span></label><input id="ei-dob" type="date" value="'+esc(prof.dob||'')+'" autocomplete="off" oninput="unsavedChanges=true;" ondblclick="_copyField(this,\'mdy\')" title="Double-click to copy as MM/DD/YYYY">';
@@ -1180,6 +1210,13 @@ function renderAuthPane(edit){
   if(!activeProfileName)return;
   var host=document.getElementById('authContent'); if(!host)return;
   var prof=getProfiles()[activeProfileName]; if(!prof)return;
+  // Managed-care (carrier) clients don't use the DHS-1210 / CRM invoicing path — no import here.
+  if(isCarrierClient(prof)){
+    host.innerHTML='<div class="form-card" style="max-width:640px;text-align:center;padding:28px;">'+
+      '<div style="font-size:13px;color:#5c7590;">This is a <b>managed-care</b> client'+(prof.carrier?(' ('+esc(prof.carrier)+')'):'')+'. DHS-1210 authorization and CRM invoicing aren’t used — authorizations and billing go through the carrier.</div>'+
+    '</div>';
+    return;
+  }
   var a=prof.authorization;
   if(edit){ host.innerHTML=_authEditHtml(a||{}); _renderAuthTaskRows((a&&a.tasks)||[]); return; }
   if(!a || (a.hours==null && !(a.tasks&&a.tasks.length) && !a.effectiveDate)){
@@ -1325,6 +1362,9 @@ function saveClientInfo(){
   rec.firstName=first;rec.middleName=middle;rec.lastName=last;rec.nickname=nickname;
   rec.clientName=newName;rec.medicaidId=document.getElementById('ei-medicaid').value;
   rec.medicare=(document.getElementById('ei-medicare')||{}).value||'';
+  var _pgEl=document.getElementById('ei-program');if(_pgEl)rec.program=_pgEl.value;
+  var _caEl=document.getElementById('ei-carrier');if(_caEl)rec.carrier=_caEl.value;
+  var _meEl=document.getElementById('ei-member');if(_meEl)rec.memberId=_meEl.value;
   var dobEl=document.getElementById('ei-dob');if(dobEl)rec.dob=dobEl.value||'';
   var genderEl=document.getElementById('ei-gender');if(genderEl)rec.gender=genderEl.value||'';
   rec.hourlyRate=document.getElementById('ei-rate').value;
@@ -1352,7 +1392,7 @@ function saveClientInfo(){
   var displayName=activeProfileName+(rec.nickname?' ('+rec.nickname+')':'');
   document.getElementById('detailName').textContent=displayName;
   var st=rec.clientStatus||'active';
-  document.getElementById('detailMeta').innerHTML=(rec.medicaidId?'Medicaid: '+esc(rec.medicaidId):'No Medicaid ID')+(rec.phone?' &nbsp;·&nbsp; '+esc(rec.phone):'')+' &nbsp;<span class="cs-badge cs-'+st+'">'+clientStatusLabel(st)+'</span>';
+  document.getElementById('detailMeta').innerHTML=(rec.medicaidId?'Medicaid: '+esc(rec.medicaidId):'No Medicaid ID')+(rec.phone?' &nbsp;·&nbsp; '+esc(rec.phone):'')+' &nbsp;<span class="cs-badge cs-'+st+'">'+clientStatusLabel(st)+'</span>'+' &nbsp;'+_programBadge(rec);
   renderSidebarClients();
   var btn=document.getElementById('saveInfoBtn');btn.textContent='Saved';setTimeout(function(){btn.textContent='Save Changes';},1800);
 }
@@ -2150,11 +2190,13 @@ function renderDocsPane(){
   var c=document.getElementById('docsContent');c.innerHTML='';
   if(!activeProfileName)return;
   var clientId=getHcClientId();
+  var _dprof=getProfiles()[activeProfileName]||{};
   c.innerHTML=
+    (isCarrierClient(_dprof)?'':   // no DHS-1210 import prompt for managed-care clients
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;background:#eef4fb;border:1px solid #d5e4f3;border-radius:8px;padding:10px 14px;margin-bottom:12px;flex-wrap:wrap;">'+
       '<div style="font-size:12px;color:#2b4a6b;"><b>📄 DHS-1210 or MDHHS-6064?</b> Import it to auto-fill authorized hours &amp; tasks — and file the PDF here.</div>'+
       '<button class="btn btn-primary btn-sm" onclick="importDHS1210()" style="white-space:nowrap;">Import DHS-1210 / MDHHS-6064</button>'+
-    '</div>'+
+    '</div>')+
     docUploaderHtml({title:'Client Documents',subtitle:"SSN cards, driver's licenses, insurance cards, authorizations, etc.",hasCategory:true,catId:'hcDocCategory',fileId:'hcDocFileInput',scanId:'docScanInput',scanFn:'handleDocScan(this)',uploadFn:'uploadHcDoc()',statusId:'hcDocStatus',listId:'hcDocList'});
   if(clientId){loadHcDocs(clientId);}
   else{document.getElementById('hcDocList').innerHTML='<div style="color:#5c7590;font-size:12px;">Save this client to the database first before uploading documents.</div>';}
@@ -2646,15 +2688,36 @@ function deleteCgDoc(cgId,encodedName){
 // ============================================================
 //  NEW CLIENT
 // ============================================================
+// Show the carrier + member fields only when Program = Carrier (managed care). Used on both the
+// new-client form (nc-*) and by navNewClient's reset.
+function ncProgramToggle(){
+  var prog=(document.getElementById('nc-program')||{}).value||'';
+  var show=prog==='carrier';
+  var cw=document.getElementById('nc-carrier-wrap'), mw=document.getElementById('nc-member-wrap');
+  if(cw)cw.style.display=show?'':'none';
+  if(mw)mw.style.display=show?'':'none';
+}
+// Same show/hide for the client EDIT form (ei-*): carrier + member appear only for a Carrier client.
+function eiProgramToggle(){
+  var prog=(document.getElementById('ei-program')||{}).value||'champs';
+  var show=prog==='carrier';
+  var cw=document.getElementById('ei-carrier-wrap'), mw=document.getElementById('ei-member-wrap');
+  if(cw)cw.style.display=show?'':'none';
+  if(mw)mw.style.display=show?'':'none';
+}
 function createClient(){
   var first=(document.getElementById('nc-first').value||'').trim();
   var middle=(document.getElementById('nc-middle').value||'').trim();
   var last=(document.getElementById('nc-last').value||'').trim();
   var nickname=(document.getElementById('nc-nickname').value||'').trim();
   if(!first||!last){showAlert('First Name and Last Name are required.');return;}
+  // Program is REQUIRED at creation so a client can never be mislabeled MDHHS vs Carrier.
+  var ncProgram=(document.getElementById('nc-program')||{}).value||'';
+  if(!ncProgram){showAlert('Please choose a Program — MDHHS (CHAMPS) or Carrier (Managed Care) — for this client.');return;}
   var ncStatus=(document.getElementById('nc-status')||{}).value||'active';
   if(ncStatus==='active' && !((document.getElementById('nc-start-date')||{}).value||'').trim()){showAlert('Service Start Date is required when the status is Active.');return;}
-  if(ncStatus==='active'){showAlert('A new client can’t start as Active — a DHS-1210 authorization is required first.\n\nCreate them as “In Progress”, then import the DHS-1210 on their Authorization tab to activate them.');return;}
+  // The "must import a DHS-1210 to go Active" rule is CHAMPS-only — carrier clients don't use that form.
+  if(ncStatus==='active' && ncProgram!=='carrier'){showAlert('A new client can’t start as Active — a DHS-1210 authorization is required first.\n\nCreate them as “In Progress”, then import the DHS-1210 on their Authorization tab to activate them.');return;}
   var name=(first+' '+last).trim();
   var p=getProfiles();
   if(p[name]){
@@ -2668,6 +2731,9 @@ function _doCreateClient(name,first,middle,last,nickname){
   aiTrack('ClientCreated',{client:name});
   if(!p[name])p[name]={invoices:[],clientNotes:''};
   p[name].clientName=name;p[name].firstName=first;p[name].middleName=middle;p[name].lastName=last;p[name].nickname=nickname;
+  p[name].program=(document.getElementById('nc-program')||{}).value||'';
+  p[name].carrier=(document.getElementById('nc-carrier')||{}).value||'';
+  p[name].memberId=(document.getElementById('nc-member')||{}).value.trim()||'';
   p[name].medicaidId=document.getElementById('nc-medicaid').value.trim();
   p[name].medicare=(document.getElementById('nc-medicare')||{}).value.trim()||'';
   p[name].hourlyRate=document.getElementById('nc-rate').value.trim();
@@ -4563,6 +4629,7 @@ function updateMissingReport(useCustom){
   var period=useCustom?document.getElementById('missingPeriodCustom').value.trim():document.getElementById('missingPeriodSelect').value;
   if(!period||period.length<7)return;
   var missing=allClients.filter(function(name){
+    if(isCarrierClient(profiles[name]))return false;   // carrier clients are billed elsewhere — not "missing"
     return !((profiles[name].invoices)||[]).some(function(i){return i.billingPeriod===period;});
   });
   var list=document.getElementById('missingReportList');if(!list)return;
@@ -6262,6 +6329,7 @@ function _emailSig(){return '<p>'+_emailClose()+'<br><b>Thomas Jaboro</b><br>Lib
 // ── Send single invoice email ─────────────────────────────────
 async function sendEmail(){
   var cn=document.getElementById('clientName').value.trim();
+  if(cn&&isCarrierClient(getProfiles()[cn])){showAlert('This is a managed-care (carrier) client — invoices are handled in the carrier’s software, so there is nothing to email here.');return;}
   var bp=document.getElementById('billingPeriod').value.trim();
   var ae=document.getElementById('activeAgentEmail').value.trim();
   var w=document.getElementById('worker').value.trim();
@@ -6995,6 +7063,7 @@ function loadProfilesAPI() {
           clientName: name, firstName: c.first_name || '', lastName: c.last_name || '',
           middleName: c.middle_name || '', nickname: c.nickname || '',
           medicaidId: c.medicaid_id || '', medicare: c.medicare || '', hourlyRate: c.hourly_rate || '',
+          program: c.program || '', carrier: c.carrier || '', memberId: c.member_id || '',
           worker: c.worker || '', caseworkerId: c.caseworker_id || '',
           street: c.street || '', city: c.city || '', state: c.state || '',
           zip: c.zip || '', county: c.county || '',
@@ -7051,6 +7120,7 @@ function saveProfileSP(name, data, quiet) {
     first_name: data.firstName || '', last_name: data.lastName || '',
     middle_name: data.middleName || '', nickname: data.nickname || '',
     medicaid_id: data.medicaidId || '', medicare: data.medicare || '', hourly_rate: data.hourlyRate || '',
+    program: data.program || '', carrier: data.carrier || '', member_id: data.memberId || '',
     worker: data.worker || '', caseworker_id: data.caseworkerId || '',
     street: data.street || '', city: data.city || '', state: data.state || '',
     zip: data.zip || '', county: data.county || '',
@@ -7162,6 +7232,7 @@ function _clientSig(d) {
     d.zip||'', d.county||'', d.phone||'', d.homePhone||'', d.clientEmail||'', d.caregiverId||'',
     d.clientStatus||'active', d.hasComplex?1:0, d.dob||'', d.gender||'', d.driversLicense||'',
     d.ssn||'', d.startDate||'', d.liveIn?1:0, d.clientNotes||'',
+    d.program||'', d.carrier||'', d.memberId||'',
     d.authorization?JSON.stringify(d.authorization):'',
   ]);
 }
@@ -9503,6 +9574,7 @@ function _previewMonthlyInvoicesRender(period){
   Object.keys(profiles).forEach(function(name){
     var prof=profiles[name];
     if(prof.clientStatus==='inactive'||prof.clientStatus==='terminated'||prof.clientStatus==='lost')return;
+    if(isCarrierClient(prof))return;   // managed-care clients are billed by the carrier — never invoiced here
     // Skip clients whose service started AFTER this billing period
     if(!clientWasActiveInPeriod(prof,period))return;
     // Resolve the caseworker identity. Prefer caseworkerId; fall back to fuzzy name match.
@@ -10003,6 +10075,7 @@ function findClientsEligibleForAutoGen(period){
   Object.keys(profiles).forEach(function(name){
     var p=profiles[name];
     if(p.clientStatus==='inactive'||p.clientStatus==='terminated'||p.clientStatus==='lost')return;
+    if(isCarrierClient(p))return;     // managed-care clients are billed by the carrier — never auto-generate
     if(!clientWasActiveInPeriod(p,period))return;
     if(!hasAuthorization(p))return;   // only generate from an authorization
     var hasCurrent=(p.invoices||[]).some(function(i){return i.billingPeriod===period;});
@@ -10080,6 +10153,7 @@ async function sendAllCaseworkerEmails(period){
   Object.keys(profiles).forEach(function(name){
     var prof=profiles[name];
     if(prof.clientStatus==='inactive'||prof.clientStatus==='terminated'||prof.clientStatus==='lost')return;
+    if(isCarrierClient(prof))return;   // managed-care clients are billed by the carrier — never invoiced here
     if(!clientWasActiveInPeriod(prof,period))return;
     var rawWorker=(prof.worker||'').trim();
     var cwRec=cws.find(function(c){return c.id&&prof.caseworkerId&&String(c.id)===String(prof.caseworkerId);})||
@@ -10420,7 +10494,8 @@ function _asstClientFields(p, cgs, cws){
     caregiver_email:(cg?(cg.email||''):''), caseworker_email:(cwRec?(cwRec.email||''):''),
     medicaid_id:(p.medicaidId||''), medicare:(p.medicare||''), dob:(p.dob||''),
     phone:(p.phone||p.homePhone||''), email:(p.clientEmail||p.cemail||''), start_date:(p.startDate||''),
-    hourly_rate:(p.hourlyRate||''), live_in:(p.liveIn?'yes':'no')
+    hourly_rate:(p.hourlyRate||''), live_in:(p.liveIn?'yes':'no'),
+    program:(p.program==='carrier'?'carrier':'champs'), carrier:(p.carrier||'')
   };
 }
 function _asstFieldAlias(f){
@@ -10503,7 +10578,19 @@ function _asstOnboardingStatus(args){
   var cwRec=p.caseworkerId?cws.find(function(c){return c.id===p.caseworkerId;}):null;
   var cwName=cwRec?cwRec.name:(p.worker||'');
   var cwEmail=cwRec?(cwRec.email||''):'';
-  var checks=[
+  var carrier=(p.program==='carrier');
+  // The checklist swaps by program: a managed-care (carrier) client needs the carrier + member # +
+  // a care coordinator (a caseworker record), and does NOT need a caseworker email or an MSA-4676.
+  var checks = carrier ? [
+    {item:'Carrier', ok:!!(p.carrier&&String(p.carrier).trim())},
+    {item:'Member #', ok:!!(p.memberId&&String(p.memberId).trim())},
+    {item:'Care coordinator assigned', ok:!!cwName},
+    {item:'Caregiver assigned', ok:!!cg},
+    {item:'Date of birth', ok:!!p.dob},
+    {item:'Address', ok:!!((p.street||p.address)&&p.city&&p.zip)},
+    {item:'Phone', ok:!!(p.phone||p.homePhone)},
+    {item:'Start date', ok:!!p.startDate}
+  ] : [
     {item:'Medicaid ID', ok:!!(p.medicaidId&&String(p.medicaidId).trim())},
     {item:'Caregiver assigned', ok:!!cg},
     {item:'Caseworker assigned', ok:!!cwName},
@@ -10513,13 +10600,15 @@ function _asstOnboardingStatus(args){
     {item:'Phone', ok:!!(p.phone||p.homePhone)},
     {item:'Start date', ok:!!p.startDate}
   ];
-  // "4676 sent?" — best-effort: scan the activity log for a 4676 email logged against this client.
+  // "4676 sent?" (CHAMPS only) — best-effort: scan the activity log for a 4676 email for this client.
   var sent4676=false;
-  try{ var log=(typeof getAuditLog==='function')?getAuditLog():[];
-    sent4676=log.some(function(e){return e && e.client===key && /4676/i.test(e.action||'');}); }catch(e){}
+  if(!carrier){ try{ var log=(typeof getAuditLog==='function')?getAuditLog():[];
+    sent4676=log.some(function(e){return e && e.client===key && /4676/i.test(e.action||'');}); }catch(e){} }
   var missing=checks.filter(function(c){return !c.ok;}).map(function(c){return c.item;});
   var present=checks.filter(function(c){return c.ok;}).map(function(c){return c.item;});
-  return { client:key, missing_fields:missing, present_fields:present, msa_4676_sent:sent4676,
+  return { client:key, program:(carrier?'carrier (managed care)':'champs'), carrier:(p.carrier||''),
+    missing_fields:missing, present_fields:present,
+    msa_4676_sent:(carrier?'N/A — managed care':sent4676),
     all_fields_complete: missing.length===0 };
 }
 // ── Tool: open_email ── resolve recipient, generate/attach a form if asked, open the compose modal.
@@ -10530,6 +10619,9 @@ function _asstOpenEmail(args){
   if(!profs[key]){ var f=Object.keys(profs).find(function(k){return k.toLowerCase()===cname.toLowerCase();}); if(f)key=f; }
   var p=profs[key];
   if(!p)return Promise.resolve({error:'No client named "'+cname+'" was found.'});
+  // The MSA-4676 doesn't apply to managed-care (carrier) clients — their authorizations go via the carrier.
+  if(p.program==='carrier' && /4676/i.test(args.attach_form||''))
+    return Promise.resolve({error:key+' is a managed-care (carrier) client — the MSA-4676 doesn’t apply to them.'});
   var cgs=getCaregivers(), cws=getCaseworkers();
   var recipient=(args.recipient||'').trim(), toEmail='', recipLabel='';
   // The MSA-4676 goes to the caseworker — never the caregiver. Block a caregiver recipient outright.
