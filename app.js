@@ -341,6 +341,8 @@ function navDetail(name,tab){
   var st=prof.clientStatus||'active';
   document.getElementById('detailMeta').innerHTML=(prof.medicaidId?'Medicaid: '+esc(prof.medicaidId):'No Medicaid ID')+(prof.phone?' &nbsp;·&nbsp; '+esc(prof.phone):'')+
     ' &nbsp;<span class="cs-badge cs-'+st+'">'+clientStatusLabel(st)+'</span>'+' &nbsp;'+_programBadge(prof);
+  // Carrier (managed-care) clients aren't invoiced in the CRM — hide the + New Invoice action.
+  var _nib=document.getElementById('detailNewInvoiceBtn'); if(_nib)_nib.style.display=isCarrierClient(prof)?'none':'';
   bc([{l:'Clients',fn:navHome},{l:name}]);
   document.getElementById('topbarActions').innerHTML='';
   switchTab(tab||'overview');renderSidebarClients();
@@ -348,6 +350,7 @@ function navDetail(name,tab){
 function navInvoice(loadSpecific){
   if(!activeProfileName){showAlert('Select a client first.');return;}
   var prof=getProfiles()[activeProfileName];
+  if(isCarrierClient(prof)){showAlert('This is a managed-care (carrier) client — billing goes through the carrier’s software, so invoices aren’t created here.');return;}
   if(loadSpecific){
     showPage('invoice');
     document.getElementById('invClientTag').textContent=activeProfileName;
@@ -372,8 +375,9 @@ function navInvoice(loadSpecific){
   document.getElementById('newInvChoiceModal').classList.add('open');
 }
 function confirmNewInvoice(mode){
-  document.getElementById('newInvChoiceModal').classList.remove('open');
   var prof=getProfiles()[activeProfileName];
+  if(isCarrierClient(prof)){showAlert('This is a managed-care (carrier) client — billing goes through the carrier’s software, so no invoice is created here.');return;}
+  document.getElementById('newInvChoiceModal').classList.remove('open');
   showPage('invoice');
   document.getElementById('invClientTag').textContent=activeProfileName;
   document.getElementById('saveInvoiceBtn').style.display='inline-block';
@@ -520,8 +524,11 @@ function clientWasActiveInPeriod(prof,period){
 // A client should only be flagged as "missing an invoice" for a period if they have a service
 // start date on/before that period. No start date -> we can't say they were active, so don't nag
 // (bug #10: clients with no start date, or a start date after the period, were being flagged).
+// Managed-care (carrier) clients are billed through the carrier's own software — they never get a
+// CRM invoice, so they're excluded from every invoicing/"missing invoice" surface.
+function isCarrierClient(prof){ return !!prof && prof.program==='carrier'; }
 function clientDueForInvoice(prof, period){
-  return !!(prof && prof.startDate) && clientWasActiveInPeriod(prof, period);
+  return !!(prof && prof.startDate) && !isCarrierClient(prof) && clientWasActiveInPeriod(prof, period);
 }
 // True when a client has a real DHS-1210 authorization on file (hours, tasks, or an effective date).
 // A DHS-1210 is what officially makes you the client's agency, so it gates the Active status.
@@ -1203,6 +1210,13 @@ function renderAuthPane(edit){
   if(!activeProfileName)return;
   var host=document.getElementById('authContent'); if(!host)return;
   var prof=getProfiles()[activeProfileName]; if(!prof)return;
+  // Managed-care (carrier) clients don't use the DHS-1210 / CRM invoicing path — no import here.
+  if(isCarrierClient(prof)){
+    host.innerHTML='<div class="form-card" style="max-width:640px;text-align:center;padding:28px;">'+
+      '<div style="font-size:13px;color:#5c7590;">This is a <b>managed-care</b> client'+(prof.carrier?(' ('+esc(prof.carrier)+')'):'')+'. DHS-1210 authorization and CRM invoicing aren’t used — authorizations and billing go through the carrier.</div>'+
+    '</div>';
+    return;
+  }
   var a=prof.authorization;
   if(edit){ host.innerHTML=_authEditHtml(a||{}); _renderAuthTaskRows((a&&a.tasks)||[]); return; }
   if(!a || (a.hours==null && !(a.tasks&&a.tasks.length) && !a.effectiveDate)){
@@ -2176,11 +2190,13 @@ function renderDocsPane(){
   var c=document.getElementById('docsContent');c.innerHTML='';
   if(!activeProfileName)return;
   var clientId=getHcClientId();
+  var _dprof=getProfiles()[activeProfileName]||{};
   c.innerHTML=
+    (isCarrierClient(_dprof)?'':   // no DHS-1210 import prompt for managed-care clients
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;background:#eef4fb;border:1px solid #d5e4f3;border-radius:8px;padding:10px 14px;margin-bottom:12px;flex-wrap:wrap;">'+
       '<div style="font-size:12px;color:#2b4a6b;"><b>📄 DHS-1210 or MDHHS-6064?</b> Import it to auto-fill authorized hours &amp; tasks — and file the PDF here.</div>'+
       '<button class="btn btn-primary btn-sm" onclick="importDHS1210()" style="white-space:nowrap;">Import DHS-1210 / MDHHS-6064</button>'+
-    '</div>'+
+    '</div>')+
     docUploaderHtml({title:'Client Documents',subtitle:"SSN cards, driver's licenses, insurance cards, authorizations, etc.",hasCategory:true,catId:'hcDocCategory',fileId:'hcDocFileInput',scanId:'docScanInput',scanFn:'handleDocScan(this)',uploadFn:'uploadHcDoc()',statusId:'hcDocStatus',listId:'hcDocList'});
   if(clientId){loadHcDocs(clientId);}
   else{document.getElementById('hcDocList').innerHTML='<div style="color:#5c7590;font-size:12px;">Save this client to the database first before uploading documents.</div>';}
@@ -4613,6 +4629,7 @@ function updateMissingReport(useCustom){
   var period=useCustom?document.getElementById('missingPeriodCustom').value.trim():document.getElementById('missingPeriodSelect').value;
   if(!period||period.length<7)return;
   var missing=allClients.filter(function(name){
+    if(isCarrierClient(profiles[name]))return false;   // carrier clients are billed elsewhere — not "missing"
     return !((profiles[name].invoices)||[]).some(function(i){return i.billingPeriod===period;});
   });
   var list=document.getElementById('missingReportList');if(!list)return;
@@ -6312,6 +6329,7 @@ function _emailSig(){return '<p>'+_emailClose()+'<br><b>Thomas Jaboro</b><br>Lib
 // ── Send single invoice email ─────────────────────────────────
 async function sendEmail(){
   var cn=document.getElementById('clientName').value.trim();
+  if(cn&&isCarrierClient(getProfiles()[cn])){showAlert('This is a managed-care (carrier) client — invoices are handled in the carrier’s software, so there is nothing to email here.');return;}
   var bp=document.getElementById('billingPeriod').value.trim();
   var ae=document.getElementById('activeAgentEmail').value.trim();
   var w=document.getElementById('worker').value.trim();
@@ -9556,6 +9574,7 @@ function _previewMonthlyInvoicesRender(period){
   Object.keys(profiles).forEach(function(name){
     var prof=profiles[name];
     if(prof.clientStatus==='inactive'||prof.clientStatus==='terminated'||prof.clientStatus==='lost')return;
+    if(isCarrierClient(prof))return;   // managed-care clients are billed by the carrier — never invoiced here
     // Skip clients whose service started AFTER this billing period
     if(!clientWasActiveInPeriod(prof,period))return;
     // Resolve the caseworker identity. Prefer caseworkerId; fall back to fuzzy name match.
@@ -10056,6 +10075,7 @@ function findClientsEligibleForAutoGen(period){
   Object.keys(profiles).forEach(function(name){
     var p=profiles[name];
     if(p.clientStatus==='inactive'||p.clientStatus==='terminated'||p.clientStatus==='lost')return;
+    if(isCarrierClient(p))return;     // managed-care clients are billed by the carrier — never auto-generate
     if(!clientWasActiveInPeriod(p,period))return;
     if(!hasAuthorization(p))return;   // only generate from an authorization
     var hasCurrent=(p.invoices||[]).some(function(i){return i.billingPeriod===period;});
@@ -10133,6 +10153,7 @@ async function sendAllCaseworkerEmails(period){
   Object.keys(profiles).forEach(function(name){
     var prof=profiles[name];
     if(prof.clientStatus==='inactive'||prof.clientStatus==='terminated'||prof.clientStatus==='lost')return;
+    if(isCarrierClient(prof))return;   // managed-care clients are billed by the carrier — never invoiced here
     if(!clientWasActiveInPeriod(prof,period))return;
     var rawWorker=(prof.worker||'').trim();
     var cwRec=cws.find(function(c){return c.id&&prof.caseworkerId&&String(c.id)===String(prof.caseworkerId);})||
