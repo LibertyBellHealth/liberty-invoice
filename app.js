@@ -10874,10 +10874,40 @@ function _asstExportData(args){
   }catch(e){ return {error:'Export failed: '+((e&&e.message)||e)}; }
   return {exported:true, format:format, count:rows.length, file:fname};
 }
+// ── Tool: roster_digest ── a "what needs my attention" scan: deterministic data-gap + billing checks.
+function _asstRosterDigest(){
+  var profs=getProfiles(), cgs=getCaregivers(), cws=getCaseworkers();
+  var period=_asstBillingPeriodNorm('current');
+  var active=0, champs=0, carrier=0;
+  var missingMedicaid=[], noCaregiver=[], noCaseworker=[], noCwEmail=[], unbilled=[], carrierGaps=[], missingDob=[];
+  Object.keys(profs).forEach(function(k){ var p=profs[k];
+    var st=(p.clientStatus||'active'); var isActive=(st==='active'); if(isActive)active++;
+    var isCarrier=(p.program==='carrier'); if(isCarrier)carrier++; else champs++;
+    var cg=(p.caregiverId&&cgs[p.caregiverId])?cgs[p.caregiverId]:null;
+    if(!cg && isActive) noCaregiver.push(k);
+    var cwRec=p.caseworkerId?cws.find(function(c){return c.id===p.caseworkerId;}):null;
+    var cwn=cwRec?cwRec.name:(p.worker||'');
+    if(!cwn && isActive) noCaseworker.push(k);
+    if(isActive && !p.dob) missingDob.push(k);
+    if(!isCarrier){
+      if(isActive && !(p.medicaidId&&String(p.medicaidId).trim())) missingMedicaid.push(k);
+      if(isActive && cwRec && !(cwRec.email||'')) noCwEmail.push(k);
+      if(clientDueForInvoice(p,period) && !((p.invoices||[]).some(function(i){return i.billingPeriod===period;}))) unbilled.push(k);
+    } else if(isActive && (!(p.carrier&&String(p.carrier).trim()) || !(p.memberId&&String(p.memberId).trim()))){
+      carrierGaps.push(k);
+    }
+  });
+  var g=function(a){return {count:a.length, clients:a.slice(0,25), truncated:a.length>25};};
+  return { period:period, active_clients:active, champs_clients:champs, carrier_clients:carrier,
+    missing_medicaid_id:g(missingMedicaid), no_caregiver:g(noCaregiver), no_caseworker_or_coordinator:g(noCaseworker),
+    caseworker_missing_email:g(noCwEmail), unbilled_this_period:g(unbilled),
+    carrier_missing_carrier_or_member:g(carrierGaps), missing_dob:g(missingDob) };
+}
 function _asstRunTool(name,args){
   try{
     if(name==='find_client')return Promise.resolve(_asstFindClient(args));
     if(name==='query_roster')return Promise.resolve(_asstQueryRoster(args));
+    if(name==='roster_digest')return Promise.resolve(_asstRosterDigest());
     if(name==='find_caregiver')return Promise.resolve(_asstFindCaregiver(args));
     if(name==='find_caseworker')return Promise.resolve(_asstFindCaseworker(args));
     if(name==='query_billing')return Promise.resolve(_asstQueryBilling(args));
@@ -10934,6 +10964,7 @@ function _asstToolNote(name,args){
   var m=document.getElementById('asst-msgs'); if(!m)return;
   var label=name==='find_client'?('Looking up '+((args&&args.name)||'client')+'…')
     :name==='query_roster'?'Checking the roster…'
+    :name==='roster_digest'?'Scanning for anything that needs attention…'
     :name==='find_caregiver'?('Looking up caregiver '+((args&&args.name)||'')+'…')
     :name==='find_caseworker'?('Looking up caseworker '+((args&&args.name)||'')+'…')
     :name==='query_billing'?'Checking invoices…'
