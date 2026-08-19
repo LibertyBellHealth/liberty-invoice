@@ -10494,7 +10494,8 @@ function _asstClientFields(p, cgs, cws){
     caregiver_email:(cg?(cg.email||''):''), caseworker_email:(cwRec?(cwRec.email||''):''),
     medicaid_id:(p.medicaidId||''), medicare:(p.medicare||''), dob:(p.dob||''),
     phone:(p.phone||p.homePhone||''), email:(p.clientEmail||p.cemail||''), start_date:(p.startDate||''),
-    hourly_rate:(p.hourlyRate||''), live_in:(p.liveIn?'yes':'no')
+    hourly_rate:(p.hourlyRate||''), live_in:(p.liveIn?'yes':'no'),
+    program:(p.program==='carrier'?'carrier':'champs'), carrier:(p.carrier||'')
   };
 }
 function _asstFieldAlias(f){
@@ -10577,7 +10578,19 @@ function _asstOnboardingStatus(args){
   var cwRec=p.caseworkerId?cws.find(function(c){return c.id===p.caseworkerId;}):null;
   var cwName=cwRec?cwRec.name:(p.worker||'');
   var cwEmail=cwRec?(cwRec.email||''):'';
-  var checks=[
+  var carrier=(p.program==='carrier');
+  // The checklist swaps by program: a managed-care (carrier) client needs the carrier + member # +
+  // a care coordinator (a caseworker record), and does NOT need a caseworker email or an MSA-4676.
+  var checks = carrier ? [
+    {item:'Carrier', ok:!!(p.carrier&&String(p.carrier).trim())},
+    {item:'Member #', ok:!!(p.memberId&&String(p.memberId).trim())},
+    {item:'Care coordinator assigned', ok:!!cwName},
+    {item:'Caregiver assigned', ok:!!cg},
+    {item:'Date of birth', ok:!!p.dob},
+    {item:'Address', ok:!!((p.street||p.address)&&p.city&&p.zip)},
+    {item:'Phone', ok:!!(p.phone||p.homePhone)},
+    {item:'Start date', ok:!!p.startDate}
+  ] : [
     {item:'Medicaid ID', ok:!!(p.medicaidId&&String(p.medicaidId).trim())},
     {item:'Caregiver assigned', ok:!!cg},
     {item:'Caseworker assigned', ok:!!cwName},
@@ -10587,13 +10600,15 @@ function _asstOnboardingStatus(args){
     {item:'Phone', ok:!!(p.phone||p.homePhone)},
     {item:'Start date', ok:!!p.startDate}
   ];
-  // "4676 sent?" — best-effort: scan the activity log for a 4676 email logged against this client.
+  // "4676 sent?" (CHAMPS only) — best-effort: scan the activity log for a 4676 email for this client.
   var sent4676=false;
-  try{ var log=(typeof getAuditLog==='function')?getAuditLog():[];
-    sent4676=log.some(function(e){return e && e.client===key && /4676/i.test(e.action||'');}); }catch(e){}
+  if(!carrier){ try{ var log=(typeof getAuditLog==='function')?getAuditLog():[];
+    sent4676=log.some(function(e){return e && e.client===key && /4676/i.test(e.action||'');}); }catch(e){} }
   var missing=checks.filter(function(c){return !c.ok;}).map(function(c){return c.item;});
   var present=checks.filter(function(c){return c.ok;}).map(function(c){return c.item;});
-  return { client:key, missing_fields:missing, present_fields:present, msa_4676_sent:sent4676,
+  return { client:key, program:(carrier?'carrier (managed care)':'champs'), carrier:(p.carrier||''),
+    missing_fields:missing, present_fields:present,
+    msa_4676_sent:(carrier?'N/A — managed care':sent4676),
     all_fields_complete: missing.length===0 };
 }
 // ── Tool: open_email ── resolve recipient, generate/attach a form if asked, open the compose modal.
@@ -10604,6 +10619,9 @@ function _asstOpenEmail(args){
   if(!profs[key]){ var f=Object.keys(profs).find(function(k){return k.toLowerCase()===cname.toLowerCase();}); if(f)key=f; }
   var p=profs[key];
   if(!p)return Promise.resolve({error:'No client named "'+cname+'" was found.'});
+  // The MSA-4676 doesn't apply to managed-care (carrier) clients — their authorizations go via the carrier.
+  if(p.program==='carrier' && /4676/i.test(args.attach_form||''))
+    return Promise.resolve({error:key+' is a managed-care (carrier) client — the MSA-4676 doesn’t apply to them.'});
   var cgs=getCaregivers(), cws=getCaseworkers();
   var recipient=(args.recipient||'').trim(), toEmail='', recipLabel='';
   // The MSA-4676 goes to the caseworker — never the caregiver. Block a caregiver recipient outright.
