@@ -8309,7 +8309,7 @@ function renderCaseworkerList(){
     var checked=cwBulkSelected[cw.id]?'checked':'';
     tr.innerHTML=
       '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" class="cw-select" data-id="'+esc(cw.id)+'" '+checked+' onchange="toggleBulkCaseworker(\''+escJsAttr(cw.id)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
-      '<td><a href="'+hrefCw+'" class="link-plain" style="display:block;" onclick="return navClick(event,this.getAttribute(\'href\'))"><div class="ct-name">'+esc(cw.name||'')+' '+_cwOrgBadge(cw)+'</div><div class="ct-id">'+esc(cw.agency||'No agency')+'</div></a></td>'+
+      '<td><a href="'+hrefCw+'" class="link-plain" style="display:block;" onclick="return navClick(event,this.getAttribute(\'href\'))"><div class="ct-name">'+esc(cw.name||'')+'</div><div class="ct-id">'+esc(cw.agency||'No agency')+' '+_cwOrgBadge(cw)+'</div></a></td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cw.phone||'—')+'</td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cw.email||'—')+'</td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cw.county||'—')+'</td>'+
