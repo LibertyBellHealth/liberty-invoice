@@ -178,6 +178,14 @@ function _programBadge(prof){
   var bg=carrier?'#e8f0fe':'#eaf5ec', fg=carrier?'#1a56b8':'#1a7740';
   return '<span style="display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;background:'+bg+';color:'+fg+';vertical-align:middle;">'+esc(label)+'</span>';
 }
+// Caseworker Org pill: MDHHS (green) vs a managed-care carrier (blue). Empty org → no badge.
+function _cwOrgBadge(cw){
+  var org=(cw&&cw.org||'').trim();
+  if(!org)return '';
+  var isMdhhs=/mdhhs/i.test(org);
+  var bg=isMdhhs?'#eaf5ec':'#e8f0fe', fg=isMdhhs?'#1a7740':'#1a56b8';
+  return '<span style="display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;background:'+bg+';color:'+fg+';vertical-align:middle;">'+esc(org)+'</span>';
+}
 
 // ============================================================
 //  NAVIGATION
@@ -8301,7 +8309,7 @@ function renderCaseworkerList(){
     var checked=cwBulkSelected[cw.id]?'checked':'';
     tr.innerHTML=
       '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" class="cw-select" data-id="'+esc(cw.id)+'" '+checked+' onchange="toggleBulkCaseworker(\''+escJsAttr(cw.id)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
-      '<td><a href="'+hrefCw+'" class="link-plain" style="display:block;" onclick="return navClick(event,this.getAttribute(\'href\'))"><div class="ct-name">'+esc(cw.name||'')+'</div><div class="ct-id">'+esc(cw.agency||'No agency')+'</div></a></td>'+
+      '<td><a href="'+hrefCw+'" class="link-plain" style="display:block;" onclick="return navClick(event,this.getAttribute(\'href\'))"><div class="ct-name">'+esc(cw.name||'')+' '+_cwOrgBadge(cw)+'</div><div class="ct-id">'+esc(cw.agency||'No agency')+'</div></a></td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cw.phone||'—')+'</td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cw.email||'—')+'</td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cw.county||'—')+'</td>'+
@@ -8369,7 +8377,7 @@ function openCwDetail(id){
   var ini=(cw.name||'?').split(' ').map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase();
   document.getElementById('cwDetailAvatar').textContent=ini;
   document.getElementById('cwDetailName').textContent=(cw.title?cw.title+' ':'')+(cw.name||'');
-  document.getElementById('cwDetailMeta').innerHTML=esc(cw.agency||'')+(cw.phone?' · '+esc(cw.phone):'');
+  document.getElementById('cwDetailMeta').innerHTML=esc(cw.agency||'')+(cw.phone?' · '+esc(cw.phone):'')+(cw.org?' &nbsp;'+_cwOrgBadge(cw):'');
   switchCwTab('overview');
 }
 function showCwGrid(){
@@ -8521,7 +8529,7 @@ function saveCwInfoPane(){
   var cwiSup=document.getElementById('cwi-supervisor');if(cwiSup)cw.supervisor_id=cwiSup.value||'';
   saveCaseworkersLS(arr);saveCaseworkerAPI(cw);
   document.getElementById('cwDetailName').textContent=(cw.title?cw.title+' ':'')+cw.name;
-  document.getElementById('cwDetailMeta').innerHTML=esc(cw.agency||'')+(cw.phone?' · '+esc(cw.phone):'');
+  document.getElementById('cwDetailMeta').innerHTML=esc(cw.agency||'')+(cw.phone?' · '+esc(cw.phone):'')+(cw.org?' &nbsp;'+_cwOrgBadge(cw):'');
   var btn=document.getElementById('cwSaveInfoBtn');if(btn){btn.textContent='Saved ✓';setTimeout(function(){btn.textContent='Save Changes';},1800);}
   addAuditEntry(cw.name,'Caseworker profile updated');
   cwUnsavedChanges=false;
