@@ -1906,7 +1906,7 @@ function _applyDhsImport(file,res,opts){
   if(opts.match && opts.link){ prof.caseworkerId=opts.match.id; prof.worker=opts.match.name; }
   else if(!opts.match && opts.add && res.aswName){
     var parts=res.aswName.split(/\s+/); var first=parts[0]||res.aswName; var last=parts.slice(1).join(' ')||'';
-    var cw={id:cwId(),name:res.aswName,first_name:first,last_name:last,agency:'MDHHS',email:res.aswEmail||'',phone:res.aswPhone||'',supervisor_id:''};
+    var cw={id:cwId(),name:res.aswName,first_name:first,last_name:last,agency:'MDHHS',org:'MDHHS',email:res.aswEmail||'',phone:res.aswPhone||'',supervisor_id:''};
     var cws=getCaseworkers(); cws.push(cw); saveCaseworkersLS(cws);
     if(typeof saveCaseworkerAPI==='function') saveCaseworkerAPI(cw);
     prof.caseworkerId=cw.id; prof.worker=cw.name;
@@ -7607,7 +7607,7 @@ function loadCaseworkersAPI(){
       var arr = (rows||[]).map(function(c){
         // D7: map middle_name/nickname back so they survive a reload (was dropping both).
         return { id:c.id, name:c.name||'', title:c.title||'', first_name:c.first_name||'', middle_name:c.middle_name||'', last_name:c.last_name||'', nickname:c.nickname||'',
-                 agency:c.agency||'', phone:c.phone||'', email:c.email||'', fax:c.fax||'',
+                 agency:c.agency||'', org:c.org||'', phone:c.phone||'', email:c.email||'', fax:c.fax||'',
                  street:c.street||'', city:c.city||'', state:c.state||'', zip:c.zip||'', county:c.county||'',
                  notes:c.notes||'', supervisor_id:c.supervisor_id||'',
                  _rowVersion:c.row_version_hex||null };   // optimistic-concurrency token
@@ -8110,6 +8110,7 @@ function showCaseworkerForm(id){
       document.getElementById('cw-last-name').value=cw.last_name||lastName;
       document.getElementById('cw-nickname').value=cw.nickname||'';
       document.getElementById('cw-agency').value=cw.agency||'';
+      var _cwOrgEl=document.getElementById('cw-org');if(_cwOrgEl)_cwOrgEl.value=cw.org||'';
       document.getElementById('cw-phone').value=cw.phone||'';
       document.getElementById('cw-fax').value=cw.fax||'';
       document.getElementById('cw-email').value=cw.email||'';
@@ -8125,7 +8126,7 @@ function showCaseworkerForm(id){
     }
     document.getElementById('cwDeleteBtn').style.display='inline-block';
   } else {
-    ['cw-title','cw-first-name','cw-middle-name','cw-last-name','cw-nickname','cw-agency','cw-phone','cw-fax','cw-email','cw-street','cw-city','cw-state','cw-zip','cw-county','cw-notes'].forEach(function(fid){var e=document.getElementById(fid);if(e)e.value='';});
+    ['cw-title','cw-first-name','cw-middle-name','cw-last-name','cw-nickname','cw-agency','cw-org','cw-phone','cw-fax','cw-email','cw-street','cw-city','cw-state','cw-zip','cw-county','cw-notes'].forEach(function(fid){var e=document.getElementById(fid);if(e)e.value='';});
     // Fresh form — populate dropdown with no selection
     populateSupervisorDropdown(document.getElementById('cw-supervisor'),'');
     document.getElementById('cwDeleteBtn').style.display='none';
@@ -8154,6 +8155,7 @@ function saveCaseworker(){
   var rec={
     id:editingId||cwId(),name:name,title:document.getElementById('cw-title').value,first_name:firstName,middle_name:middleName,last_name:lastName,nickname:nickname,
     agency:document.getElementById('cw-agency').value,
+    org:(document.getElementById('cw-org')||{}).value||'',
     phone:document.getElementById('cw-phone').value,
     fax:document.getElementById('cw-fax').value,
     email:document.getElementById('cw-email').value,
@@ -8469,6 +8471,11 @@ function renderCwInfoPane(){
   g.appendChild(dName);
 
   mkF('cwi-agency','Agency',cw.agency,true);
+  var _cwOrgOpts=['','MDHHS','Humana','Priority Health','Aetna','UnitedHealthcare','HAP','Molina','Meridian','Other'];
+  var dCwOrg=document.createElement('div');dCwOrg.className='info-field full';
+  dCwOrg.innerHTML='<label for="cwi-org">Organization <span style="font-weight:400;font-size:10px;color:#5c7590;">(MDHHS, or the carrier for a managed-care coordinator)</span></label>'+
+    '<select id="cwi-org">'+_cwOrgOpts.map(function(o){return '<option value="'+esc(o)+'"'+((cw.org||'')===o?' selected':'')+'>'+(o||'— Select —')+'</option>';}).join('')+'</select>';
+  g.appendChild(dCwOrg);
   mkRow('<div class="info-field"><label for="cwi-phone">Phone</label><input id="cwi-phone" value="'+esc(cw.phone||'')+'"></div>'+
     '<div class="info-field"><label for="cwi-fax">Fax</label><input id="cwi-fax" value="'+esc(cw.fax||'')+'"></div>');
   mkF('cwi-email','Email',cw.email,true,' onblur="_autoGovEmail(this)"');
@@ -8506,6 +8513,7 @@ function saveCwInfoPane(){
   cw.first_name=first;cw.middle_name=document.getElementById('cwi-middle').value;cw.last_name=last;
   cw.name=(first+(document.getElementById('cwi-middle').value?' '+document.getElementById('cwi-middle').value:'')+' '+last).trim();
   cw.agency=document.getElementById('cwi-agency').value;
+  var _cwiOrg=document.getElementById('cwi-org');if(_cwiOrg)cw.org=_cwiOrg.value;
   cw.phone=document.getElementById('cwi-phone').value;cw.fax=document.getElementById('cwi-fax').value;
   cw.email=document.getElementById('cwi-email').value;
   cw.street=document.getElementById('cwi-street').value;cw.city=document.getElementById('cwi-city').value;
