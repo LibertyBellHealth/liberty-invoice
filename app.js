@@ -10815,6 +10815,65 @@ function _asstUpdateClient(args){
   },{title:'Update Client',okText:'Update'});
   return { opened:true, note:'Asked the user to confirm the change (not applied until they click Update).' };
 }
+// ── Export helpers ── build + download a file from a list of rows.
+function _asstTriggerDownload(blob, fname){
+  var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download=fname;
+  document.body.appendChild(a); a.click(); setTimeout(function(){if(a.parentNode)a.parentNode.removeChild(a); URL.revokeObjectURL(url);}, 2000);
+}
+function _asstDownloadCsv(cols, rows, fname){
+  var q=function(v){ v=(v==null?'':String(v)); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+  var lines=[cols.map(q).join(',')].concat(rows.map(function(r){return r.map(q).join(',');}));
+  _asstTriggerDownload(new Blob([lines.join('\r\n')],{type:'text/csv'}), fname);
+}
+function _asstDownloadXlsx(cols, rows, fname, sheet){
+  if(typeof XLSX==='undefined')throw new Error('Excel library not loaded yet — try again in a moment.');
+  var ws=XLSX.utils.aoa_to_sheet([cols].concat(rows)); var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, (sheet||'Export').replace(/[^\w ]/g,'').slice(0,28)||'Export');
+  XLSX.writeFile(wb, fname);   // XLSX triggers the download itself
+}
+async function _asstDownloadPdf(cols, rows, title, fname){
+  if(!window.PDFLib)throw new Error('PDF library still loading — try again in a moment.');
+  var doc=await PDFLib.PDFDocument.create();
+  var font=await doc.embedFont(PDFLib.StandardFonts.Helvetica), bold=await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+  var pageW=612, pageH=792, margin=36, size=9, lineH=14, colW=(pageW-2*margin)/cols.length, page=null, y=0;
+  var cap=Math.max(6,Math.floor(colW/5));
+  var header=function(){ page=doc.addPage([pageW,pageH]); y=pageH-margin;
+    page.drawText(String(title||'Export'),{x:margin,y:y,size:13,font:bold}); y-=22;
+    cols.forEach(function(c,i){ page.drawText(String(c),{x:margin+i*colW,y:y,size:size,font:bold}); }); y-=lineH; };
+  header();
+  rows.forEach(function(r){ if(y<margin+lineH)header();
+    r.forEach(function(v,i){ var s=(v==null?'':String(v)); if(s.length>cap)s=s.slice(0,cap-1)+'…';
+      page.drawText(s,{x:margin+i*colW,y:y,size:size,font:font}); }); y-=lineH; });
+  _asstTriggerDownload(new Blob([await doc.save()],{type:'application/pdf'}), fname);
+}
+// ── Tool: export_data ── turn a roster/billing list into a downloadable Excel/CSV/PDF.
+function _asstExportData(args){
+  args=args||{};
+  var source=String(args.source||'clients').toLowerCase();
+  var format=String(args.format||'excel').toLowerCase();
+  var cols=[], rows=[], title='';
+  if(source==='invoices'||source==='billing'){
+    var r=_asstQueryBilling({what:'invoices', status:args.status, period:args.period});
+    cols=['Client','Period','Status']; rows=(r.invoices||[]).map(function(i){return [i.client,i.period,i.status];});
+    title='Invoices'+(args.period?(' '+args.period):'')+(args.status?(' - '+args.status):'');
+  } else if(source==='unbilled'){
+    var u=_asstQueryBilling({what:'unbilled', period:args.period});
+    cols=['Client']; rows=(u.clients||[]).map(function(n){return [n];}); title='Unbilled '+(u.period||'');
+  } else {
+    var q=_asstQueryRoster({action:'list', filters:(Array.isArray(args.filters)?args.filters:[])});
+    cols=['Name','Status','County','Caregiver','Caseworker','Medicaid ID','Start Date'];
+    rows=(q.clients||[]).map(function(c){return [c.name,c.status,c.county,c.caregiver,c.caseworker,c.medicaid_id,c.start_date];});
+    title='Clients';
+  }
+  if(!rows.length)return {error:'Nothing to export — the query returned no rows.'};
+  var fname=(title.replace(/[^a-z0-9]+/gi,'_').replace(/^_|_$/g,'')||'export')+'_'+today().replace(/\//g,'-');
+  try{
+    if(format==='csv'){ _asstDownloadCsv(cols,rows,fname+'.csv'); }
+    else if(format==='pdf'){ return _asstDownloadPdf(cols,rows,title,fname+'.pdf').then(function(){return {exported:true,format:'pdf',count:rows.length,file:fname+'.pdf'};},function(e){return {error:'PDF export failed: '+((e&&e.message)||e)};}); }
+    else { _asstDownloadXlsx(cols,rows,fname+'.xlsx',title); format='excel'; }
+  }catch(e){ return {error:'Export failed: '+((e&&e.message)||e)}; }
+  return {exported:true, format:format, count:rows.length, file:fname};
+}
 function _asstRunTool(name,args){
   try{
     if(name==='find_client')return Promise.resolve(_asstFindClient(args));
@@ -10825,6 +10884,7 @@ function _asstRunTool(name,args){
     if(name==='onboarding_status')return Promise.resolve(_asstOnboardingStatus(args));
     if(name==='create_task')return Promise.resolve(_asstCreateTask(args));
     if(name==='update_client')return Promise.resolve(_asstUpdateClient(args));
+    if(name==='export_data')return Promise.resolve(_asstExportData(args));
     if(name==='open_email')return Promise.resolve(_asstOpenEmail(args));
     return Promise.resolve({error:'Unknown tool: '+name});
   }catch(e){ return Promise.resolve({error:(e&&e.message)||String(e)}); }
@@ -10879,6 +10939,7 @@ function _asstToolNote(name,args){
     :name==='query_billing'?'Checking invoices…'
     :name==='create_task'?'Setting up a task…'
     :name==='update_client'?('Preparing an update'+((args&&args.client_name)?(' for '+args.client_name):'')+'…')
+    :name==='export_data'?'Building your file…'
     :name==='onboarding_status'?('Checking onboarding'+((args&&args.client_name)?(' for '+args.client_name):'')+'…')
     :name==='open_email'?('Preparing an email'+((args&&args.client_name)?(' for '+args.client_name):'')+'…')
     :('Working…');
