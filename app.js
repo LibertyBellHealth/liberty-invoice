@@ -10752,13 +10752,79 @@ function _asstQueryBilling(args){
   return {what:'invoices', period:period||'any', status:status||'any', count:rows.length,
     by_status:byStatus, invoices:rows.slice(0,80), truncated:rows.length>80};
 }
+// ── Tool: find_caseworker ── caseworker/coordinator by name → org, contact, and clients served.
+function _asstFindCaseworker(args){
+  var q=((args&&args.name)||'').trim().toLowerCase();
+  var toks=q.split(/\s+/).filter(Boolean);
+  var cws=getCaseworkers(), profs=getProfiles();
+  var out=[];
+  cws.forEach(function(cw){
+    var nm=(cw.name||'').trim();
+    if(toks.length && !toks.every(function(t){return nm.toLowerCase().indexOf(t)>=0;})) return;
+    var clients=Object.keys(profs).filter(function(k){return profs[k].caseworkerId===cw.id||(cw.name&&profs[k].worker===cw.name);})
+      .map(function(k){return {name:k, status:(profs[k].clientStatus||'active'), program:(profs[k].program==='carrier'?'carrier':'champs')};});
+    out.push({ caseworker_name:nm, org:cw.org||'', agency:cw.agency||'', email:cw.email||'', phone:cw.phone||'',
+      client_count:clients.length, clients:clients });
+  });
+  var capped=out.slice(0,8);
+  return { matches:capped, count:out.length, truncated:out.length>capped.length };
+}
+// ── Tool: create_task ── opens the task form pre-filled for the user to review + save (not auto-saved).
+function _asstCreateTask(args){
+  args=args||{};
+  var text=(args.task||args.text||'').trim(); if(!text)return {error:'What should the task say?'};
+  var clientName=(args.client_name||'').trim();
+  if(clientName){ var profs=getProfiles(); if(!profs[clientName]){ var f=Object.keys(profs).find(function(k){return k.toLowerCase()===clientName.toLowerCase();}); if(f)clientName=f; } }
+  if(typeof showTaskEditModal!=='function')return {error:'Task UI is unavailable.'};
+  showTaskEditModal({
+    title:'Add Task', subtitle:(clientName?('For client: '+clientName):'General task'),
+    name:text, due:(args.due||''), note:(args.note||''), okText:'Add Task',
+    onSave:function(vals){
+      var todos=getTodos();
+      todos.unshift({id:todoId(),text:vals.name,client:clientName||'',due:vals.due||'',note:vals.note||'',done:false,created:new Date().toLocaleString()});
+      saveTodos(todos); if(typeof saveTaskAPI==='function')saveTaskAPI(todos[0]); if(typeof updateTaskBadge==='function')updateTaskBadge();
+      if(typeof renderOverviewPane==='function'){try{renderOverviewPane();}catch(e){}}
+      if(typeof logActivity==='function')logActivity('client','Task added'+(clientName?(' for '+clientName):'')+': '+vals.name);
+    }
+  });
+  return { opened:true, note:'Opened a task, pre-filled, for the user to review and save.' };
+}
+// ── Tool: update_client ── change ONE whitelisted field on a client, AFTER a confirm dialog.
+var _ASST_UPDATABLE={ phone:'phone', home_phone:'homePhone', email:'clientEmail', client_email:'clientEmail',
+  street:'street', address:'street', city:'city', state:'state', zip:'zip', county:'county',
+  medicaid_id:'medicaidId', medicare:'medicare', dob:'dob', hourly_rate:'hourlyRate', start_date:'startDate',
+  status:'clientStatus', client_status:'clientStatus', carrier:'carrier', member_id:'memberId', program:'program' };
+function _asstUpdateClient(args){
+  args=args||{};
+  var cname=(args.client_name||'').trim(); var profs=getProfiles(); var key=cname;
+  if(!profs[key]){ var f=Object.keys(profs).find(function(k){return k.toLowerCase()===cname.toLowerCase();}); if(f)key=f; }
+  var p=profs[key]; if(!p)return {error:'No client named "'+cname+'" found.'};
+  var fieldRaw=String(args.field||'').toLowerCase().replace(/\s+/g,'_');
+  var prop=_ASST_UPDATABLE[fieldRaw];
+  if(!prop)return {error:'I can only update: phone, email, address, city, state, zip, county, medicaid ID, medicare, DOB, hourly rate, start date, status, program, carrier, or member #. (SSN and license must be edited on the client page.)'};
+  var value=(args.value==null?'':String(args.value)).trim();
+  if(prop==='clientStatus'){ var sv=value.toLowerCase(); value=(sv==='in progress')?'inactive':sv; }
+  if(prop==='program'){ value=(/carrier|managed/i.test(value))?'carrier':'champs'; }
+  var label=(args.field||prop);
+  if(typeof showConfirm!=='function')return {error:'Confirm UI unavailable.'};
+  showConfirm('Set '+key+'’s '+label+' to “'+(value||'(blank)')+'”?', function(){
+    p[prop]=value; saveProfilesLS(profs); if(typeof saveProfileSP==='function')saveProfileSP(key,p);
+    if(typeof addAuditEntry==='function')addAuditEntry(key,'Updated '+label+' via Assistant');
+    if(typeof showToast==='function')showToast('✓ Updated '+key+'’s '+label,3000);
+    if(activeProfileName===key && typeof renderInfoPane==='function'){try{renderInfoPane();}catch(e){}}
+  },{title:'Update Client',okText:'Update'});
+  return { opened:true, note:'Asked the user to confirm the change (not applied until they click Update).' };
+}
 function _asstRunTool(name,args){
   try{
     if(name==='find_client')return Promise.resolve(_asstFindClient(args));
     if(name==='query_roster')return Promise.resolve(_asstQueryRoster(args));
     if(name==='find_caregiver')return Promise.resolve(_asstFindCaregiver(args));
+    if(name==='find_caseworker')return Promise.resolve(_asstFindCaseworker(args));
     if(name==='query_billing')return Promise.resolve(_asstQueryBilling(args));
     if(name==='onboarding_status')return Promise.resolve(_asstOnboardingStatus(args));
+    if(name==='create_task')return Promise.resolve(_asstCreateTask(args));
+    if(name==='update_client')return Promise.resolve(_asstUpdateClient(args));
     if(name==='open_email')return Promise.resolve(_asstOpenEmail(args));
     return Promise.resolve({error:'Unknown tool: '+name});
   }catch(e){ return Promise.resolve({error:(e&&e.message)||String(e)}); }
@@ -10809,7 +10875,10 @@ function _asstToolNote(name,args){
   var label=name==='find_client'?('Looking up '+((args&&args.name)||'client')+'…')
     :name==='query_roster'?'Checking the roster…'
     :name==='find_caregiver'?('Looking up caregiver '+((args&&args.name)||'')+'…')
+    :name==='find_caseworker'?('Looking up caseworker '+((args&&args.name)||'')+'…')
     :name==='query_billing'?'Checking invoices…'
+    :name==='create_task'?'Setting up a task…'
+    :name==='update_client'?('Preparing an update'+((args&&args.client_name)?(' for '+args.client_name):'')+'…')
     :name==='onboarding_status'?('Checking onboarding'+((args&&args.client_name)?(' for '+args.client_name):'')+'…')
     :name==='open_email'?('Preparing an email'+((args&&args.client_name)?(' for '+args.client_name):'')+'…')
     :('Working…');
