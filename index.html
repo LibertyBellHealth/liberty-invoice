@@ -218,7 +218,7 @@ function aiTrack(name, props){
         <div class="dh-sub detail-meta" id="detailMeta"></div>
       </div>
       <div class="dh-actions detail-actions">
-        <button class="btn btn-primary" onclick="navInvoice()">+ New Invoice</button>
+        <button class="btn btn-primary" id="detailNewInvoiceBtn" onclick="navInvoice()">+ New Invoice</button>
       </div>
     </div>
     <div class="detail-tabs" role="tablist" aria-label="Client detail sections">
@@ -257,6 +257,24 @@ function aiTrack(name, props){
     <div class="home-title" style="margin-bottom:4px;">New Client</div>
     <div class="page-subtitle">Fill in the details. Everything can be edited later from their profile.</div>
     <div class="form-card" style="max-width:620px;">
+      <div class="ff-row" id="nc-program-row" style="grid-template-columns:1fr 1fr 1fr;background:#f5f8fc;border:1px solid #dbe6f2;border-radius:8px;padding:12px;margin-bottom:12px;">
+        <div class="ff"><label for="nc-program">Program *</label>
+          <select id="nc-program" onchange="ncProgramToggle()">
+            <option value="" selected>— Select —</option>
+            <option value="champs">MDHHS (CHAMPS)</option>
+            <option value="carrier">Carrier (Managed Care)</option>
+          </select>
+        </div>
+        <div class="ff" id="nc-carrier-wrap" style="display:none;"><label for="nc-carrier">Carrier</label>
+          <select id="nc-carrier">
+            <option value="">— Select carrier —</option>
+            <option>Humana</option><option>Priority Health</option><option>Aetna</option>
+            <option>UnitedHealthcare</option><option>HAP</option><option>Molina</option>
+            <option>Meridian</option><option>Other</option>
+          </select>
+        </div>
+        <div class="ff" id="nc-member-wrap" style="display:none;"><label for="nc-member">Member #</label><input id="nc-member" placeholder="Plan member #" maxlength="50"></div>
+      </div>
       <div class="ff-row" style="grid-template-columns:1fr 1fr 1fr;">
         <div class="ff"><label for="nc-first">First Name *</label><input id="nc-first" placeholder="First name" maxlength="40"></div>
         <div class="ff"><label for="nc-middle">Middle Name</label><input id="nc-middle" placeholder="Middle" maxlength="40"></div>
@@ -784,6 +802,15 @@ function aiTrack(name, props){
         <div class="ff-row">
           <div class="ff"><label for="cw-nickname">Nickname / Goes By</label><input id="cw-nickname" placeholder="Optional" maxlength="40"></div>
           <div class="ff"><label for="cw-agency">Agency</label><input id="cw-agency" placeholder="e.g. MDHHS" maxlength="80"></div>
+          <div class="ff"><label for="cw-org">Organization</label>
+            <select id="cw-org">
+              <option value="">— Select —</option>
+              <option>MDHHS</option>
+              <option>Humana</option><option>Priority Health</option><option>Aetna</option>
+              <option>UnitedHealthcare</option><option>HAP</option><option>Molina</option>
+              <option>Meridian</option><option>Other</option>
+            </select>
+          </div>
         </div>
         <div class="ff-row">
           <div class="ff"><label for="cw-phone">Phone</label><input id="cw-phone" placeholder="(555) 555-5555" maxlength="20"></div>

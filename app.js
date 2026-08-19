@@ -169,6 +169,23 @@ function formatRate(el){
 // C4: one place for CLIENT status labels — 'inactive' displays as "In Progress"
 // (onboarding, not yet billing). Keeps every client-status badge consistent.
 function clientStatusLabel(s){ s=s||'active'; return s==='inactive' ? 'In Progress' : s.charAt(0).toUpperCase()+s.slice(1); }
+// A small pill showing the client's program: "CHAMPS" (green) or the carrier name (blue) for
+// managed-care. Self-contained inline styles so no CSS file change is needed. Absent = CHAMPS.
+function _programBadge(prof){
+  if(!prof)return '';
+  var carrier=prof.program==='carrier';
+  var label=carrier?(prof.carrier||'Managed Care'):'CHAMPS';
+  var bg=carrier?'#e8f0fe':'#eaf5ec', fg=carrier?'#1a56b8':'#1a7740';
+  return '<span style="display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;background:'+bg+';color:'+fg+';vertical-align:middle;">'+esc(label)+'</span>';
+}
+// Caseworker Org pill: MDHHS (green) vs a managed-care carrier (blue). Empty org → no badge.
+function _cwOrgBadge(cw){
+  var org=(cw&&cw.org||'').trim();
+  if(!org)return '';
+  var isMdhhs=/mdhhs/i.test(org);
+  var bg=isMdhhs?'#eaf5ec':'#e8f0fe', fg=isMdhhs?'#1a7740':'#1a56b8';
+  return '<span style="display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;background:'+bg+';color:'+fg+';vertical-align:middle;">'+esc(org)+'</span>';
+}
 
 // ============================================================
 //  NAVIGATION
@@ -317,7 +334,8 @@ document.addEventListener('click',function(e){
 
 function navNewClient(){
   showPage('new-client');bc([{l:'Clients',fn:navHome},{l:'New Client'}]);document.getElementById('topbarActions').innerHTML='';
-  ['nc-first','nc-middle','nc-last','nc-nickname','nc-medicaid','nc-medicare','nc-rate','nc-dl','nc-ssn','nc-phone','nc-cemail','nc-street','nc-city','nc-state','nc-zip','nc-county','nc-start-date','nc-worker-search','nc-worker-val','nc-caregiver-search','nc-caregiver-val'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  ['nc-first','nc-middle','nc-last','nc-nickname','nc-program','nc-carrier','nc-member','nc-medicaid','nc-medicare','nc-rate','nc-dl','nc-ssn','nc-phone','nc-cemail','nc-street','nc-city','nc-state','nc-zip','nc-county','nc-start-date','nc-worker-search','nc-worker-val','nc-caregiver-search','nc-caregiver-val'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  if(typeof ncProgramToggle==='function')ncProgramToggle();   // re-hide carrier fields until a program is chosen
   var drop=document.getElementById('nc-worker-drop');if(drop)drop.style.display='none';
   var cgDrop=document.getElementById('nc-caregiver-drop');if(cgDrop)cgDrop.style.display='none';
 }
@@ -330,7 +348,9 @@ function navDetail(name,tab){
   document.getElementById('detailName').textContent=name+(prof.nickname?' ('+prof.nickname+')':'');
   var st=prof.clientStatus||'active';
   document.getElementById('detailMeta').innerHTML=(prof.medicaidId?'Medicaid: '+esc(prof.medicaidId):'No Medicaid ID')+(prof.phone?' &nbsp;·&nbsp; '+esc(prof.phone):'')+
-    ' &nbsp;<span class="cs-badge cs-'+st+'">'+clientStatusLabel(st)+'</span>';
+    ' &nbsp;<span class="cs-badge cs-'+st+'">'+clientStatusLabel(st)+'</span>'+' &nbsp;'+_programBadge(prof);
+  // Carrier (managed-care) clients aren't invoiced in the CRM — hide the + New Invoice action.
+  var _nib=document.getElementById('detailNewInvoiceBtn'); if(_nib)_nib.style.display=isCarrierClient(prof)?'none':'';
   bc([{l:'Clients',fn:navHome},{l:name}]);
   document.getElementById('topbarActions').innerHTML='';
   switchTab(tab||'overview');renderSidebarClients();
@@ -338,6 +358,7 @@ function navDetail(name,tab){
 function navInvoice(loadSpecific){
   if(!activeProfileName){showAlert('Select a client first.');return;}
   var prof=getProfiles()[activeProfileName];
+  if(isCarrierClient(prof)){showAlert('This is a managed-care (carrier) client — billing goes through the carrier’s software, so invoices aren’t created here.');return;}
   if(loadSpecific){
     showPage('invoice');
     document.getElementById('invClientTag').textContent=activeProfileName;
@@ -362,8 +383,9 @@ function navInvoice(loadSpecific){
   document.getElementById('newInvChoiceModal').classList.add('open');
 }
 function confirmNewInvoice(mode){
-  document.getElementById('newInvChoiceModal').classList.remove('open');
   var prof=getProfiles()[activeProfileName];
+  if(isCarrierClient(prof)){showAlert('This is a managed-care (carrier) client — billing goes through the carrier’s software, so no invoice is created here.');return;}
+  document.getElementById('newInvChoiceModal').classList.remove('open');
   showPage('invoice');
   document.getElementById('invClientTag').textContent=activeProfileName;
   document.getElementById('saveInvoiceBtn').style.display='inline-block';
@@ -510,8 +532,11 @@ function clientWasActiveInPeriod(prof,period){
 // A client should only be flagged as "missing an invoice" for a period if they have a service
 // start date on/before that period. No start date -> we can't say they were active, so don't nag
 // (bug #10: clients with no start date, or a start date after the period, were being flagged).
+// Managed-care (carrier) clients are billed through the carrier's own software — they never get a
+// CRM invoice, so they're excluded from every invoicing/"missing invoice" surface.
+function isCarrierClient(prof){ return !!prof && prof.program==='carrier'; }
 function clientDueForInvoice(prof, period){
-  return !!(prof && prof.startDate) && clientWasActiveInPeriod(prof, period);
+  return !!(prof && prof.startDate) && !isCarrierClient(prof) && clientWasActiveInPeriod(prof, period);
 }
 // True when a client has a real DHS-1210 authorization on file (hours, tasks, or an effective date).
 // A DHS-1210 is what officially makes you the client's agency, so it gates the Active status.
@@ -711,7 +736,7 @@ function renderClientTable(forceStatus){
     var hrefCl=buildClientUrl(name);
     tr.innerHTML=
       '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" '+checked+' onchange="toggleBulkClient(\''+escJsAttr(name)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
-      '<td><a href="'+hrefCl+'" class="link-plain" style="display:block;" onclick="return navClick(event,this.getAttribute(\'href\'))"><div class="ct-name">'+esc(name)+(prof.nickname?'<span style="font-weight:normal;color:var(--text-subtle);"> ('+esc(prof.nickname)+')</span>':'')+'</div><div class="ct-id">'+esc(prof.medicaidId||'No Medicaid ID')+'</div></a></td>'+
+      '<td><a href="'+hrefCl+'" class="link-plain" style="display:block;" onclick="return navClick(event,this.getAttribute(\'href\'))"><div class="ct-name">'+esc(name)+(prof.nickname?'<span style="font-weight:normal;color:var(--text-subtle);"> ('+esc(prof.nickname)+')</span>':'')+'</div><div class="ct-id">'+esc(prof.medicaidId||'No Medicaid ID')+' '+_programBadge(prof)+'</div></a></td>'+
       '<td><span class="status-inline"><span class="status-dot '+st+'"></span>'+stLabel+'</span></td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(phone)+'</td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cgName)+'</td>'+
@@ -1030,6 +1055,19 @@ function renderInfoPane(){
 
   mkField('ei-medicaid','Medicaid ID',prof.medicaidId||'',false);
   mkField('ei-medicare','Medicare #',prof.medicare||'',false);
+  // Program (CHAMPS vs Managed-Care carrier). Absent = champs. Carrier shows carrier + member #.
+  var _pg=prof.program||'champs';
+  var dProg=document.createElement('div');dProg.className='info-field-row full';dProg.style.gridTemplateColumns='1fr 1fr 1fr';
+  dProg.innerHTML='<div class="info-field"><label for="ei-program">Program</label><select id="ei-program" onchange="unsavedChanges=true;eiProgramToggle();">'+
+      '<option value="champs"'+(_pg!=='carrier'?' selected':'')+'>MDHHS (CHAMPS)</option>'+
+      '<option value="carrier"'+(_pg==='carrier'?' selected':'')+'>Carrier (Managed Care)</option>'+
+    '</select></div>'+
+    '<div class="info-field" id="ei-carrier-wrap"><label for="ei-carrier">Carrier</label><select id="ei-carrier" onchange="unsavedChanges=true;">'+
+      ['','Humana','Priority Health','Aetna','UnitedHealthcare','HAP','Molina','Meridian','Other'].map(function(c){return '<option value="'+esc(c)+'"'+((prof.carrier||'')===c?' selected':'')+'>'+(c||'— Select carrier —')+'</option>';}).join('')+
+    '</select></div>'+
+    '<div class="info-field" id="ei-member-wrap"><label for="ei-member">Member #</label><input id="ei-member" value="'+esc(prof.memberId||'')+'" autocomplete="off" oninput="unsavedChanges=true;"></div>';
+  g.appendChild(dProg);
+  eiProgramToggle();
   // Date of Birth — needed on DHS-390 / MDHHS-6200 / MSA-4676 state forms
   var dDob=document.createElement('div');dDob.className='info-field';
   dDob.innerHTML='<label for="ei-dob">Date of Birth <span style="font-weight:400;font-size:11px;color:#5c7590;">(double-click to copy)</span></label><input id="ei-dob" type="date" value="'+esc(prof.dob||'')+'" autocomplete="off" oninput="unsavedChanges=true;" ondblclick="_copyField(this,\'mdy\')" title="Double-click to copy as MM/DD/YYYY">';
@@ -1180,6 +1218,13 @@ function renderAuthPane(edit){
   if(!activeProfileName)return;
   var host=document.getElementById('authContent'); if(!host)return;
   var prof=getProfiles()[activeProfileName]; if(!prof)return;
+  // Managed-care (carrier) clients don't use the DHS-1210 / CRM invoicing path — no import here.
+  if(isCarrierClient(prof)){
+    host.innerHTML='<div class="form-card" style="max-width:640px;text-align:center;padding:28px;">'+
+      '<div style="font-size:13px;color:#5c7590;">This is a <b>managed-care</b> client'+(prof.carrier?(' ('+esc(prof.carrier)+')'):'')+'. DHS-1210 authorization and CRM invoicing aren’t used — authorizations and billing go through the carrier.</div>'+
+    '</div>';
+    return;
+  }
   var a=prof.authorization;
   if(edit){ host.innerHTML=_authEditHtml(a||{}); _renderAuthTaskRows((a&&a.tasks)||[]); return; }
   if(!a || (a.hours==null && !(a.tasks&&a.tasks.length) && !a.effectiveDate)){
@@ -1325,6 +1370,9 @@ function saveClientInfo(){
   rec.firstName=first;rec.middleName=middle;rec.lastName=last;rec.nickname=nickname;
   rec.clientName=newName;rec.medicaidId=document.getElementById('ei-medicaid').value;
   rec.medicare=(document.getElementById('ei-medicare')||{}).value||'';
+  var _pgEl=document.getElementById('ei-program');if(_pgEl)rec.program=_pgEl.value;
+  var _caEl=document.getElementById('ei-carrier');if(_caEl)rec.carrier=_caEl.value;
+  var _meEl=document.getElementById('ei-member');if(_meEl)rec.memberId=_meEl.value;
   var dobEl=document.getElementById('ei-dob');if(dobEl)rec.dob=dobEl.value||'';
   var genderEl=document.getElementById('ei-gender');if(genderEl)rec.gender=genderEl.value||'';
   rec.hourlyRate=document.getElementById('ei-rate').value;
@@ -1352,7 +1400,7 @@ function saveClientInfo(){
   var displayName=activeProfileName+(rec.nickname?' ('+rec.nickname+')':'');
   document.getElementById('detailName').textContent=displayName;
   var st=rec.clientStatus||'active';
-  document.getElementById('detailMeta').innerHTML=(rec.medicaidId?'Medicaid: '+esc(rec.medicaidId):'No Medicaid ID')+(rec.phone?' &nbsp;·&nbsp; '+esc(rec.phone):'')+' &nbsp;<span class="cs-badge cs-'+st+'">'+clientStatusLabel(st)+'</span>';
+  document.getElementById('detailMeta').innerHTML=(rec.medicaidId?'Medicaid: '+esc(rec.medicaidId):'No Medicaid ID')+(rec.phone?' &nbsp;·&nbsp; '+esc(rec.phone):'')+' &nbsp;<span class="cs-badge cs-'+st+'">'+clientStatusLabel(st)+'</span>'+' &nbsp;'+_programBadge(rec);
   renderSidebarClients();
   var btn=document.getElementById('saveInfoBtn');btn.textContent='Saved';setTimeout(function(){btn.textContent='Save Changes';},1800);
 }
@@ -1866,7 +1914,7 @@ function _applyDhsImport(file,res,opts){
   if(opts.match && opts.link){ prof.caseworkerId=opts.match.id; prof.worker=opts.match.name; }
   else if(!opts.match && opts.add && res.aswName){
     var parts=res.aswName.split(/\s+/); var first=parts[0]||res.aswName; var last=parts.slice(1).join(' ')||'';
-    var cw={id:cwId(),name:res.aswName,first_name:first,last_name:last,agency:'MDHHS',email:res.aswEmail||'',phone:res.aswPhone||'',supervisor_id:''};
+    var cw={id:cwId(),name:res.aswName,first_name:first,last_name:last,agency:'MDHHS',org:'MDHHS',email:res.aswEmail||'',phone:res.aswPhone||'',supervisor_id:''};
     var cws=getCaseworkers(); cws.push(cw); saveCaseworkersLS(cws);
     if(typeof saveCaseworkerAPI==='function') saveCaseworkerAPI(cw);
     prof.caseworkerId=cw.id; prof.worker=cw.name;
@@ -2150,11 +2198,13 @@ function renderDocsPane(){
   var c=document.getElementById('docsContent');c.innerHTML='';
   if(!activeProfileName)return;
   var clientId=getHcClientId();
+  var _dprof=getProfiles()[activeProfileName]||{};
   c.innerHTML=
+    (isCarrierClient(_dprof)?'':   // no DHS-1210 import prompt for managed-care clients
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;background:#eef4fb;border:1px solid #d5e4f3;border-radius:8px;padding:10px 14px;margin-bottom:12px;flex-wrap:wrap;">'+
       '<div style="font-size:12px;color:#2b4a6b;"><b>📄 DHS-1210 or MDHHS-6064?</b> Import it to auto-fill authorized hours &amp; tasks — and file the PDF here.</div>'+
       '<button class="btn btn-primary btn-sm" onclick="importDHS1210()" style="white-space:nowrap;">Import DHS-1210 / MDHHS-6064</button>'+
-    '</div>'+
+    '</div>')+
     docUploaderHtml({title:'Client Documents',subtitle:"SSN cards, driver's licenses, insurance cards, authorizations, etc.",hasCategory:true,catId:'hcDocCategory',fileId:'hcDocFileInput',scanId:'docScanInput',scanFn:'handleDocScan(this)',uploadFn:'uploadHcDoc()',statusId:'hcDocStatus',listId:'hcDocList'});
   if(clientId){loadHcDocs(clientId);}
   else{document.getElementById('hcDocList').innerHTML='<div style="color:#5c7590;font-size:12px;">Save this client to the database first before uploading documents.</div>';}
@@ -2247,7 +2297,7 @@ function emailDocToCaregiver(index){
   var cgs=getCaregivers(); var cg=(prof.caregiverId&&cgs[prof.caregiverId])?cgs[prof.caregiverId]:null;
   var cgEmail=cg?(cg.email||''):'';
   var cgFirst=cg?((cg.firstName||(cg.name||'').split(' ')[0])||''):'';
-  var ag=getAgencyInfo()||{}; var agName=ag.name||'our agency'; var agPhone=ag.phone||'';
+  var ag=getAgencyInfo()||{}; var agName=ag.agency_name||ag.agency_provider_name||'our agency'; var agPhone=ag.agency_phone||'';
   var display=d.displayName||d.name||'the document';
   var is4676=/4676/i.test(display)||/4676/i.test(_docCatLabel(d.category));
   var greet='Hello'+(cgFirst?(' '+cgFirst):'')+',';
@@ -2267,11 +2317,17 @@ function emailDocToCaregiver(index){
   }
   _openDocEmailModal(d, cgEmail, subject, body);
 }
-function _openDocEmailModal(d, to, subject, body){
+// d may be null → plain email with no attachment (the Assistant uses this for a note with no form).
+// opts.auditClient names the client to log the send under (defaults to the active profile) — the
+// Assistant emails for a client that isn't necessarily the one currently open.
+function _openDocEmailModal(d, to, subject, body, opts){
+  opts=opts||{};
+  var _auditClient=opts.auditClient||activeProfileName;
+  var _lbl=d?(d.displayName||d.name||'document'):'email';
   var ov=document.createElement('div');ov.className='modal-overlay open';
   ov.innerHTML='<div class="modal-box" style="max-width:520px;">'+
-    '<h3>Email document to caregiver</h3>'+
-    '<p style="font-size:12px;color:#5c7590;margin-top:-4px;">Sends “'+esc(d.displayName||d.name||'')+'” as an attachment from your Microsoft account. Edit anything below before sending.</p>'+
+    '<h3>'+(d?'Email document':'Compose email')+'</h3>'+
+    '<p style="font-size:12px;color:#5c7590;margin-top:-4px;">'+(d?('Sends “'+esc(_lbl)+'” as an attachment from your Microsoft account. '):'Sends from your Microsoft account. ')+'Edit anything below before sending.</p>'+
     '<label class="qc-l" for="dem-to">To</label><input id="dem-to" class="qc-i" value="'+esc(to)+'" placeholder="caregiver@email.com">'+
     '<label class="qc-l" for="dem-subj">Subject</label><input id="dem-subj" class="qc-i" value="'+esc(subject)+'">'+
     '<label class="qc-l" for="dem-body">Message <span style="font-weight:400;color:#5c7590;">(delete the intro line if you’ve emailed them before)</span></label>'+
@@ -2290,15 +2346,16 @@ function _openDocEmailModal(d, to, subject, body){
     var status=ov.querySelector('#dem-status');
     if(!toV||!/@/.test(toV)){status.style.color='#c0392b';status.textContent='Enter a valid recipient email.';return;}
     if(typeof spToken==='undefined'||!spToken){status.style.color='#c0392b';status.textContent='Sign in first (Settings) to send email.';return;}
-    var btn=ov.querySelector('#dem-send');btn.disabled=true;btn.textContent='Sending…';status.style.color='#5c7590';status.textContent='Attaching document…';
-    _docToBase64(d.url||d.downloadUrl).then(function(b64){
+    var btn=ov.querySelector('#dem-send');btn.disabled=true;btn.textContent='Sending…';status.style.color='#5c7590';status.textContent=(d?'Attaching document…':'Sending…');
+    var bodyHtml=esc(bodyText).replace(/\n/g,'<br>');
+    var attachP=d?_docToBase64(d.url||d.downloadUrl).then(function(b64){return [{name:(d.displayName||d.name||'document.pdf'),base64:b64}];}):Promise.resolve([]);
+    attachP.then(function(atts){
       status.textContent='Sending…';
-      var bodyHtml=esc(bodyText).replace(/\n/g,'<br>');
-      return sendMailWithPDF(toV,subjV,bodyHtml,[{name:(d.displayName||d.name||'document.pdf'),base64:b64}]);
+      return sendMailWithPDF(toV,subjV,bodyHtml,atts);
     }).then(function(){
-      if(typeof showToast==='function')showToast('✓ Emailed '+(d.displayName||'document')+' to '+toV,3500);
-      if(typeof addAuditEntry==='function')addAuditEntry(activeProfileName,'Emailed “'+(d.displayName||d.name)+'” to caregiver '+toV);
-      if(typeof aiTrack==='function')aiTrack('DocEmailedToCaregiver',{doc:d.displayName||d.name,to:toV});
+      if(typeof showToast==='function')showToast('✓ Emailed '+_lbl+' to '+toV,3500);
+      if(typeof addAuditEntry==='function')addAuditEntry(_auditClient,'Emailed “'+_lbl+'” to '+toV);
+      if(typeof aiTrack==='function')aiTrack('DocEmailedToCaregiver',{doc:_lbl,to:toV});
       close();
     }).catch(function(err){
       btn.disabled=false;btn.textContent='Send Email';status.style.color='#c0392b';
@@ -2639,15 +2696,36 @@ function deleteCgDoc(cgId,encodedName){
 // ============================================================
 //  NEW CLIENT
 // ============================================================
+// Show the carrier + member fields only when Program = Carrier (managed care). Used on both the
+// new-client form (nc-*) and by navNewClient's reset.
+function ncProgramToggle(){
+  var prog=(document.getElementById('nc-program')||{}).value||'';
+  var show=prog==='carrier';
+  var cw=document.getElementById('nc-carrier-wrap'), mw=document.getElementById('nc-member-wrap');
+  if(cw)cw.style.display=show?'':'none';
+  if(mw)mw.style.display=show?'':'none';
+}
+// Same show/hide for the client EDIT form (ei-*): carrier + member appear only for a Carrier client.
+function eiProgramToggle(){
+  var prog=(document.getElementById('ei-program')||{}).value||'champs';
+  var show=prog==='carrier';
+  var cw=document.getElementById('ei-carrier-wrap'), mw=document.getElementById('ei-member-wrap');
+  if(cw)cw.style.display=show?'':'none';
+  if(mw)mw.style.display=show?'':'none';
+}
 function createClient(){
   var first=(document.getElementById('nc-first').value||'').trim();
   var middle=(document.getElementById('nc-middle').value||'').trim();
   var last=(document.getElementById('nc-last').value||'').trim();
   var nickname=(document.getElementById('nc-nickname').value||'').trim();
   if(!first||!last){showAlert('First Name and Last Name are required.');return;}
+  // Program is REQUIRED at creation so a client can never be mislabeled MDHHS vs Carrier.
+  var ncProgram=(document.getElementById('nc-program')||{}).value||'';
+  if(!ncProgram){showAlert('Please choose a Program — MDHHS (CHAMPS) or Carrier (Managed Care) — for this client.');return;}
   var ncStatus=(document.getElementById('nc-status')||{}).value||'active';
   if(ncStatus==='active' && !((document.getElementById('nc-start-date')||{}).value||'').trim()){showAlert('Service Start Date is required when the status is Active.');return;}
-  if(ncStatus==='active'){showAlert('A new client can’t start as Active — a DHS-1210 authorization is required first.\n\nCreate them as “In Progress”, then import the DHS-1210 on their Authorization tab to activate them.');return;}
+  // The "must import a DHS-1210 to go Active" rule is CHAMPS-only — carrier clients don't use that form.
+  if(ncStatus==='active' && ncProgram!=='carrier'){showAlert('A new client can’t start as Active — a DHS-1210 authorization is required first.\n\nCreate them as “In Progress”, then import the DHS-1210 on their Authorization tab to activate them.');return;}
   var name=(first+' '+last).trim();
   var p=getProfiles();
   if(p[name]){
@@ -2661,6 +2739,9 @@ function _doCreateClient(name,first,middle,last,nickname){
   aiTrack('ClientCreated',{client:name});
   if(!p[name])p[name]={invoices:[],clientNotes:''};
   p[name].clientName=name;p[name].firstName=first;p[name].middleName=middle;p[name].lastName=last;p[name].nickname=nickname;
+  p[name].program=(document.getElementById('nc-program')||{}).value||'';
+  p[name].carrier=(document.getElementById('nc-carrier')||{}).value||'';
+  p[name].memberId=(document.getElementById('nc-member')||{}).value.trim()||'';
   p[name].medicaidId=document.getElementById('nc-medicaid').value.trim();
   p[name].medicare=(document.getElementById('nc-medicare')||{}).value.trim()||'';
   p[name].hourlyRate=document.getElementById('nc-rate').value.trim();
@@ -4556,6 +4637,7 @@ function updateMissingReport(useCustom){
   var period=useCustom?document.getElementById('missingPeriodCustom').value.trim():document.getElementById('missingPeriodSelect').value;
   if(!period||period.length<7)return;
   var missing=allClients.filter(function(name){
+    if(isCarrierClient(profiles[name]))return false;   // carrier clients are billed elsewhere — not "missing"
     return !((profiles[name].invoices)||[]).some(function(i){return i.billingPeriod===period;});
   });
   var list=document.getElementById('missingReportList');if(!list)return;
@@ -6255,6 +6337,7 @@ function _emailSig(){return '<p>'+_emailClose()+'<br><b>Thomas Jaboro</b><br>Lib
 // ── Send single invoice email ─────────────────────────────────
 async function sendEmail(){
   var cn=document.getElementById('clientName').value.trim();
+  if(cn&&isCarrierClient(getProfiles()[cn])){showAlert('This is a managed-care (carrier) client — invoices are handled in the carrier’s software, so there is nothing to email here.');return;}
   var bp=document.getElementById('billingPeriod').value.trim();
   var ae=document.getElementById('activeAgentEmail').value.trim();
   var w=document.getElementById('worker').value.trim();
@@ -6988,6 +7071,7 @@ function loadProfilesAPI() {
           clientName: name, firstName: c.first_name || '', lastName: c.last_name || '',
           middleName: c.middle_name || '', nickname: c.nickname || '',
           medicaidId: c.medicaid_id || '', medicare: c.medicare || '', hourlyRate: c.hourly_rate || '',
+          program: c.program || '', carrier: c.carrier || '', memberId: c.member_id || '',
           worker: c.worker || '', caseworkerId: c.caseworker_id || '',
           street: c.street || '', city: c.city || '', state: c.state || '',
           zip: c.zip || '', county: c.county || '',
@@ -7044,6 +7128,7 @@ function saveProfileSP(name, data, quiet) {
     first_name: data.firstName || '', last_name: data.lastName || '',
     middle_name: data.middleName || '', nickname: data.nickname || '',
     medicaid_id: data.medicaidId || '', medicare: data.medicare || '', hourly_rate: data.hourlyRate || '',
+    program: data.program || '', carrier: data.carrier || '', member_id: data.memberId || '',
     worker: data.worker || '', caseworker_id: data.caseworkerId || '',
     street: data.street || '', city: data.city || '', state: data.state || '',
     zip: data.zip || '', county: data.county || '',
@@ -7155,6 +7240,7 @@ function _clientSig(d) {
     d.zip||'', d.county||'', d.phone||'', d.homePhone||'', d.clientEmail||'', d.caregiverId||'',
     d.clientStatus||'active', d.hasComplex?1:0, d.dob||'', d.gender||'', d.driversLicense||'',
     d.ssn||'', d.startDate||'', d.liveIn?1:0, d.clientNotes||'',
+    d.program||'', d.carrier||'', d.memberId||'',
     d.authorization?JSON.stringify(d.authorization):'',
   ]);
 }
@@ -7529,7 +7615,7 @@ function loadCaseworkersAPI(){
       var arr = (rows||[]).map(function(c){
         // D7: map middle_name/nickname back so they survive a reload (was dropping both).
         return { id:c.id, name:c.name||'', title:c.title||'', first_name:c.first_name||'', middle_name:c.middle_name||'', last_name:c.last_name||'', nickname:c.nickname||'',
-                 agency:c.agency||'', phone:c.phone||'', email:c.email||'', fax:c.fax||'',
+                 agency:c.agency||'', org:c.org||'', phone:c.phone||'', email:c.email||'', fax:c.fax||'',
                  street:c.street||'', city:c.city||'', state:c.state||'', zip:c.zip||'', county:c.county||'',
                  notes:c.notes||'', supervisor_id:c.supervisor_id||'',
                  _rowVersion:c.row_version_hex||null };   // optimistic-concurrency token
@@ -8032,6 +8118,7 @@ function showCaseworkerForm(id){
       document.getElementById('cw-last-name').value=cw.last_name||lastName;
       document.getElementById('cw-nickname').value=cw.nickname||'';
       document.getElementById('cw-agency').value=cw.agency||'';
+      var _cwOrgEl=document.getElementById('cw-org');if(_cwOrgEl)_cwOrgEl.value=cw.org||'';
       document.getElementById('cw-phone').value=cw.phone||'';
       document.getElementById('cw-fax').value=cw.fax||'';
       document.getElementById('cw-email').value=cw.email||'';
@@ -8047,7 +8134,7 @@ function showCaseworkerForm(id){
     }
     document.getElementById('cwDeleteBtn').style.display='inline-block';
   } else {
-    ['cw-title','cw-first-name','cw-middle-name','cw-last-name','cw-nickname','cw-agency','cw-phone','cw-fax','cw-email','cw-street','cw-city','cw-state','cw-zip','cw-county','cw-notes'].forEach(function(fid){var e=document.getElementById(fid);if(e)e.value='';});
+    ['cw-title','cw-first-name','cw-middle-name','cw-last-name','cw-nickname','cw-agency','cw-org','cw-phone','cw-fax','cw-email','cw-street','cw-city','cw-state','cw-zip','cw-county','cw-notes'].forEach(function(fid){var e=document.getElementById(fid);if(e)e.value='';});
     // Fresh form — populate dropdown with no selection
     populateSupervisorDropdown(document.getElementById('cw-supervisor'),'');
     document.getElementById('cwDeleteBtn').style.display='none';
@@ -8076,6 +8163,7 @@ function saveCaseworker(){
   var rec={
     id:editingId||cwId(),name:name,title:document.getElementById('cw-title').value,first_name:firstName,middle_name:middleName,last_name:lastName,nickname:nickname,
     agency:document.getElementById('cw-agency').value,
+    org:(document.getElementById('cw-org')||{}).value||'',
     phone:document.getElementById('cw-phone').value,
     fax:document.getElementById('cw-fax').value,
     email:document.getElementById('cw-email').value,
@@ -8221,7 +8309,7 @@ function renderCaseworkerList(){
     var checked=cwBulkSelected[cw.id]?'checked':'';
     tr.innerHTML=
       '<td style="width:26px;" onclick="event.stopPropagation()"><input type="checkbox" class="cw-select" data-id="'+esc(cw.id)+'" '+checked+' onchange="toggleBulkCaseworker(\''+escJsAttr(cw.id)+'\',this)" style="width:12px;height:12px;cursor:pointer;"></td>'+
-      '<td><a href="'+hrefCw+'" class="link-plain" style="display:block;" onclick="return navClick(event,this.getAttribute(\'href\'))"><div class="ct-name">'+esc(cw.name||'')+'</div><div class="ct-id">'+esc(cw.agency||'No agency')+'</div></a></td>'+
+      '<td><a href="'+hrefCw+'" class="link-plain" style="display:block;" onclick="return navClick(event,this.getAttribute(\'href\'))"><div class="ct-name">'+esc(cw.name||'')+'</div><div class="ct-id">'+esc(cw.agency||'No agency')+' '+_cwOrgBadge(cw)+'</div></a></td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cw.phone||'—')+'</td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cw.email||'—')+'</td>'+
       '<td style="color:var(--text-muted);font-size:12px;">'+esc(cw.county||'—')+'</td>'+
@@ -8289,7 +8377,7 @@ function openCwDetail(id){
   var ini=(cw.name||'?').split(' ').map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase();
   document.getElementById('cwDetailAvatar').textContent=ini;
   document.getElementById('cwDetailName').textContent=(cw.title?cw.title+' ':'')+(cw.name||'');
-  document.getElementById('cwDetailMeta').innerHTML=esc(cw.agency||'')+(cw.phone?' · '+esc(cw.phone):'');
+  document.getElementById('cwDetailMeta').innerHTML=esc(cw.agency||'')+(cw.phone?' · '+esc(cw.phone):'')+(cw.org?' &nbsp;'+_cwOrgBadge(cw):'');
   switchCwTab('overview');
 }
 function showCwGrid(){
@@ -8391,6 +8479,11 @@ function renderCwInfoPane(){
   g.appendChild(dName);
 
   mkF('cwi-agency','Agency',cw.agency,true);
+  var _cwOrgOpts=['','MDHHS','Humana','Priority Health','Aetna','UnitedHealthcare','HAP','Molina','Meridian','Other'];
+  var dCwOrg=document.createElement('div');dCwOrg.className='info-field full';
+  dCwOrg.innerHTML='<label for="cwi-org">Organization <span style="font-weight:400;font-size:10px;color:#5c7590;">(MDHHS, or the carrier for a managed-care coordinator)</span></label>'+
+    '<select id="cwi-org">'+_cwOrgOpts.map(function(o){return '<option value="'+esc(o)+'"'+((cw.org||'')===o?' selected':'')+'>'+(o||'— Select —')+'</option>';}).join('')+'</select>';
+  g.appendChild(dCwOrg);
   mkRow('<div class="info-field"><label for="cwi-phone">Phone</label><input id="cwi-phone" value="'+esc(cw.phone||'')+'"></div>'+
     '<div class="info-field"><label for="cwi-fax">Fax</label><input id="cwi-fax" value="'+esc(cw.fax||'')+'"></div>');
   mkF('cwi-email','Email',cw.email,true,' onblur="_autoGovEmail(this)"');
@@ -8428,6 +8521,7 @@ function saveCwInfoPane(){
   cw.first_name=first;cw.middle_name=document.getElementById('cwi-middle').value;cw.last_name=last;
   cw.name=(first+(document.getElementById('cwi-middle').value?' '+document.getElementById('cwi-middle').value:'')+' '+last).trim();
   cw.agency=document.getElementById('cwi-agency').value;
+  var _cwiOrg=document.getElementById('cwi-org');if(_cwiOrg)cw.org=_cwiOrg.value;
   cw.phone=document.getElementById('cwi-phone').value;cw.fax=document.getElementById('cwi-fax').value;
   cw.email=document.getElementById('cwi-email').value;
   cw.street=document.getElementById('cwi-street').value;cw.city=document.getElementById('cwi-city').value;
@@ -8435,7 +8529,7 @@ function saveCwInfoPane(){
   var cwiSup=document.getElementById('cwi-supervisor');if(cwiSup)cw.supervisor_id=cwiSup.value||'';
   saveCaseworkersLS(arr);saveCaseworkerAPI(cw);
   document.getElementById('cwDetailName').textContent=(cw.title?cw.title+' ':'')+cw.name;
-  document.getElementById('cwDetailMeta').innerHTML=esc(cw.agency||'')+(cw.phone?' · '+esc(cw.phone):'');
+  document.getElementById('cwDetailMeta').innerHTML=esc(cw.agency||'')+(cw.phone?' · '+esc(cw.phone):'')+(cw.org?' &nbsp;'+_cwOrgBadge(cw):'');
   var btn=document.getElementById('cwSaveInfoBtn');if(btn){btn.textContent='Saved ✓';setTimeout(function(){btn.textContent='Save Changes';},1800);}
   addAuditEntry(cw.name,'Caseworker profile updated');
   cwUnsavedChanges=false;
@@ -8846,14 +8940,17 @@ var _DATE_DICT_KEYS={client_dob:1,caregiver_dob:1,signature_date:1,today_date:1,
 // Build the data dictionary the renderer fills AcroForm fields from.
 // CRM data is the default; any non-empty value typed into the left-pane form
 // overrides it (so live edits flow into the PDF preview).
-function _buildFormDataDict(){
-  var prof=activeFormClientName?(getProfiles()[activeFormClientName]||{}):{};
+// clientName defaults to the Forms-tab selection (activeFormClientName) so existing callers are
+// unchanged; the Assistant passes a name explicitly to build a form for any client without the UI.
+function _buildFormDataDict(clientName){
+  if(clientName==null)clientName=activeFormClientName;
+  var prof=clientName?(getProfiles()[clientName]||{}):{};
   var cw=getCaseworkers().find(function(c){return (c.name||'').toLowerCase()===(prof.worker||'').toLowerCase();})||{};
   var cgs=getCaregivers();
   var assignedCg=(prof.caregiverId&&cgs[prof.caregiverId])||{};
   var td=today();
   var _agency=getAgencyInfo();
-  var fullName=activeFormClientName||'';
+  var fullName=clientName||'';
   var fParts=fullName.split(' ');
   var firstN=fParts[0]||'',lastN=fParts.slice(1).join(' ')||'';
   var cgFull=assignedCg.name||'';
@@ -9290,6 +9387,43 @@ var STATE_FORM_OVERLAYS={
   }
 };
 
+// Build a state-form PDF for ANY client WITHOUT the Forms UI: compute the field values from CRM data
+// (the same dict the Forms tab fills from) and overlay them onto the official template. Returns the
+// PDF bytes (Uint8Array). This is what lets the Assistant generate + attach a form (e.g. the
+// MSA-4676) on command, for a client the user names, without opening the Forms page.
+async function buildStateFormBytes(formType, clientName){
+  if(!window.PDFLib) throw new Error('PDF library still loading — try again in a moment.');
+  var def=STATE_FORM_OVERLAYS[formType];
+  if(!def) throw new Error('Form not configured: '+formType);
+  var inputMap=STATE_FORM_INPUT_MAPS[formType]||{};
+  var dict=_buildFormDataDict(clientName);
+  var resp=await fetch(def.file);
+  if(!resp.ok) throw new Error('HTTP '+resp.status+' fetching '+def.file);
+  var bytes=new Uint8Array(await resp.arrayBuffer());
+  var pdfDoc=await PDFLib.PDFDocument.load(bytes);
+  var helv=await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+  var pages=pdfDoc.getPages();
+  (def.fields||[]).forEach(function(f){
+    var v=dict[inputMap[f.inputId]]; v=(v==null?'':String(v)).trim();
+    if(!v)return;
+    var page=pages[f.page||0]; if(!page)return;
+    var size=f.size||10;
+    if(f.maxWidth){ while(size>6&&helv.widthOfTextAtSize(v,size)>f.maxWidth)size-=0.5; }
+    page.drawText(v,{x:f.x,y:f.y,size:size,font:helv,color:PDFLib.rgb(0,0,0)});
+  });
+  if(def.signature){
+    var sigs=(typeof getSigs==='function')?getSigs():[];
+    if(sigs.length){
+      var sigBytes=_dataUrlToUint8(sigs[0].data);
+      if(sigBytes){
+        var img=sigs[0].data.indexOf('image/png')>=0?await pdfDoc.embedPng(sigBytes):await pdfDoc.embedJpg(sigBytes);
+        var p=pages[def.signature.page||0];
+        if(p)p.drawImage(img,{x:def.signature.x,y:def.signature.y,width:def.signature.w,height:def.signature.h});
+      }
+    }
+  }
+  return await pdfDoc.save();
+}
 async function generateStateFormPdf(){
   if(!window.PDFLib){showAlert('PDF library still loading. Please try again in a moment.');return;}
   var def=STATE_FORM_OVERLAYS[activeFormType];
@@ -9456,6 +9590,7 @@ function _previewMonthlyInvoicesRender(period){
   Object.keys(profiles).forEach(function(name){
     var prof=profiles[name];
     if(prof.clientStatus==='inactive'||prof.clientStatus==='terminated'||prof.clientStatus==='lost')return;
+    if(isCarrierClient(prof))return;   // managed-care clients are billed by the carrier — never invoiced here
     // Skip clients whose service started AFTER this billing period
     if(!clientWasActiveInPeriod(prof,period))return;
     // Resolve the caseworker identity. Prefer caseworkerId; fall back to fuzzy name match.
@@ -9956,6 +10091,7 @@ function findClientsEligibleForAutoGen(period){
   Object.keys(profiles).forEach(function(name){
     var p=profiles[name];
     if(p.clientStatus==='inactive'||p.clientStatus==='terminated'||p.clientStatus==='lost')return;
+    if(isCarrierClient(p))return;     // managed-care clients are billed by the carrier — never auto-generate
     if(!clientWasActiveInPeriod(p,period))return;
     if(!hasAuthorization(p))return;   // only generate from an authorization
     var hasCurrent=(p.invoices||[]).some(function(i){return i.billingPeriod===period;});
@@ -10033,6 +10169,7 @@ async function sendAllCaseworkerEmails(period){
   Object.keys(profiles).forEach(function(name){
     var prof=profiles[name];
     if(prof.clientStatus==='inactive'||prof.clientStatus==='terminated'||prof.clientStatus==='lost')return;
+    if(isCarrierClient(prof))return;   // managed-care clients are billed by the carrier — never invoiced here
     if(!clientWasActiveInPeriod(prof,period))return;
     var rawWorker=(prof.worker||'').trim();
     var cwRec=cws.find(function(c){return c.id&&prof.caseworkerId&&String(c.id)===String(prof.caseworkerId);})||
@@ -10306,3 +10443,367 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
     showAlert(msg2);
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ✨ ASSISTANT — one global AI chat that can look up clients, run roster reports, and
+// assemble emails/forms for the owner to review + send. The model (backend /ai-chat) decides
+// which TOOL to call; the tools run here in the browser because they read localStorage and use the
+// user's Microsoft token. Nothing is ever sent without the owner reviewing it in the compose modal.
+// ═══════════════════════════════════════════════════════════════════════════════
+var _asstMessages=[], _asstBusy=false, _asstOpen=false;
+
+// The non-PHI facts the model needs to sign emails + greet by time of day. Sent each turn.
+function _asstContext(){
+  var ag=getAgencyInfo()||{};
+  var hr=(new Date()).getHours(), tod=hr<12?'morning':(hr<17?'afternoon':'evening');
+  return { agency:{ agency_provider_name:ag.agency_provider_name, agency_name:ag.agency_name,
+    agency_phone:ag.agency_phone, agency_fax:ag.agency_fax }, today:today(), time_of_day:tod };
+}
+
+// Parse a stored date ('YYYY-MM-DD' or 'M/D/YYYY') → {y,m} for start-date filters/aggregation.
+function _asstParseDate(v){
+  if(!v)return null; v=String(v).trim();
+  var m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if(m)return {y:+m[1],m:+m[2]};
+  m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if(m)return {y:+m[3],m:+m[1]};
+  return null;
+}
+// Turn "May" / "5" / "2026-05" into a month number 1-12 (0 = couldn't tell).
+function _asstMonthNum(s){
+  s=String(s||'').trim().toLowerCase();
+  var m=s.match(/(\d{4})-(\d{1,2})/); if(m)return +m[2];
+  if(/^\d{1,2}$/.test(s))return +s;
+  var names=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  var i=names.indexOf(s.slice(0,3)); return i>=0?i+1:0;
+}
+// ── Tool: find_client ── resolve a client by (partial) name → full record + caregiver + caseworker.
+function _asstFindClient(args){
+  var q=((args&&args.name)||'').trim().toLowerCase();
+  var toks=q.split(/\s+/).filter(Boolean);
+  var profs=getProfiles(), cgs=getCaregivers(), cws=getCaseworkers();
+  var out=[];
+  Object.keys(profs).forEach(function(key){
+    var p=profs[key]; var hay=key.toLowerCase();
+    if(toks.length && !toks.every(function(t){return hay.indexOf(t)>=0;})) return;
+    var cg=(p.caregiverId&&cgs[p.caregiverId])?cgs[p.caregiverId]:null;
+    var cw=null;
+    if(p.caseworkerId)cw=cws.find(function(c){return c.id===p.caseworkerId;});
+    if(!cw&&p.worker)cw=cws.find(function(c){return (c.name||'').toLowerCase()===(p.worker||'').toLowerCase();});
+    out.push({ client_name:key, status:(p.clientStatus||'active'),
+      county:p.county||'', address:p.street||p.address||'', city:p.city||'', state:p.state||'', zip:p.zip||'',
+      phone:p.phone||'', email:p.clientEmail||p.cemail||'', dob:p.dob||'', medicaid_id:p.medicaidId||'',
+      caregiver: cg?{name:cg.name||'',email:cg.email||'',phone:cg.phone||''}:null,
+      caseworker: cw?{name:cw.name||'',email:cw.email||'',phone:cw.phone||''}:(p.worker?{name:p.worker,email:'',phone:''}:null) });
+  });
+  var capped=out.slice(0,8);
+  return { matches:capped, count:out.length, truncated: out.length>capped.length };
+}
+
+// Flatten one client profile into a flat field map the query engine filters/groups over. This is the
+// single place fields are exposed — add a line here and every query gets the new field for free.
+function _asstClientFields(p, cgs, cws){
+  var cg=(p.caregiverId&&cgs[p.caregiverId])?cgs[p.caregiverId]:null;
+  var cwRec=p.caseworkerId?cws.find(function(c){return c.id===p.caseworkerId;}):null;
+  var cwn=cwRec?cwRec.name:(p.worker||'');
+  return {
+    status:(p.clientStatus||'active'), county:(p.county||''), city:(p.city||''), state:(p.state||''),
+    zip:(p.zip||''), address:(p.street||p.address||''), caregiver:(cg?cg.name:''), caseworker:(cwn||''),
+    caregiver_email:(cg?(cg.email||''):''), caseworker_email:(cwRec?(cwRec.email||''):''),
+    medicaid_id:(p.medicaidId||''), medicare:(p.medicare||''), dob:(p.dob||''),
+    phone:(p.phone||p.homePhone||''), email:(p.clientEmail||p.cemail||''), start_date:(p.startDate||''),
+    hourly_rate:(p.hourlyRate||''), live_in:(p.liveIn?'yes':'no'),
+    program:(p.program==='carrier'?'carrier':'champs'), carrier:(p.carrier||'')
+  };
+}
+function _asstFieldAlias(f){
+  f=String(f||'').toLowerCase().replace(/\s+/g,'_');
+  if(f==='medicaid'||f==='medicaid_number'||f==='medicaid_#')return 'medicaid_id';
+  if(f==='worker'||f==='case_worker')return 'caseworker';
+  if(f==='name')return 'client';
+  return f;
+}
+// Apply one {field, op, value} filter to a flat field map. Deterministic — this is where accuracy comes from.
+function _asstMatchFilter(fields, flt){
+  if(!flt||!flt.field)return true;
+  var field=_asstFieldAlias(flt.field);
+  var op=String(flt.op||'eq').toLowerCase();
+  var raw=(field in fields)?fields[field]:'';
+  var s=String(raw==null?'':raw).toLowerCase().trim();
+  var v=String(flt.value==null?'':flt.value).toLowerCase().trim();
+  switch(op){
+    case 'present': case 'has': case 'exists': return s!=='' && s!=='no';
+    case 'missing': case 'empty': case 'none': return s==='' || s==='no';
+    case 'eq': case 'is': case 'equals': return s===v;
+    case 'ne': case 'not_eq': case 'not': return s!==v;
+    case 'contains': case 'like': return v===''||s.indexOf(v)>=0;
+    case 'in_month': case 'month': { var d=_asstParseDate(raw); return !!d && d.m===_asstMonthNum(flt.value); }
+    case 'in_year': case 'year': { var d2=_asstParseDate(raw); return !!d2 && String(d2.y)===String(flt.value).replace(/\D/g,''); }
+    case 'before': { var d3=_asstParseDate(raw), t3=_asstParseDate(flt.value); return !!d3&&!!t3 && (d3.y<t3.y||(d3.y===t3.y&&d3.m<t3.m)); }
+    case 'after': { var d4=_asstParseDate(raw), t4=_asstParseDate(flt.value); return !!d4&&!!t4 && (d4.y>t4.y||(d4.y===t4.y&&d4.m>t4.m)); }
+    case 'gt': return parseFloat(s)>parseFloat(v);
+    case 'lt': return parseFloat(s)<parseFloat(v);
+    default: return v===''?true:s.indexOf(v)>=0;
+  }
+}
+function _asstGroupValue(fields, g){
+  g=_asstFieldAlias(g);
+  if(g==='start_month'||g==='month'){ var d=_asstParseDate(fields.start_date); return d?(d.y+'-'+String(d.m).padStart(2,'0')):'(no start date)'; }
+  var v=(g in fields)?fields[g]:'';
+  return (v===''||v==null)?'(none)':v;
+}
+// ── Tool: query_roster ── ONE general, deterministic query engine over the whole roster. The model
+// composes {action, filters, group_by}; CODE computes the answer (count/list/group) — so the AI never
+// counts in its head. Any field, any filter, any grouping — no per-question code needed.
+function _asstQueryRoster(args){
+  args=args||{};
+  var action=String(args.action||'list').toLowerCase();
+  var filters=Array.isArray(args.filters)?args.filters:[];
+  var groupBy=args.group_by||'';
+  var profs=getProfiles(), cgs=getCaregivers(), cws=getCaseworkers();
+  var matched=[];
+  Object.keys(profs).forEach(function(key){
+    var f=_asstClientFields(profs[key],cgs,cws);
+    if(filters.every(function(flt){return _asstMatchFilter(f,flt);})) matched.push({name:key,f:f});
+  });
+  if(action==='count'){
+    return { action:'count', count:matched.length, matched_names:matched.slice(0,150).map(function(m){return m.name;}),
+      truncated:matched.length>150 };
+  }
+  if(action==='group'){
+    var groups={};
+    matched.forEach(function(m){ var k=String(_asstGroupValue(m.f,groupBy)); groups[k]=(groups[k]||0)+1; });
+    var arr=Object.keys(groups).map(function(k){return {value:k,count:groups[k]};}).sort(function(a,b){return b.count-a.count;});
+    return { action:'group', group_by:_asstFieldAlias(groupBy), total:matched.length, groups:arr };
+  }
+  var cap=matched.slice(0,80).map(function(m){ return { name:m.name, status:m.f.status, county:m.f.county,
+    caregiver:m.f.caregiver, caseworker:m.f.caseworker, medicaid_id:m.f.medicaid_id, start_date:m.f.start_date }; });
+  return { action:'list', count:matched.length, clients:cap, truncated:matched.length>cap.length };
+}
+// ── Tool: onboarding_status ── deterministic checklist of what's left to onboard/transfer a client.
+function _asstOnboardingStatus(args){
+  args=args||{};
+  var cname=(args.client_name||'').trim();
+  var profs=getProfiles(); var key=cname;
+  if(!profs[key]){
+    var toks=cname.toLowerCase().split(/\s+/).filter(Boolean);
+    key=Object.keys(profs).find(function(k){var h=k.toLowerCase();return toks.length&&toks.every(function(t){return h.indexOf(t)>=0;});})||cname;
+  }
+  var p=profs[key];
+  if(!p)return {error:'No client named "'+cname+'" was found.'};
+  var cgs=getCaregivers(), cws=getCaseworkers();
+  var cg=(p.caregiverId&&cgs[p.caregiverId])?cgs[p.caregiverId]:null;
+  var cwRec=p.caseworkerId?cws.find(function(c){return c.id===p.caseworkerId;}):null;
+  var cwName=cwRec?cwRec.name:(p.worker||'');
+  var cwEmail=cwRec?(cwRec.email||''):'';
+  var carrier=(p.program==='carrier');
+  // The checklist swaps by program: a managed-care (carrier) client needs the carrier + member # +
+  // a care coordinator (a caseworker record), and does NOT need a caseworker email or an MSA-4676.
+  var checks = carrier ? [
+    {item:'Carrier', ok:!!(p.carrier&&String(p.carrier).trim())},
+    {item:'Member #', ok:!!(p.memberId&&String(p.memberId).trim())},
+    {item:'Care coordinator assigned', ok:!!cwName},
+    {item:'Caregiver assigned', ok:!!cg},
+    {item:'Date of birth', ok:!!p.dob},
+    {item:'Address', ok:!!((p.street||p.address)&&p.city&&p.zip)},
+    {item:'Phone', ok:!!(p.phone||p.homePhone)},
+    {item:'Start date', ok:!!p.startDate}
+  ] : [
+    {item:'Medicaid ID', ok:!!(p.medicaidId&&String(p.medicaidId).trim())},
+    {item:'Caregiver assigned', ok:!!cg},
+    {item:'Caseworker assigned', ok:!!cwName},
+    {item:'Caseworker email', ok:!!cwEmail},
+    {item:'Date of birth', ok:!!p.dob},
+    {item:'Address', ok:!!((p.street||p.address)&&p.city&&p.zip)},
+    {item:'Phone', ok:!!(p.phone||p.homePhone)},
+    {item:'Start date', ok:!!p.startDate}
+  ];
+  // "4676 sent?" (CHAMPS only) — best-effort: scan the activity log for a 4676 email for this client.
+  var sent4676=false;
+  if(!carrier){ try{ var log=(typeof getAuditLog==='function')?getAuditLog():[];
+    sent4676=log.some(function(e){return e && e.client===key && /4676/i.test(e.action||'');}); }catch(e){} }
+  var missing=checks.filter(function(c){return !c.ok;}).map(function(c){return c.item;});
+  var present=checks.filter(function(c){return c.ok;}).map(function(c){return c.item;});
+  return { client:key, program:(carrier?'carrier (managed care)':'champs'), carrier:(p.carrier||''),
+    missing_fields:missing, present_fields:present,
+    msa_4676_sent:(carrier?'N/A — managed care':sent4676),
+    all_fields_complete: missing.length===0 };
+}
+// ── Tool: open_email ── resolve recipient, generate/attach a form if asked, open the compose modal.
+function _asstOpenEmail(args){
+  args=args||{};
+  var cname=(args.client_name||'').trim();
+  var profs=getProfiles(); var key=cname;
+  if(!profs[key]){ var f=Object.keys(profs).find(function(k){return k.toLowerCase()===cname.toLowerCase();}); if(f)key=f; }
+  var p=profs[key];
+  if(!p)return Promise.resolve({error:'No client named "'+cname+'" was found.'});
+  // The MSA-4676 doesn't apply to managed-care (carrier) clients — their authorizations go via the carrier.
+  if(p.program==='carrier' && /4676/i.test(args.attach_form||''))
+    return Promise.resolve({error:key+' is a managed-care (carrier) client — the MSA-4676 doesn’t apply to them.'});
+  var cgs=getCaregivers(), cws=getCaseworkers();
+  var recipient=(args.recipient||'').trim(), toEmail='', recipLabel='';
+  // The MSA-4676 goes to the caseworker — never the caregiver. Block a caregiver recipient outright.
+  if(/4676/i.test(args.attach_form||'')&&/caregiver/i.test(recipient)&&!/@/.test(recipient))
+    return Promise.resolve({error:'The MSA-4676 goes to the client’s caseworker, not the caregiver. Send it to the caseworker or a specific email address.'});
+  if(/@/.test(recipient)){ toEmail=recipient; recipLabel='recipient'; }
+  else if(/case|worker/i.test(recipient)){
+    var cw=null;
+    if(p.caseworkerId)cw=cws.find(function(c){return c.id===p.caseworkerId;});
+    if(!cw&&p.worker)cw=cws.find(function(c){return (c.name||'').toLowerCase()===(p.worker||'').toLowerCase();});
+    toEmail=cw?(cw.email||''):''; recipLabel='caseworker'+(cw&&cw.name?(' '+cw.name):'');
+    if(!toEmail)return Promise.resolve({error:'No email on file for '+key+'’s caseworker'+(cw&&cw.name?(' ('+cw.name+')'):'')+'. Add it on the client, then try again.'});
+  } else {
+    var cg=(p.caregiverId&&cgs[p.caregiverId])?cgs[p.caregiverId]:null;
+    toEmail=cg?(cg.email||''):''; recipLabel='caregiver'+(cg&&cg.name?(' '+cg.name):'');
+    if(!toEmail)return Promise.resolve({error:'No email on file for '+key+'’s caregiver'+(cg&&cg.name?(' ('+cg.name+')'):'')+'. Add it on the client, then try again.'});
+  }
+  var subject=(args.subject||'').trim(), body=(args.body||'').trim();
+  var attach=(args.attach_form||'none');
+  var openIt=function(d){ _openDocEmailModal(d,toEmail,subject,body,{auditClient:key});
+    return {opened:true, to:toEmail, recipient:recipLabel, attached:(d?(d.displayName||d.name):'nothing')}; };
+  if(attach&&attach!=='none'){
+    var ft=/4676/.test(attach)?'msa4676':null;
+    if(!ft)return Promise.resolve({error:'I can only attach the MSA-4676 right now.'});
+    return buildStateFormBytes(ft,key).then(function(bytes){
+      var url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
+      var fname='MSA-4676_'+key.replace(/[^a-z0-9]/gi,'_')+'.pdf';
+      return openIt({displayName:fname,name:fname,url:url});
+    }).catch(function(e){ return {error:'Could not generate the MSA-4676: '+((e&&e.message)||e)}; });
+  }
+  return Promise.resolve(openIt(null));
+}
+
+function _asstRunTool(name,args){
+  try{
+    if(name==='find_client')return Promise.resolve(_asstFindClient(args));
+    if(name==='query_roster')return Promise.resolve(_asstQueryRoster(args));
+    if(name==='onboarding_status')return Promise.resolve(_asstOnboardingStatus(args));
+    if(name==='open_email')return Promise.resolve(_asstOpenEmail(args));
+    return Promise.resolve({error:'Unknown tool: '+name});
+  }catch(e){ return Promise.resolve({error:(e&&e.message)||String(e)}); }
+}
+
+// ── The chat loop: send → model → (run tools → loop) → show reply ──
+async function _asstSend(text){
+  text=(text||'').trim(); if(!text||_asstBusy)return;
+  if(typeof spToken==='undefined'||!spToken){ _asstRenderMsg('assistant','Please sign in first (Settings) so I can look up clients and send email.'); return; }
+  _asstMessages.push({role:'user',content:text});
+  _asstRenderMsg('user',text);
+  _asstBusy=true; _asstSetTyping(true);
+  try{
+    var guard=0;
+    while(guard++<6){
+      var resp=await fetch(API_BASE+'/ai-chat',{method:'POST',headers:apiHeaders(),
+        body:JSON.stringify({messages:_asstMessages,context:_asstContext()})});
+      if(!resp.ok){ var je=await resp.json().catch(function(){return{};}); throw new Error(je.error||('HTTP '+resp.status)); }
+      var msg=(await resp.json()).message;
+      _asstMessages.push(msg);
+      if(msg.tool_calls&&msg.tool_calls.length){
+        if(msg.content)_asstRenderMsg('assistant',msg.content);
+        for(var i=0;i<msg.tool_calls.length;i++){
+          var tc=msg.tool_calls[i], a={}; try{a=JSON.parse(tc.function.arguments||'{}');}catch(e){a={};}
+          _asstToolNote(tc.function.name,a);
+          var result=await _asstRunTool(tc.function.name,a);
+          _asstMessages.push({role:'tool',tool_call_id:tc.id,name:tc.function.name,content:JSON.stringify(result)});
+        }
+        continue;
+      }
+      _asstRenderMsg('assistant',msg.content||'(no response)');
+      break;
+    }
+  }catch(e){ _asstRenderMsg('assistant','⚠️ '+((e&&e.message)||e)); }
+  finally{ _asstBusy=false; _asstSetTyping(false); }
+}
+
+// ── UI ──
+function _asstScroll(){ var m=document.getElementById('asst-msgs'); if(m)m.scrollTop=m.scrollHeight; }
+function _asstRenderMsg(role,text){
+  var m=document.getElementById('asst-msgs'); if(!m)return;
+  var b=document.createElement('div'); b.className='asst-msg asst-'+role;
+  b.innerHTML=esc(text||'').replace(/\n/g,'<br>');
+  m.appendChild(b); _asstScroll();
+}
+function _asstToolNote(name,args){
+  var m=document.getElementById('asst-msgs'); if(!m)return;
+  var label=name==='find_client'?('Looking up '+((args&&args.name)||'client')+'…')
+    :name==='query_roster'?'Checking the roster…'
+    :name==='onboarding_status'?('Checking onboarding'+((args&&args.client_name)?(' for '+args.client_name):'')+'…')
+    :name==='open_email'?('Preparing an email'+((args&&args.client_name)?(' for '+args.client_name):'')+'…')
+    :('Working…');
+  var b=document.createElement('div'); b.className='asst-tool'; b.textContent='⚙ '+label;
+  m.appendChild(b); _asstScroll();
+}
+function _asstSetTyping(on){
+  var m=document.getElementById('asst-msgs'); if(!m)return;
+  var ex=document.getElementById('asst-typing');
+  if(on){ if(!ex){ var t=document.createElement('div'); t.id='asst-typing'; t.className='asst-msg asst-assistant asst-typing'; t.innerHTML='<span></span><span></span><span></span>'; m.appendChild(t); _asstScroll(); } }
+  else if(ex){ ex.parentNode.removeChild(ex); }
+  var send=document.getElementById('asst-send'); if(send)send.disabled=on;
+}
+function _asstToggle(){
+  var p=document.getElementById('asst-panel'); if(!p)return;
+  _asstOpen=!_asstOpen; p.classList.toggle('open',_asstOpen);
+  if(_asstOpen){ var i=document.getElementById('asst-input'); if(i)setTimeout(function(){i.focus();},60); }
+}
+function _asstInit(){
+  try{
+    if(typeof document==='undefined'||!document.body||document.getElementById('asst-fab'))return;
+    var css=''
+      +'#asst-fab{position:fixed;right:20px;bottom:20px;z-index:9998;width:56px;height:56px;border:none;border-radius:50%;'
+      +'background:linear-gradient(135deg,#2b6fb3,#1a4e86);color:#fff;font-size:24px;cursor:pointer;box-shadow:0 6px 20px rgba(20,60,110,.35);transition:transform .15s;}'
+      +'#asst-fab:hover{transform:scale(1.07);}'
+      +'#asst-panel{position:fixed;right:20px;bottom:88px;z-index:9999;width:390px;max-width:calc(100vw - 32px);height:560px;max-height:calc(100vh - 120px);'
+      +'background:#fff;border:1px solid #d7e2ef;border-radius:14px;box-shadow:0 18px 50px rgba(20,50,90,.28);display:flex;flex-direction:column;overflow:hidden;'
+      +'opacity:0;pointer-events:none;transform:translateY(12px);transition:opacity .18s,transform .18s;}'
+      +'#asst-panel.open{opacity:1;pointer-events:auto;transform:translateY(0);}'
+      +'.asst-head{background:linear-gradient(135deg,#2b6fb3,#1a4e86);color:#fff;padding:12px 14px;display:flex;align-items:center;gap:8px;}'
+      +'.asst-head b{font-size:15px;} .asst-head .asst-sub{font-size:11px;opacity:.85;font-weight:400;}'
+      +'.asst-x{margin-left:auto;background:none;border:none;color:#fff;font-size:20px;cursor:pointer;opacity:.85;line-height:1;}'
+      +'#asst-msgs{flex:1;overflow-y:auto;padding:14px;background:#f6f9fd;display:flex;flex-direction:column;gap:8px;}'
+      +'.asst-msg{max-width:85%;padding:9px 12px;border-radius:12px;font-size:13.5px;line-height:1.45;white-space:normal;word-wrap:break-word;}'
+      +'.asst-user{align-self:flex-end;background:#2b6fb3;color:#fff;border-bottom-right-radius:4px;}'
+      +'.asst-assistant{align-self:flex-start;background:#fff;border:1px solid #dbe6f2;color:#213547;border-bottom-left-radius:4px;}'
+      +'.asst-tool{align-self:flex-start;font-size:11.5px;color:#6a86a3;font-style:italic;padding:1px 4px;}'
+      +'.asst-typing{display:flex;gap:4px;align-items:center;} .asst-typing span{width:6px;height:6px;border-radius:50%;background:#9db4cd;animation:asstb 1s infinite;}'
+      +'.asst-typing span:nth-child(2){animation-delay:.2s;} .asst-typing span:nth-child(3){animation-delay:.4s;}'
+      +'@keyframes asstb{0%,60%,100%{opacity:.3;}30%{opacity:1;}}'
+      +'.asst-chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 8px;background:#f6f9fd;}'
+      +'.asst-chip{font-size:11.5px;border:1px solid #cfe0f2;background:#fff;color:#2b5f96;border-radius:14px;padding:4px 9px;cursor:pointer;}'
+      +'.asst-chip:hover{background:#eaf3fc;}'
+      +'.asst-inbar{display:flex;gap:8px;padding:10px;border-top:1px solid #e3ecf6;background:#fff;}'
+      +'#asst-input{flex:1;resize:none;border:1px solid #cdd9e8;border-radius:10px;padding:9px 11px;font-size:13.5px;font-family:inherit;max-height:96px;}'
+      +'#asst-send{border:none;background:#2b6fb3;color:#fff;border-radius:10px;padding:0 15px;font-size:14px;cursor:pointer;}'
+      +'#asst-send:disabled{opacity:.5;cursor:default;}'
+      +'@media(max-width:480px){#asst-panel{right:8px;left:8px;width:auto;bottom:80px;height:calc(100vh - 100px);}}';
+    var st=document.createElement('style'); st.textContent=css; document.head.appendChild(st);
+
+    var fab=document.createElement('button'); fab.id='asst-fab'; fab.type='button'; fab.title='Assistant'; fab.textContent='✨';
+    var ag=getAgencyInfo()||{}; var first=((ag.agency_provider_name||'').split(' ')[0])||'there';
+    var panel=document.createElement('div'); panel.id='asst-panel';
+    panel.innerHTML=''
+      +'<div class="asst-head"><b>✨ Assistant</b><span class="asst-sub">looks up clients · drafts forms · reports</span>'
+      +'<button class="asst-x" id="asst-close" title="Close">×</button></div>'
+      +'<div id="asst-msgs"></div>'
+      +'<div class="asst-chips">'
+      +'<button class="asst-chip" data-q="Send the MSA-4676 for ">Send a 4676…</button>'
+      +'<button class="asst-chip" data-q="How many active clients do I have?">Active clients?</button>'
+      +'<button class="asst-chip" data-q="Which clients have no caregiver assigned?">No caregiver?</button>'
+      +'</div>'
+      +'<div class="asst-inbar"><textarea id="asst-input" rows="1" placeholder="Ask me anything… e.g. “send the 4676 for Jane Doe to her caseworker”"></textarea>'
+      +'<button id="asst-send" type="button">Send</button></div>';
+    document.body.appendChild(fab); document.body.appendChild(panel);
+
+    _asstRenderMsg('assistant','Hi '+first+'! I can pull up a client, generate & send their forms (like the MSA-4676), or answer quick roster questions. What do you need?');
+
+    fab.addEventListener('click',_asstToggle);
+    document.getElementById('asst-close').addEventListener('click',_asstToggle);
+    var input=document.getElementById('asst-input'), send=document.getElementById('asst-send');
+    var submit=function(){ var v=input.value; input.value=''; input.style.height='auto'; _asstSend(v); };
+    send.addEventListener('click',submit);
+    input.addEventListener('keydown',function(e){ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); submit(); } });
+    input.addEventListener('input',function(){ input.style.height='auto'; input.style.height=Math.min(input.scrollHeight,96)+'px'; });
+    Array.prototype.forEach.call(panel.querySelectorAll('.asst-chip'),function(c){
+      c.addEventListener('click',function(){ input.value=c.getAttribute('data-q'); input.focus(); input.dispatchEvent(new Event('input')); });
+    });
+  }catch(e){ if(typeof console!=='undefined')console.warn('[Assistant] init skipped:',e&&e.message); }
+}
+// app.js runs at the end of <body>, so the DOM is ready; init immediately (guarded for the jsdom tests).
+_asstInit();
