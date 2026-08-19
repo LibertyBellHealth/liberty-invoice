@@ -801,9 +801,8 @@ function aiTrack(name, props){
         </div>
         <div class="ff-row">
           <div class="ff"><label for="cw-nickname">Nickname / Goes By</label><input id="cw-nickname" placeholder="Optional" maxlength="40"></div>
-          <div class="ff"><label for="cw-agency">Agency</label><input id="cw-agency" placeholder="e.g. MDHHS" maxlength="80"></div>
           <div class="ff"><label for="cw-org">Organization</label>
-            <select id="cw-org">
+            <select id="cw-org" onchange="cwOrgToggle()">
               <option value="">— Select —</option>
               <option>MDHHS</option>
               <option>Humana</option><option>Priority Health</option><option>Aetna</option>
@@ -811,6 +810,7 @@ function aiTrack(name, props){
               <option>Meridian</option><option>Other</option>
             </select>
           </div>
+          <div class="ff" id="cw-agency-wrap" style="display:none;"><label for="cw-agency">Agency <span style="font-weight:400;font-size:10px;color:#5c7590;">(MDHHS office)</span></label><input id="cw-agency" placeholder="e.g. Macomb County DHHS" maxlength="80"></div>
         </div>
         <div class="ff-row">
           <div class="ff"><label for="cw-phone">Phone</label><input id="cw-phone" placeholder="(555) 555-5555" maxlength="20"></div>

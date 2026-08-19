@@ -8093,6 +8093,17 @@ function bulkDeleteSupervisors(){
     {title:'Delete '+ids.length+' Supervisors?',okText:'Delete '+ids.length+(ids.length>1?' Supervisors':' Supervisor'),danger:true}
   );
 }
+// Agency is an MDHHS-only detail (which office). Show it only when Org = MDHHS; a carrier coordinator
+// has no MDHHS agency. Used on the caseworker grid form (cw-*) and detail-inline pane (cwi-*).
+function cwOrgToggle(){
+  var org=(document.getElementById('cw-org')||{}).value||'';
+  var w=document.getElementById('cw-agency-wrap'); if(w)w.style.display=(org==='MDHHS')?'':'none';
+}
+function cwiOrgToggle(){
+  var org=(document.getElementById('cwi-org')||{}).value||'';
+  var ag=document.getElementById('cwi-agency'); if(!ag)return;
+  var wrap=ag.closest('.info-field'); if(wrap)wrap.style.display=(org==='MDHHS')?'':'none';
+}
 function showCaseworkerForm(id){
   // Hide detail view always; for new caseworker keep grid visible (scroll to form), for edit from detail hide grid
   var dv=document.getElementById('cwDetailView');if(dv)dv.style.display='none';
@@ -8139,6 +8150,7 @@ function showCaseworkerForm(id){
     populateSupervisorDropdown(document.getElementById('cw-supervisor'),'');
     document.getElementById('cwDeleteBtn').style.display='none';
   }
+  cwOrgToggle();   // show the Agency field only when Org = MDHHS
   wireCopyableFields('cwFormWrap');
   document.getElementById('cwFormWrap').scrollIntoView({behavior:'smooth'});
 }
@@ -8482,8 +8494,9 @@ function renderCwInfoPane(){
   var _cwOrgOpts=['','MDHHS','Humana','Priority Health','Aetna','UnitedHealthcare','HAP','Molina','Meridian','Other'];
   var dCwOrg=document.createElement('div');dCwOrg.className='info-field full';
   dCwOrg.innerHTML='<label for="cwi-org">Organization <span style="font-weight:400;font-size:10px;color:#5c7590;">(MDHHS, or the carrier for a managed-care coordinator)</span></label>'+
-    '<select id="cwi-org">'+_cwOrgOpts.map(function(o){return '<option value="'+esc(o)+'"'+((cw.org||'')===o?' selected':'')+'>'+(o||'— Select —')+'</option>';}).join('')+'</select>';
+    '<select id="cwi-org" onchange="cwiOrgToggle()">'+_cwOrgOpts.map(function(o){return '<option value="'+esc(o)+'"'+((cw.org||'')===o?' selected':'')+'>'+(o||'— Select —')+'</option>';}).join('')+'</select>';
   g.appendChild(dCwOrg);
+  cwiOrgToggle();   // Agency (MDHHS office) shows only when Org = MDHHS
   mkRow('<div class="info-field"><label for="cwi-phone">Phone</label><input id="cwi-phone" value="'+esc(cw.phone||'')+'"></div>'+
     '<div class="info-field"><label for="cwi-fax">Fax</label><input id="cwi-fax" value="'+esc(cw.fax||'')+'"></div>');
   mkF('cwi-email','Email',cw.email,true,' onblur="_autoGovEmail(this)"');
@@ -10671,10 +10684,80 @@ function _asstOpenEmail(args){
   return Promise.resolve(openIt(null));
 }
 
+// ── Tool: find_caregiver ── resolve a CAREGIVER by name → contact + the clients they serve (with
+// live-in status). Live-in is stored on the CLIENT, so this is how "is <caregiver> live-in" is answered.
+function _asstFindCaregiver(args){
+  var q=((args&&args.name)||'').trim().toLowerCase();
+  var toks=q.split(/\s+/).filter(Boolean);
+  var cgs=getCaregivers(), profs=getProfiles();
+  var out=[];
+  Object.keys(cgs).forEach(function(id){
+    var cg=cgs[id]; var nm=(cg.name||((cg.firstName||'')+' '+(cg.lastName||''))).trim();
+    if(toks.length && !toks.every(function(t){return nm.toLowerCase().indexOf(t)>=0;})) return;
+    var clients=Object.keys(profs).filter(function(k){return profs[k].caregiverId===id;}).map(function(k){
+      var p=profs[k];
+      return { name:k, live_in:(p.liveIn?'yes':'no'), status:(p.clientStatus||'active'),
+        program:(p.program==='carrier'?'carrier':'champs') };
+    });
+    out.push({ caregiver_name:nm, email:cg.email||'', phone:cg.phone||'', champs_id:cg.champsId||cg.champs_id||'',
+      client_count:clients.length, any_client_live_in:(clients.some(function(c){return c.live_in==='yes';})?'yes':'no'),
+      clients:clients });
+  });
+  var capped=out.slice(0,8);
+  return { matches:capped, count:out.length, truncated: out.length>capped.length };
+}
+// Normalize a billing period to MM/YYYY from "MM/YYYY", "YYYY-MM", a month name, or "this month".
+function _asstBillingPeriodNorm(v){
+  v=String(v||'').trim();
+  var tParts=today().split('/');
+  if(!v||/this month|current/i.test(v)) return tParts[0]+'/'+tParts[2];
+  var m=v.match(/^(\d{1,2})\/(\d{4})$/); if(m) return m[1].padStart(2,'0')+'/'+m[2];
+  m=v.match(/^(\d{4})-(\d{1,2})$/); if(m) return m[2].padStart(2,'0')+'/'+m[1];
+  var mn=_asstMonthNum(v); if(mn){ var yr=(v.match(/(\d{4})/)||[])[1]||tParts[2]; return String(mn).padStart(2,'0')+'/'+yr; }
+  return v;
+}
+// ── Tool: query_billing ── invoice questions, computed in code. Carriers excluded (billed elsewhere).
+function _asstQueryBilling(args){
+  args=args||{};
+  var what=String(args.what||'invoices').toLowerCase();
+  var status=String(args.status||'').toLowerCase();
+  var period=args.period?_asstBillingPeriodNorm(args.period):'';
+  var profs=getProfiles();
+  if(what==='client'){
+    var cname=(args.client_name||'').trim(); var key=cname;
+    if(!profs[key]){ var f=Object.keys(profs).find(function(k){return k.toLowerCase()===cname.toLowerCase();}); if(f)key=f; }
+    var p=profs[key]; if(!p)return {error:'No client named "'+cname+'" found.'};
+    if(isCarrierClient(p))return {client:key, note:'Managed-care (carrier) client — billed through the carrier; no CRM invoices.', invoices:[]};
+    var invs=(p.invoices||[]).map(function(i){return {period:i.billingPeriod||'', status:(i.status||'draft')};});
+    return {client:key, count:invs.length, invoices:invs};
+  }
+  if(what==='unbilled'){
+    var per=period||_asstBillingPeriodNorm('current'); var missing=[];
+    Object.keys(profs).forEach(function(k){ var p=profs[k];
+      if(!clientDueForInvoice(p,per))return;   // excludes carriers, inactive, and pre-start-date
+      if(!((p.invoices||[]).some(function(i){return i.billingPeriod===per;}))) missing.push(k);
+    });
+    return {what:'unbilled', period:per, count:missing.length, clients:missing.slice(0,80), truncated:missing.length>80};
+  }
+  // 'invoices': list/count invoices matching period and/or status (carrier clients excluded)
+  var rows=[], byStatus={draft:0,submitted:0,paid:0};
+  Object.keys(profs).forEach(function(k){ var p=profs[k]; if(isCarrierClient(p))return;
+    (p.invoices||[]).forEach(function(i){ var st=(i.status||'draft').toLowerCase();
+      if(period && i.billingPeriod!==period)return;
+      if(status && st!==status)return;
+      byStatus[st]=(byStatus[st]||0)+1;
+      rows.push({client:k, period:i.billingPeriod||'', status:st});
+    });
+  });
+  return {what:'invoices', period:period||'any', status:status||'any', count:rows.length,
+    by_status:byStatus, invoices:rows.slice(0,80), truncated:rows.length>80};
+}
 function _asstRunTool(name,args){
   try{
     if(name==='find_client')return Promise.resolve(_asstFindClient(args));
     if(name==='query_roster')return Promise.resolve(_asstQueryRoster(args));
+    if(name==='find_caregiver')return Promise.resolve(_asstFindCaregiver(args));
+    if(name==='query_billing')return Promise.resolve(_asstQueryBilling(args));
     if(name==='onboarding_status')return Promise.resolve(_asstOnboardingStatus(args));
     if(name==='open_email')return Promise.resolve(_asstOpenEmail(args));
     return Promise.resolve({error:'Unknown tool: '+name});
@@ -10725,6 +10808,8 @@ function _asstToolNote(name,args){
   var m=document.getElementById('asst-msgs'); if(!m)return;
   var label=name==='find_client'?('Looking up '+((args&&args.name)||'client')+'…')
     :name==='query_roster'?'Checking the roster…'
+    :name==='find_caregiver'?('Looking up caregiver '+((args&&args.name)||'')+'…')
+    :name==='query_billing'?'Checking invoices…'
     :name==='onboarding_status'?('Checking onboarding'+((args&&args.client_name)?(' for '+args.client_name):'')+'…')
     :name==='open_email'?('Preparing an email'+((args&&args.client_name)?(' for '+args.client_name):'')+'…')
     :('Working…');
