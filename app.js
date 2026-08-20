@@ -4620,6 +4620,7 @@ function renderReports(){
   var periodOpts=allPeriods.slice(0,12).map(function(p){return '<option value="'+esc(p)+'"'+(p===defaultPeriod?' selected':'')+'>'+esc(p)+'</option>';}).join('');
   // Also allow typing a period
   var missingNow=allClients.filter(function(name){
+    if(!clientDueForInvoice(profiles[name],defaultPeriod))return false;   // #10: only clients actually due (start date on/before the period; excludes carriers/inactive)
     return !((profiles[name].invoices)||[]).some(function(i){return i.billingPeriod===defaultPeriod;});
   });
   s4.innerHTML='<h3>Clients Missing Invoice for Month</h3>'+
@@ -4637,7 +4638,7 @@ function updateMissingReport(useCustom){
   var period=useCustom?document.getElementById('missingPeriodCustom').value.trim():document.getElementById('missingPeriodSelect').value;
   if(!period||period.length<7)return;
   var missing=allClients.filter(function(name){
-    if(isCarrierClient(profiles[name]))return false;   // carrier clients are billed elsewhere — not "missing"
+    if(!clientDueForInvoice(profiles[name],period))return false;   // #10: respect start date (also excludes carriers/inactive)
     return !((profiles[name].invoices)||[]).some(function(i){return i.billingPeriod===period;});
   });
   var list=document.getElementById('missingReportList');if(!list)return;
