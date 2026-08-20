@@ -5,25 +5,34 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { loadApp, resetStorage } = require('./harness');
 
-// ── H1: an MSA-4676 with no recipient must resolve to the CASEWORKER, never the caregiver ──
-test('open_email: a 4676 with an empty recipient goes to the caseworker, not the caregiver', async () => {
+// ── MSA-4676 routing (owner-confirmed workflow, 2026-08-20): the CAREGIVER signs the generated
+// form first; the signed copy is then sent from Documents to the caseworker. open_email only ever
+// attaches a freshly generated (unsigned) form, so that is the caregiver leg. ──
+test('open_email: a generated 4676 with no recipient goes to the caregiver (the signature step)', async () => {
   const w = loadApp(); resetStorage(w);
   w.localStorage.setItem('lhca_caregivers', JSON.stringify({ cg1: { name: 'Casey Giver', email: 'caregiver@example.com' } }));
   w.localStorage.setItem('lhca_caseworkers', JSON.stringify([{ id: 'cw1', name: 'Case Worker', email: 'worker@michigan.gov' }]));
   w.localStorage.setItem('lhca_profiles', JSON.stringify({ 'Jane Doe': { clientName: 'Jane Doe', caregiverId: 'cg1', caseworkerId: 'cw1' } }));
   w._profilesCache = null;
-  // No recipient at all — the bug was falling through to the caregiver branch with client PHI.
-  // (PDF generation itself can't run under jsdom, so the result may be a form-build error; what
-  // matters is that the caregiver was never resolved as the recipient.)
+  // PDF generation can't run under jsdom, so the result is the form-build error — what this pins is
+  // that resolution did NOT fail on the caseworker leg (which would error about a caseworker email).
   const r = await w._asstOpenEmail({ client_name: 'Jane Doe', attach_form: 'msa4676' });
-  assert.ok(!/caregiver@example\.com/.test(JSON.stringify(r)), 'the caregiver must never be the 4676 recipient');
+  assert.ok(!/caseworker/i.test(JSON.stringify(r)), 'an unsigned 4676 is not routed to the caseworker');
 
-  // With no caseworker email on file it errors ABOUT the caseworker — proof it took that branch
-  // instead of silently addressing the caregiver.
-  w.localStorage.setItem('lhca_caseworkers', JSON.stringify([{ id: 'cw1', name: 'Case Worker', email: '' }]));
+  // With no caregiver email on file it errors ABOUT the caregiver — proof of which branch ran.
+  w.localStorage.setItem('lhca_caregivers', JSON.stringify({ cg1: { name: 'Casey Giver', email: '' } }));
   const r2 = await w._asstOpenEmail({ client_name: 'Jane Doe', attach_form: 'msa4676' });
-  assert.match(String(r2.error || ''), /caseworker/i, 'an empty recipient resolves to the caseworker');
-  assert.ok(!/caregiver@example\.com/.test(JSON.stringify(r2)));
+  assert.match(String(r2.error || ''), /caregiver/i);
+});
+
+test('open_email: an explicit caseworker recipient still routes there', async () => {
+  const w = loadApp(); resetStorage(w);
+  w.localStorage.setItem('lhca_caregivers', JSON.stringify({ cg1: { name: 'Casey Giver', email: 'caregiver@example.com' } }));
+  w.localStorage.setItem('lhca_caseworkers', JSON.stringify([{ id: 'cw1', name: 'Case Worker', email: 'worker@michigan.gov' }]));
+  w.localStorage.setItem('lhca_profiles', JSON.stringify({ 'Jane Doe': { clientName: 'Jane Doe', caregiverId: 'cg1', caseworkerId: 'cw1' } }));
+  w._profilesCache = null;
+  const r = await w._asstOpenEmail({ client_name: 'Jane Doe', recipient: 'caseworker', subject: 's', body: 'b' });
+  assert.strictEqual(r.to, 'worker@michigan.gov');
 });
 
 test('open_email: a non-4676 email with no recipient still defaults to the caregiver', async () => {

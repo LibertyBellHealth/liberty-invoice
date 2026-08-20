@@ -2302,8 +2302,10 @@ function renderDocGrid(list,docs,opts){
     var ext=(display.split('.').pop()||'').toLowerCase();
     var isImg=['jpg','jpeg','png','gif','webp','heic','bmp'].indexOf(ext)>=0;
     var isPdf=ext==='pdf';
-    // Email-to-caregiver is offered on client docs except the categories that carry an SSN or an
-    // ID card (see _DOC_EMAIL_BLOCKED). emailDocToCaregiver re-checks — this only hides the button.
+    // Email is offered on client docs except the categories that carry an SSN or an ID card (see
+    // _DOC_EMAIL_BLOCKED); the handlers re-check, so this only hides the buttons. Two destinations,
+    // because a document has two legs: to the caregiver (e.g. a 4676 to sign) and on to the
+    // caseworker (e.g. that same 4676 once it's signed).
     var _catk=_catKey(d.category);   // normalize label/free-text → canonical key before gating
     var canEmail=(opts.clientType==='homecare')&&!_DOC_EMAIL_BLOCKED[_catk];
     // Extract (OCR → fill client fields) is offered only on the ID/benefit cards we can read.
@@ -2319,7 +2321,8 @@ function renderDocGrid(list,docs,opts){
       '</div>'+
       '<div class="doc-card-actions">'+
         (canExtract?'<button class="doc-act" title="Read this card &amp; fill client fields" onclick="extractCardFields('+i+')">🔍</button>':'')+
-        (canEmail?'<button class="doc-act" title="Email to caregiver" onclick="emailDocToCaregiver('+i+')">✉</button>':'')+
+        (canEmail?'<button class="doc-act" title="Email to caregiver (e.g. a 4676 to sign)" onclick="emailDocToCaregiver('+i+')">✉</button>':'')+
+        (canEmail?'<button class="doc-act" title="Email to caseworker (e.g. the signed 4676)" onclick="emailDocToCaseworker('+i+')">📨</button>':'')+
         '<a class="doc-act" href="'+esc(d.downloadUrl||d.url||'#')+'" title="Download" download>⬇</a>'+
         '<button class="doc-act" title="Rename / relabel" onclick="openDocEditModal('+i+')">✎</button>'+
         '<button class="doc-act doc-act-del" title="Delete" onclick="deleteDocAt('+i+')">✕</button>'+
@@ -2341,20 +2344,29 @@ function deleteDocAt(i){
       .catch(function(e){showAlert('Delete failed: '+((e&&e.message)||e));});
   },{title:'Delete Document',okText:'Delete'});
 }
+// The document-email gate, enforced HERE rather than only in the grid: the button is a UI
+// affordance, and a document can be re-categorized (or these called directly) after it was drawn.
+// Blocked categories never send; anything not known safe (including the default "Other" bucket)
+// takes one explicit confirmation naming the file. `who` is the word used in the prompts.
+function _docEmailGate(d, who, onOk){
+  var cat=_catKey(d.category);
+  if(_DOC_EMAIL_BLOCKED[cat]){
+    showAlert('“'+_docCatLabel(d.category)+'” documents can’t be emailed to a '+who+' — they contain a Social Security number or ID card.');
+    return;
+  }
+  if(_DOC_EMAIL_SAFE[cat]){ onOk(); return; }
+  var display=d.displayName||d.name||'the document';
+  showConfirm('“'+display+'” is filed as “'+_docCatLabel(d.category)+'”, which isn’t a known safe category to send.\n\nOpen it first and confirm it contains no Social Security number, ID card, or other sensitive identifiers before emailing it to a '+who+'.',
+    onOk, {title:'Send this to the '+who+'?',okText:'I’ve checked — continue',danger:true});
+}
 // Email a client document (e.g. the MSA-4676) to the client's assigned caregiver, with a default
 // draft tuned to the document + a first-time self-introduction. Everything is editable before send.
 // The intro is NOT tracked in localStorage (that wouldn't survive across devices/accounts) — it's
 // just seeded into the draft with a hint to delete it if you've emailed the caregiver before.
+// Step 1 of the MSA-4676 workflow: the caregiver signs it; emailDocToCaseworker sends it on.
 function emailDocToCaregiver(index){
   var ctx=_docEditCtx; if(!ctx||ctx.clientType!=='homecare')return;
   var d=ctx.docs[index]; if(!d)return;
-  // Re-assert the gate here: the grid's button is only a UI affordance, and a document can be
-  // re-categorized (or this called directly) after the grid was drawn.
-  var _dcat=_catKey(d.category);
-  if(_DOC_EMAIL_BLOCKED[_dcat]){
-    showAlert('“'+_docCatLabel(d.category)+'” documents can’t be emailed to a caregiver — they contain a Social Security number or ID card.');
-    return;
-  }
   var prof=getProfiles()[activeProfileName]||{};
   var clientName=prof.clientName||activeProfileName||'the client';
   var cgs=getCaregivers(); var cg=(prof.caregiverId&&cgs[prof.caregiverId])?cgs[prof.caregiverId]:null;
@@ -2378,13 +2390,43 @@ function emailDocToCaregiver(index){
       'Attached is '+display+' for '+clientName+' from '+agName+'. Please review and let me know if you have any questions.\n\n'+
       'Thank you,\n'+agName;
   }
-  // A category we don't recognize as caregiver-safe (including the default "Other" bucket) gets one
-  // explicit confirmation naming the file, so an SSN-bearing PDF filed as "Other" can't go out on a
-  // single click.
-  if(_DOC_EMAIL_SAFE[_dcat]){ _openDocEmailModal(d, cgEmail, subject, body); return; }
-  showConfirm('“'+display+'” is filed as “'+_docCatLabel(d.category)+'”, which isn’t a known caregiver-safe category.\n\nOpen it first and confirm it contains no Social Security number, ID card, or other sensitive identifiers before emailing it to a caregiver.',
-    function(){ _openDocEmailModal(d, cgEmail, subject, body); },
-    {title:'Send this to the caregiver?',okText:'I’ve checked — continue',danger:true});
+  _docEmailGate(d, 'caregiver', function(){ _openDocEmailModal(d, cgEmail, subject, body); });
+}
+// Step 2 of the MSA-4676 workflow: the caregiver has signed it and the signed PDF is filed on the
+// client — send it on to the caseworker. Also used for any other client document the caseworker
+// needs (an authorization, a certification). Same gate as the caregiver path.
+function emailDocToCaseworker(index){
+  var ctx=_docEditCtx; if(!ctx||ctx.clientType!=='homecare')return;
+  var d=ctx.docs[index]; if(!d)return;
+  var prof=getProfiles()[activeProfileName]||{};
+  var clientName=prof.clientName||activeProfileName||'the client';
+  var cws=getCaseworkers();
+  var cw=(prof.caseworkerId?cws.find(function(c){return c.id===prof.caseworkerId;}):null) ||
+         (prof.worker?cws.find(function(c){return (c.name||'').trim().toLowerCase()===String(prof.worker).trim().toLowerCase();}):null);
+  var cwEmail=cw?(cw.email||''):'';
+  if(!cwEmail){
+    showAlert('No email on file for '+clientName+'’s caseworker'+(cw&&cw.name?(' ('+cw.name+')'):'')+'.\n\nAdd it on the Caseworkers page (or assign a caseworker to this client), then try again.');
+    return;
+  }
+  var cwFirst=cw?((cw.first_name||(cw.name||'').split(' ')[0])||''):'';
+  var ag=getAgencyInfo()||{}; var agName=ag.agency_name||ag.agency_provider_name||'our agency'; var agPhone=ag.agency_phone||'';
+  var display=d.displayName||d.name||'the document';
+  var is4676=/4676/i.test(display)||/4676/i.test(_docCatLabel(d.category));
+  var greet='Hello'+(cwFirst?(' '+cwFirst):'')+',';
+  var subject, body;
+  if(is4676){
+    subject='Signed MSA-4676 — '+clientName;
+    body=greet+'\n\n'+
+      'Attached is the signed MSA-4676 Home Help Services Agreement for '+clientName+', authorizing '+agName+(agPhone?(' ('+agPhone+')'):'')+' as their Home Help provider.\n\n'+
+      'Please let me know if you need anything else to complete the transition.\n\n'+
+      'Thank you,\n'+agName;
+  } else {
+    subject=display+' — '+clientName;
+    body=greet+'\n\n'+
+      'Attached is '+display+' for '+clientName+' from '+agName+'. Please let me know if you have any questions.\n\n'+
+      'Thank you,\n'+agName;
+  }
+  _docEmailGate(d, 'caseworker', function(){ _openDocEmailModal(d, cwEmail, subject, body); });
 }
 // d may be null → plain email with no attachment (the Assistant uses this for a note with no form).
 // opts.auditClient names the client to log the send under (defaults to the active profile) — the
@@ -10625,14 +10667,14 @@ function _asstOpenEmail(args){
   var cgs=getCaregivers(), cws=getCaseworkers();
   var recipient=(args.recipient||'').trim(), toEmail='', recipLabel='';
   var _is4676=/4676/i.test(args.attach_form||'');
-  // The MSA-4676 carries the CLIENT's PHI and goes to the caseworker — never the caregiver. A
-  // caregiver recipient is refused outright, and an EMPTY/unrecognized recipient resolves to the
-  // CASEWORKER, not the caregiver: falling through to the caregiver branch (the old behaviour)
-  // addressed client PHI to the wrong person whenever no recipient was given.
-  if(_is4676&&/caregiver/i.test(recipient)&&!/@/.test(recipient))
-    return Promise.resolve({error:'The MSA-4676 goes to the client’s caseworker, not the caregiver. Send it to the caseworker or a specific email address.'});
+  // MSA-4676 routing follows the actual two-step workflow:
+  //   1. the form is generated UNSIGNED and goes to the CAREGIVER, who signs it;
+  //   2. the signed copy is filed in Documents and sent from there to the CASEWORKER
+  //      (the ✉ caseworker action on the document card).
+  // This tool only ever attaches a freshly GENERATED (unsigned) form, so with no recipient named it
+  // is step 1 — the caregiver. 'caseworker' still works when the user asks for it explicitly.
   if(/@/.test(recipient)){ toEmail=recipient; recipLabel='recipient'; }
-  else if(_is4676||/case|worker/i.test(recipient)){
+  else if(/case|worker|coordinator/i.test(recipient)){
     var cw=null;
     if(p.caseworkerId)cw=cws.find(function(c){return c.id===p.caseworkerId;});
     if(!cw&&p.worker)cw=cws.find(function(c){return (c.name||'').toLowerCase()===(p.worker||'').toLowerCase();});
@@ -10646,7 +10688,11 @@ function _asstOpenEmail(args){
   var subject=(args.subject||'').trim(), body=(args.body||'').trim();
   var attach=(args.attach_form||'none');
   var openIt=function(d){ _openDocEmailModal(d,toEmail,subject,body,{auditClient:key});
-    return {opened:true, to:toEmail, recipient:recipLabel, attached:(d?(d.displayName||d.name):'nothing')}; };
+    var out={opened:true, to:toEmail, recipient:recipLabel, attached:(d?(d.displayName||d.name):'nothing')};
+    // Tell the model what happens next so it can say it, rather than inventing a next step.
+    if(_is4676&&/^caregiver/.test(recipLabel))
+      out.workflow_note='This is the UNSIGNED MSA-4676 going to the caregiver to sign. Once they return it signed, file it on the client’s Documents tab and use the ✉ caseworker action there to send it on to the caseworker.';
+    return out; };
   if(attach&&attach!=='none'){
     var ft=/4676/.test(attach)?'msa4676':null;
     if(!ft)return Promise.resolve({error:'I can only attach the MSA-4676 right now.'});
