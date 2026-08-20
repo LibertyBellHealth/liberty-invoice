@@ -544,6 +544,15 @@ function hasAuthorization(prof){
   var a=prof&&prof.authorization; if(!a)return false;
   return a.hours!=null || (a.tasks && a.tasks.length>0) || !!a.effectiveDate;
 }
+// Stricter: the authorization actually carries APPROVED HOURS, so an invoice built from it has a
+// real Total Time. hasAuthorization() passes on an effective date alone (a partial OCR read), and
+// generating from that produced a blank-total invoice which then SATISFIED the "already has an
+// invoice for this period" check — so the client silently stopped showing as missing one.
+function hasBillableAuthorization(prof){
+  var a=prof&&prof.authorization; if(!a)return false;
+  var h=a.hours; if(h==null||String(h).trim()==='')return false;
+  return !isNaN(parseFloat(h));
+}
 function renderAttentionPanel(){
   var panel=document.getElementById('attentionPanel');if(!panel)return;
   var p=getProfiles(),items=[];
@@ -1361,7 +1370,11 @@ function saveClientInfo(){
   // stay editable without being forced to import an authorization first.
   var _newStatus=((document.getElementById('ei-status')||{}).value||'');
   var _wasActive=(rec && rec.clientStatus==='active');
-  if(_newStatus==='active' && !_wasActive && !hasAuthorization(rec)){showAlert('A DHS-1210 authorization is required before a client can be Active.\n\nImport one on the Authorization tab first — that’s what officially makes you their agency.');return;}
+  // The DHS-1210 rule is CHAMPS-only — managed-care (carrier) clients are authorized by the carrier
+  // and never have one, so without this exception (which createClient already has) a carrier client
+  // created "In Progress" could never be flipped Active from this pane.
+  var _newProgram=((document.getElementById('ei-program')||{}).value)||(rec&&rec.program)||'';
+  if(_newStatus==='active' && !_wasActive && _newProgram!=='carrier' && !hasAuthorization(rec)){showAlert('A DHS-1210 authorization is required before a client can be Active.\n\nImport one on the Authorization tab first — that’s what officially makes you their agency.');return;}
   var first=(document.getElementById('ei-first').value||'').trim();
   var middle=(document.getElementById('ei-middle').value||'').trim();
   var last=(document.getElementById('ei-last').value||'').trim();
@@ -1373,6 +1386,9 @@ function saveClientInfo(){
   var _pgEl=document.getElementById('ei-program');if(_pgEl)rec.program=_pgEl.value;
   var _caEl=document.getElementById('ei-carrier');if(_caEl)rec.carrier=_caEl.value;
   var _meEl=document.getElementById('ei-member');if(_meEl)rec.memberId=_meEl.value;
+  // Carrier/member # are HIDDEN for a CHAMPS client — clear them when the program switches so a
+  // stale carrier doesn't linger on the record (inert for billing, but it shows up in exports).
+  if(rec.program!=='carrier'){ rec.carrier=''; rec.memberId=''; }
   var dobEl=document.getElementById('ei-dob');if(dobEl)rec.dob=dobEl.value||'';
   var genderEl=document.getElementById('ei-gender');if(genderEl)rec.gender=genderEl.value||'';
   rec.hourlyRate=document.getElementById('ei-rate').value;
@@ -1670,13 +1686,21 @@ function parseDHS1210(pages){
   // MDHHS-6064 doesn't have this line — it uses the "Total per month" row instead,
   // which we back-fill from a sibling regex below if the primary miss.
   var m=flat.match(/approved for\s+(\d+)\s*Hours?\s+(?:and\s+)?(\d+)\s*Minutes?/i)
-       || flat.match(/(\d+)\s*Hours?\s+(?:and\s+)?(\d+)\s*Minutes?\s+per\s+month/i)
-       || flat.match(/(\d+)\s*Hours?\s+(?:and\s+)?(\d+)\s*Minutes?/i);
+       || flat.match(/(\d+)\s*Hours?\s+(?:and\s+)?(\d+)\s*Minutes?\s+per\s+month/i);
   if(m){out.hours=+m[1];out.minutes=+m[2];}
   // MDHHS-6064 fallback: "Total per month  HH:MM  $NNN.NN" — take the HH:MM as approved hours.
+  // Tried BEFORE the unlabeled fallback below: it's anchored to a real label, so it can't be a task row.
   if(out.hours==null){
     var tm=flat.match(/Total\s*per\s*month[^0-9]*(\d{1,3}):(\d{2})/i);
     if(tm){out.hours=+tm[1]; out.minutes=+tm[2];}
+  }
+  // Last resort: ANY "N Hours M Minutes" on the form. That can be a single task's time rather than
+  // the monthly authorization, so it's flagged — the review modal shows the warning, and the
+  // task-minutes-vs-approved reconciliation check is what confirms it.
+  if(out.hours==null){
+    var lm=flat.match(/(\d+)\s*Hours?\s+(?:and\s+)?(\d+)\s*Minutes?/i);
+    if(lm){ out.hours=+lm[1]; out.minutes=+lm[2]; out.hoursGuessed=true;
+      out.warnings.push('approved hours (read from an unlabeled line — verify the total)'); }
   }
   if(out.hours==null) out.warnings.push('approved hours');
   // Effective date. DHS-1210 says "effective MM/DD/YYYY". MDHHS-6064 uses a plain
@@ -1798,28 +1822,37 @@ function _dhsChip(ok){return ok?'<span style="color:#1a7f4b;font-weight:700;">�
 // intentionally excluded (renaming a client changes its record key — too risky to auto-suggest).
 function _dhsSuggestedUpdates(res, prof, cw){
   var out=[];
-  var add=function(label,target,field,from,to,id){
+  // `verify` = this value was read heuristically off the form (the ASW phone/email are simply the
+  // first phone/email found anywhere on it — which can be a county main line or a fax). Combined
+  // with `from` being non-empty (an OVERWRITE), the review renders it UNCHECKED so nothing already
+  // on file is replaced by an un-confirmed OCR read unless the user ticks it deliberately.
+  var add=function(label,target,field,from,to,id,verify){
     to=(to==null?'':String(to)).trim(); from=(from==null?'':String(from)).trim();
-    if(to && to!==from) out.push({label:label,target:target,field:field,from:from,to:to,id:id||null});
+    if(to && to!==from) out.push({label:label,target:target,field:field,from:from,to:to,id:id||null,
+      overwrite:!!from, verify:!!verify, shared:(target==='caseworker')});
   };
   if(cw){
-    add('Caseworker email','caseworker','email',cw.email,res.aswEmail,cw.id);
+    add('Caseworker email','caseworker','email',cw.email,res.aswEmail,cw.id,true);
     // Compare phones by DIGITS only — a stored "3135051660" and a form "313-505-1660" are the same
     // number, so a formatting-only difference must not be flagged as a change (mirrors the rate
     // normalization below). Only suggest when the actual digits differ.
     var _digits=function(s){return (s==null?'':String(s)).replace(/\D/g,'');};
     if(_digits(res.aswPhone) && _digits(res.aswPhone)!==_digits(cw.phone)){
-      add('Caseworker phone','caseworker','phone',cw.phone,res.aswPhone,cw.id);
+      add('Caseworker phone','caseworker','phone',cw.phone,res.aswPhone,cw.id,true);
     }
   }
-  add('Client Medicaid ID','client','medicaidId',prof&&prof.medicaidId,res.medicaidId,null);
+  add('Client Medicaid ID','client','medicaidId',prof&&prof.medicaidId,res.medicaidId,null,false);
   // The client "Hourly Rate" field is NOT the invoice rate — invoices always bill the state rate
   // ($27) — so the DHS provider rate is no longer pushed into it (that mismatch was confusing).
   return out;
 }
 function showDhsReview(file,res){
   var ex=document.getElementById('dhsReviewModal'); if(ex)ex.remove();
-  var prof=getProfiles()[activeProfileName]||{};
+  // Capture the client this review is FOR. activeProfileName is a mutable global: a background
+  // load/sync (or the user clicking another client) can change or null it while the modal is open,
+  // which used to drop the import or write it to the WRONG client at Apply time.
+  var targetName=activeProfileName;
+  var prof=getProfiles()[targetName]||{};
   var cws=getCaseworkers();
   var match=res.aswEmail?cws.find(function(c){return (c.email||'').toLowerCase()===res.aswEmail.toLowerCase();}):null;
   var hasCw=!!prof.caseworkerId;
@@ -1844,9 +1877,17 @@ function showDhsReview(file,res){
     updatesSection='<div style="border-top:1px solid #e8ecf0;margin-top:12px;padding-top:10px;">'+
       '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;margin-bottom:6px;">Update from this form?</div>'+
       updates.map(function(u,i){
-        return '<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:6px;"><input type="checkbox" id="dhs-upd-'+i+'" checked style="margin-top:3px;"><span>'+esc(u.label)+': '+
+        // Filling a BLANK is pre-checked; REPLACING a value already on file is not — the stored one
+        // may well be the correct one, and this is OCR output, not a verified read.
+        var notes=[];
+        if(u.overwrite)notes.push('replaces the value on file — verify against the form');
+        if(u.verify)notes.push('read from anywhere on the form (could be a county main line/fax)');
+        if(u.shared)notes.push('shared caseworker record — changes it for every client assigned to them');
+        return '<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:6px;"><input type="checkbox" id="dhs-upd-'+i+'"'+(u.overwrite?'':' checked')+' style="margin-top:3px;"><span>'+esc(u.label)+': '+
           (u.from?'<span style="color:#b03030;text-decoration:line-through;">'+esc(u.from)+'</span> &rarr; ':'<span style="color:#94a7bd;">(empty) &rarr; </span>')+
-          '<b>'+esc(u.to)+'</b></span></label>';
+          '<b>'+esc(u.to)+'</b>'+
+          (notes.length?'<span style="display:block;color:#b8860b;font-size:11px;font-weight:600;">⚠ '+esc(notes.join(' · '))+'</span>':'')+
+          '</span></label>';
       }).join('')+
     '</div>';
   }
@@ -1874,7 +1915,7 @@ function showDhsReview(file,res){
     updatesSection+
     // #6: a DHS-1210 makes you the client's agency → offer to set them Active with a start date.
     '<div style="border-top:1px solid #e8ecf0;margin-top:12px;padding-top:10px;">'+
-      '<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;"><input type="checkbox" id="dhs-set-active" '+((prof.clientStatus||'active')!=='active'?'checked':'')+' style="margin-top:3px;"><span>Set <b>'+esc(activeProfileName)+'</b> to <b>Active</b> — this DHS-1210 officially makes you their agency</span></label>'+
+      '<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;"><input type="checkbox" id="dhs-set-active" '+((prof.clientStatus||'active')!=='active'?'checked':'')+' style="margin-top:3px;"><span>Set <b>'+esc(targetName)+'</b> to <b>Active</b> — this DHS-1210 officially makes you their agency</span></label>'+
       '<div style="display:flex;align-items:center;gap:8px;margin-top:8px;padding-left:24px;flex-wrap:wrap;">'+
         '<label for="dhs-start-date" style="font-size:12px;color:#5c7590;">Service start date</label>'+
         '<input type="date" id="dhs-start-date" value="'+esc(_firstOfEffectiveMonth(res.effectiveDate))+'" style="padding:5px 8px;border:1px solid #d0d8e4;border-radius:5px;font-size:13px;">'+
@@ -1883,7 +1924,7 @@ function showDhsReview(file,res){
     '</div>'+
     '<div class="modal-row" style="justify-content:flex-end;gap:8px;margin-top:14px;">'+
       '<button class="btn btn-secondary" onclick="document.getElementById(\'dhsReviewModal\').remove()">Cancel</button>'+
-      '<button class="btn btn-primary" id="dhs-confirm-btn">Save to '+esc(activeProfileName)+'</button>'+
+      '<button class="btn btn-primary" id="dhs-confirm-btn">Save to '+esc(targetName)+'</button>'+
     '</div>'+
   '</div>';
   document.body.appendChild(ov);
@@ -1893,14 +1934,17 @@ function showDhsReview(file,res){
               setActive:!!(document.getElementById('dhs-set-active')&&document.getElementById('dhs-set-active').checked),
               startDate:(document.getElementById('dhs-start-date')&&document.getElementById('dhs-start-date').value)||'',
               updates:updates.filter(function(u,i){var el=document.getElementById('dhs-upd-'+i);return el&&el.checked;}),
-              match:match};
+              match:match, target:targetName};
     _applyDhsImport(file,res,opts);
     ov.remove();
   };
 }
 
 function _applyDhsImport(file,res,opts){
-  var name=activeProfileName; var p=getProfiles(); var prof=p[name]; if(!prof)return;
+  // Apply to the client captured when the review opened — never to whatever is active NOW.
+  var name=(opts&&opts.target)||activeProfileName;
+  var p=getProfiles(); var prof=name?p[name]:null;
+  if(!prof){ showAlert('“'+(name||'That client')+'” is no longer available, so the authorization was NOT saved. Re-open the client and import the form again.'); return; }
   prof.authorization={
     hours:res.hours!=null?res.hours:null, minutes:res.minutes!=null?res.minutes:null,
     effectiveDate:res.effectiveDate||'', reassessDate:res.reassessDate||'',
@@ -1942,7 +1986,8 @@ function _applyDhsImport(file,res,opts){
   if(typeof _syncReassessTask==='function') _syncReassessTask(name, prof.authorization.reassessDate);
   if(typeof renderSidebarClients==='function') renderSidebarClients(); // reflect a newly-active client in the sidebar
   // File the PDF into Documents (Authorization category) — best effort; needs a saved client.
-  var cid=getHcClientId();
+  // Use the TARGET client's own db id (getHcClientId() reads the active client, which may have moved on).
+  var cid=prof._dbId||null;
   if(cid){
     var fd=new FormData();
     fd.append('clientType','homecare'); fd.append('clientId',cid); fd.append('category','Authorization');
@@ -1951,16 +1996,20 @@ function _applyDhsImport(file,res,opts){
     // The toast must reflect what actually happened — never claim "PDF filed" before the POST resolves.
     showToast('✓ Authorization saved for '+name+' — filing PDF…');
     fetch(API_BASE+'/documents',{method:'POST',headers:authUploadHeaders(),body:fd})
-      .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); if(document.getElementById('hcDocList'))loadHcDocs(cid); showToast('✓ Authorization PDF filed for '+name); })
+      .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); if(name===activeProfileName&&document.getElementById('hcDocList'))loadHcDocs(cid); showToast('✓ Authorization PDF filed for '+name); })
       .catch(function(e){ console.error('DHS PDF upload failed',e);
         showAlert('The authorization was saved, but the PDF could not be filed ('+((e&&e.message)||'connection error')+'). Your data is safe — re-upload the PDF from the Documents tab'+(/\b401\b/.test(String((e&&e.message)||''))?' after signing in again.':'.')); });
   } else {
     showToast('✓ Authorization saved for '+name+' (save the client to file the PDF)');
   }
-  if(typeof renderOverviewPane==='function')renderOverviewPane();
-  // If the Authorization tab is the one on screen, refresh it to show the imported data.
-  var ap=document.getElementById('dpane-auth');
-  if(ap && ap.classList.contains('active') && typeof renderAuthPane==='function')renderAuthPane(false);
+  // Repaint only if the imported client is still the one on screen (the panes render the ACTIVE
+  // client — repainting them for a different client would show its data under the wrong header).
+  if(name===activeProfileName){
+    if(typeof renderOverviewPane==='function')renderOverviewPane();
+    // If the Authorization tab is the one on screen, refresh it to show the imported data.
+    var ap=document.getElementById('dpane-auth');
+    if(ap && ap.classList.contains('active') && typeof renderAuthPane==='function')renderAuthPane(false);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2235,6 +2284,14 @@ function _docCatLabel(c){for(var i=0;i<DOC_CATS.length;i++){if(DOC_CATS[i][0]===
 function _catKey(c){for(var i=0;i<DOC_CATS.length;i++){if(DOC_CATS[i][0]===c||DOC_CATS[i][1]===c)return DOC_CATS[i][0];}return c;}
 function _fmtDocSize(n){if(!n)return '';return n<1048576?Math.round(n/1024)+' KB':(n/1048576).toFixed(1)+' MB';}
 var _docEditCtx=null;
+// Emailing a client document to a CAREGIVER: two gates, both enforced again inside the handler.
+//  • _DOC_EMAIL_BLOCKED — never emailable: ID cards plus the SSN-bearing HR forms (I-9/W-4 has the
+//    SSN on its face; a background check carries SSN + DOB). One click used to attach either.
+//  • _DOC_EMAIL_SAFE   — known caregiver-safe categories that send with no extra prompt. Anything
+//    else (Other, or a category the user typed) still sends, but only after an explicit warning —
+//    "Other" is the DEFAULT upload bucket, so blocking it outright would break the 4676 workflow.
+var _DOC_EMAIL_BLOCKED={SSN_Card:1,Drivers_License:1,Insurance_Card:1,Medicare_Card:1,Medicaid_Card:1,I9_W4:1,Background_Check:1};
+var _DOC_EMAIL_SAFE={Authorization:1,Certification:1};
 function renderDocGrid(list,docs,opts){
   if(!list)return; opts=opts||{};
   if(!docs||!docs.length){list.className='';list.innerHTML='<div class="doc-empty">No documents yet.</div>';return;}
@@ -2245,11 +2302,10 @@ function renderDocGrid(list,docs,opts){
     var ext=(display.split('.').pop()||'').toLowerCase();
     var isImg=['jpg','jpeg','png','gif','webp','heic','bmp'].indexOf(ext)>=0;
     var isPdf=ext==='pdf';
-    // Email-to-caregiver is offered on client docs EXCEPT sensitive ID cards (you'd never email
-    // a caregiver an SSN card or license). The 4676 / Authorizations / Other get the button.
-    var _idCat={SSN_Card:1,Drivers_License:1,Insurance_Card:1,Medicare_Card:1,Medicaid_Card:1};
+    // Email-to-caregiver is offered on client docs except the categories that carry an SSN or an
+    // ID card (see _DOC_EMAIL_BLOCKED). emailDocToCaregiver re-checks — this only hides the button.
     var _catk=_catKey(d.category);   // normalize label/free-text → canonical key before gating
-    var canEmail=(opts.clientType==='homecare')&&!_idCat[_catk];
+    var canEmail=(opts.clientType==='homecare')&&!_DOC_EMAIL_BLOCKED[_catk];
     // Extract (OCR → fill client fields) is offered only on the ID/benefit cards we can read.
     var canExtract=(opts.clientType==='homecare')&&_CARD_TYPE[_catk];
     var thumb=isImg
@@ -2292,6 +2348,13 @@ function deleteDocAt(i){
 function emailDocToCaregiver(index){
   var ctx=_docEditCtx; if(!ctx||ctx.clientType!=='homecare')return;
   var d=ctx.docs[index]; if(!d)return;
+  // Re-assert the gate here: the grid's button is only a UI affordance, and a document can be
+  // re-categorized (or this called directly) after the grid was drawn.
+  var _dcat=_catKey(d.category);
+  if(_DOC_EMAIL_BLOCKED[_dcat]){
+    showAlert('“'+_docCatLabel(d.category)+'” documents can’t be emailed to a caregiver — they contain a Social Security number or ID card.');
+    return;
+  }
   var prof=getProfiles()[activeProfileName]||{};
   var clientName=prof.clientName||activeProfileName||'the client';
   var cgs=getCaregivers(); var cg=(prof.caregiverId&&cgs[prof.caregiverId])?cgs[prof.caregiverId]:null;
@@ -2315,7 +2378,13 @@ function emailDocToCaregiver(index){
       'Attached is '+display+' for '+clientName+' from '+agName+'. Please review and let me know if you have any questions.\n\n'+
       'Thank you,\n'+agName;
   }
-  _openDocEmailModal(d, cgEmail, subject, body);
+  // A category we don't recognize as caregiver-safe (including the default "Other" bucket) gets one
+  // explicit confirmation naming the file, so an SSN-bearing PDF filed as "Other" can't go out on a
+  // single click.
+  if(_DOC_EMAIL_SAFE[_dcat]){ _openDocEmailModal(d, cgEmail, subject, body); return; }
+  showConfirm('“'+display+'” is filed as “'+_docCatLabel(d.category)+'”, which isn’t a known caregiver-safe category.\n\nOpen it first and confirm it contains no Social Security number, ID card, or other sensitive identifiers before emailing it to a caregiver.',
+    function(){ _openDocEmailModal(d, cgEmail, subject, body); },
+    {title:'Send this to the caregiver?',okText:'I’ve checked — continue',danger:true});
 }
 // d may be null → plain email with no attachment (the Assistant uses this for a note with no form).
 // opts.auditClient names the client to log the send under (defaults to the active profile) — the
@@ -2355,7 +2424,11 @@ function _openDocEmailModal(d, to, subject, body, opts){
     }).then(function(){
       if(typeof showToast==='function')showToast('✓ Emailed '+_lbl+' to '+toV,3500);
       if(typeof addAuditEntry==='function')addAuditEntry(_auditClient,'Emailed “'+_lbl+'” to '+toV);
-      if(typeof aiTrack==='function')aiTrack('DocEmailedToCaregiver',{doc:_lbl,to:toV});
+      // _aiScrub drops keys matching name/email/recipient/file/… — `to` and `doc` did NOT match, so
+      // the recipient's real address and the document's (client-named) filename were being sent to
+      // App Insights. Renamed to keys the scrubber recognizes: the event still records that a
+      // document was emailed, without recording WHO or WHICH.
+      if(typeof aiTrack==='function')aiTrack('DocEmailedToCaregiver',{recipient:toV,docName:_lbl});
       close();
     }).catch(function(err){
       btn.disabled=false;btn.textContent='Send Email';status.style.color='#c0392b';
@@ -2372,7 +2445,7 @@ function _imageToOcrBase64(url, maxDim){
   return fetch(url).then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); return r.blob(); })
     .then(function(blob){
       if((blob.type&&blob.type.indexOf('pdf')>=0) || /\.pdf(\?|$)/i.test(url)) return _fileToBase64(blob);
-      return new Promise(function(res){
+      return new Promise(function(res,rej){
         var objUrl=URL.createObjectURL(blob), img=new Image();
         img.onload=function(){
           try{
@@ -2385,7 +2458,16 @@ function _imageToOcrBase64(url, maxDim){
             res(dataUrl.slice(dataUrl.indexOf(',')+1));
           }catch(e){ URL.revokeObjectURL(objUrl); _fileToBase64(blob).then(res); }
         };
-        img.onerror=function(){ URL.revokeObjectURL(objUrl); _fileToBase64(blob).then(res); }; // e.g. HEIC on a browser that can't decode it
+        img.onerror=function(){   // e.g. HEIC on a browser that can't decode it
+          URL.revokeObjectURL(objUrl);
+          // Azure's OCR rejects HEIC outright, so sending the raw bytes just returns an opaque 502.
+          // Fail here with an instruction the user can act on.
+          if(/heic|heif/i.test(blob.type||'') || /\.hei[cf](\?|$)/i.test(url)){
+            rej(new Error('This photo is in Apple’s HEIC format, which this browser can’t convert and the reader can’t accept. Re-save or re-take it as JPEG/PNG (iPhone: Settings → Camera → Formats → Most Compatible) and upload again.'));
+            return;
+          }
+          _fileToBase64(blob).then(res);
+        };
         img.src=objUrl;
       });
     });
@@ -2412,6 +2494,7 @@ var _CARD_FIELD_INPUT={dob:'ei-dob',driversLicense:'ei-dl',street:'ei-street',ci
 function extractCardFields(index){
   var ctx=_docEditCtx; if(!ctx||ctx.clientType!=='homecare')return;
   var d=ctx.docs[index]; if(!d)return;
+  var targetName=activeProfileName;   // capture now — OCR is async and the active client can change
   var type=_CARD_TYPE[_catKey(d.category)];
   if(!type){showAlert('This document type can’t be auto-read.');return;}
   if(typeof spToken==='undefined'||!spToken){showAlert('Sign in first (Settings) to read a card.');return;}
@@ -2425,7 +2508,7 @@ function extractCardFields(index){
     var fields=(j&&j.fields)||{};
     var conf=(j&&j.confidence)||{};
     if(!Object.keys(fields).length){showAlert('Couldn’t read any fields off that card. Try a clearer photo/scan.');return;}
-    _showCardReview(fields,conf);
+    _showCardReview(fields,conf,targetName);
   }).catch(function(e){showAlert('Could not read the card: '+((e&&e.message)||e));});
 }
 // Normalize for comparison: numbers by their digits/letters only (so 123-45-6789 == 123456789),
@@ -2435,9 +2518,10 @@ function _cardNorm(field,v){
   if(field==='ssn'||field==='medicaidId'||field==='medicare'||field==='driversLicense') return v.replace(/[^0-9A-Za-z]/g,'').toLowerCase();
   return v.toLowerCase();
 }
-function _showCardReview(fields,conf){
+function _showCardReview(fields,conf,targetName){
   conf=conf||{};
-  var prof=getProfiles()[activeProfileName]||{};
+  targetName=targetName||activeProfileName;
+  var prof=getProfiles()[targetName]||{};
   var rows=[];
   Object.keys(fields).forEach(function(k){
     if(!_CARD_FIELD_LABEL[k])return;                      // only known, applyable fields (skips name)
@@ -2461,7 +2545,7 @@ function _showCardReview(fields,conf){
   }).join('');
   var ov=document.createElement('div');ov.className='modal-overlay open';ov.id='cardReviewModal';
   ov.innerHTML='<div class="modal-box" style="max-width:480px;">'+
-    '<h3>Apply card details to '+esc(activeProfileName||'client')+'?</h3>'+
+    '<h3>Apply card details to '+esc(targetName||'client')+'?</h3>'+
     '<p style="font-size:12px;color:#5c7590;margin-top:-4px;">Blanks are filled, matches are confirmed, and differences are yours to choose. Nothing changes until you click Apply.</p>'+
     '<div style="max-height:340px;overflow:auto;">'+bodyHtml+'</div>'+
     '<div class="modal-row"><button class="btn btn-primary" id="card-apply">Apply</button><button class="btn btn-secondary" id="card-cancel">Cancel</button></div>'+
@@ -2477,19 +2561,24 @@ function _showCardReview(fields,conf){
       else if(r.state==='differ'){ var rd=ov.querySelector('input[name="card'+i+'"][value="use"]'); if(rd&&rd.checked)apply[r.field]=r.ext; }
     });
     close();
-    if(Object.keys(apply).length)_applyCardFields(apply);
+    if(Object.keys(apply).length)_applyCardFields(apply,targetName);
   });
 }
-function _applyCardFields(apply){
-  var p=getProfiles(); var prof=p[activeProfileName]; if(!prof){showAlert('Open a client first.');return;}
+function _applyCardFields(apply,targetName){
+  // Write to the client the review was opened for (captured at extract time), not to whatever is
+  // active now — a background sync can change activeProfileName while the OCR/review is on screen.
+  var name=targetName||activeProfileName;
+  var p=getProfiles(); var prof=name?p[name]:null;
+  if(!prof){showAlert('“'+(name||'That client')+'” is no longer available — nothing was applied.');return;}
+  var sameClient=(name===activeProfileName);
   Object.keys(apply).forEach(function(k){
     prof[k]=apply[k];
-    var inputId=_CARD_FIELD_INPUT[k]; var el=inputId&&document.getElementById(inputId);
+    var inputId=_CARD_FIELD_INPUT[k]; var el=sameClient&&inputId&&document.getElementById(inputId);
     if(el)el.value=apply[k];                              // reflect in the Profile form if it's open
   });
   saveProfilesLS(p);
-  if(typeof saveProfileSP==='function')saveProfileSP(activeProfileName,prof);
-  if(typeof addAuditEntry==='function')addAuditEntry(activeProfileName,'Applied card details: '+Object.keys(apply).map(function(k){return _CARD_FIELD_LABEL[k]||k;}).join(', '));
+  if(typeof saveProfileSP==='function')saveProfileSP(name,prof);
+  if(typeof addAuditEntry==='function')addAuditEntry(name,'Applied card details: '+Object.keys(apply).map(function(k){return _CARD_FIELD_LABEL[k]||k;}).join(', '));
   if(typeof showToast==='function')showToast('✓ Applied '+Object.keys(apply).length+' field(s) from the card',3000);
 }
 function openDocEditModal(index){
@@ -2742,6 +2831,7 @@ function _doCreateClient(name,first,middle,last,nickname){
   p[name].program=(document.getElementById('nc-program')||{}).value||'';
   p[name].carrier=(document.getElementById('nc-carrier')||{}).value||'';
   p[name].memberId=(document.getElementById('nc-member')||{}).value.trim()||'';
+  if(p[name].program!=='carrier'){ p[name].carrier=''; p[name].memberId=''; }   // hidden fields keep stale values
   p[name].medicaidId=document.getElementById('nc-medicaid').value.trim();
   p[name].medicare=(document.getElementById('nc-medicare')||{}).value.trim()||'';
   p[name].hourlyRate=document.getElementById('nc-rate').value.trim();
@@ -5039,7 +5129,7 @@ function exportClientsXLSX(){
         'Billing Period':inv.billingPeriod||'',
         'Status':inv.status||'draft',
         'Saved At':inv.savedAt||'',
-        'Hours (HH.MM)':((inv.data&&inv.data.svcHH)||'')+'.'+((inv.data&&inv.data.svcMM)||''),
+        'Hours (HH.MM)':((inv.data&&inv.data.svcHH)||'')+'.'+_padMin((inv.data&&inv.data.svcMM)||''),
         'Hourly Rate':(inv.data&&inv.data.hourlyRate)||'27.00',
         'Caseworker':p.worker||'',
         'Note':inv.invoiceNote||''
@@ -5912,7 +6002,7 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
     pdf.text(totLabel,x0+5,y+11);
     var lblWidth=pdf.getTextWidth(totLabel);
     pdf.setFont('helvetica','normal');pdf.setFontSize(12);
-    pdf.text((data.svcHH||'')+'.'+(data.svcMM||''),x0+5+lblWidth+10,y+11);
+    pdf.text((data.svcHH||'')+'.'+_padMin(data.svcMM||''),x0+5+lblWidth+10,y+11);
   } else {
     pdf.setFontSize(9);
     var lblY=y+14;
@@ -5923,7 +6013,7 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
     }
     dualText('Total Time for Services Above:',(data.cplxHH||'')+'.'+(data.cplxMM||''),x0+5);
     dualText('Total Time from Previous Page:',(data.p1HH||'')+'.'+(data.p1MM||''),x0+200);
-    dualText('Total Time for Billing Period:',(data.grandHH||'')+'.'+(data.grandMM||''),x0+395);
+    dualText('Total Time for Billing Period:',(data.grandHH||'')+'.'+_padMin(data.grandMM||''),x0+395);
   }
 
   // Cert row (no divider above or below) — close to total time row
@@ -6908,6 +6998,16 @@ function clearPHIFromStorage() {
   _clientSyncedMem = Object.create(null);
   _profilesCache = null;   // the profiles store was just wiped — drop the read cache too
   if (typeof _cgSsnMem !== 'undefined') _cgSsnMem = Object.create(null);
+  // PHI also sits in the OPEN FORM. Wiping storage while an SSN / MiLogin password / client detail
+  // stayed readable in an input behind the login wall left PHI on screen after "sign out".
+  try{
+    var _els=document.querySelectorAll('input, textarea');
+    for(var _i=0;_i<_els.length;_i++){
+      var _el=_els[_i], _t=(_el.type||'').toLowerCase();
+      if(_t==='checkbox'||_t==='radio'||_t==='button'||_t==='submit'||_t==='hidden')continue;
+      try{ _el.value=''; }catch(_e){}
+    }
+  }catch(e){}
 }
 function signOut() {
   aiTrack('UserSignOut');
@@ -7426,18 +7526,46 @@ function deleteInvoiceAPI(dbId, clientName, billingPeriod, onDeleted) {
 // LOCAL-ONLY row *only when it's an unsynced addition* (no _rowVersion yet). A local row that once
 // had a _rowVersion but is now absent from the server was deleted on another device → we drop it,
 // so cross-device deletes still propagate.
+// A row whose save FAILED (or never finished) is flagged `_unsaved` by _rosterMarkUnsaved. That row
+// exists ONLY in localStorage, so the server copy is STALE — the merge must keep the local one, the
+// same protection _mergeProfilesLoad gives clients. Without it, the next background load quietly
+// reverted the edit the user thought they'd made.
 function _rosterHas(o, k){ return Object.prototype.hasOwnProperty.call(o, k); }
+function _rosterKeepLocal(row){ return !!row && (!row._rowVersion || row._unsaved === true); }
 function _mergeRosterMap(serverMap, localMap){   // caregivers, supervisors (id-keyed objects)
   var out = {}, k;
   for (k in serverMap) if (_rosterHas(serverMap, k)) out[k] = serverMap[k];
-  for (k in localMap)  if (_rosterHas(localMap, k) && !_rosterHas(out, k) && localMap[k] && !localMap[k]._rowVersion) out[k] = localMap[k];
+  for (k in localMap){
+    if (!_rosterHas(localMap, k) || !localMap[k]) continue;
+    if (_rosterHas(out, k)) { if (localMap[k]._unsaved === true) out[k] = localMap[k]; }  // failed save wins
+    else if (_rosterKeepLocal(localMap[k])) out[k] = localMap[k];                          // unsynced add
+  }
   return out;
 }
 function _mergeRosterArr(serverArr, localArr){   // caseworkers (array of {id,…})
-  var have = {}; (serverArr || []).forEach(function(x){ if (x && x.id != null) have[x.id] = true; });
+  var idx = {}; (serverArr || []).forEach(function(x, i){ if (x && x.id != null) idx[x.id] = i; });
   var out = (serverArr || []).slice();
-  (localArr || []).forEach(function(x){ if (x && x.id != null && !have[x.id] && !x._rowVersion) out.push(x); });
+  (localArr || []).forEach(function(x){
+    if (!x || x.id == null) return;
+    if (idx[x.id] != null) { if (x._unsaved === true) out[idx[x.id]] = x; }   // failed save wins
+    else if (_rosterKeepLocal(x)) out.push(x);                                 // unsynced add
+  });
   return out;
+}
+// Flag/clear the "this row's save failed" marker used by the merges above.
+function _rosterMarkUnsaved(kind, id, failed){
+  try{
+    if (kind === 'caseworker'){
+      var cws = getCaseworkers(); var c = cws.find(function(x){ return x && String(x.id) === String(id); });
+      if (!c) return; if (failed) c._unsaved = true; else delete c._unsaved; saveCaseworkersLS(cws);
+    } else if (kind === 'supervisor'){
+      var sups = getSupervisors(); if (!sups[id]) return;
+      if (failed) sups[id]._unsaved = true; else delete sups[id]._unsaved; saveSupervisorsLS(sups);
+    } else {
+      var cgs = getCaregivers(); if (!cgs[id]) return;
+      if (failed) cgs[id]._unsaved = true; else delete cgs[id]._unsaved; saveCaregiversLS(cgs);
+    }
+  }catch(e){ /* storage full / parse error — the merge just falls back to server-wins */ }
 }
 function loadCaregiversAPI() {
   syncStart();
@@ -7468,6 +7596,9 @@ function loadCaregiversAPI() {
           _rowVersion: cg.row_version_hex || null   // optimistic-concurrency token
         };
       });
+      // A save may have started DURING this fetch — its writes aren't in this response, so merging
+      // now would show pre-save data (mirrors the guard in loadProfilesAPI).
+      if (_savesInFlight > 0) { syncEnd(); return; }
       // Merge (not replace) so an unsynced local addition isn't wiped by the load; the merge also
       // keeps local rows when the server response is transiently empty.
       saveCaregiversLS(_mergeRosterMap(obj, getCaregivers()));
@@ -7537,7 +7668,10 @@ function saveCaregiverAPI(id, cg, quiet) {
       return result;
     });
   };
-  return _trackRosterSave(quiet ? _doSave() : trackSave(cg.name||id, _doSave));
+  var _pr = quiet ? _doSave() : trackSave(cg.name||id, _doSave);
+  _pr.then(function(){ _rosterMarkUnsaved('caregiver', id, false); },
+           function(){ _rosterMarkUnsaved('caregiver', id, true); });   // handled here; caller keeps _pr
+  return _trackRosterSave(_pr);
 }
 function deleteCaregiverAPI(id) {
   // D10: surface a failure/retry so a "deleted" caregiver can't reappear on next sync.
@@ -7621,6 +7755,7 @@ function loadCaseworkersAPI(){
                  notes:c.notes||'', supervisor_id:c.supervisor_id||'',
                  _rowVersion:c.row_version_hex||null };   // optimistic-concurrency token
       });
+      if (_savesInFlight > 0) { syncEnd(); return; }   // a save raced this fetch — don't merge stale data
       // D11: don't let a transient empty/partial response wipe the good caseworker cache — and
       // merge so an unsynced local addition isn't dropped by the load (cross-device deletes still
       // propagate: a row that had a _rowVersion but is gone from the server is dropped).
@@ -7638,6 +7773,7 @@ function saveCaseworkerAPI(cw, quiet){
     // stale save is rejected (409) instead of silently overwriting another user's edit.
     if (cw._rowVersion) body.expected_version = cw._rowVersion;
     delete body._rowVersion;   // internal token, not a DB column
+    delete body._unsaved;      // internal failed-save marker, not a DB column
     return fetch(API_BASE + '/caseworkers', {
       method: 'POST', headers: apiHeaders(), body: JSON.stringify(body),
     }).then(function(r){
@@ -7656,7 +7792,10 @@ function saveCaseworkerAPI(cw, quiet){
       return result;
     });
   };
-  return _trackRosterSave(quiet ? _doSave() : trackSave(cw.name||cw.id||'caseworker', _doSave));
+  var _pr = quiet ? _doSave() : trackSave(cw.name||cw.id||'caseworker', _doSave);
+  _pr.then(function(){ _rosterMarkUnsaved('caseworker', cw.id, false); },
+           function(){ _rosterMarkUnsaved('caseworker', cw.id, true); });
+  return _trackRosterSave(_pr);
 }
 function deleteCaseworkerAPI(id){
   // Surface a failure/retry (parity with deleteCaregiverAPI) so a "deleted" caseworker
@@ -7686,6 +7825,7 @@ function loadSupervisorsAPI(){
         map[s.id]={id:s.id,name:s.name||'',title:s.title||'',phone:s.phone||'',email:s.email||'',
           _rowVersion:s.row_version_hex||null};   // optimistic-concurrency token
       });
+      if (_savesInFlight > 0) { syncEnd(); return; }   // a save raced this fetch — don't merge stale data
       // Merge so an unsynced local addition survives the load and a transient empty response
       // doesn't wipe the cache (a synced supervisor now carries _rowVersion, so cross-device
       // deletes propagate just like caregivers/caseworkers).
@@ -7697,12 +7837,13 @@ function loadSupervisorsAPI(){
     .catch(function(e){console.error('Load supervisors error:',e);showDbError('supervisors');syncEnd();});
 }
 function saveSupervisorAPI(sup){
-  return _trackRosterSave(trackSave('supervisor: '+(sup.name||sup.id||''), function(){
+  return _trackRosterSave(_rosterSaveMarked('supervisor', sup.id, trackSave('supervisor: '+(sup.name||sup.id||''), function(){
     // Optimistic concurrency (mirror of caseworkers): send the row_version we last read so a stale
     // save is rejected (409) instead of silently overwriting another device's edit.
     var body=Object.assign({},sup);
     if(sup._rowVersion) body.expected_version=sup._rowVersion;
     delete body._rowVersion;   // internal token, not a DB column
+    delete body._unsaved;      // internal failed-save marker, not a DB column
     return fetch(API_BASE+'/supervisors',{
       method:'POST',headers:apiHeaders(),body:JSON.stringify(body)
     }).then(function(r){
@@ -7716,7 +7857,12 @@ function saveSupervisorAPI(sup){
       }
       return result;
     });
-  }));
+  })));
+}
+// Attach the failed/succeeded marker to a save promise without changing what the caller receives.
+function _rosterSaveMarked(kind, id, pr){
+  pr.then(function(){ _rosterMarkUnsaved(kind, id, false); }, function(){ _rosterMarkUnsaved(kind, id, true); });
+  return pr;
 }
 function deleteSupervisorAPI(id){
   // Surface a failure/retry (parity with deleteCaregiverAPI) so a "deleted" supervisor
@@ -8175,7 +8321,9 @@ function saveCaseworker(){
   var editingId=document.getElementById('cw-editing-id').value;
   var rec={
     id:editingId||cwId(),name:name,title:document.getElementById('cw-title').value,first_name:firstName,middle_name:middleName,last_name:lastName,nickname:nickname,
-    agency:document.getElementById('cw-agency').value,
+    // Agency is only shown when Org = MDHHS (see cwOrgToggle) — clear it otherwise so a coordinator
+    // moved to a carrier org doesn't keep a stale MDHHS agency on the record.
+    agency:(((document.getElementById('cw-org')||{}).value||'')==='MDHHS')?document.getElementById('cw-agency').value:'',
     org:(document.getElementById('cw-org')||{}).value||'',
     phone:document.getElementById('cw-phone').value,
     fax:document.getElementById('cw-fax').value,
@@ -8536,6 +8684,7 @@ function saveCwInfoPane(){
   cw.name=(first+(document.getElementById('cwi-middle').value?' '+document.getElementById('cwi-middle').value:'')+' '+last).trim();
   cw.agency=document.getElementById('cwi-agency').value;
   var _cwiOrg=document.getElementById('cwi-org');if(_cwiOrg)cw.org=_cwiOrg.value;
+  if((cw.org||'')!=='MDHHS')cw.agency='';   // Agency is MDHHS-only (hidden otherwise) — don't keep a stale one
   cw.phone=document.getElementById('cwi-phone').value;cw.fax=document.getElementById('cwi-fax').value;
   cw.email=document.getElementById('cwi-email').value;
   cw.street=document.getElementById('cwi-street').value;cw.city=document.getElementById('cwi-city').value;
@@ -9844,6 +9993,9 @@ function _dhsTaskDays(task, days, seed){
   var count=(pd>0&&pm>0)?Math.max(1,Math.floor(pm/pd)):_dhsFreqToDays(task&&task.freq, days).length;
   return _dhsSpreadDays(count, days, seed);
 }
+// Minutes are printed as the ".MM" half of "HH.MM" on the certified form, so a bare "5" reads as
+// 50 minutes: "20 hours 5 minutes" printed "20.5" — 45 minutes of over-billed time. Always 2 digits.
+function _padMin(v){ v=(v==null?'':String(v)).trim(); return /^\d$/.test(v)?('0'+v):v; }
 // Build the data for an invoice from a parsed authorization (res) + client (prof) + period MM/YYYY.
 // The day grid is derived from each task's authorized frequency/count (see _dhsTaskDays), varied per
 // month. Returns { data, unmapped:[taskNames] } — unmapped tasks are surfaced, never dropped silently.
@@ -9857,7 +10009,7 @@ function _dhsBuildFirstInvoice(res, prof, period){
     if(col<0){ unmapped.push(t.task); return; }
     _dhsTaskDays(t, days, seed).forEach(function(di){ if(di>=0&&di<days)grid[di][col]=true; });
   });
-  var hours=res.hours!=null?String(res.hours):'', mins=res.minutes!=null?String(res.minutes):'';
+  var hours=res.hours!=null?String(res.hours):'', mins=res.minutes!=null?_padMin(res.minutes):'';
   var rate=stateRate();  // invoices always bill the flat state rate ($27), not the form's printed rate
   var T=today();
   return {
@@ -9876,6 +10028,8 @@ function createFirstInvoiceFromAuth(){
   if(!activeProfileName)return;
   var p=getProfiles(); var prof=p[activeProfileName];
   if(!prof||!hasAuthorization(prof)){ showAlert('No DHS-1210 authorization on file for this client.'); return; }
+  // Approved hours are the billed amount — without them the invoice would certify a blank Total Time.
+  if(!hasBillableAuthorization(prof)){ showAlert('This authorization has no approved HOURS on file, so an invoice built from it would have a blank Total Time.\n\nAdd the approved hours on the Authorization tab (or re-import the DHS-1210), then generate.'); return; }
   var a=prof.authorization;
   var eff=(a.effectiveDate||'').split('/');
   var period=(eff.length===3)?(eff[0]+'/'+eff[2]):'';
@@ -9905,7 +10059,7 @@ function findClientsEligibleForAutoGen(period){
     if(p.clientStatus==='inactive'||p.clientStatus==='terminated'||p.clientStatus==='lost')return;
     if(isCarrierClient(p))return;     // managed-care clients are billed by the carrier — never auto-generate
     if(!clientWasActiveInPeriod(p,period))return;
-    if(!hasAuthorization(p))return;   // only generate from an authorization
+    if(!hasBillableAuthorization(p))return;   // need APPROVED HOURS — never generate a blank-total invoice
     var hasCurrent=(p.invoices||[]).some(function(i){return i.billingPeriod===period;});
     if(hasCurrent)return;
     // Most recent prior invoice (if any) — kept only as a fallback signal; the grid is built fresh
@@ -9920,7 +10074,7 @@ function findClientsEligibleForAutoGen(period){
 function autoGenerateMonthlyInvoices(period){
   var eligible=findClientsEligibleForAutoGen(period);
   if(!eligible.length){
-    showAlert('No clients need auto-generation. Either everyone active already has an invoice for '+period+', or the active clients don’t have a DHS authorization to build from.',{title:'Nothing to Generate'});
+    showAlert('No clients need auto-generation. Either everyone active already has an invoice for '+period+', or the active clients don’t have a DHS authorization with approved hours to build from (an authorization with no hours parsed is skipped — fix it on the Authorization tab).',{title:'Nothing to Generate'});
     return;
   }
   var names=eligible.map(function(e){return '• '+e.name;}).join('\n');
@@ -9941,15 +10095,18 @@ function autoGenerateMonthlyInvoices(period){
 function _doAutoGenerateInvoices(eligible,period){
   if(!isInvoiceAdmin()){showAlert('Only the account owner can generate invoices.');return;}
   var profiles=getProfiles();
-  var generated=0,skipped=0;
+  var generated=0,skipped=0,unmappedBy={};
   var undoBatch={id:'b_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),period:period,when:Date.now(),invoices:[]};
   eligible.forEach(function(e){
     // Build the month's grid from the client's DHS authorization (correct counts per the authorized
     // frequency, varied each month). Eligibility already requires an authorization.
     var prof=profiles[e.name], a=prof&&prof.authorization, newInv=null;
-    var built=(a && hasAuthorization(prof)) ? _dhsBuildFirstInvoice({hours:a.hours,minutes:a.minutes,rate:a.rate,tasks:a.tasks||[]}, prof, period) : null;
+    var built=(a && hasBillableAuthorization(prof)) ? _dhsBuildFirstInvoice({hours:a.hours,minutes:a.minutes,rate:a.rate,tasks:a.tasks||[]}, prof, period) : null;
     if(built) newInv={ billingPeriod:period, savedAt:new Date().toLocaleString(), status:'draft', invoiceNote:'', data:built.data };
     if(!newInv){skipped++;return;}
+    // Surface tasks that matched no service column — parity with createFirstInvoiceFromAuth. Silently
+    // dropping them yields a certified form with billed hours and an empty grid.
+    if(built.unmapped&&built.unmapped.length)unmappedBy[e.name]=built.unmapped.slice();
     if(!newInv.id)newInv.id='auto_'+Date.now()+'_'+Math.random().toString(36).slice(2,9);
     if(!profiles[e.name].invoices)profiles[e.name].invoices=[];
     profiles[e.name].invoices.unshift(newInv);
@@ -9960,9 +10117,13 @@ function _doAutoGenerateInvoices(eligible,period){
   batchSaveWithSummary('Auto-generate', eligible.filter(function(e){return profiles[e.name];}).map(function(e){var th=function(){return saveProfileSP(e.name,profiles[e.name],true);};th._label=e.name;return th;}));
   if(undoBatch.invoices.length)_pushAutoGenUndoBatch(undoBatch);
   logActivity('invoice','Auto-generated '+generated+' invoice'+(generated!==1?'s':'')+' for '+period);
+  var _unNames=Object.keys(unmappedBy);
+  var _unMsg=_unNames.length?('\n\n⚠ Some tasks didn’t match a service column and were left OFF the grid — add them manually:\n'+
+    _unNames.slice(0,10).map(function(n){return '• '+n+': '+unmappedBy[n].join(', ');}).join('\n')+
+    (_unNames.length>10?('\n…and '+(_unNames.length-10)+' more client(s).'):'')):'';
   showAlert(
     '✓ Auto-generated '+generated+' invoice'+(generated!==1?'s':'')+' for '+period+(skipped>0?' ('+skipped+' skipped — missing data)':'')+'.\n\n'+
-    'All new invoices are marked Draft. An Undo banner will stay on the Clients page for 24 hours — use it if you change your mind.',
+    'All new invoices are marked Draft. An Undo banner will stay on the Clients page for 24 hours — use it if you change your mind.'+_unMsg,
     {title:'Auto-Generation Complete'}
   );
   if(typeof previewMonthlyInvoices==='function')previewMonthlyInvoices();
@@ -10275,10 +10436,14 @@ function _asstContext(){
 // Parse a stored date ('YYYY-MM-DD' or 'M/D/YYYY') → {y,m} for start-date filters/aggregation.
 function _asstParseDate(v){
   if(!v)return null; v=String(v).trim();
-  var m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if(m)return {y:+m[1],m:+m[2]};
-  m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if(m)return {y:+m[3],m:+m[1]};
+  // d = day of month (1 when the value carries no day, e.g. "2026-05"). before/after compare it, so
+  // an intra-month range ("started after 05/15/2026") is answered correctly instead of by month only.
+  var m=v.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?/); if(m)return {y:+m[1],m:+m[2],d:+(m[3]||1)};
+  m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if(m)return {y:+m[3],m:+m[1],d:+m[2]};
   return null;
 }
+// Sortable YYYYMMDD number for a parsed date — one comparison for y/m/d.
+function _asstDateNum(d){ return d?(d.y*10000+d.m*100+(d.d||1)):0; }
 // Turn "May" / "5" / "2026-05" into a month number 1-12 (0 = couldn't tell).
 function _asstMonthNum(s){
   s=String(s||'').trim().toLowerCase();
@@ -10341,6 +10506,9 @@ function _asstMatchFilter(fields, flt){
   var raw=(field in fields)?fields[field]:'';
   var s=String(raw==null?'':raw).toLowerCase().trim();
   var v=String(flt.value==null?'':flt.value).toLowerCase().trim();
+  // The UI shows "In Progress" for a client STORED as 'inactive' (see the status dropdown), so a
+  // filter typed as "in progress" matched nothing. Normalize both sides to the stored value.
+  if(field==='status'){ var _st=function(x){ return /^in[\s-]?progress$/.test(x)?'inactive':x; }; s=_st(s); v=_st(v); }
   switch(op){
     case 'present': case 'has': case 'exists': return s!=='' && s!=='no';
     case 'missing': case 'empty': case 'none': return s==='' || s==='no';
@@ -10349,8 +10517,8 @@ function _asstMatchFilter(fields, flt){
     case 'contains': case 'like': return v===''||s.indexOf(v)>=0;
     case 'in_month': case 'month': { var d=_asstParseDate(raw); return !!d && d.m===_asstMonthNum(flt.value); }
     case 'in_year': case 'year': { var d2=_asstParseDate(raw); return !!d2 && String(d2.y)===String(flt.value).replace(/\D/g,''); }
-    case 'before': { var d3=_asstParseDate(raw), t3=_asstParseDate(flt.value); return !!d3&&!!t3 && (d3.y<t3.y||(d3.y===t3.y&&d3.m<t3.m)); }
-    case 'after': { var d4=_asstParseDate(raw), t4=_asstParseDate(flt.value); return !!d4&&!!t4 && (d4.y>t4.y||(d4.y===t4.y&&d4.m>t4.m)); }
+    case 'before': { var d3=_asstParseDate(raw), t3=_asstParseDate(flt.value); return !!d3&&!!t3 && _asstDateNum(d3)<_asstDateNum(t3); }
+    case 'after': { var d4=_asstParseDate(raw), t4=_asstParseDate(flt.value); return !!d4&&!!t4 && _asstDateNum(d4)>_asstDateNum(t4); }
     case 'gt': return parseFloat(s)>parseFloat(v);
     case 'lt': return parseFloat(s)<parseFloat(v);
     default: return v===''?true:s.indexOf(v)>=0;
@@ -10386,7 +10554,11 @@ function _asstQueryRoster(args){
     var arr=Object.keys(groups).map(function(k){return {value:k,count:groups[k]};}).sort(function(a,b){return b.count-a.count;});
     return { action:'group', group_by:_asstFieldAlias(groupBy), total:matched.length, groups:arr };
   }
-  var cap=matched.slice(0,80).map(function(m){ return { name:m.name, status:m.f.status, county:m.f.county,
+  // The 80-row cap keeps the MODEL's context small. export_data passes no_cap:true so a downloaded
+  // file contains every matched row — exporting 80 of 200 clients (and reporting 80 as the total)
+  // is silent data loss in something the user keeps as a record.
+  var rowsAll=(args.no_cap===true)?matched:matched.slice(0,80);
+  var cap=rowsAll.map(function(m){ return { name:m.name, status:m.f.status, county:m.f.county,
     caregiver:m.f.caregiver, caseworker:m.f.caseworker, medicaid_id:m.f.medicaid_id, start_date:m.f.start_date }; });
   return { action:'list', count:matched.length, clients:cap, truncated:matched.length>cap.length };
 }
@@ -10452,11 +10624,15 @@ function _asstOpenEmail(args){
     return Promise.resolve({error:key+' is a managed-care (carrier) client — the MSA-4676 doesn’t apply to them.'});
   var cgs=getCaregivers(), cws=getCaseworkers();
   var recipient=(args.recipient||'').trim(), toEmail='', recipLabel='';
-  // The MSA-4676 goes to the caseworker — never the caregiver. Block a caregiver recipient outright.
-  if(/4676/i.test(args.attach_form||'')&&/caregiver/i.test(recipient)&&!/@/.test(recipient))
+  var _is4676=/4676/i.test(args.attach_form||'');
+  // The MSA-4676 carries the CLIENT's PHI and goes to the caseworker — never the caregiver. A
+  // caregiver recipient is refused outright, and an EMPTY/unrecognized recipient resolves to the
+  // CASEWORKER, not the caregiver: falling through to the caregiver branch (the old behaviour)
+  // addressed client PHI to the wrong person whenever no recipient was given.
+  if(_is4676&&/caregiver/i.test(recipient)&&!/@/.test(recipient))
     return Promise.resolve({error:'The MSA-4676 goes to the client’s caseworker, not the caregiver. Send it to the caseworker or a specific email address.'});
   if(/@/.test(recipient)){ toEmail=recipient; recipLabel='recipient'; }
-  else if(/case|worker/i.test(recipient)){
+  else if(_is4676||/case|worker/i.test(recipient)){
     var cw=null;
     if(p.caseworkerId)cw=cws.find(function(c){return c.id===p.caseworkerId;});
     if(!cw&&p.worker)cw=cws.find(function(c){return (c.name||'').toLowerCase()===(p.worker||'').toLowerCase();});
@@ -10505,10 +10681,18 @@ function _asstFindCaregiver(args){
   var capped=out.slice(0,8);
   return { matches:capped, count:out.length, truncated: out.length>capped.length };
 }
+// The billing period that can actually be "missing": the PREVIOUS month. A month's invoice is
+// generated on the 1st of the NEXT month (see renderAttentionPanel), so the CURRENT month is never
+// overdue — defaulting to it reported nearly every active client as unbilled.
+function _asstPrevPeriod(){
+  var t=today().split('/'); var d=new Date(+t[2], (+t[0])-2, 1);
+  return String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
+}
 // Normalize a billing period to MM/YYYY from "MM/YYYY", "YYYY-MM", a month name, or "this month".
 function _asstBillingPeriodNorm(v){
   v=String(v||'').trim();
   var tParts=today().split('/');
+  if(/last month|previous month|prior month/i.test(v)) return _asstPrevPeriod();
   if(!v||/this month|current/i.test(v)) return tParts[0]+'/'+tParts[2];
   var m=v.match(/^(\d{1,2})\/(\d{4})$/); if(m) return m[1].padStart(2,'0')+'/'+m[2];
   m=v.match(/^(\d{4})-(\d{1,2})$/); if(m) return m[2].padStart(2,'0')+'/'+m[1];
@@ -10531,12 +10715,15 @@ function _asstQueryBilling(args){
     return {client:key, count:invs.length, invoices:invs};
   }
   if(what==='unbilled'){
-    var per=period||_asstBillingPeriodNorm('current'); var missing=[];
+    // Default to the PREVIOUS month, matching the attention panel: the current month isn't billed
+    // until the 1st of the next month, so defaulting to it flagged nearly every active client.
+    var per=period||_asstPrevPeriod(); var missing=[];
     Object.keys(profs).forEach(function(k){ var p=profs[k];
       if(!clientDueForInvoice(p,per))return;   // excludes carriers, inactive, and pre-start-date
       if(!((p.invoices||[]).some(function(i){return i.billingPeriod===per;}))) missing.push(k);
     });
-    return {what:'unbilled', period:per, count:missing.length, clients:missing.slice(0,80), truncated:missing.length>80};
+    var mrows=(args.no_cap===true)?missing:missing.slice(0,80);
+    return {what:'unbilled', period:per, count:missing.length, clients:mrows, truncated:missing.length>mrows.length};
   }
   // 'invoices': list/count invoices matching period and/or status (carrier clients excluded)
   var rows=[], byStatus={draft:0,submitted:0,paid:0};
@@ -10548,8 +10735,9 @@ function _asstQueryBilling(args){
       rows.push({client:k, period:i.billingPeriod||'', status:st});
     });
   });
+  var irows=(args.no_cap===true)?rows:rows.slice(0,80);
   return {what:'invoices', period:period||'any', status:status||'any', count:rows.length,
-    by_status:byStatus, invoices:rows.slice(0,80), truncated:rows.length>80};
+    by_status:byStatus, invoices:irows, truncated:rows.length>irows.length};
 }
 // ── Tool: find_caseworker ── caseworker/coordinator by name → org, contact, and clients served.
 function _asstFindCaseworker(args){
@@ -10634,8 +10822,10 @@ async function _asstDownloadPdf(cols, rows, title, fname){
   if(!window.PDFLib)throw new Error('PDF library still loading — try again in a moment.');
   var doc=await PDFLib.PDFDocument.create();
   var font=await doc.embedFont(PDFLib.StandardFonts.Helvetica), bold=await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
-  var pageW=612, pageH=792, margin=36, size=9, lineH=14, colW=(pageW-2*margin)/cols.length, page=null, y=0;
-  var cap=Math.max(6,Math.floor(colW/5));
+  // Landscape + an 8pt face: the portrait/9pt layout clipped most cells to ~15 characters, which
+  // truncated ordinary client names and dates in a file the user keeps as a record.
+  var pageW=792, pageH=612, margin=36, size=8, lineH=13, colW=(pageW-2*margin)/cols.length, page=null, y=0;
+  var cap=Math.max(8,Math.floor(colW/4.4));
   var header=function(){ page=doc.addPage([pageW,pageH]); y=pageH-margin;
     page.drawText(String(title||'Export'),{x:margin,y:y,size:13,font:bold}); y-=22;
     cols.forEach(function(c,i){ page.drawText(String(c),{x:margin+i*colW,y:y,size:size,font:bold}); }); y-=lineH; };
@@ -10652,14 +10842,14 @@ function _asstExportData(args){
   var format=String(args.format||'excel').toLowerCase();
   var cols=[], rows=[], title='';
   if(source==='invoices'||source==='billing'){
-    var r=_asstQueryBilling({what:'invoices', status:args.status, period:args.period});
+    var r=_asstQueryBilling({what:'invoices', status:args.status, period:args.period, no_cap:true});
     cols=['Client','Period','Status']; rows=(r.invoices||[]).map(function(i){return [i.client,i.period,i.status];});
     title='Invoices'+(args.period?(' '+args.period):'')+(args.status?(' - '+args.status):'');
   } else if(source==='unbilled'){
-    var u=_asstQueryBilling({what:'unbilled', period:args.period});
+    var u=_asstQueryBilling({what:'unbilled', period:args.period, no_cap:true});
     cols=['Client']; rows=(u.clients||[]).map(function(n){return [n];}); title='Unbilled '+(u.period||'');
   } else {
-    var q=_asstQueryRoster({action:'list', filters:(Array.isArray(args.filters)?args.filters:[])});
+    var q=_asstQueryRoster({action:'list', filters:(Array.isArray(args.filters)?args.filters:[]), no_cap:true});
     cols=['Name','Status','County','Caregiver','Caseworker','Medicaid ID','Start Date'];
     rows=(q.clients||[]).map(function(c){return [c.name,c.status,c.county,c.caregiver,c.caseworker,c.medicaid_id,c.start_date];});
     title='Clients';
@@ -10676,7 +10866,7 @@ function _asstExportData(args){
 // ── Tool: roster_digest ── a "what needs my attention" scan: deterministic data-gap + billing checks.
 function _asstRosterDigest(){
   var profs=getProfiles(), cgs=getCaregivers(), cws=getCaseworkers();
-  var period=_asstBillingPeriodNorm('current');
+  var period=_asstPrevPeriod();   // the month that can actually be overdue (see _asstPrevPeriod)
   var active=0, champs=0, carrier=0;
   var missingMedicaid=[], noCaregiver=[], noCaseworker=[], noCwEmail=[], unbilled=[], carrierGaps=[], missingDob=[];
   Object.keys(profs).forEach(function(k){ var p=profs[k];
@@ -10727,7 +10917,7 @@ async function _asstSend(text){
   _asstRenderMsg('user',text);
   _asstBusy=true; _asstSetTyping(true);
   try{
-    var guard=0;
+    var guard=0, answered=false;
     while(guard++<6){
       var resp=await fetch(API_BASE+'/ai-chat',{method:'POST',headers:apiHeaders(),
         body:JSON.stringify({messages:_asstMessages,context:_asstContext()})});
@@ -10745,8 +10935,12 @@ async function _asstSend(text){
         continue;
       }
       _asstRenderMsg('assistant',msg.content||'(no response)');
+      answered=true;
       break;
     }
+    // The loop can hit its turn limit while the model is still calling tools — say so rather than
+    // leaving the user staring at a typing indicator that resolved into nothing.
+    if(!answered)_asstRenderMsg('assistant','I ran several steps but didn’t reach a final answer. Try asking for one thing at a time, or narrowing the question.');
   }catch(e){ _asstRenderMsg('assistant','⚠️ '+((e&&e.message)||e)); }
   finally{ _asstBusy=false; _asstSetTyping(false); }
 }
