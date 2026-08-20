@@ -8785,7 +8785,7 @@ function openStateForm(type){
   activeFormType=type;
   var selEl=document.getElementById('formClientSelect');
   activeFormClientName=selEl?selEl.value:'';
-  var titles={dhs390:'DHS-390 — Adult Services Application',dhs4771:'DHS-4771 — FICA Tax Authorization',mdhhs6200:'MDHHS-6200 — Medical Needs Certification',msa4676:'MSA-4676 — Home Help Services Agreement',bphasa2421:'BPHASA-2421 — Live-In Caregiver Attestation'};
+  var titles={msa4676:'MSA-4676 — Home Help Services Agreement'};
   showPage('form-fill');
   bc([{l:'Forms',fn:navForms},{l:titles[type]||type}]);
   ['sb-home','sb-caregivers','sb-settings','sb-tasks','sb-reports','sb-caseworkers','sb-forms'].forEach(function(id){var el=document.getElementById(id);if(el)el.classList.remove('active');});
@@ -8851,44 +8851,15 @@ function scheduleSfPreview(delay){
 }
 // Each state form's left-pane input IDs → dict keys. Lets us read live-edited
 // values from the form on the left and flow them into the PDF preview/save.
+// Only the MSA-4676 is offered in the Forms UI now — the DHS-390 / DHS-4771 / MDHHS-6200 / BPHASA-2421
+// definitions were removed as dead code when their form cards were retired.
 var STATE_FORM_INPUT_MAPS={
-  dhs390:{
-    dhs390_cname:'client_name', dhs390_county:'client_county', dhs390_date:'today_date',
-    dhs390_wname:'worker_name', dhs390_wphone:'worker_phone',
-    dhs390_fname:'client_name', dhs390_dob:'client_dob', dhs390_mid:'medicaid_id',
-    dhs390_addr:'client_address', dhs390_city:'client_city', dhs390_st:'client_state', dhs390_zip:'client_zip',
-    dhs390_phone:'client_phone', dhs390_tty:'client_tty', dhs390_email:'client_email',
-    dhs390_sigdate:'signature_date'
-  },
-  dhs4771:{
-    dhs4771_off1:'agency_office_addr1', dhs4771_off2:'agency_office_addr2', dhs4771_offcity:'agency_office_csz',
-    dhs4771_cn:'client_name', dhs4771_case:'case_number', dhs4771_cid:'medicaid_id', dhs4771_county:'client_county',
-    dhs4771_asw:'worker_name', dhs4771_aswph:'worker_phone',
-    dhs4771_pname:'client_name', dhs4771_date:'today_date',
-    dhs4771_addr:'client_address', dhs4771_city:'client_city', dhs4771_st:'client_state', dhs4771_zip:'client_zip'
-  },
-  mdhhs6200:{
-    m62_pname:'client_name', m62_dob:'client_dob',
-    m62_cname:'client_name', m62_log:'log_number', m62_rid:'medicaid_id',
-    m62_wname:'worker_name', m62_wemail:'worker_email', m62_wphone:'worker_phone',
-    m62_county:'client_county', m62_fax:'worker_fax',
-    m62_lastseen:'last_seen', m62_diag:'diagnosis', m62_equdet:'equipment_details', m62_resolved:'resolved_date',
-    m62_sigpname:'provider_name', m62_sigdate:'signature_date'
-  },
   msa4676:{
     msa_cname:'client_name', msa_mid:'medicaid_id',
     msa_addr:'client_address', msa_city:'client_city', msa_st:'client_state', msa_zip:'client_zip',
     msa_phone:'client_phone', msa_county:'client_county',
     msa_cgname:'caregiver_full_name', msa_cgphone:'caregiver_phone',
     msa_start:'start_date', msa_date:'today_date'
-  },
-  bphasa2421:{
-    bp_cg_first:'caregiver_first_name', bp_cg_last:'caregiver_last_name',
-    bp_cg_addr:'caregiver_address', bp_cg_city:'caregiver_city', bp_cg_st:'caregiver_state', bp_cg_zip:'caregiver_zip',
-    bp_cg_email:'caregiver_email', bp_cg_phone:'caregiver_phone', bp_cg_champs:'caregiver_champs_id',
-    bp_b_first:'client_first_name', bp_b_last:'client_last_name', bp_b_mid:'medicaid_id',
-    bp_b_addr:'client_address', bp_b_city:'client_city', bp_b_st:'client_state', bp_b_zip:'client_zip',
-    bp_sig_date:'signature_date'
   }
 };
 // Convert YYYY-MM-DD (HTML date-input format) → MM/DD/YYYY (state-form format)
@@ -8999,48 +8970,9 @@ function _buildFormDataDict(clientName){
 // Per-form override maps — exact field-name → data-key. Used when the
 // fuzzy matcher can't read the field name (e.g. MSA-4676's garbled names
 // caused by the PDF's custom font encoding).
+// Per-form explicit field maps (Adobe's auto-detected field name → our data-dict key). Only the
+// MSA-4676 remains — the DHS-4771 / BPHASA-2421 maps were removed as dead code with their retired cards.
 var STATE_FORM_FIELD_MAPS={
-  // ── DHS-4771: FICA Tax Authorization ──────────────────────
-  // Adobe-detected names match the printed labels; explicit map
-  // because fuzzy rules misclassify "Client ID" as nothing and
-  // "ASW Telephone Number" as client phone.
-  dhs4771:{
-    'Client Name':'client_name',
-    'Case Number':'case_number',
-    'Client ID':'medicaid_id',
-    'County':'client_county',
-    'Adult Services Worker ASW':'worker_name',
-    'ASW Telephone Number':'worker_phone',
-    'Printed Name':'client_name',
-    'Date':'today_date',
-    'Address':'client_address',
-    'City':'client_city',
-    'State':'client_state',
-    'Zip Code':'client_zip'
-  },
-  // ── BPHASA-2421 ───────────────────────────────────────────
-  // Adobe used "Row1" suffix on Section 1 (Caregiver) fields and
-  // "_2" on Section 2 (Beneficiary) fields. Disambiguating explicitly.
-  bphasa2421:{
-    // Section 1: CAREGIVER (top of form, y≈633-538)
-    'First NameRow1':'caregiver_first_name',
-    'Last NameRow1':'caregiver_last_name',
-    'Street AddressRow1':'caregiver_address',
-    'CityRow1':'caregiver_city',
-    'StateRow1':'caregiver_state',
-    'Zip CodeRow1':'caregiver_zip',
-    'Email AddressRow1':'caregiver_email',
-    'Phone NumberRow1':'caregiver_phone',
-    'CHAMPS Provider ID NumberRow1':'caregiver_champs_id',
-    // Section 2: BENEFICIARY / CLIENT (lower, y≈468-420)
-    'First NameRow1_2':'client_first_name',
-    'Last NameRow1_2':'client_last_name',
-    'Medicaid ID NumberRow1':'medicaid_id',
-    'Street AddressRow1_2':'client_address',
-    'CityRow1_2':'client_city',
-    'StateRow1_2':'client_state',
-    'Zip CodeRow1_2':'client_zip'
-  },
   msa4676:{
     // Caseworker / MDHHS office block (top of form)
     'Caseworker Name':'worker_name',
@@ -9236,107 +9168,14 @@ async function downloadStateFormPdf(){
  *
  *  STATE_FORM_OVERLAYS[type] = {
  *    file:'/forms/X.pdf',
- *    fields: [{ inputId:'dhs4771_x', page:0, x:.., y:.., size:10, maxWidth?:.. }, ...],
- *    signature?: { inputId:'dhs4771_sig_present', page, x, y, w, h }  // optional, draws stored sig PNG
+ *    fields: [{ inputId:'msa_cname', page:0, x:.., y:.., size:10, maxWidth?:.. }, ...],
+ *    signature?: { inputId:'msa_sig_present', page, x, y, w, h }  // optional, draws stored sig PNG
  *  }
  * ────────────────────────────────────────────────────────────────── */
+// State-form PDF overlays — calibrated coordinates for stamping data onto the official template.
+// Only the MSA-4676 remains; the DHS-4771 / DHS-390 / MDHHS-6200 overlays were removed as dead code
+// when their form cards were retired (openStateForm is only ever called with 'msa4676').
 var STATE_FORM_OVERLAYS={
-  dhs4771:{
-    file:'/forms/DHS-4771.pdf',
-    title:'DHS-4771_FICA_Authorization',
-    // Coordinates derived from the actual PDF text positions
-    fields:[
-      // County office block — overlay directly on top of "COUNTY STREET ADDRESS 1" etc placeholders
-      {inputId:'dhs4771_off1',    page:0, x:33,  y:625, size:10, maxWidth:300, coverRect:{x:30,y:621,w:280,h:13}},
-      {inputId:'dhs4771_off2',    page:0, x:33,  y:610, size:10, maxWidth:300, coverRect:{x:30,y:606,w:280,h:13}},
-      {inputId:'dhs4771_offcity', page:0, x:33,  y:595, size:10, maxWidth:300, coverRect:{x:30,y:591,w:280,h:13}},
-      // Client info row — labels @ y=503, value goes ~18pt below
-      {inputId:'dhs4771_cn',      page:0, x:30,  y:485, size:10, maxWidth:155},
-      {inputId:'dhs4771_case',    page:0, x:193, y:485, size:10, maxWidth:115},
-      {inputId:'dhs4771_cid',     page:0, x:314, y:485, size:10, maxWidth:115},
-      {inputId:'dhs4771_county',  page:0, x:433, y:485, size:10, maxWidth:140},
-      // Worker row — labels @ y=470
-      {inputId:'dhs4771_asw',     page:0, x:30,  y:452, size:10, maxWidth:275},
-      {inputId:'dhs4771_aswph',   page:0, x:314, y:452, size:10, maxWidth:260},
-      // Signature row — labels @ y=215, value goes 18pt below at y=197
-      {inputId:'dhs4771_pname',   page:0, x:249, y:197, size:10, maxWidth:200},
-      {inputId:'dhs4771_date',    page:0, x:469, y:197, size:10, maxWidth:100},
-      // Address row — labels @ y=174
-      {inputId:'dhs4771_addr',    page:0, x:30,  y:156, size:10, maxWidth:275},
-      {inputId:'dhs4771_city',    page:0, x:314, y:156, size:10, maxWidth:145},
-      {inputId:'dhs4771_st',      page:0, x:469, y:156, size:10, maxWidth:40},
-      {inputId:'dhs4771_zip',     page:0, x:517, y:156, size:10, maxWidth:65}
-    ],
-    signature:null
-  },
-  // ── DHS-390: Adult Services Application ──────────────────
-  dhs390:{
-    file:'/forms/DHS-390.pdf',
-    title:'DHS-390_Adult_Services_Application',
-    fields:[
-      // Section 1 — labels @ y=305
-      {inputId:'dhs390_cname',    page:0, x:30,  y:287, size:10, maxWidth:175},
-      {inputId:'dhs390_log',      page:0, x:219, y:287, size:10, maxWidth:140},
-      {inputId:'dhs390_rid',      page:0, x:379, y:287, size:10, maxWidth:200},
-      // Row at y=272
-      {inputId:'dhs390_county',   page:0, x:30,  y:254, size:10, maxWidth:270},
-      {inputId:'dhs390_date',     page:0, x:314, y:254, size:10, maxWidth:265},
-      // Row at y=240
-      {inputId:'dhs390_wname',    page:0, x:30,  y:222, size:10, maxWidth:270},
-      {inputId:'dhs390_wphone',   page:0, x:314, y:222, size:10, maxWidth:265},
-      // Section 2 Client Info — label @ y=184
-      {inputId:'dhs390_fname',    page:0, x:30,  y:166, size:10, maxWidth:550},
-      // Row at y=151
-      {inputId:'dhs390_dob',      page:0, x:30,  y:133, size:10, maxWidth:270},
-      {inputId:'dhs390_mid',      page:0, x:314, y:133, size:10, maxWidth:265},
-      // Row at y=119 (address)
-      {inputId:'dhs390_addr',     page:0, x:30,  y:101, size:10, maxWidth:270},
-      {inputId:'dhs390_city',     page:0, x:314, y:101, size:10, maxWidth:145},
-      {inputId:'dhs390_st',       page:0, x:469, y:101, size:10, maxWidth:40},
-      {inputId:'dhs390_zip',      page:0, x:517, y:101, size:10, maxWidth:65},
-      // Row at y=87
-      {inputId:'dhs390_phone',    page:0, x:30,  y:69,  size:10, maxWidth:120},
-      {inputId:'dhs390_tty',      page:0, x:156, y:69,  size:10, maxWidth:220},
-      {inputId:'dhs390_email',    page:0, x:385, y:69,  size:10, maxWidth:195},
-      // Page 2 signature date — TODO: capture page-1 positions when needed
-      {inputId:'dhs390_sigdate',  page:1, x:430, y:160, size:10, maxWidth:120}
-    ],
-    signature:null
-  },
-  // ── MDHHS-6200: Adult Services Medical Needs Certification ─
-  mdhhs6200:{
-    file:'/forms/MDHHS-6200.pdf',
-    title:'MDHHS-6200_Medical_Needs_Cert',
-    fields:[
-      // Section 1 — Patient name/DOB labels @ y=333
-      {inputId:'m62_pname',       page:0, x:30,  y:315, size:10, maxWidth:365},
-      {inputId:'m62_dob',         page:0, x:409, y:315, size:10, maxWidth:160},
-      // Section 1 signature row — Printed Name + Sig Date labels @ y=262
-      {inputId:'m62_sigpname',    page:0, x:267, y:244, size:10, maxWidth:200},
-      {inputId:'m62_sigdate',     page:0, x:482, y:244, size:10, maxWidth:90},
-      // Section 2 — labels @ y=198
-      {inputId:'m62_cname',       page:0, x:30,  y:180, size:10, maxWidth:270},
-      {inputId:'m62_log',         page:0, x:314, y:180, size:10, maxWidth:125},
-      {inputId:'m62_rid',         page:0, x:453, y:180, size:10, maxWidth:120},
-      // Row at y=165
-      {inputId:'m62_wname',       page:0, x:30,  y:147, size:10, maxWidth:175},
-      {inputId:'m62_wemail',      page:0, x:219, y:147, size:10, maxWidth:220},
-      {inputId:'m62_wphone',      page:0, x:453, y:147, size:10, maxWidth:120},
-      // Row at y=133
-      {inputId:'m62_county',      page:0, x:30,  y:115, size:10, maxWidth:270},
-      {inputId:'m62_fax',         page:0, x:314, y:115, size:10, maxWidth:265},
-      // Section 3 — Date Patient Last Seen "A" @ y=78 (this is a small bottom line)
-      {inputId:'m62_lastseen',    page:0, x:200, y:78,  size:10, maxWidth:380},
-      // Page 1 — Diagnosis B @ y=758 (right after the "B" label, value goes below at y=735)
-      {inputId:'m62_diag',        page:1, x:47,  y:740, size:10, maxWidth:520},
-      // Page 1 — Adaptive equipment details (F section, y=542 label)
-      {inputId:'m62_equdet',      page:1, x:130, y:542, size:10, maxWidth:430},
-      // Page 1 — Resolved (D, y=690)
-      {inputId:'m62_resolved',    page:1, x:47,  y:670, size:10, maxWidth:520}
-    ],
-    signature:null
-  },
-  // ── MSA-4676: Home Help Services Agreement ────────────────
   msa4676:{
     file:'/forms/MSA-4676.pdf',
     title:'MSA-4676_Home_Help_Agreement',
@@ -9355,47 +9194,6 @@ var STATE_FORM_OVERLAYS={
       {inputId:'msa_date',        page:0, x:430, y:160, size:10, maxWidth:120}
     ],
     // No auto-signature: beneficiary + caregiver sign MSA-4676
-    signature:null
-  },
-  // ── BPHASA-2421: Live-In Caregiver Attestation ────────────
-  bphasa2421:{
-    file:'/forms/BPHASA-2421.pdf',
-    title:'BPHASA-2421_Live-In_Caregiver',
-    fields:[
-      // Page 1 (the form itself; instructions are page 0)
-      // Purpose checkboxes — labels @ y=694; checkbox is left of each label
-      {inputId:'bp_purpose_initial', page:1, x:243, y:692, size:11, checkedText:'X', maxWidth:10},
-      {inputId:'bp_purpose_addr',    page:1, x:349, y:692, size:11, checkedText:'X', maxWidth:10},
-      {inputId:'bp_purpose_renew',   page:1, x:464, y:692, size:11, checkedText:'X', maxWidth:10},
-      // Caregiver name row — labels @ y=668
-      {inputId:'bp_cg_first',        page:1, x:30,  y:650, size:10, maxWidth:255},
-      {inputId:'bp_cg_last',         page:1, x:295, y:650, size:10, maxWidth:285},
-      // Caregiver address row — labels @ y=620
-      {inputId:'bp_cg_addr',         page:1, x:30,  y:602, size:10, maxWidth:275},
-      {inputId:'bp_cg_city',         page:1, x:313, y:602, size:10, maxWidth:105},
-      {inputId:'bp_cg_st',           page:1, x:425, y:602, size:10, maxWidth:65},
-      {inputId:'bp_cg_zip',          page:1, x:497, y:602, size:10, maxWidth:80},
-      // Caregiver contact row — labels @ y=574
-      {inputId:'bp_cg_email',        page:1, x:30,  y:556, size:10, maxWidth:180},
-      {inputId:'bp_cg_phone',        page:1, x:217, y:556, size:10, maxWidth:180},
-      {inputId:'bp_cg_champs',       page:1, x:406, y:556, size:10, maxWidth:170},
-      // Beneficiary name row — labels @ y=503
-      {inputId:'bp_b_first',         page:1, x:30,  y:485, size:10, maxWidth:170},
-      {inputId:'bp_b_last',          page:1, x:206, y:485, size:10, maxWidth:190},
-      {inputId:'bp_b_mid',           page:1, x:402, y:485, size:10, maxWidth:175},
-      // Beneficiary address row — labels @ y=454
-      {inputId:'bp_b_addr',          page:1, x:30,  y:436, size:10, maxWidth:185},
-      {inputId:'bp_b_city',          page:1, x:217, y:436, size:10, maxWidth:185},
-      {inputId:'bp_b_st',            page:1, x:406, y:436, size:10, maxWidth:90},
-      {inputId:'bp_b_zip',           page:1, x:497, y:436, size:10, maxWidth:80},
-      // Program checkboxes — labels @ y=403; checkbox sits left of each
-      {inputId:'bp_prog_bh',         page:1, x:115, y:401, size:11, checkedText:'X', maxWidth:10},
-      {inputId:'bp_prog_hh',         page:1, x:240, y:401, size:11, checkedText:'X', maxWidth:10},
-      {inputId:'bp_prog_mc',         page:1, x:325, y:401, size:11, checkedText:'X', maxWidth:10},
-      {inputId:'bp_prog_mhl',        page:1, x:410, y:401, size:11, checkedText:'X', maxWidth:10},
-      // Caregiver signature/date row — labels @ y=255
-      {inputId:'bp_sig_date',        page:1, x:219, y:237, size:10, maxWidth:170}
-    ],
     signature:null
   }
 };
