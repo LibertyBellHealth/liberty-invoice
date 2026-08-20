@@ -8977,7 +8977,8 @@ function openStateForm(type){
   activeFormType=type;
   var selEl=document.getElementById('formClientSelect');
   activeFormClientName=selEl?selEl.value:'';
-  var titles={msa4676:'MSA-4676 — Home Help Services Agreement'};
+  var titles={msa4676:'MSA-4676 — Home Help Services Agreement',
+              dhs390:'DHS-390 — Application for Home Help / Adult Services'};
   showPage('form-fill');
   bc([{l:'Forms',fn:navForms},{l:titles[type]||type}]);
   ['sb-home','sb-caregivers','sb-settings','sb-tasks','sb-reports','sb-caseworkers','sb-forms'].forEach(function(id){var el=document.getElementById(id);if(el)el.classList.remove('active');});
@@ -9012,11 +9013,23 @@ function openStateForm(type){
     topbar.appendChild(back);
     if(titleSpan)topbar.appendChild(titleSpan);
     var spacer=document.createElement('div');spacer.style.flex='1';topbar.appendChild(spacer);
-    var dl=document.createElement('button');dl.className='btn btn-primary';dl.textContent='⬇ Download PDF';dl.title='Download the auto-filled PDF for printing and signature. Upload the signed scan via the Documents tab.';dl.onclick=downloadStateFormPdf;
+    // "Fillable" is offered for templates that really have form fields (the DHS-390 does; the
+    // MSA-4676's template has none, so an unflattened copy of it would be no more editable).
+    if(_formHasAcroFields(activeFormType)){
+      var dlf=document.createElement('button');dlf.className='btn btn-secondary';dlf.textContent='⬇ Download fillable';
+      dlf.title='Download with the PDF form fields still editable — for the sections the client fills in themselves.';
+      dlf.onclick=function(){downloadStateFormPdf(true);};
+      topbar.appendChild(dlf);
+    }
+    var dl=document.createElement('button');dl.className='btn btn-primary';dl.textContent='⬇ Download PDF';dl.title='Download the auto-filled PDF, flattened for printing and signature. Upload the signed scan via the Documents tab.';dl.onclick=function(){downloadStateFormPdf(false);};
     topbar.appendChild(dl);
   }
 }
 
+// True when the form's TEMPLATE is a real AcroForm (fillable). Seeded for the DHS-390 and corrected
+// from the last render, so it stays right if a template is swapped for a fillable revision.
+var _sfAcroForms={dhs390:true};
+function _formHasAcroFields(type){ return _sfAcroForms[type]===true; }
 // Re-render with a different client without leaving the form view
 function changeStateFormClient(name){
   activeFormClientName=name||'';
@@ -9053,6 +9066,13 @@ var STATE_FORM_INPUT_MAPS={
     msa_cgname:'caregiver_full_name', msa_cgphone:'caregiver_phone',
     msa_start:'start_date', msa_date:'today_date'
   }
+};
+// Checkboxes to tick on an AcroForm template, by exact field name. Only ever used for facts the
+// FORM ITSELF establishes — the DHS-390 is the Home Help application, so "Home Help" is the service
+// being applied for. Anything the client attests to (which benefits they receive, who they live
+// with) is left for them to check, since they sign it.
+var STATE_FORM_CHECKS={
+  dhs390:{ 'Home Help':true }
 };
 // Convert YYYY-MM-DD (HTML date-input format) → MM/DD/YYYY (state-form format)
 function _normalizeDate(v){
@@ -9165,6 +9185,23 @@ function _buildFormDataDict(clientName){
 // Per-form explicit field maps (Adobe's auto-detected field name → our data-dict key). Only the
 // MSA-4676 remains — the DHS-4771 / BPHASA-2421 maps were removed as dead code with their retired cards.
 var STATE_FORM_FIELD_MAPS={
+  // DHS-390 — Adobe's auto-detected names carry the printed item numbers ("9 Date of Birth …").
+  // Mapped explicitly so a template revision that renumbers items fails loudly here instead of
+  // quietly filling the wrong box. Everything the CLIENT must answer (household composition,
+  // benefits, interpreter needs, signature) is deliberately left blank.
+  dhs390:{
+    'Full Name':'client_name',
+    '9 Date of Birth MMDDYYYY':'client_dob',
+    '10 MedicaidRecipient ID':'medicaid_id',
+    '11 Street Address':'client_address',
+    'City':'client_city',
+    'State':'client_state',
+    'Zip Code':'client_zip',
+    '12 Phone Number':'client_phone',
+    '14 Email Address':'client_email',
+    'Date':'today_date'
+    // 'Client Signature X' — left blank on purpose; the client signs it.
+  },
   msa4676:{
     // Caseworker / MDHHS office block (top of form)
     'Caseworker Name':'worker_name',
@@ -9265,6 +9302,7 @@ async function _renderStateFormBytes(opts){
   var acroForm=pdfDoc.getForm();
   var acroFields=acroForm.getFields();
   var usedAcroForm=false;
+  _sfAcroForms[activeFormType]=acroFields.length>0;   // drives the "Download fillable" button
   if(acroFields.length>0){
     usedAcroForm=true;
     var dict=_buildFormDataDict();
@@ -9279,7 +9317,10 @@ async function _renderStateFormBytes(opts){
             var da='0 0 0 rg /Helv 10 Tf';
             field.acroField.dict.set(PDFLib.PDFName.of('DA'),PDFLib.PDFString.of(da));
           }catch(e){}
-        } else if(typeof field.select==='function'&&typeof field.check!=='function'){
+        } else if(typeof field.check==='function'){
+          // Checkboxes: only the per-form allowlist above is ticked; everything else stays as-is.
+          if((STATE_FORM_CHECKS[activeFormType]||{})[fname]===true){try{field.check();}catch(e){}}
+        } else if(typeof field.select==='function'){
           var v2=_matchAcroFormField(fname,dict,activeFormType);
           if(v2){try{field.select(String(v2));}catch(e){}}
         }
@@ -9330,13 +9371,16 @@ async function renderSfPreview(){
   }
 }
 
-async function downloadStateFormPdf(){
+// keepFillable:true leaves the PDF's form fields editable, so a form the CLIENT still has to
+// complete (the DHS-390's household/benefits/signature sections) can be finished on screen instead
+// of by hand. The default export stays flattened — a signed agreement shouldn't be editable.
+async function downloadStateFormPdf(keepFillable){
   try{
-    showToast('Generating final (flattened) PDF…',2000);
-    var bytes=await _renderStateFormBytes({flatten:true});
+    showToast(keepFillable?'Generating fillable PDF…':'Generating final (flattened) PDF…',2000);
+    var bytes=await _renderStateFormBytes({flatten:!keepFillable});
     var def=STATE_FORM_OVERLAYS[activeFormType]||{};
     var clientTag=(activeFormClientName||'client').replace(/[^a-z0-9]/gi,'_');
-    var fname=(def.title||activeFormType)+'_'+clientTag+'_'+today().replace(/\//g,'-')+'.pdf';
+    var fname=(def.title||activeFormType)+'_'+clientTag+(keepFillable?'_fillable':'')+'_'+today().replace(/\//g,'-')+'.pdf';
     var blob=new Blob([bytes],{type:'application/pdf'});
     var url=URL.createObjectURL(blob);
     var a=document.createElement('a');a.href=url;a.download=fname;a.style.display='none';document.body.appendChild(a);a.click();
@@ -9365,9 +9409,16 @@ async function downloadStateFormPdf(){
  *  }
  * ────────────────────────────────────────────────────────────────── */
 // State-form PDF overlays — calibrated coordinates for stamping data onto the official template.
-// Only the MSA-4676 remains; the DHS-4771 / DHS-390 / MDHHS-6200 overlays were removed as dead code
-// when their form cards were retired (openStateForm is only ever called with 'msa4676').
+// The MSA-4676 uses coordinate stamping (its template has no usable form fields). The DHS-390 is a
+// real AcroForm — 38 named fields — so it needs no `fields` coordinates at all: _renderStateFormBytes
+// detects the form fields and fills them by name (see STATE_FORM_FIELD_MAPS/CHECKS below).
 var STATE_FORM_OVERLAYS={
+  dhs390:{
+    file:'/forms/DHS-390.pdf',
+    title:'DHS-390_Application_for_Home_Help',
+    fields:[],            // AcroForm template — filled by field name, not by coordinates
+    signature:null        // the CLIENT signs the DHS-390; never auto-sign it
+  },
   msa4676:{
     file:'/forms/MSA-4676.pdf',
     title:'MSA-4676_Home_Help_Agreement',
