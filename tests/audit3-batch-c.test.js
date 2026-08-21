@@ -142,3 +142,39 @@ test('a restore pushes supervisors and signatures to the server, not just localS
   assert.strictEqual(sig.body.data_url, 'data:image/png;base64,AAA',
     'the API field is data_url; sending the local `data` shape would store an empty signature');
 });
+
+// ── The server's explanation was thrown away ─────────────────────────────────────────────────
+// The backend rejects an over-long invoice note with a message naming the length, and now returns
+// 503 "nothing was saved" when Key Vault is down. Both were discarded: the owner saw "HTTP 400".
+test('a rejected save shows the server’s reason, not just the status code', async () => {
+  const w = loadApp(); resetStorage(w);
+  w.saveProfilesLS({ 'Jane Doe': { clientName: 'Jane Doe', _dbId: 7, invoices: [
+    { billingPeriod: '08/2026', savedAt: 'S1', status: 'draft', data: {} }] } });
+  w.localStorage.setItem('lhca_id_map', JSON.stringify({ 'Jane Doe': 7 }));
+  w.fetch = () => Promise.resolve({ ok: false, status: 400,
+    json: () => Promise.resolve({ error: 'invoice_note is 1240 characters; the limit is 1000' }) });
+  const err = await w.syncNewInvoices('Jane Doe', w.getProfiles()['Jane Doe']).then(() => null, (e) => e);
+  assert.ok(err, 'the save must reject');
+  assert.match(err.message, /1240 characters/,
+    'the owner could not tell an over-long note from a server outage — both said "HTTP 400"');
+});
+
+test('a rejected client save shows the server’s reason too', async () => {
+  const w = loadApp(); resetStorage(w);
+  w.saveProfilesLS({ 'Jane Doe': { clientName: 'Jane Doe', _dbId: 7, invoices: [] } });
+  w.fetch = () => Promise.resolve({ ok: false, status: 503,
+    json: () => Promise.resolve({ error: 'Could not encrypt the SSN (key service unavailable). Nothing was saved — try again.' }) });
+  const err = await Promise.resolve(w.saveProfileSP('Jane Doe', w.getProfiles()['Jane Doe'], true))
+    .then(() => null, (e) => e);
+  assert.ok(err && /Nothing was saved/.test(err.message),
+    '"HTTP 503" gave no hint that the SSN never reached the database');
+});
+
+test('a server with no JSON body still gives the status', async () => {
+  const w = loadApp(); resetStorage(w);
+  w.saveProfilesLS({ 'Jane Doe': { clientName: 'Jane Doe', _dbId: 7, invoices: [] } });
+  w.fetch = () => Promise.resolve({ ok: false, status: 502, json: () => Promise.reject(new Error('not json')) });
+  const err = await Promise.resolve(w.saveProfileSP('Jane Doe', w.getProfiles()['Jane Doe'], true))
+    .then(() => null, (e) => e);
+  assert.match(err.message, /502/, 'the fallback must not swallow the failure');
+});

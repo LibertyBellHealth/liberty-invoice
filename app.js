@@ -7662,7 +7662,15 @@ function saveProfileSP(name, data, quiet) {
           return _reborn.then(function (v) { delete _rebornInFlight[name]; return v; },
                               function (e) { delete _rebornInFlight[name]; throw e; });
         }
-        if (!r.ok) throw new Error('HTTP ' + r.status);
+        if (!r.ok) {
+          // The server explains WHY (an invoice note over the 1000-character limit and by how much,
+          // a Key Vault outage that meant nothing was saved). Throwing the bare status discarded all
+          // of it and the owner saw only "HTTP 400" with no idea what to change.
+          return r.json().catch(function () { return null; }).then(function (eb) {
+            var msg = (eb && eb.error) ? String(eb.error) : ('HTTP ' + r.status);
+            var er = new Error(msg); er.status = r.status; throw er;
+          });
+        }
         return r.json();
       })
       .then(function (result) {
@@ -7877,7 +7885,14 @@ function syncNewInvoices(name, data) {
           return null;
         });
       }
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+      if (!r.ok) {
+        // The server explains WHY (e.g. an invoice note over the 1000-character limit, naming the
+        // length). Throwing the bare status discarded it and the owner saw only "HTTP 400".
+        return r.json().catch(function () { return null; }).then(function (eb) {
+          var msg = (eb && eb.error) ? String(eb.error) : ('HTTP ' + r.status);
+          var er = new Error('Invoice ' + (period || '(no period)') + ': ' + msg); er.status = r.status; throw er;
+        });
+      }
       return r.json();
     }).then(function (result) {
       if (result) writeBacks.push({ isNew: isNew, dbId: inv.dbId, period: period, savedAt: savedAt, newId: result.id, newVersion: result.row_version, sig: sig });
