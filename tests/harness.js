@@ -10,7 +10,25 @@ let _win = null;
 function loadApp() {
   if (_win) return _win;
   const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
-  const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
+  // The INIT block partway through app.js touches real page elements. When it throws, execution of
+  // the REST of the file stops — function declarations still hoist, but every `var x = {...}` after
+  // that point (e.g. _ASST_UPDATABLE, STATE_FORM_* maps) is left undefined, which silently hid whole
+  // areas from the tests. Providing the handful of elements INIT needs lets the file finish.
+  const initDom = `
+    <input id="dateSubmitted"><input id="sigDate1"><input id="sigDate2">
+    <input id="billingPeriod"><input id="billingPeriod2">
+    <table><tbody id="svcBody"></tbody><tbody id="cplxBody"></tbody>
+           <tfoot><tr id="svcAllRow"><td></td><td></td></tr>
+                  <tr id="cplxAllRow"><td></td><td></td></tr></tfoot></table>
+    <div id="activityFeed"></div><span id="taskBadge"></span>
+    <div id="page-home" class="page"></div><div id="breadcrumb"></div>
+    <div id="topbarActions"></div><div id="clientTableBody"></div>
+    <div id="sidebarClients"></div><div id="attentionPanel"></div>
+    <div id="sbClientList"></div><div id="clientGrid"></div><div id="clientCount"></div>
+    <div id="statTotal"></div><div id="statActive"></div><div id="statInvoices"></div>
+    <div id="statOutstanding"></div><div id="lastSyncedLabel"></div><div id="activityList"></div>
+    <div id="taskBadgeWrap"></div><div id="undoBanner"></div><div id="oneDriveBanner"></div>`;
+  const dom = new JSDOM('<!doctype html><html><head></head><body>' + initDom + '</body></html>', {
     url: 'http://localhost/',        // hostname=localhost → app picks the dev API base (never called here)
     runScripts: 'outside-only',
     pretendToBeVisual: true,
