@@ -7559,7 +7559,10 @@ function saveProfileSP(name, data, quiet) {
     // must survive the page dying — a normal fetch is aborted on unload and the note is lost
     // (LS is wiped right after). The body here is one client record (no invoice blobs), so it's
     // well under keepalive's 64KB cap. Harmless for ordinary saves.
-    return fetch(API_BASE + '/homecare-clients', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(body), keepalive: true })
+    var _post = function (b) {
+      return fetch(API_BASE + '/homecare-clients', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(b), keepalive: true });
+    };
+    return _post(body)
       .then(function (r) {
         if (r.status === 409) {
           // Someone else changed this client since we loaded it. The stale write was
@@ -7568,6 +7571,22 @@ function saveProfileSP(name, data, quiet) {
           var ce = new Error("This client's info was changed by someone else. Reload to get the latest, then re-apply your edit.");
           ce.isConflict = true;
           throw ce;
+        }
+        // 404 = we sent an id for a row that no longer exists on the server. That is exactly what a
+        // RESTORE looks like: the backup carries the client's old _dbId, the row was deleted, and the
+        // update matched nothing — so the restored client could never be written back and the save
+        // 404'd forever. Retry once as a CREATE. Only fires when the server itself says the row is
+        // gone, so it cannot duplicate a client whose row still exists.
+        if (r.status === 404 && body.id) {
+          var reborn = Object.assign({}, body); delete reborn.id; delete reborn.expected_version;
+          return _post(reborn).then(function (r2) {
+            if (!r2.ok) throw new Error('HTTP ' + r2.status);
+            try {
+              var pr = getProfiles();
+              if (pr[name]) { delete pr[name]._rowVersion; saveProfilesLS(pr); }
+            } catch (e) {}
+            return r2.json();
+          });
         }
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
