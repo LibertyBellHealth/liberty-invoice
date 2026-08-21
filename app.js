@@ -7582,9 +7582,11 @@ function saveProfileSP(name, data, quiet) {
           return _post(reborn).then(function (r2) {
             if (!r2.ok) throw new Error('HTTP ' + r2.status);
             // The server made a NEW row, so the old id is dead everywhere. Clear it locally and drop
-            // the invoices' stale ids too — their rows went with the client, and an invoice still
-            // carrying a dead dbId would be UPDATEd against nothing and silently never restored.
-            dbId = null;                        // lets the id-map writeback below run
+            // the invoices' stale ids too — their rows went with the client (Invoices cascades on
+            // delete), and an invoice still carrying a dead dbId is UPDATEd against nothing and
+            // silently never restored. Setting dbId=null also lets the id-map writeback below run,
+            // so subsequent invoice syncs attach to the NEW client id instead of the dead one.
+            dbId = null;
             try {
               var pr = getProfiles();
               if (pr[name]) {
