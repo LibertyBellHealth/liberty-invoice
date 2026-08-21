@@ -7788,7 +7788,28 @@ function syncNewInvoices(name, data) {
     return fetch(API_BASE + '/invoices', {
       method: 'POST', headers: apiHeaders(), body: JSON.stringify(payload),
     }).then(function (r) {
-      if (r.status === 409) { conflicts.push(period || '(no period)'); return null; }
+      if (r.status === 409) {
+        // The server already has an invoice for this client+period (created on another device, or a
+        // save whose response we lost). The backend returns that row's id and row_version — ADOPT
+        // them, otherwise this invoice stays dbId-less forever: _profileHasUnsyncedChanges keeps the
+        // local copy, the next save is another no-id POST, and the client can never be saved again.
+        // Adopting the id alone would silently overwrite the other device on the next save, so the
+        // conflict is still reported: this attempt does NOT write, the user is told, and a second
+        // deliberate save goes down the version-checked UPDATE path.
+        return r.json().catch(function(){ return null; }).then(function (bodyJson) {
+          if (bodyJson && bodyJson.id) {
+            try {
+              var pc = getProfiles();
+              var list = (pc[name] && pc[name].invoices) || [];
+              var target = list.find(function (x) { return x && !x.dbId && (x.billingPeriod || '') === (period || '') && x.savedAt === savedAt; });
+              if (target) { target.dbId = bodyJson.id; target.rowVersion = bodyJson.row_version || null; saveProfilesLS(pc); }
+              if (inv) { inv.dbId = bodyJson.id; inv.rowVersion = bodyJson.row_version || null; }
+            } catch (e) {}
+          }
+          conflicts.push(period || '(no period)');
+          return null;
+        });
+      }
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(function (result) {
