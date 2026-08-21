@@ -5403,11 +5403,32 @@ function _clearSyncBaselines(store){
   });
   return store;
 }
+// Two different files can be imported, and they are NOT the same shape:
+//   • the JSON export  → { "<client name>": {...}, ... }
+//   • the OneDrive backup → { _exportedAt, _exportedBy, _appVersion, clients:{...}, caregivers:{...},
+//                             caseworkers:[...], signatures:[...] }
+// The importer used to treat every top-level key as a client name, so importing a BACKUP restored no
+// clients at all and instead created junk records called "_exportedAt", "clients", "caregivers"… —
+// i.e. the backup was not restorable by the app that wrote it, and importing one polluted the roster.
+function _parseBackupFile(raw){
+  var imp=JSON.parse(raw);
+  if(!imp||typeof imp!=='object')throw new Error('not an object');
+  var wrapped=(imp.clients&&typeof imp.clients==='object'&&!Array.isArray(imp.clients));
+  if(wrapped){
+    return { clients:imp.clients, caregivers:imp.caregivers||null, caseworkers:imp.caseworkers||null,
+             signatures:imp.signatures||null,
+             meta:{ exportedAt:imp._exportedAt||'', exportedBy:imp._exportedBy||'', includesFullSSN:!!imp._includesFullSSN } };
+  }
+  // Flat export. Drop any underscore-prefixed metadata defensively so it can never become a client.
+  var clients={}; Object.keys(imp).forEach(function(k){ if(k.charAt(0)!=='_')clients[k]=imp[k]; });
+  return { clients:clients, caregivers:null, caseworkers:null, signatures:null, meta:{} };
+}
 function importProfiles(ev){
   var file=ev.target.files[0];if(!file)return;
   var r=new FileReader();r.onload=function(e){
     try{
-      var imp=JSON.parse(e.target.result),ex=getProfiles(),keys=Object.keys(imp);
+      var parsed=_parseBackupFile(e.target.result);
+      var imp=parsed.clients,ex=getProfiles(),keys=Object.keys(imp);
       if(!keys.length){showConfirm('No clients found in that file.',function(){},{title:'Nothing to Import',okText:'OK',danger:false});return;}
       // For each imported record: if SSN looks masked (***-**-****), preserve any existing real SSN
       keys.forEach(function(name){
@@ -5440,12 +5461,46 @@ function importProfiles(ev){
         });
         _clearSyncBaselines(merged);
         saveProfilesLS(merged);
+        // A backup also carries the rosters. Restore any that are MISSING locally (a wiped device has
+        // none of them) and push each to the server; existing records are left alone so a restore can
+        // never silently overwrite work done since the backup was taken.
+        var restored={caregivers:0,caseworkers:0,signatures:0};
+        try{
+          if(parsed.caregivers&&typeof parsed.caregivers==='object'){
+            var cgs=getCaregivers(),cgAdd=[];
+            Object.keys(parsed.caregivers).forEach(function(id){
+              if(!cgs[id]&&parsed.caregivers[id]){ cgs[id]=parsed.caregivers[id]; cgAdd.push(id); }
+            });
+            if(cgAdd.length){ saveCaregiversLS(cgs); restored.caregivers=cgAdd.length;
+              cgAdd.forEach(function(id){ if(typeof saveCaregiverAPI==='function')saveCaregiverAPI(id,cgs[id],true); }); }
+          }
+          if(Array.isArray(parsed.caseworkers)){
+            var cws=getCaseworkers(),have={}; cws.forEach(function(c){ if(c&&c.id!=null)have[c.id]=1; });
+            var cwAdd=parsed.caseworkers.filter(function(c){ return c&&c.id!=null&&!have[c.id]; });
+            if(cwAdd.length){ saveCaseworkersLS(cws.concat(cwAdd)); restored.caseworkers=cwAdd.length;
+              cwAdd.forEach(function(c){ if(typeof saveCaseworkerAPI==='function')saveCaseworkerAPI(c,true); }); }
+          }
+          if(Array.isArray(parsed.signatures)&&typeof saveSigsLS==='function'){
+            var sigs=getSigs(),sHave={}; sigs.forEach(function(x){ if(x&&x.id)sHave[x.id]=1; });
+            var sAdd=parsed.signatures.filter(function(x){ return x&&x.id&&!sHave[x.id]; });
+            if(sAdd.length){ saveSigsLS(sigs.concat(sAdd)); restored.signatures=sAdd.length; }
+          }
+        }catch(e){ console.error('roster restore failed',e); }
         // Persist each imported client to the backend so the data isn't just local
         keys.forEach(function(name){
           try{saveProfileSP(name,merged[name]);}catch(e){console.error('Failed to sync an imported client to DB',e);}
         });
         renderSidebarClients();renderClientGrid();updateStats();
-        showConfirm('Imported '+keys.length+' client'+(keys.length>1?'s':'')+'.',function(){},{title:'Import Complete',okText:'OK',danger:false});
+        var _extra=[];
+        if(restored.caregivers)_extra.push(restored.caregivers+' caregiver'+(restored.caregivers>1?'s':''));
+        if(restored.caseworkers)_extra.push(restored.caseworkers+' caseworker'+(restored.caseworkers>1?'s':''));
+        if(restored.signatures)_extra.push(restored.signatures+' signature'+(restored.signatures>1?'s':''));
+        var _meta=parsed.meta&&parsed.meta.exportedAt?('\n\nBackup taken '+new Date(parsed.meta.exportedAt).toLocaleString()+
+          (parsed.meta.exportedBy?(' by '+parsed.meta.exportedBy):'')+
+          (parsed.meta.includesFullSSN?'':'\n\nNote: this backup was MASKED, so SSNs were not restored — they remain as stored on the server.')):'';
+        showConfirm('Imported '+keys.length+' client'+(keys.length>1?'s':'')+
+          (_extra.length?(', plus '+_extra.join(', ')):'')+'.'+_meta,
+          function(){},{title:'Import Complete',okText:'OK',danger:false});
       }
       if(conf.length){
         showConfirm('Overwrite existing client'+(conf.length>1?'s':'')+'?\n\n'+conf.join(', '),doImport,{title:'Overwrite Confirm',okText:'Overwrite'});
