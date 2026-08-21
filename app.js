@@ -1408,7 +1408,13 @@ function saveClientInfo(){
   rec.caseworkerId=cwValEl?cwValEl.value:'';rec.worker=cwSearchEl?cwSearchEl.value:'';
   var statusEl=document.getElementById('ei-status');if(statusEl)rec.clientStatus=statusEl.value;
   // (Authorization lives in its own tab now — see renderAuthPane/saveAuthPane.)
-  if(newName!==activeProfileName){p[newName]=rec;delete p[activeProfileName];activeProfileName=newName;}
+  if(newName!==activeProfileName){
+    p[newName]=rec;delete p[activeProfileName];
+    // lhca_id_map is keyed by client NAME and is how syncNewInvoices finds the client's db id.
+    // Leaving it under the old name made every later invoice save silently no-op (no dbId → early return).
+    try{ var _m=getIdMap(); if(_m[activeProfileName]!==undefined){ _m[newName]=_m[activeProfileName]; delete _m[activeProfileName]; localStorage.setItem('lhca_id_map',JSON.stringify(_m)); } }catch(e){}
+    activeProfileName=newName;
+  }
   saveProfilesLS(p);saveProfileSP(activeProfileName,p[activeProfileName]);
   unsavedChanges=false;
   logActivity('edit','Profile updated for '+activeProfileName);
@@ -3465,7 +3471,8 @@ async function doSendForSignature(){
       return;
     }
     closeSendSigModal();
-    showAlert('✓ Signing link emailed to '+cg.email+'.\n\nThey have '+days+' days to sign. You can track status from the caregiver detail page.',{title:'Sent'});
+    var _expTxt=data.expiresAt?('The link expires '+new Date(data.expiresAt).toLocaleDateString()+'.'):'The link expires in 14 days.';
+    showAlert('✓ Signing link emailed to '+cg.email+'.\n\n'+_expTxt+' You can track status from the caregiver detail page.',{title:'Sent'});
     logActivity('signing','Sent signing request to '+cg.name+' for template #'+tplId);
   } catch(e){
     errEl.textContent='Error: '+(e.message||e);
@@ -3479,8 +3486,10 @@ function deleteCaregiverFromDetail(){
   showConfirm('Delete caregiver "'+cg.name+'"? This cannot be undone.',function(){_doDeleteCaregiverFromDetail();},{title:'Delete Caregiver',okText:'Delete'});
 }
 function _doDeleteCaregiverFromDetail(){
-  var cgs=getCaregivers();delete cgs[activeCgId];saveCaregiversLS(cgs);deleteCaregiverAPI(activeCgId);
-  aiTrack('CaregiverDeleted',{caregiverId:activeCgId,caregiverName:cg.name||activeCgId});
+  var cgs=getCaregivers();
+  var cgName=(cgs[activeCgId]&&cgs[activeCgId].name)||activeCgId;   // read BEFORE the delete; `cg` is the caller's local
+  delete cgs[activeCgId];saveCaregiversLS(cgs);deleteCaregiverAPI(activeCgId);
+  aiTrack('CaregiverDeleted',{caregiverId:activeCgId,caregiverName:cgName});
   showCgGrid();
 }
 var cgUnsavedChanges=false;
@@ -4841,7 +4850,14 @@ function saveProfilesLS(p){
       out[name]=clone;
     } else { out[name]=prof; }
   }
-  localStorage.setItem('lhca_profiles',JSON.stringify(out));
+  try{
+    localStorage.setItem('lhca_profiles',JSON.stringify(out));
+  }catch(e){
+    // Quota exceeded (invoice data blobs + signatures accumulate here). This used to throw straight
+    // out of the save, so the caller's API write never ran and the user saw nothing at all.
+    console.error('saveProfilesLS failed:',e);
+    if(typeof _showSaveStatus==='function')_showSaveStatus('failed','Local storage is full — your change was NOT saved locally. Export a backup and use Settings → Clear Drafts, then try again.');
+  }
 }
 // Perf: debounce the list filter inputs so typing doesn't re-parse the whole dataset and
 // rebuild the entire table on every keystroke (~150ms after the last keystroke instead).
@@ -5145,7 +5161,7 @@ function exportClientsXLSX(){
       'Client Name':name,
       'First Name':p.firstName||'','Last Name':p.lastName||'','Middle':p.middleName||'','Nickname':p.nickname||'',
       'Medicaid ID':p.medicaidId||'',
-      'Status':p.status||'active',
+      'Status':clientStatusLabel(p.clientStatus||'active'),   // was p.status — never set, so every row exported as "active"
       'Hourly Pay Rate':p.hourlyRate||'',
       "Driver's License":p.driversLicense||'',
       'SSN (masked)':maskSSN(p.ssn),
@@ -5364,6 +5380,11 @@ function captureFullInvoice(){
   d.hasComplex=document.getElementById('showComplex').checked;d.tasks=captureStates();return d;
 }
 function applyFullInvoice(data){
+  // A signature belongs to the invoice it was placed on. Loading another invoice (from history, or
+  // via "copy from last") used to leave the previous stamp in the DOM, and both the PDF and the email
+  // path read it straight from there — so a later month could go out CERTIFIED with a signature the
+  // user never placed for it.
+  resetSigArea(1); resetSigArea(2);
   var f=['clientName','medicaidId','worker','billingPeriod','svcHH','svcMM','cplxHH','cplxMM','p1HH','p1MM','grandHH','grandMM','dateSubmitted','sigDate1','sigDate2'];
   f.forEach(function(id){var el=document.getElementById(id);if(el&&data[id]!==undefined)el.value=data[id];});
   // Hourly rate = the client's own rate (from DHS-1210 or manual), else the Settings state rate
@@ -6053,8 +6074,8 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
       var w=pdf.getTextWidth(label);
       pdf.setFont('helvetica','normal');pdf.text(val,xPos+w+4,lblY);
     }
-    dualText('Total Time for Services Above:',(data.cplxHH||'')+'.'+(data.cplxMM||''),x0+5);
-    dualText('Total Time from Previous Page:',(data.p1HH||'')+'.'+(data.p1MM||''),x0+200);
+    dualText('Total Time for Services Above:',(data.cplxHH||'')+'.'+_padMin(data.cplxMM||''),x0+5);
+    dualText('Total Time from Previous Page:',(data.p1HH||'')+'.'+_padMin(data.p1MM||''),x0+200);
     dualText('Total Time for Billing Period:',(data.grandHH||'')+'.'+_padMin(data.grandMM||''),x0+395);
   }
 
@@ -7594,6 +7615,12 @@ function _mergeRosterArr(serverArr, localArr){   // caseworkers (array of {id,�
   });
   return out;
 }
+// A 409 is NOT a failed save in the sense the merge cares about: it means the SERVER holds a NEWER
+// row than this device did. Marking it `_unsaved` pinned the stale local copy (and its stale
+// _rowVersion) over the server's, so every retry re-sent the same stale version and 409'd again —
+// the record could never be saved on that device. Conflicts must let the server copy through; only
+// genuine failures (network, 5xx) mean "the local copy is the newer one, keep it".
+function _isConflict(e){ return !!(e && e.isConflict); }
 // Flag/clear the "this row's save failed" marker used by the merges above.
 function _rosterMarkUnsaved(kind, id, failed){
   try{
@@ -7712,7 +7739,7 @@ function saveCaregiverAPI(id, cg, quiet) {
   };
   var _pr = quiet ? _doSave() : trackSave(cg.name||id, _doSave);
   _pr.then(function(){ _rosterMarkUnsaved('caregiver', id, false); },
-           function(){ _rosterMarkUnsaved('caregiver', id, true); });   // handled here; caller keeps _pr
+           function(e){ _rosterMarkUnsaved('caregiver', id, !_isConflict(e)); });  // handled here; caller keeps _pr
   return _trackRosterSave(_pr);
 }
 function deleteCaregiverAPI(id) {
@@ -7762,7 +7789,14 @@ function saveTaskAPI(todo) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(function (result) {
-      if (!todo.dbId && result.id) { todo.dbId = result.id; }
+      if (!todo.dbId && result.id) {
+        todo.dbId = result.id;
+        // Persist it: every caller runs saveTodos() BEFORE this promise resolves, so without this
+        // write-back the id never reaches localStorage and the next load treats the task as unsynced
+        // — keeping the local copy AND accepting the server's, i.e. a duplicate task.
+        try{ var _t=getTodos(); var _i=_t.findIndex(function(x){return x && x.id===todo.id;});
+             if(_i>=0 && !_t[_i].dbId){ _t[_i].dbId=result.id; saveTodos(_t); } }catch(e){}
+      }
       return result;
     });
   });
@@ -7836,7 +7870,7 @@ function saveCaseworkerAPI(cw, quiet){
   };
   var _pr = quiet ? _doSave() : trackSave(cw.name||cw.id||'caseworker', _doSave);
   _pr.then(function(){ _rosterMarkUnsaved('caseworker', cw.id, false); },
-           function(){ _rosterMarkUnsaved('caseworker', cw.id, true); });
+           function(e){ _rosterMarkUnsaved('caseworker', cw.id, !_isConflict(e)); });
   return _trackRosterSave(_pr);
 }
 function deleteCaseworkerAPI(id){
@@ -7903,7 +7937,8 @@ function saveSupervisorAPI(sup){
 }
 // Attach the failed/succeeded marker to a save promise without changing what the caller receives.
 function _rosterSaveMarked(kind, id, pr){
-  pr.then(function(){ _rosterMarkUnsaved(kind, id, false); }, function(){ _rosterMarkUnsaved(kind, id, true); });
+  pr.then(function(){ _rosterMarkUnsaved(kind, id, false); },
+          function(e){ _rosterMarkUnsaved(kind, id, !_isConflict(e)); });
   return pr;
 }
 function deleteSupervisorAPI(id){
