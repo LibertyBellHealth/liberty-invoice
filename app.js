@@ -1434,6 +1434,16 @@ function saveClientInfo(){
     // lhca_id_map is keyed by client NAME and is how syncNewInvoices finds the client's db id.
     // Leaving it under the old name made every later invoice save silently no-op (no dbId → early return).
     try{ var _m=getIdMap(); if(_m[activeProfileName]!==undefined){ _m[newName]=_m[activeProfileName]; delete _m[activeProfileName]; localStorage.setItem('lhca_id_map',JSON.stringify(_m)); } }catch(e){}
+    // The audit trail is keyed by client NAME and must never be rewritten, so link the two names
+    // from both sides: whoever opens either record can follow the rename to the other.
+    try{
+      addAuditEntry(activeProfileName,'Client renamed to "'+newName+'" — earlier entries stay under this name');
+      addAuditEntry(newName,'Client renamed from "'+activeProfileName+'" — earlier entries are under that name');
+    }catch(e){}
+    // Memory-only overlays are keyed by name too. Left behind, the old key keeps a client signature
+    // (which embeds the SSN) alive in memory under a name that no longer exists.
+    try{ if(typeof _clientSyncedMem==='object'&&_clientSyncedMem){ delete _clientSyncedMem[activeProfileName]; } }catch(e){}
+    try{ if(typeof _ssnMem==='object'&&_ssnMem&&_ssnMem[activeProfileName]!==undefined){ _ssnMem[newName]=_ssnMem[activeProfileName]; delete _ssnMem[activeProfileName]; } }catch(e){}
     activeProfileName=newName;
   }
   saveProfilesLS(p);saveProfileSP(activeProfileName,p[activeProfileName]);
@@ -5211,6 +5221,9 @@ function _buildBackupPayload(includeFullSSN){
     _appVersion:'liberty-homecare-v13',
     caregivers:cgCopy,
     caseworkers:getCaseworkers(),
+    // Supervisors were in NO backup and no restore branch — a wiped device lost every supervisor
+    // record permanently, while the dialog still reported a successful restore.
+    supervisors:getSupervisors(),
     signatures:getSigs(),
     clients:copy
   };
@@ -5398,8 +5411,12 @@ function mergeInvoiceLists(existingInvs, importedInvs){
 // _profileHasUnsyncedChanges then read the client as clean and let the next background load revert it.
 // Restoring a backup to undo bad invoice edits silently undid itself. Clearing the baselines forces the
 // restored data to be re-sent. dbId is deliberately KEPT so the server row is updated, not duplicated.
-function _clearSyncBaselines(store){
-  Object.keys(store||{}).forEach(function(nm){
+// `names` limits the wipe to the clients actually being restored. Applied to the whole store it
+// marked every OTHER client permanently dirty (_profileHasUnsyncedChanges is true for any client
+// with an invoice once _synced is gone), so the local copy won a background load forever and a
+// colleague's edits on another device stopped arriving.
+function _clearSyncBaselines(store, names){
+  (names || Object.keys(store||{})).forEach(function(nm){
     var p=store[nm]; if(!p||typeof p!=='object')return;
     (p.invoices||[]).forEach(function(iv){ if(iv) delete iv._synced; });
     delete p._clientSynced;
@@ -5419,12 +5436,13 @@ function _parseBackupFile(raw){
   var wrapped=(imp.clients&&typeof imp.clients==='object'&&!Array.isArray(imp.clients));
   if(wrapped){
     return { clients:imp.clients, caregivers:imp.caregivers||null, caseworkers:imp.caseworkers||null,
+             supervisors:imp.supervisors||null,
              signatures:imp.signatures||null,
              meta:{ exportedAt:imp._exportedAt||'', exportedBy:imp._exportedBy||'', includesFullSSN:!!imp._includesFullSSN } };
   }
   // Flat export. Drop any underscore-prefixed metadata defensively so it can never become a client.
   var clients={}; Object.keys(imp).forEach(function(k){ if(k.charAt(0)!=='_')clients[k]=imp[k]; });
-  return { clients:clients, caregivers:null, caseworkers:null, signatures:null, meta:{} };
+  return { clients:clients, caregivers:null, caseworkers:null, supervisors:null, signatures:null, meta:{} };
 }
 function importProfiles(ev){
   var file=ev.target.files[0];if(!file)return;
@@ -5462,12 +5480,12 @@ function importProfiles(ev){
             merged[name]=incoming;
           }
         });
-        _clearSyncBaselines(merged);
+        _clearSyncBaselines(merged, keys);   // ONLY the imported clients
         saveProfilesLS(merged);
         // A backup also carries the rosters. Restore any that are MISSING locally (a wiped device has
         // none of them) and push each to the server; existing records are left alone so a restore can
         // never silently overwrite work done since the backup was taken.
-        var restored={caregivers:0,caseworkers:0,signatures:0};
+        var restored={caregivers:0,caseworkers:0,supervisors:0,signatures:0};
         try{
           if(parsed.caregivers&&typeof parsed.caregivers==='object'){
             var cgs=getCaregivers(),cgAdd=[];
@@ -5493,10 +5511,29 @@ function importProfiles(ev){
             if(cwAdd.length){ saveCaseworkersLS(cws.concat(cwAdd)); restored.caseworkers=cwAdd.length;
               cwAdd.forEach(function(c){ if(typeof saveCaseworkerAPI==='function')saveCaseworkerAPI(c,true); }); }
           }
+          if(parsed.supervisors&&typeof parsed.supervisors==='object'){
+            var sups=getSupervisors(),supAdd=[];
+            Object.keys(parsed.supervisors).forEach(function(id){
+              if(!sups[id]&&parsed.supervisors[id]){ sups[id]=parsed.supervisors[id]; supAdd.push(id); }
+            });
+            if(supAdd.length){ saveSupervisorsLS(sups); restored.supervisors=supAdd.length;
+              supAdd.forEach(function(id){ if(typeof saveSupervisorAPI==='function')saveSupervisorAPI(sups[id]); }); }
+          }
           if(Array.isArray(parsed.signatures)&&typeof saveSigsLS==='function'){
             var sigs=getSigs(),sHave={}; sigs.forEach(function(x){ if(x&&x.id)sHave[x.id]=1; });
             var sAdd=parsed.signatures.filter(function(x){ return x&&x.id&&!sHave[x.id]; });
-            if(sAdd.length){ saveSigsLS(sigs.concat(sAdd)); restored.signatures=sAdd.length; }
+            if(sAdd.length){ saveSigsLS(sigs.concat(sAdd)); restored.signatures=sAdd.length;
+              // C3: restored signatures were written to localStorage ONLY, unlike every other roster,
+              // so the dialog reported them restored while they never reached the database — and the
+              // next device to sync had none. A signature is what certifies an invoice.
+              sAdd.forEach(function(x){
+                try{
+                  fetch(API_BASE+'/signatures',{method:'POST',headers:apiHeaders(),
+                    body:JSON.stringify({id:x.id,label:x.label||'',data_url:x.data||x.data_url||''})})
+                    .catch(function(e){console.error('signature restore push failed',e);});
+                }catch(e){console.error('signature restore push failed',e);}
+              });
+            }
           }
         }catch(e){ console.error('roster restore failed',e); }
         // Persist each imported client to the backend so the data isn't just local
@@ -5507,6 +5544,7 @@ function importProfiles(ev){
         var _extra=[];
         if(restored.caregivers)_extra.push(restored.caregivers+' caregiver'+(restored.caregivers>1?'s':''));
         if(restored.caseworkers)_extra.push(restored.caseworkers+' caseworker'+(restored.caseworkers>1?'s':''));
+        if(restored.supervisors)_extra.push(restored.supervisors+' supervisor'+(restored.supervisors>1?'s':''));
         if(restored.signatures)_extra.push(restored.signatures+' signature'+(restored.signatures>1?'s':''));
         var _meta=parsed.meta&&parsed.meta.exportedAt?('\n\nBackup taken '+new Date(parsed.meta.exportedAt).toLocaleString()+
           (parsed.meta.exportedBy?(' by '+parsed.meta.exportedBy):'')+
@@ -5991,8 +6029,11 @@ function buildInvoiceHTML(){
   });
 
   function syncInputs(root){
+    var _MM={svcMM:1,cplxMM:1,p1MM:1,grandMM:1};
     root.querySelectorAll('input:not([type="checkbox"]):not([type="hidden"])').forEach(function(inp){
-      inp.setAttribute('value',inp.value||'');
+      // Minutes are printed as a DECIMAL beside the hours, so they must be zero-padded: unpadded,
+      // "20" + "." + "5" reads as 20h50m on a form certified to MDHHS.
+      inp.setAttribute('value', _MM[inp.id] ? _padMin(inp.value) : (inp.value||''));
     });
     root.querySelectorAll('input[type="checkbox"]').forEach(function(cb){
       if(cb.checked)cb.setAttribute('checked',''); else cb.removeAttribute('checked');
@@ -7518,6 +7559,9 @@ function loadProfilesAPI() {
     });
 }
 
+// Clients currently being RE-CREATED after a 404 (see saveProfileSP). Keyed by client name so two
+// concurrent saves can't each create a row and leave the client duplicated.
+var _rebornInFlight = {};
 // ── SAVE client profile to Azure SQL ────────────────────────
 // Returns a Promise. Shows save-status toast (Saving → Saved ✓ / Save failed [Retry]).
 // On failure the LS write done by the caller is preserved so the user can keep working
@@ -7588,8 +7632,24 @@ function saveProfileSP(name, data, quiet) {
         // 404'd forever. Retry once as a CREATE. Only fires when the server itself says the row is
         // gone, so it cannot duplicate a client whose row still exists.
         if (r.status === 404 && body.id) {
+          // Another save for this client is already re-creating the row (a deliberate save racing a
+          // debounced note flush). Wait for it instead of racing it into a second client.
+          if (_rebornInFlight[name]) return _rebornInFlight[name];
           var reborn = Object.assign({}, body); delete reborn.id; delete reborn.expected_version;
-          return _post(reborn).then(function (r2) {
+          // LOOK FIRST. If the create already landed and only its response was lost, the row is
+          // there under this name — adopt it. Creating blind would leave two identical clients,
+          // both billable to MDHHS, and syncNewInvoices would write a full set of invoices under
+          // the second one.
+          var _reborn = fetch(API_BASE + '/homecare-clients?q=' + encodeURIComponent(name), { headers: apiHeaders() })
+            .then(function (rs) { return rs.ok ? rs.json() : []; })
+            .catch(function () { return []; })    // lookup is best-effort: never block the re-create
+            .then(function (list) {
+              var hit = (list || []).find(function (c) { return c && (c.client_name || '') === name; });
+              if (hit && hit.id) return { ok: true, json: function () {
+                return Promise.resolve({ id: hit.id, row_version: hit.row_version_hex || null }); } };
+              return _post(reborn);
+            })
+            .then(function (r2) {
             if (!r2.ok) throw new Error('HTTP ' + r2.status);
             // The server made a NEW row, so the old id is dead everywhere. Clear it locally and drop
             // the invoices' stale ids too — their rows went with the client (Invoices cascades on
@@ -7608,8 +7668,19 @@ function saveProfileSP(name, data, quiet) {
             } catch (e) {}
             return r2.json();
           });
+          _rebornInFlight[name] = _reborn;
+          return _reborn.then(function (v) { delete _rebornInFlight[name]; return v; },
+                              function (e) { delete _rebornInFlight[name]; throw e; });
         }
-        if (!r.ok) throw new Error('HTTP ' + r.status);
+        if (!r.ok) {
+          // The server explains WHY (an invoice note over the 1000-character limit and by how much,
+          // a Key Vault outage that meant nothing was saved). Throwing the bare status discarded all
+          // of it and the owner saw only "HTTP 400" with no idea what to change.
+          return r.json().catch(function () { return null; }).then(function (eb) {
+            var msg = (eb && eb.error) ? String(eb.error) : ('HTTP ' + r.status);
+            var er = new Error(msg); er.status = r.status; throw er;
+          });
+        }
         return r.json();
       })
       .then(function (result) {
@@ -7656,7 +7727,11 @@ function saveProfileSP(name, data, quiet) {
   // A 409 is excluded — the server holds the NEWER row there, so pinning the local copy would
   // recreate the roster deadlock this codebase already fixed once.
   Promise.resolve(_p).then(function(){ _markClientUnsaved(name, false); },
-                           function(e){ _markClientUnsaved(name, !_isConflict(e)); });
+                           function(e){
+                             // On a conflict, leave the flag EXACTLY as it is. Clearing it here
+                             // discarded an edit that an earlier genuine failure had protected.
+                             if (!_isConflict(e)) _markClientUnsaved(name, true);
+                           });
   return _p;
 }
 // Signature of an invoice's PERSISTED fields (exactly what syncNewInvoices sends). Used
@@ -7825,7 +7900,14 @@ function syncNewInvoices(name, data) {
           return null;
         });
       }
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+      if (!r.ok) {
+        // The server explains WHY (e.g. an invoice note over the 1000-character limit, naming the
+        // length). Throwing the bare status discarded it and the owner saw only "HTTP 400".
+        return r.json().catch(function () { return null; }).then(function (eb) {
+          var msg = (eb && eb.error) ? String(eb.error) : ('HTTP ' + r.status);
+          var er = new Error('Invoice ' + (period || '(no period)') + ': ' + msg); er.status = r.status; throw er;
+        });
+      }
       return r.json();
     }).then(function (result) {
       if (result) writeBacks.push({ isNew: isNew, dbId: inv.dbId, period: period, savedAt: savedAt, newId: result.id, newVersion: result.row_version, sig: sig });
@@ -7852,6 +7934,14 @@ function syncNewInvoices(name, data) {
         });
         saveProfilesLS(p2);
       }
+    }
+    if (conflicts.length && hardError) {
+      // BOTH happened in one save. Throw the hard failure, not the conflict: _markClientUnsaved
+      // only protects the edit when the error is NOT a conflict, so throwing the conflict here
+      // left the genuinely-failed invoice unprotected and the next background load reverted it.
+      var be = new Error(hardError.message +
+        ' (Also: invoice ' + conflicts.join(', ') + ' was changed by someone else.)');
+      throw be;
     }
     if (conflicts.length) {
       // Another user changed these invoices since we loaded them. The stale write was
@@ -7946,6 +8036,11 @@ function _isConflict(e){ return !!(e && e.isConflict); }
 // Flag/clear the "this row's save failed" marker used by the merges above.
 function _rosterMarkUnsaved(kind, id, failed){
   try{
+    if (kind === 'task'){
+      var tds = getTodos(); var t = tds.find(function(x){ return x && String(x.id) === String(id); });
+      if (!t) return; if (failed) t._unsaved = true; else delete t._unsaved; saveTodos(tds);
+      return;
+    }
     if (kind === 'caseworker'){
       var cws = getCaseworkers(); var c = cws.find(function(x){ return x && String(x.id) === String(id); });
       if (!c) return; if (failed) c._unsaved = true; else delete c._unsaved; saveCaseworkersLS(cws);
@@ -8106,7 +8201,9 @@ function loadTasksAPI() {
 }
 function saveTaskAPI(todo) {
   // Join the in-flight counter the loaders gate on (rosters already do this via _trackRosterSave).
-  return _trackRosterSave(trackSave('task: '+(todo.text||'').slice(0,32), function(){
+  // _rosterSaveMarked adds the durable dirty flag every other entity already had: without it a
+  // failed edit to an ALREADY-SYNCED task was reverted by the next background load, silently.
+  return _trackRosterSave(_rosterSaveMarked('task', todo.id, trackSave('task: '+(todo.text||'').slice(0,32), function(){
     return fetch(API_BASE + '/tasks', {
       method: 'POST', headers: apiHeaders(),
       body: JSON.stringify({
@@ -8128,7 +8225,7 @@ function saveTaskAPI(todo) {
       }
       return result;
     });
-  }));
+  })));
 }
 function deleteTaskAPI(dbId) {
   if (!dbId) return;
@@ -10001,15 +10098,21 @@ function validateInvoiceForSend(name,prof,inv,cwRec){
     if(/^\d{1,3}$/.test(hh)&&parseInt(hh,10)>744)issues.push(label+' hours is '+hh+' — more than a full month');
   };
   _hm('svcHH','svcMM','Total Time'); _hm('cplxHH','cplxMM','Complex care time'); _hm('grandHH','grandMM','Billing-period total');
+  _hm('p1HH','p1MM','Previous-page total');   // also printed on the certified form (see the vector renderer)
   // Cross-check against the authorization: billing more than MDHHS approved is the error that costs the
   // agency a recoupment, and nothing else in the app compares these two numbers.
   try{
     var a=prof&&prof.authorization;
-    if(a&&a.hours!=null&&String(a.hours).trim()!==''&&/^\d{1,3}$/.test(String(d.svcHH||'').trim())){
-      var billed=parseInt(d.svcHH,10)*60+(parseInt(d.svcMM,10)||0);
+    // Compare what is actually CERTIFIED: 'Total Time for Billing Period' (grand = service +
+    // complex care), not service alone. On a complex-care client, checking svc let 15:00 service +
+    // 10:00 complex bill 25:00 against a 20:00 authorization with no warning at all.
+    var _bh=String(d.grandHH||'').trim(), _bm=d.grandMM;
+    if(!/^\d{1,3}$/.test(_bh)){ _bh=String(d.svcHH||'').trim(); _bm=d.svcMM; }   // grand blank → fall back
+    if(a&&a.hours!=null&&String(a.hours).trim()!==''&&/^\d{1,3}$/.test(_bh)){
+      var billed=parseInt(_bh,10)*60+(parseInt(_bm,10)||0);
       var appr=parseInt(a.hours,10)*60+(parseInt(a.minutes,10)||0);
       if(appr>0&&billed>appr)
-        issues.push('Billed time ('+d.svcHH+':'+_padMin(d.svcMM||'00')+') exceeds the authorized '+a.hours+':'+_padMin(a.minutes||0));
+        issues.push('Billed time ('+_bh+':'+_padMin(_bm||'00')+') exceeds the authorized '+a.hours+':'+_padMin(a.minutes||0));
     }
   }catch(e){}
   // Signature: at least one must exist locally so the PDF auto-places it
