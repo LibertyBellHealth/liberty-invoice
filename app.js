@@ -42,8 +42,6 @@ var ALLOWED_USERS = [
 // Use current origin so it works across desktop and mobile (any URL the app is loaded from).
 // The redirect URI must also be registered in the AAD app registration's "Single-page application" platform.
 var REDIRECT_URI = window.location.origin;
-var SP_DOC_LIB   = 'ClientDocuments'; // kept for SharePoint doc library (if used)
-var SP_SITE      = 'https://libertybellhealth.sharepoint.com/sites/Invoice'; // kept for doc upload
 var API_SCOPE    = 'api://' + API_APP_ID + '/user_impersonation';
 var GRAPH_SCOPES = ['openid', 'profile', 'https://graph.microsoft.com/Mail.Send', 'https://graph.microsoft.com/Files.ReadWrite']; // Graph only — never mix with API_SCOPE
 var msalInstance = null, spToken = null;
@@ -2181,6 +2179,10 @@ function exportCaregiverTaskSheet(){
     '</body></html>';
 
   var w=window.open('','_blank');
+  // Track it: the sheet carries the client's name, authorized hours and worker contact, and the
+  // 45-minute idle wipe only clears THIS document — a popup left open kept PHI on screen after the
+  // session ended. clearPHIFromStorage closes anything still open here.
+  try{ if(w) _phiWindows.push(w); }catch(e){}
   if(!w){showAlert('Pop-up was blocked. Allow pop-ups from this site to open the task sheet.');return;}
   w.document.write(html); w.document.close(); w.focus();
 }
@@ -3145,6 +3147,13 @@ function showNewCaregiverForm(){
 // caregiver, but caregiver editing moved to the detail view (openCgDetail via the
 // #/caregiver/<id> route + saveCgInfoPane). It had zero callers (not even a dynamic
 // onclick). The inline form now only serves "New Caregiver".
+// Build a caregiver's display name from its parts. BOTH save paths must agree: they used to differ
+// (this one dropped the middle name, the detail pane included it), so the first save from the detail
+// pane silently renamed the record — and AuditLog rows are keyed on the exact name string, so every
+// entry written under the old name became unreachable from that caregiver's Audit tab.
+function _cgDisplayName(first,middle,last){
+  return ((first||'')+((middle||'')?(' '+middle):'')+' '+(last||'')).trim();
+}
 function saveCaregiver(){
   var first=(document.getElementById('cg-first').value||'').trim();
   var middle=(document.getElementById('cg-middle').value||'').trim();
@@ -3716,7 +3725,7 @@ function saveCgInfoPane(){
   var last=(document.getElementById('cgi-last').value||'').trim();
   if(!first||!last){showAlert('First and last name are required.');return;}
   cg.firstName=first;cg.middleName=document.getElementById('cgi-middle').value;cg.lastName=last;
-  cg.name=(first+(document.getElementById('cgi-middle').value?' '+document.getElementById('cgi-middle').value:'')+' '+last).trim();
+  cg.name=_cgDisplayName(first,document.getElementById('cgi-middle').value,last);
   cg.nickname=document.getElementById('cgi-nickname').value;
   cg.status=document.getElementById('cgi-status').value;
   cg.phone=document.getElementById('cgi-phone').value;cg.email=document.getElementById('cgi-email').value;
@@ -4886,6 +4895,9 @@ function exportReportExcel(){
 // authenticated API on load. saveProfilesLS strips ssn before persisting and caches it in
 // memory; getProfiles overlays it back for display. Saves send ssn only when present, and
 // the backend keeps the stored value when a save omits it (provided-guard).
+// Windows this session opened that display PHI (caregiver task sheets). They are separate documents
+// the idle/sign-out wipe cannot otherwise reach, so they are tracked and closed with it.
+var _phiWindows = [];
 var _ssnMem = Object.create(null);
 // _clientSynced is the client dirty-tracking baseline, but its signature string EMBEDS the
 // plaintext ssn (see _clientSig) — so it must be kept in memory ONLY, never written to disk,
@@ -6594,12 +6606,23 @@ function downloadEmailAuditCSV(){
     });
 }
 function _doEmailAuditCSVDownload(arr){
-  function csvEscape(v){var s=String(v==null?'':v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
+  // Excel/Sheets evaluate a cell beginning = + - @ or tab. This file is a HIPAA disclosure register
+  // whose cells carry operator-typed names and Graph error text, so neutralise the lead character.
+  function csvEscape(v){
+    var s=String(v==null?'':v);
+    if(/^[=+\-@\t\r]/.test(s))s="'"+s;
+    return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+  }
   var header=['Timestamp','SentBy','Type','Recipient','CaseworkerName','BillingPeriod','AttachmentCount','ClientNames','Success','ErrorMsg'].join(',');
   var lines=arr.map(function(r){return [
     r.timestamp,r.sentBy,r.type,r.recipient,r.caseworkerName,r.billingPeriod,r.attachmentCount,(r.clientNames||[]).join('; '),r.success?'YES':'NO',r.errorMsg||''
   ].map(csvEscape).join(',');});
-  var csv=header+'\n'+lines.join('\n');
+  // The backend caps /audit-events at 1000 rows and offers no paging, so this export can silently
+  // omit the OLDEST disclosures. Say so on the face of the file rather than shipping a truncated
+  // record that looks complete.
+  var truncated=(arr.length>=1000);
+  var csv=header+'\n'+lines.join('\n')+
+    (truncated?'\n\n"WARNING: this export hit the 1000-record limit and is INCOMPLETE — disclosures older than the newest 1000 are NOT included."':'');
   var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
   var url=URL.createObjectURL(blob);
   var a=document.createElement('a');a.href=url;
@@ -7270,6 +7293,14 @@ function clearPHIFromStorage() {
   // PHI also sits in the OPEN FORM. Wiping storage while an SSN / MiLogin password / client detail
   // stayed readable in an input behind the login wall left PHI on screen after "sign out".
   try{
+    // Close any PHI-bearing popup this session opened (caregiver task sheets). They are separate
+    // documents, so wiping storage and inputs here never touched them.
+    try{
+      for(var _w=0;_w<_phiWindows.length;_w++){
+        try{ if(_phiWindows[_w] && !_phiWindows[_w].closed) _phiWindows[_w].close(); }catch(_e){}
+      }
+      _phiWindows=[];
+    }catch(e){}
     var _els=document.querySelectorAll('input, textarea');
     for(var _i=0;_i<_els.length;_i++){
       var _el=_els[_i], _t=(_el.type||'').toLowerCase();
@@ -7759,11 +7790,19 @@ function syncNewInvoices(name, data) {
 
 // ── DELETE client from Azure SQL ─────────────────────────────
 function deleteProfileSP(name) {
-  var idMap = getIdMap(); var dbId = idMap[name]; if (!dbId) return;
+  var dbId = getIdMap()[name]; if (!dbId) return;
   // D10: only drop the id-map entry after a confirmed OK; surface failure otherwise.
+  // Re-READ the map inside the callback instead of closing over a snapshot: a bulk delete fires N of
+  // these in one synchronous pass, and each used to write back its own stale copy — so the last
+  // resolver restored the N-1 entries the others had removed. A client later re-created under a
+  // resurrected name then picked up a dead dbId and every save from that device 404'd for good.
   var doDel=function(){return surfaceSaveFailure(
     fetch(API_BASE + '/homecare-clients/' + dbId, { method: 'DELETE', headers: apiHeaders() })
-      .then(function (r) { if(!r.ok)throw new Error('HTTP '+r.status); delete idMap[name]; localStorage.setItem('lhca_id_map', JSON.stringify(idMap)); return r; }),
+      .then(function (r) {
+        if(!r.ok)throw new Error('HTTP '+r.status);
+        var m = getIdMap(); delete m[name]; localStorage.setItem('lhca_id_map', JSON.stringify(m));
+        return r;
+      }),
     'Delete client',doDel);};
   doDel();
 }
