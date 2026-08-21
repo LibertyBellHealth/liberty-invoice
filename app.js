@@ -792,6 +792,21 @@ function batchSaveWithSummary(label, thunks){
   });
 }
 function bulkSetClientStatus(status){
+  // saveClientInfo and createClient both refuse Active without a DHS-1210 for a CHAMPS client; this
+  // path wrote the status directly, so bulk "Mark Active" was a way around the rule — and an Active
+  // client with no authorization is then picked up by invoice generation.
+  if(status==='active'){
+    var _p0=getProfiles();
+    var _blocked=Array.from(bulkSelected).filter(function(n){
+      var pr=_p0[n]; return pr && pr.program!=='carrier' && !hasAuthorization(pr);
+    });
+    if(_blocked.length){
+      showAlert('These clients have no DHS-1210 authorization on file, so they can’t be set Active:\n\n• '+
+        _blocked.slice(0,10).join('\n• ')+(_blocked.length>10?('\n• …and '+(_blocked.length-10)+' more'):'')+
+        '\n\nImport each authorization on the client’s Authorization tab first.',{title:'Authorization required'});
+      return;
+    }
+  }
   var names=Object.keys(bulkSelected);if(!names.length)return;
   var p=getProfiles(),changed=0,thunks=[];
   names.forEach(function(name){
@@ -1903,8 +1918,16 @@ function showDhsReview(file,res){
       }).join('')+
     '</div>';
   }
-  var reconcileNote=(res.timeReconciles||res.amountReconciles)
-    ? '<div style="font-size:12px;color:#1a7f4b;margin-top:6px;">'+_dhsChip(res.timeReconciles!==false)+' Task times match the approved hours'+(res.amountReconciles!=null?' &nbsp; '+_dhsChip(res.amountReconciles)+' Task $ match the printed total':'')+'</div>'
+  // Render whenever a check actually RAN, not only when one passed — the case that matters most (OCR
+  // misread BOTH the hours and the total, so both checks fail) used to render nothing at all. The
+  // wording now follows the outcome instead of always saying "match".
+  var _recRan=(res.timeReconciles!=null)||(res.amountReconciles!=null);
+  var _recFail=(res.timeReconciles===false)||(res.amountReconciles===false);
+  var reconcileNote=_recRan
+    ? '<div style="font-size:12px;color:'+(_recFail?'#c0392b':'#1a7f4b')+';margin-top:6px;'+(_recFail?'font-weight:700;':'')+'">'+
+        (res.timeReconciles!=null?(_dhsChip(res.timeReconciles)+' Task times '+(res.timeReconciles?'match':'DO NOT match')+' the approved hours'):'')+
+        (res.amountReconciles!=null?(' &nbsp; '+_dhsChip(res.amountReconciles)+' Task $ '+(res.amountReconciles?'match':'DO NOT match')+' the printed total'):'')+
+      '</div>'
     : '';
   var ov=document.createElement('div');
   ov.id='dhsReviewModal'; ov.className='modal-overlay open';
@@ -5337,6 +5360,20 @@ function mergeInvoiceLists(existingInvs, importedInvs){
   existingInvs.forEach(function(inv){ if(!seen[keyOf(inv)]) out.push(inv); });
   return out;
 }
+// A restored record carries the sync baselines it had at export time: `_clientSynced` on the client and
+// `_synced` on each invoice. syncNewInvoices SKIPS any invoice whose baseline still matches its content
+// (app.js syncNewInvoices), so a restored invoice was never written back to the DB — and
+// _profileHasUnsyncedChanges then read the client as clean and let the next background load revert it.
+// Restoring a backup to undo bad invoice edits silently undid itself. Clearing the baselines forces the
+// restored data to be re-sent. dbId is deliberately KEPT so the server row is updated, not duplicated.
+function _clearSyncBaselines(store){
+  Object.keys(store||{}).forEach(function(nm){
+    var p=store[nm]; if(!p||typeof p!=='object')return;
+    (p.invoices||[]).forEach(function(iv){ if(iv) delete iv._synced; });
+    delete p._clientSynced;
+  });
+  return store;
+}
 function importProfiles(ev){
   var file=ev.target.files[0];if(!file)return;
   var r=new FileReader();r.onload=function(e){
@@ -5372,6 +5409,7 @@ function importProfiles(ev){
             merged[name]=incoming;
           }
         });
+        _clearSyncBaselines(merged);
         saveProfilesLS(merged);
         // Persist each imported client to the backend so the data isn't just local
         keys.forEach(function(name){
@@ -5662,6 +5700,19 @@ function onBillingBlur(el){
     rebuild(daysIn(parts[0],parts[1]));
     applyStates(savedStates);
     checkDuplicatePeriod(val);
+  } else if(raw.length===5){
+    // "9/2025" types as 92025 — the month digit needs padding. Left unrepaired, the value stays
+    // malformed ("92/025") and every period comparison downstream (duplicate check, missing-invoice
+    // report, monthly preview) silently fails to match it.
+    var mm5='0'+raw.slice(0,1), yyyy5=raw.slice(1,5);
+    val=mm5+'/'+yyyy5;
+    el.value=val;
+    document.getElementById('billingPeriod2').value=val;
+    var parts5=val.split('/');
+    var savedStates5=captureStates();
+    rebuild(daysIn(parts5[0],parts5[1]));
+    applyStates(savedStates5);
+    checkDuplicatePeriod(val);
   } else if(raw.length===6){
     // mmyyyy shorthand e.g. 042025
     var mm=raw.slice(0,2),yyyy=raw.slice(2,6);
@@ -5701,7 +5752,18 @@ function captureStates(){
 function applyStates(states){
   ['svc','cplx'].forEach(function(key){
     var tbodyId=key==='svc'?'svcBody':'cplxBody',rows=document.getElementById(tbodyId).querySelectorAll('tr');
-    states[key].forEach(function(rowState,i){if(!rows[i])return;var cells=rows[i].querySelectorAll('td.mc');rowState.forEach(function(on,j){if(cells[j])cells[j].classList.toggle('on',on);});});
+    states[key].forEach(function(rowState,i){
+      if(!rows[i])return;
+      // Never re-apply a mark to a day the CURRENT month doesn't have. Copying a 31-day month into a
+      // 30-day one used to carry day 31's checkmarks across; the print CSS re-shows .inactive rows and
+      // buildInvoiceHTML strips the class entirely, so the phantom day printed on the certified form.
+      if(rows[i].classList.contains('inactive')){
+        rows[i].querySelectorAll('td.mc').forEach(function(c){c.classList.remove('on');});
+        return;
+      }
+      var cells=rows[i].querySelectorAll('td.mc');
+      rowState.forEach(function(on,j){if(cells[j])cells[j].classList.toggle('on',on);});
+    });
   });
 }
 
@@ -6651,19 +6713,32 @@ function saveStateRate(){
   if(!raw||isNaN(n)||n<=0){ if(st){st.style.color='#c0392b';st.textContent='Enter a valid rate';} return; }
   var val=n.toFixed(2);
   localStorage.setItem('lhca_state_rate',val); el.value=val;
-  _pushSettings({state_rate:val});   // sync to the backend so it follows the owner across devices
-  if(st){st.style.color='#1a7740';st.textContent='✓ Saved — $'+val+'/hr on all invoices';}
+  if(st){st.style.color='#5c7590';st.textContent='Saving…';}
+  // Report the real result. loadSettingsAPI makes the SERVER authoritative on the next load, so a
+  // silent failure here means the rate reverts and every invoice bills at the old rate.
+  _pushSettings({state_rate:val}).then(function(){
+    if(st){st.style.color='#1a7740';st.textContent='✓ Saved — $'+val+'/hr on all invoices';}
+  },function(e){
+    if(!st)return;
+    if(e&&e.notSignedIn){ st.style.color='#1a7740'; st.textContent='✓ Saved — $'+val+'/hr on all invoices (sign in to sync it to your other devices)'; return; }
+    st.style.color='#c0392b';
+    st.textContent='⚠ Saved on this device only — the server rejected it ('+((e&&e.message)||'error')+'). It will revert on reload.';
+  });
 }
 // ── App settings sync (state rate + agency) across the owner's devices ──
 // These two were localStorage-only, so they didn't follow the owner device-to-device. Now mirrored
 // to a backend AppSettings store: pushed on save, pulled on load (server is the source of truth).
+// Returns a promise so callers can report the REAL outcome. This used to swallow every failure with a
+// console.warn while the UI said "Saved ✓" — and because loadSettingsAPI treats the server as the source
+// of truth, a failed push is silently reverted on the next load. For the state rate that means every
+// invoice quietly goes back to billing at the old hourly rate.
 function _pushSettings(obj){
-  if(typeof _apiToken==='undefined' || !_apiToken || typeof API_BASE!=='string') return; // only when signed in
-  try{
-    fetch(API_BASE+'/settings',{method:'POST',headers:apiHeaders(),body:JSON.stringify(obj)})
-      .then(function(r){ if(!r.ok) console.warn('settings sync failed:', r.status); })
-      .catch(function(e){ console.warn('settings sync failed:', e); });
-  }catch(e){}
+  if(typeof _apiToken==='undefined' || !_apiToken || typeof API_BASE!=='string'){
+    // Not signed in is the normal local-only state, not a sync failure — flag it so callers stay quiet.
+    var _e=new Error('not signed in'); _e.notSignedIn=true; return Promise.reject(_e);
+  }
+  return fetch(API_BASE+'/settings',{method:'POST',headers:apiHeaders(),body:JSON.stringify(obj)})
+    .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r; });
 }
 function loadSettingsAPI(){
   return fetch(API_BASE+'/settings',{headers:apiHeaders()})
@@ -7816,6 +7891,9 @@ function loadTasksAPI() {
       });
       // Merge so a task created on this device while the load was in flight isn't wiped; a task
       // that had a dbId but is gone from the server was deleted elsewhere, so it's dropped.
+      // Same guard every other loader has: a save that started during this fetch isn't in the
+      // response, so merging it now reverts the just-ticked task.
+      if(_savesInFlight>0)return;
       saveTodos(_mergeByIdKeepUnsynced(todos, getTodos(), 'dbId'));
       // Re-render if user is currently on the tasks page so DB-loaded tasks become clickable
       if(document.getElementById('page-tasks')&&document.getElementById('page-tasks').classList.contains('active')){
@@ -7824,7 +7902,8 @@ function loadTasksAPI() {
     }).catch(function (e) { console.error('Load tasks error:', e); showDbError('tasks'); });
 }
 function saveTaskAPI(todo) {
-  return trackSave('task: '+(todo.text||'').slice(0,32), function(){
+  // Join the in-flight counter the loaders gate on (rosters already do this via _trackRosterSave).
+  return _trackRosterSave(trackSave('task: '+(todo.text||'').slice(0,32), function(){
     return fetch(API_BASE + '/tasks', {
       method: 'POST', headers: apiHeaders(),
       body: JSON.stringify({
@@ -7846,7 +7925,7 @@ function saveTaskAPI(todo) {
       }
       return result;
     });
-  });
+  }));
 }
 function deleteTaskAPI(dbId) {
   if (!dbId) return;
@@ -9194,7 +9273,14 @@ function saveAgencyInfo(obj){
   var D=_agencyDefaults();
   var clean={}; for(var k in D){ clean[k]=(obj&&obj[k]!=null)?String(obj[k]):D[k]; }
   localStorage.setItem('lhca_agency', JSON.stringify(clean));
-  if(typeof _pushSettings==='function') _pushSettings({agency:clean});   // sync across devices
+  // _pushSettings swallowed failures, and loadSettingsAPI treats the SERVER as the source of truth —
+  // so a failed push silently reverted the agency details (which are stamped onto the MSA-4676) on the
+  // next reload, on this device too. Report the real outcome.
+  var _agencyPush=(typeof _pushSettings==='function')?_pushSettings({agency:clean}):null;
+  if(_agencyPush&&_agencyPush.catch)_agencyPush.catch(function(e){
+    if(e&&e.notSignedIn)return;   // local-only until sign-in — expected, not a failure
+    showAlert('The agency details were saved on this device, but the server did not accept them ('+((e&&e.message)||'error')+').\n\nThey will revert on the next reload and forms will use the old details. Try saving again.',{title:'Agency details not synced'});
+  });   // sync across devices
   return clean;
 }
 // Settings > Agency Information — populate the inputs from the stored/default values.
@@ -9700,6 +9786,29 @@ function validateInvoiceForSend(name,prof,inv,cwRec){
     if(!hasTask)issues.push('Total Time empty AND no tasks checked');
     else issues.push('Total Time hours blank');
   }
+  // Sanity-check the billed time itself. These fields are free text and were only ever checked for
+  // PRESENCE — so a typo ("99", "-8", "abc", 75 minutes) printed straight onto the certified MSA-1904
+  // and went to MDHHS as a claim. Nothing between the keystroke and the state caught it.
+  var _hm=function(hhKey,mmKey,label){
+    var hh=String(d[hhKey]==null?'':d[hhKey]).trim(), mm=String(d[mmKey]==null?'':d[mmKey]).trim();
+    if(hh===''&&mm==='')return;
+    if(hh!==''&&!/^\d{1,3}$/.test(hh))issues.push(label+' hours is not a plain number ("'+hh+'")');
+    if(mm!==''&&!/^\d{1,2}$/.test(mm))issues.push(label+' minutes is not a plain number ("'+mm+'")');
+    if(/^\d{1,2}$/.test(mm)&&parseInt(mm,10)>59)issues.push(label+' minutes is '+mm+' — minutes must be 0-59');
+    if(/^\d{1,3}$/.test(hh)&&parseInt(hh,10)>744)issues.push(label+' hours is '+hh+' — more than a full month');
+  };
+  _hm('svcHH','svcMM','Total Time'); _hm('cplxHH','cplxMM','Complex care time'); _hm('grandHH','grandMM','Billing-period total');
+  // Cross-check against the authorization: billing more than MDHHS approved is the error that costs the
+  // agency a recoupment, and nothing else in the app compares these two numbers.
+  try{
+    var a=prof&&prof.authorization;
+    if(a&&a.hours!=null&&String(a.hours).trim()!==''&&/^\d{1,3}$/.test(String(d.svcHH||'').trim())){
+      var billed=parseInt(d.svcHH,10)*60+(parseInt(d.svcMM,10)||0);
+      var appr=parseInt(a.hours,10)*60+(parseInt(a.minutes,10)||0);
+      if(appr>0&&billed>appr)
+        issues.push('Billed time ('+d.svcHH+':'+_padMin(d.svcMM||'00')+') exceeds the authorized '+a.hours+':'+_padMin(a.minutes||0));
+    }
+  }catch(e){}
   // Signature: at least one must exist locally so the PDF auto-places it
   if(!getSigs().length)issues.push('Missing signature — PDF will export with no signature on it');
   return issues;
@@ -10363,15 +10472,22 @@ async function sendAllCaseworkerEmails(period){
         try{
           // Await DIRECTLY so each caseworker's PDF capture finishes before the next worker starts.
           // (Earlier bug: sendMonthlyEmail did fire-and-forget, causing parallel page-invoice usage and PDFs going to wrong worker.)
-          await _doMonthlyEmailSend(item.group.email,item.wname,period,readyToSend,alreadySent.length,hasIssues,missingInvoice);
-          sentCount++;
+          var _res=await _doMonthlyEmailSend(item.group.email,item.wname,period,readyToSend,alreadySent.length,hasIssues,missingInvoice);
+          // Only count a caseworker as SENT when the send actually reported success. The inner function
+          // returns undefined on its failure paths, and this used to increment regardless — so on
+          // billing day the closing toast counted failures as successes.
+          if(_res&&_res.ok)sentCount++; else failedWorkers.push(item.wname);
           // Throttle between sends (skip after the last one)
           if(i<sendable.length-1){
             await new Promise(function(r){setTimeout(r,BULK_THROTTLE_MS);});
           }
-        }catch(e){console.error('Send to '+item.wname+' failed:',e);}
+        }catch(e){console.error('Send to '+item.wname+' failed:',e); failedWorkers.push(item.wname);}
       }
       showToast('✓ Sent batches to '+sentCount+' caseworker'+(sentCount===1?'':'s')+'.',5000);
+      if(failedWorkers.length){
+        showAlert('These caseworkers were NOT sent — their clients are still Draft and will reappear next run:\n\n• '+
+          failedWorkers.join('\n• ')+'\n\nRe-run Send All, or send them individually.',{title:'Some batches failed',danger:true});
+      }
       // Refresh preview
       previewMonthlyInvoices();
     },
@@ -10970,7 +11086,18 @@ function _asstUpdateClient(args){
   var prop=_ASST_UPDATABLE[fieldRaw];
   if(!prop)return {error:'I can only update: phone, email, address, city, state, zip, county, medicaid ID, medicare, DOB, hourly rate, start date, status, program, carrier, or member #. (SSN and license must be edited on the client page.)'};
   var value=(args.value==null?'':String(args.value)).trim();
-  if(prop==='clientStatus'){ var sv=value.toLowerCase(); value=(sv==='in progress')?'inactive':sv; }
+  if(prop==='clientStatus'){
+    var sv=value.toLowerCase(); value=(sv==='in progress')?'inactive':sv;
+    if(['active','inactive','lost','terminated'].indexOf(value)<0)
+      return {error:'Status must be one of: Active, In Progress, Lost, Terminated.'};
+    // Same gate the client pane enforces (saveClientInfo): a CHAMPS client can't go Active without a
+    // DHS-1210 on file. Going through the assistant used to skip it, and an Active client with no
+    // authorization is then picked up by invoice generation.
+    if(value==='active' && p.program!=='carrier' && !hasAuthorization(p))
+      return {error:key+' has no DHS-1210 authorization on file, so they can\'t be set Active. Import the authorization on their Authorization tab first.'};
+    if(value==='active' && !(p.startDate&&String(p.startDate).trim()))
+      return {error:key+' has no service start date, which is required before they can be Active.'};
+  }
   if(prop==='program'){ value=(/carrier|managed/i.test(value))?'carrier':'champs'; }
   var label=(args.field||prop);
   if(typeof showConfirm!=='function')return {error:'Confirm UI unavailable.'};
@@ -11093,6 +11220,15 @@ function _asstRunTool(name,args){
 async function _asstSend(text){
   text=(text||'').trim(); if(!text||_asstBusy)return;
   if(typeof spToken==='undefined'||!spToken){ _asstRenderMsg('assistant','Please sign in first (Settings) so I can look up clients and send email.'); return; }
+  // The backend rejects a conversation over 40 turns (ai-chat.js), and this array only ever grew —
+  // so after ~10 tool-using questions the assistant answered every message with "Conversation too
+  // long" and the only way out was a page reload. Keep the recent window instead, always starting on
+  // a user turn so the tool_call/tool_result pairing stays valid.
+  if(_asstMessages.length>28){
+    var _cut=_asstMessages.length-24;
+    while(_cut<_asstMessages.length && _asstMessages[_cut].role!=='user')_cut++;
+    if(_cut<_asstMessages.length)_asstMessages=_asstMessages.slice(_cut);
+  }
   _asstMessages.push({role:'user',content:text});
   _asstRenderMsg('user',text);
   _asstBusy=true; _asstSetTyping(true);
