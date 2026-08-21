@@ -1431,6 +1431,7 @@ function deleteClient(){
   var name=activeProfileName;
   showConfirm('Delete "'+name+'" and all their data? This cannot be undone.',function(){
     aiTrack('ClientDeleted',{client:name});
+    addAuditEntry(name,'CLIENT RECORD DELETED by '+currentUserEmail());   // durable record — aiTrack is scrubbed telemetry, not an audit trail
     var p=getProfiles();deleteProfileSP(name);delete p[name];
     try{localStorage.removeItem('lhca_draft_'+name);}catch(e){}
     saveProfilesLS(p);activeProfileName=null;logActivity('delete','Client deleted: '+name);navHome();
@@ -1557,6 +1558,7 @@ function doDeleteInv(idx){
   var p=getProfiles(),inv=p[activeProfileName].invoices[idx];
   if(!inv)return;
   var clientName=activeProfileName;
+  addAuditEntry(clientName,'Invoice DELETED for '+(inv.billingPeriod||'(no period)')+' by '+currentUserEmail());
   // Remove from LS by INVOICE IDENTITY (dbId, else period+savedAt) — the array index can
   // shift, and this runs later (after the server delete confirms).
   var removeLocally=function(){
@@ -1760,7 +1762,11 @@ function parseDHS1210(pages){
 function readDHS1210File(file){
   return file.arrayBuffer().then(function(buf){
     if(!pdfjsLib.GlobalWorkerOptions.workerSrc) pdfjsLib.GlobalWorkerOptions.workerSrc='vendor/pdf.worker.min.js';
-    return pdfjsLib.getDocument({data:buf}).promise;
+    // isEvalSupported:false is the documented mitigation for CVE-2024-4367 (arbitrary JS execution
+    // from a crafted PDF, fixed upstream in 4.2.67; this bundle is 3.11.174). DHS-1210 files arrive
+    // from outside the agency — emailed, scanned, downloaded — and this origin holds the signed-in
+    // user's tokens and the whole roster, so the font-rendering eval path must stay closed.
+    return pdfjsLib.getDocument({data:buf, isEvalSupported:false}).promise;
   }).then(function(pdf){
     var jobs=[]; for(var p=1;p<=pdf.numPages;p++)jobs.push(pdf.getPage(p).then(_dhsPageLines));
     return Promise.all(jobs);
@@ -3153,6 +3159,7 @@ function deleteCaregiver(){
   showConfirm('Delete caregiver "'+cgName+'"? This cannot be undone.',function(){_doDeleteCaregiver(id);},{title:'Delete Caregiver',okText:'Delete'});
 }
 function _doDeleteCaregiver(id){
+  try{ var _n=(getCaregivers()[id]||{}).name||id; addAuditEntry('',"Caregiver DELETED: "+_n+' by '+currentUserEmail()); }catch(e){}
   var cgs=getCaregivers();var cgName=(cgs[id]&&cgs[id].name)||id;
   delete cgs[id];saveCaregiversLS(cgs);deleteCaregiverAPI(id);
   aiTrack('CaregiverDeleted',{caregiverId:id,caregiverName:cgName});
@@ -4204,11 +4211,7 @@ function logActivity(type,text){
   log.unshift({type:type,text:text,ts:new Date().toLocaleString()});
   if(log.length>40)log=log.slice(0,40);
   try{localStorage.setItem('lhca_activity',JSON.stringify(log));}catch(e){}
-  // Persist to DB (fire-and-forget)
-  if(spToken){
-    fetch(API_BASE+'/audit',{method:'POST',headers:apiHeaders(),body:JSON.stringify({event_type:type,client_name:'',action:text,who:currentUserEmail()})})
-      .catch(function(e){console.error('Audit log error:',e);});
-  }
+  _postAuditRecord({event_type:type,client_name:'',action:text,who:currentUserEmail()});
   renderActivityFeed();
 }
 function renderActivityFeed(){
@@ -4261,11 +4264,29 @@ function addAuditEntry(clientName,action){
   log.unshift({client:clientName,action:action,who:who,ts:new Date().toLocaleString()});
   if(log.length>200)log=log.slice(0,200);
   try{localStorage.setItem('lhca_audit',JSON.stringify(log));}catch(e){}
-  // Persist to DB (fire-and-forget)
-  if(spToken){
-    fetch(API_BASE+'/audit',{method:'POST',headers:apiHeaders(),body:JSON.stringify({event_type:'audit',client_name:clientName,action:action,who:who})})
-      .catch(function(e){console.error('Audit save error:',e);});
+  // Persist to DB. This is the HIPAA §164.312(b) record, so a failure must be VISIBLE: it used to
+  // be fire-and-forget with no r.ok check, and was skipped entirely when the token had expired —
+  // both of which stop the trail silently while the app carries on.
+  _postAuditRecord({event_type:'audit',client_name:clientName,action:action,who:who});
+}
+// Shared writer for both audit paths. Surfaces a failure through the save-status toast rather than
+// swallowing it, and says plainly when the record could not be written at all.
+function _postAuditRecord(body){
+  if(typeof spToken==='undefined'||!spToken){
+    if(typeof _showSaveStatus==='function')_showSaveStatus('failed','Not signed in — this action was NOT written to the audit log.');
+    return;
   }
+  fetch(API_BASE+'/audit',{method:'POST',headers:apiHeaders(),body:JSON.stringify(body)})
+    .then(function(r){
+      if(!r.ok){
+        console.error('Audit save failed: HTTP '+r.status);
+        if(typeof _showSaveStatus==='function')_showSaveStatus('failed','Audit log write failed ('+r.status+') — this action was not recorded.');
+      }
+    })
+    .catch(function(e){
+      console.error('Audit save error:',e);
+      if(typeof _showSaveStatus==='function')_showSaveStatus('failed','Audit log write failed — this action was not recorded.');
+    });
 }
 function renderAuditPane(){
   if(!activeProfileName)return;
@@ -5044,25 +5065,7 @@ async function doBackupToOneDrive(includeFullSSN,silent){
     // Build the backup payload (same logic as JSON export)
     var p=getProfiles();
     if(!Object.keys(p).length){throw new Error('No clients yet.');}
-    var copy=JSON.parse(JSON.stringify(p));
-    if(!includeFullSSN){
-      Object.keys(copy).forEach(function(name){
-        var prof=copy[name];if(prof.ssn){
-          var digits=String(prof.ssn).replace(/\D/g,'');
-          prof.ssn=digits.length>=4?'***-**-'+digits.slice(-4):'***-**-****';
-        }
-      });
-    }
-    var payload={
-      _exportedAt:new Date().toISOString(),
-      _exportedBy:(window.signedInEmail||'unknown'),
-      _includesFullSSN:!!includeFullSSN,
-      _appVersion:'liberty-homecare-v13',
-      caregivers:getCaregivers(),
-      caseworkers:getCaseworkers(),
-      signatures:getSigs(),
-      clients:copy
-    };
+    var payload=_buildBackupPayload(includeFullSSN);
     var content=JSON.stringify(payload,null,2);
     var bytes=new Blob([content]).size;
     if(bytes>4*1024*1024){throw new Error('Backup too large for direct upload ('+(bytes/1024/1024).toFixed(1)+' MB). Contact support to add chunked upload.');}
@@ -5117,18 +5120,62 @@ async function doBackupToOneDrive(includeFullSSN,silent){
   }
 }
 
+// Strip the internal dirty-tracking baseline from anything that leaves the app. _clientSig embeds
+// the raw SSN, so a "masked" export/backup that keeps _clientSynced still ships the full number —
+// masking prof.ssn alone is not enough. It is meaningless outside this device anyway.
+function _stripInternalPHI(copy){
+  Object.keys(copy).forEach(function(name){ if(copy[name]) delete copy[name]._clientSynced; });
+  return copy;
+}
+function _maskSsnValue(v){
+  var digits=String(v||'').replace(/\D/g,'');
+  return digits.length>=4?'***-**-'+digits.slice(-4):'***-**-****';
+}
+// The whole backup payload, built in one testable place. Everything that leaves this device for
+// OneDrive goes through here, so the SSN rules are enforced once and can be pinned by a test.
+function _buildBackupPayload(includeFullSSN){
+  var copy=_stripInternalPHI(JSON.parse(JSON.stringify(getProfiles())));
+  if(!includeFullSSN){
+    Object.keys(copy).forEach(function(name){
+      var prof=copy[name]; if(prof && prof.ssn) prof.ssn=_maskSsnValue(prof.ssn);
+    });
+  }
+  // CAREGIVERS were never masked at all — getCaregivers() re-attaches the SSN from _cgSsnMem, so
+  // every backup (including the automatic weekly one, and the "masked" mode) uploaded every
+  // caregiver's full SSN to OneDrive. Same rule as clients, and never ship the MI Login password.
+  var cgCopy=JSON.parse(JSON.stringify(getCaregivers()));
+  Object.keys(cgCopy).forEach(function(id){
+    var c=cgCopy[id]; if(!c)return;
+    delete c.miloginPassword; delete c.milogin_password;
+    if(!includeFullSSN && c.ssn) c.ssn=_maskSsnValue(c.ssn);
+  });
+  return {
+    _exportedAt:new Date().toISOString(),
+    _exportedBy:currentUserEmail(),   // window.signedInEmail was never assigned — every backup said "unknown"
+    _includesFullSSN:!!includeFullSSN,
+    _appVersion:'liberty-homecare-v13',
+    caregivers:cgCopy,
+    caseworkers:getCaseworkers(),
+    signatures:getSigs(),
+    clients:copy
+  };
+}
 function doExportProfiles(includeFullSSN){
   var p=getProfiles();
   // Deep clone so we don't mutate live data
-  var copy=JSON.parse(JSON.stringify(p));
+  var copy=_stripInternalPHI(JSON.parse(JSON.stringify(p)));
   if(!includeFullSSN){
     Object.keys(copy).forEach(function(name){
-      var prof=copy[name];if(prof.ssn){
-        var digits=String(prof.ssn).replace(/\D/g,'');
-        prof.ssn=digits.length>=4?'***-**-'+digits.slice(-4):'***-**-****';
-      }
+      var prof=copy[name];if(prof.ssn){ prof.ssn=_maskSsnValue(prof.ssn); }
     });
   }
+  // HIPAA §164.528: a bulk extract of the roster is a disclosure. It used to leave no record at all.
+  try{
+    var _n=Object.keys(copy).length;
+    logActivity('export',(includeFullSSN?'FULL-SSN':'Masked')+' client export downloaded ('+_n+' clients) by '+currentUserEmail());
+    if(includeFullSSN&&typeof addAuditEntry==='function')
+      Object.keys(copy).forEach(function(nm){ addAuditEntry(nm,'Included in a FULL-SSN roster export'); });
+  }catch(e){ console.error('export audit failed',e); }
   var fname='liberty_clients_'+new Date().toISOString().slice(0,10)+(includeFullSSN?'_FULL':'_masked')+'.json';
   var b=new Blob([JSON.stringify(copy,null,2)],{type:'application/json'}),u=URL.createObjectURL(b);
   var a=document.createElement('a');a.href=u;a.download=fname;a.click();URL.revokeObjectURL(u);
@@ -6419,7 +6466,7 @@ function logEmailSend(entry){
   // entry: { recipient, caseworkerName, billingPeriod, clientNames[], attachmentCount, sentBy, success, errorMsg?, cc? }
   var record=Object.assign({
     timestamp:new Date().toISOString(),
-    sentBy:(window.signedInEmail||'unknown')
+    sentBy:currentUserEmail()   // window.signedInEmail is never assigned anywhere — this logged "unknown" for every disclosure
   },entry);
   // HIPAA-critical — persist to DB FIRST, then mirror to LS as display cache
   var summary='Email to '+(record.recipient||'?')+' · '+((record.clientNames||[]).length)+' client'+((record.clientNames||[]).length===1?'':'s')+' · '+(record.success?'sent':'failed');
@@ -8434,6 +8481,7 @@ function deleteCaseworker(){
   var id=document.getElementById('cw-editing-id').value;if(!id)return;
   var cws=getCaseworkers().find(function(c){return c.id===id;});if(!cws)return;
   showConfirm('Delete caseworker "'+cws.name+'"? This cannot be undone.',function(){
+    addAuditEntry('','Caseworker DELETED: '+cws.name+' by '+currentUserEmail());
     saveCaseworkersLS(getCaseworkers().filter(function(c){return c.id!==id;}));
     deleteCaseworkerAPI(id);
     activeCwId=null;
