@@ -49,7 +49,14 @@ function loadApp() {
 
 // Fresh localStorage per test group. Also null the tick-scoped profiles read-cache so a test
 // never gets a stale {} from a previous test's read (the cache normally clears on a microtask).
-function resetStorage(win) { win.localStorage.clear(); win._profilesCache = null; }
+function resetStorage(win) {
+  win.localStorage.clear();
+  win._profilesCache = null;
+  // loadApp() caches ONE window, so module-scope state survives between tests. The SSN overlays are
+  // the dangerous ones: a value cached by an earlier test reappears through getProfiles/getCaregivers
+  // and can make a later test pass for the wrong reason (this masked two vacuous tests).
+  try { win.eval('_ssnMem = Object.create(null); _clientSyncedMem = Object.create(null); if (typeof _cgSsnMem !== "undefined") _cgSsnMem = Object.create(null);'); } catch (e) {}
+}
 
 // Realm-safe deep compare. Objects/arrays returned from app.js live in the jsdom realm, so
 // assert.deepStrictEqual fails on prototype identity vs a Node-realm literal. Compare by value.

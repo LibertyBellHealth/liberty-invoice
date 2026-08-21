@@ -3676,7 +3676,7 @@ function renderCgInfoPane(){
   // the 9 digits with no dashes (#6).
   var cgSsnDiv=document.createElement('div');cgSsnDiv.className='info-field';
   cgSsnDiv.innerHTML='<label for="cgi-ssn">Social Security # <span style="font-weight:400;font-size:11px;color:#5c7590;">(double-click to copy, no dashes)</span></label>'+
-    '<input id="cgi-ssn" type="password" autocomplete="off" maxlength="11" placeholder="XXX-XX-XXXX" value="'+esc(cg.ssn||'')+'" oninput="formatSSN(this);" onfocus="_revealSecret(this)" onblur="_maskSecretSoon(this)" ondblclick="_copyField(this,\'digits\')" title="Double-click to copy without dashes">';
+    '<input id="cgi-ssn" type="password" autocomplete="off" maxlength="11" placeholder="'+(cg.ssnLast4?('•••-••-'+esc(cg.ssnLast4)+' — click to show'):'XXX-XX-XXXX')+'" value="'+esc(cg.ssn||'')+'" oninput="formatSSN(this);" onfocus="_revealCgSsnField(this,activeCgId)" onblur="_maskSecretSoon(this)" ondblclick="_copyField(this,\'digits\')" title="Click to reveal; double-click to copy without dashes">';
   g.appendChild(cgSsnDiv);
   mkF('cgi-street','Street',cg.street||cg.address,true);
   mkRow('<div class="info-field"><label for="cgi-city">City</label><input id="cgi-city" value="'+esc(cg.city||'')+'"></div>'+
@@ -3715,7 +3715,10 @@ function saveCgInfoPane(){
   cg.status=document.getElementById('cgi-status').value;
   cg.phone=document.getElementById('cgi-phone').value;cg.email=document.getElementById('cgi-email').value;
   var cgiDl=document.getElementById('cgi-dl');if(cgiDl)cg.driversLicense=cgiDl.value;
-  var cgiSsn=document.getElementById('cgi-ssn');if(cgiSsn)cg.ssn=cgiSsn.value;
+  // Only take the SSN when the field actually holds one. An untouched (never-focused) field is empty
+  // now that the roster doesn't carry the SSN — writing that through would blank the stored value.
+  // saveCaregiverAPI omits an empty ssn and the backend keeps what it has.
+  var cgiSsn=document.getElementById('cgi-ssn');if(cgiSsn&&cgiSsn.value.trim())cg.ssn=cgiSsn.value;
   cg.street=document.getElementById('cgi-street').value;cg.city=document.getElementById('cgi-city').value;
   cg.state=document.getElementById('cgi-state').value;cg.zip=document.getElementById('cgi-zip').value;cg.county=document.getElementById('cgi-county').value;
   var cgiDob=document.getElementById('cgi-dob');if(cgiDob)cg.dob=cgiDob.value;
@@ -3934,6 +3937,26 @@ function _revealSecret(inp){ if(!inp)return; if(inp._maskTimeout){clearTimeout(i
 function _maskSecretSoon(inp,ms){ if(!inp)return; if(inp._maskTimeout)clearTimeout(inp._maskTimeout); inp._maskTimeout=setTimeout(function(){ if(inp&&inp.type==='text')inp.type='password'; if(inp)inp._maskTimeout=null; },ms||4000); }
 // MI Login password: fetch on FOCUS (never preloaded/cached) then reveal — replaces the old
 // "Show" button (#8). Empty-on-save is safe (backend pwProvided guard preserves the stored value).
+// Click into the SSN field and it fetches the real value, then reveals it — same shape as MI Login,
+// no button. The roster load only carries the last 4, so an unfetched field shows a •••• placeholder
+// rather than the number; focusing it is what pulls the SSN, and that read is audited server-side.
+function _revealCgSsnField(inp,id){
+  if(!inp)return;
+  _revealSecret(inp);
+  if(inp.value||!id)return;                 // already fetched, or the user is typing a new one
+  if(inp.dataset.fetching==='1')return;
+  inp.dataset.fetching='1';
+  fetch(API_BASE+'/caregivers/'+encodeURIComponent(id)+'/ssn',{headers:apiHeaders()})
+    .then(function(r){return r.ok?r.json():null;})
+    .then(function(d){
+      if(d&&typeof d.ssn==='string'&&!inp.value){
+        inp.value=d.ssn;
+        try{ var cgs=getCaregivers(); if(cgs[id]){ cgs[id].ssn=d.ssn; saveCaregiversLS(cgs); } }catch(e){}
+      }
+    })
+    .catch(function(){})
+    .then(function(){ inp.dataset.fetching=''; });
+}
 function _revealMiloginField(inp,id){
   if(!inp)return;
   _revealSecret(inp);
@@ -5267,7 +5290,7 @@ function exportClientsXLSX(){
   // Sheet 3: Caregivers (SSN masked to last 4)
   var caregiversRows=Object.keys(caregivers).map(function(id){
     var c=caregivers[id];
-    return {'ID':id,'Name':c.name||'','First':c.firstName||'','Last':c.lastName||'','Status':c.status||'','Role':c.emptype||'','Phone':c.phone||'','Email':c.email||'',"Driver's License":c.driversLicense||'','SSN (masked)':maskSSN(c.ssn),'Hire Date':c.hireDate||'','Notes':(c.notes||'').slice(0,500)};
+    return {'ID':id,'Name':c.name||'','First':c.firstName||'','Last':c.lastName||'','Status':c.status||'','Role':c.emptype||'','Phone':c.phone||'','Email':c.email||'',"Driver's License":c.driversLicense||'','SSN (masked)':(c.ssn?maskSSN(c.ssn):(c.ssnLast4?'***-**-'+c.ssnLast4:'')),'Hire Date':c.hireDate||'','Notes':(c.notes||'').slice(0,500)};
   });
   // Sheet 4: Caseworkers
   var caseworkersRows=caseworkers.map(function(c){
@@ -7782,7 +7805,10 @@ function loadCaregiversAPI() {
           miloginUsername: cg.milogin_username || '', miloginPassword: cg.milogin_password || '',
           street: cg.street || '', city: cg.city || '',
           state: cg.state || '', zip: cg.zip || '', county: cg.county || '',
-          dob: cg.dob || '', driversLicense: cg.drivers_license || '', ssn: cg.ssn || '',
+          dob: cg.dob || '', driversLicense: cg.drivers_license || '',
+          // The list endpoint no longer returns the full SSN (minimum necessary) — only the last 4,
+          // which is what the masked export needs. The full value is fetched when the field is focused.
+          ssn: cg.ssn || '', ssnLast4: cg.ssn_last4 || '',
           notes: cg.notes || '',
           _rowVersion: cg.row_version_hex || null   // optimistic-concurrency token
         };
