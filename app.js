@@ -1541,6 +1541,12 @@ function promptInvNote(idx){
   var cur=p[activeProfileName].invoices[idx].invoiceNote||'';
   showPrompt('Note for this invoice:',cur,function(note){
     var p2=getProfiles();if(!p2[activeProfileName]||!p2[activeProfileName].invoices[idx])return;
+    // invoice_note is NVARCHAR(1000). An over-length note used to fail the ENTIRE client save with a
+    // generic 500 that named nothing — say so here instead of letting it become a failed save.
+    if((note||'').length>1000){
+      showAlert('That note is '+note.length+' characters. The limit is 1000 — shorten it and save again.',{title:'Note too long'});
+      return;
+    }
     p2[activeProfileName].invoices[idx].invoiceNote=note||'';
     saveProfilesLS(p2);saveProfileSP(activeProfileName,p2[activeProfileName]);renderInvHistory();renderOverviewPane();
   },{title:'Invoice Note',okText:'Save Note'});
@@ -1648,7 +1654,7 @@ function renderNotesPane(){
   invoices.forEach(function(inv,idx){
     var row=document.createElement('div');row.style.cssText='display:flex;align-items:center;gap:10px;margin-bottom:8px;';
     row.innerHTML='<span style="min-width:72px;font-size:12px;font-weight:600;color:#185FA5;">'+esc(inv.billingPeriod)+'</span>'+
-      '<input style="flex:1;padding:6px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:12px;font-family:Arial,sans-serif;outline:none;color:#1a2b45;" value="'+esc(inv.invoiceNote||'')+'" placeholder="Note…" data-idx="'+idx+'">';
+      '<input maxlength="1000" style="flex:1;padding:6px 10px;border:1px solid #d0d8e4;border-radius:5px;font-size:12px;font-family:Arial,sans-serif;outline:none;color:#1a2b45;" value="'+esc(inv.invoiceNote||'')+'" placeholder="Note…" data-idx="'+idx+'">';
     c.appendChild(row);
   });
   c.querySelectorAll('input[data-idx]').forEach(function(inp){
