@@ -533,8 +533,16 @@ function clientWasActiveInPeriod(prof,period){
 // Managed-care (carrier) clients are billed through the carrier's own software — they never get a
 // CRM invoice, so they're excluded from every invoicing/"missing invoice" surface.
 function isCarrierClient(prof){ return !!prof && prof.program==='carrier'; }
+// Owner decision (2026-08-21): only an ACTIVE client is invoiced. "In Progress" (stored as
+// 'inactive'), Lost and Terminated clients are excluded from every invoicing surface — generation,
+// the missing-invoice report, the monthly preview and the batch send. This lives here, in the single
+// predicate, because the four surfaces each carried their own inline status test and had drifted:
+// updateMissingReport relied on clientDueForInvoice, which never checked status at all, so it nagged
+// about clients who were not being served yet.
+function isInvoiceableStatus(prof){ return ((prof&&prof.clientStatus)||'active')==='active'; }
 function clientDueForInvoice(prof, period){
-  return !!(prof && prof.startDate) && !isCarrierClient(prof) && clientWasActiveInPeriod(prof, period);
+  return !!(prof && prof.startDate) && !isCarrierClient(prof) && isInvoiceableStatus(prof) &&
+         clientWasActiveInPeriod(prof, period);
 }
 // True when a client has a real DHS-1210 authorization on file (hours, tasks, or an effective date).
 // A DHS-1210 is what officially makes you the client's agency, so it gates the Active status.
@@ -4842,7 +4850,7 @@ function updateMissingReport(useCustom){
   var period=useCustom?document.getElementById('missingPeriodCustom').value.trim():document.getElementById('missingPeriodSelect').value;
   if(!period||period.length<7)return;
   var missing=allClients.filter(function(name){
-    if(!clientDueForInvoice(profiles[name],period))return false;   // #10: respect start date (also excludes carriers/inactive)
+    if(!clientDueForInvoice(profiles[name],period))return false;   // start date, carrier AND status (see clientDueForInvoice)
     return !((profiles[name].invoices)||[]).some(function(i){return i.billingPeriod===period;});
   });
   var list=document.getElementById('missingReportList');if(!list)return;
@@ -9964,7 +9972,7 @@ function _previewMonthlyInvoicesRender(period){
   var groups={};
   Object.keys(profiles).forEach(function(name){
     var prof=profiles[name];
-    if(prof.clientStatus==='inactive'||prof.clientStatus==='terminated'||prof.clientStatus==='lost')return;
+    if(!isInvoiceableStatus(prof))return;   // In Progress / Lost / Terminated are never invoiced
     if(isCarrierClient(prof))return;   // managed-care clients are billed by the carrier — never invoiced here
     // Skip clients whose service started AFTER this billing period
     if(!clientWasActiveInPeriod(prof,period))return;
@@ -10437,6 +10445,20 @@ function _dhsBuildFirstInvoice(res, prof, period){
   };
 }
 
+// Prorate a monthly authorization for a partial first month: authorized minutes × (days served ÷
+// days in month), rounded to the nearest minute. Returns {hours, minutes, daysServed, daysInMonth}.
+function _proratedFirstMonth(a, effectiveDate){
+  var eff=String(effectiveDate||'').split('/');
+  if(eff.length!==3)return null;
+  var mm=parseInt(eff[0],10), dd=parseInt(eff[1],10), yyyy=parseInt(eff[2],10);
+  if(!mm||!dd||!yyyy)return null;
+  var inMonth=daysIn(String(mm).padStart(2,'0'),String(yyyy));
+  if(dd<=1)return null;                       // started on the 1st — nothing to prorate
+  var served=inMonth-dd+1;
+  var totalMin=(parseInt(a.hours,10)||0)*60+(parseInt(a.minutes,10)||0);
+  var proMin=Math.round(totalMin*served/inMonth);
+  return { hours:Math.floor(proMin/60), minutes:proMin%60, daysServed:served, daysInMonth:inMonth, day:dd };
+}
 // Create a first invoice (Draft) for the active client from their DHS-1210 authorization.
 function createFirstInvoiceFromAuth(){
   if(!activeProfileName)return;
@@ -10449,7 +10471,31 @@ function createFirstInvoiceFromAuth(){
   var period=(eff.length===3)?(eff[0]+'/'+eff[2]):'';
   if(!period){ showAlert('The authorization has no effective date, so the billing period can’t be set. Add one on the Authorization tab first.'); return; }
   if((prof.invoices||[]).some(function(i){return i.billingPeriod===period;})){ showAlert('An invoice for '+period+' already exists for this client.'); return; }
-  var built=_dhsBuildFirstInvoice({hours:a.hours, minutes:a.minutes, rate:a.rate, tasks:a.tasks||[]}, prof, period);
+  // A mid-month start can be billed either way depending on the case, so ASK — this used to bill the
+  // full month silently (_firstOfEffectiveMonth pushes the start to the 1st), which over-bills MDHHS
+  // whenever service did not actually cover the whole month.
+  var _pro=_proratedFirstMonth(a, a.effectiveDate);
+  if(_pro){
+    var _full=a.hours+':'+_padMin(a.minutes||0);
+    var _part=_pro.hours+':'+_padMin(_pro.minutes);
+    showConfirm(
+      activeProfileName+'’s service starts on day '+_pro.day+' of '+period+', so this first month is partial.\n\n'+
+      'How should it be billed?\n\n'+
+      '• Full month — the whole authorized '+_full+' (correct when MDHHS pays the monthly amount regardless of start day)\n'+
+      '• Prorate — '+_part+', for the '+_pro.daysServed+' of '+_pro.daysInMonth+' days actually served\n\n'+
+      'Either way the invoice is created as a Draft you can edit before sending.',
+      function(){ _createFirstInvoice(prof,a,period,null); },
+      { title:'Partial first month', okText:'Bill full month', danger:false,
+        extraText:'Prorate to '+_part, onExtra:function(){ _createFirstInvoice(prof,a,period,_pro); } }
+    );
+    return;
+  }
+  _createFirstInvoice(prof,a,period,null);
+}
+// `pro` is null for a full month, or the _proratedFirstMonth result to bill only the days served.
+function _createFirstInvoice(prof,a,period,pro){
+  var built=_dhsBuildFirstInvoice({hours:(pro?pro.hours:a.hours), minutes:(pro?pro.minutes:a.minutes),
+                                   rate:a.rate, tasks:a.tasks||[]}, prof, period);
   if(!built){ showAlert('Could not build the invoice from this authorization.'); return; }
   var inv={ id:'dhs_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), billingPeriod:period,
     savedAt:new Date().toLocaleString(), status:'draft', invoiceNote:'', data:built.data };
@@ -10457,7 +10503,9 @@ function createFirstInvoiceFromAuth(){
   prof.invoices.unshift(inv);
   saveProfilesLS(p); saveProfileSP(activeProfileName, prof);
   if(typeof logActivity==='function')logActivity('invoice','First invoice created from DHS-1210 for '+activeProfileName+' ('+period+')');
-  var msg='✓ Draft invoice created for '+period+' from the authorization.\n\nIt is a Draft — review the day grid (the checked days are a starting pattern from each task’s frequency) before sending.';
+  var msg='✓ Draft invoice created for '+period+' from the authorization.'+
+    (pro?('\n\nPRORATED to '+pro.hours+':'+_padMin(pro.minutes)+' for the '+pro.daysServed+' of '+pro.daysInMonth+' days served.'):'')+
+    '\n\nIt is a Draft — review the day grid (the checked days are a starting pattern from each task’s frequency) before sending.';
   if(built.unmapped.length)msg+='\n\n⚠ These tasks didn’t match a service column and were left OFF — add them manually: '+built.unmapped.join(', ');
   showAlert(msg,{title:'First Invoice Created'});
   if(typeof renderAuthPane==='function')renderAuthPane(false);
@@ -10470,7 +10518,7 @@ function findClientsEligibleForAutoGen(period){
   var profiles=getProfiles();var out=[];
   Object.keys(profiles).forEach(function(name){
     var p=profiles[name];
-    if(p.clientStatus==='inactive'||p.clientStatus==='terminated'||p.clientStatus==='lost')return;
+    if(!isInvoiceableStatus(p))return;   // In Progress / Lost / Terminated are never invoiced
     if(isCarrierClient(p))return;     // managed-care clients are billed by the carrier — never auto-generate
     if(!clientWasActiveInPeriod(p,period))return;
     if(!hasBillableAuthorization(p))return;   // need APPROVED HOURS — never generate a blank-total invoice
@@ -10555,7 +10603,7 @@ async function sendAllCaseworkerEmails(period){
   var groups={};
   Object.keys(profiles).forEach(function(name){
     var prof=profiles[name];
-    if(prof.clientStatus==='inactive'||prof.clientStatus==='terminated'||prof.clientStatus==='lost')return;
+    if(!isInvoiceableStatus(prof))return;   // In Progress / Lost / Terminated are never invoiced
     if(isCarrierClient(prof))return;   // managed-care clients are billed by the carrier — never invoiced here
     if(!clientWasActiveInPeriod(prof,period))return;
     var rawWorker=(prof.worker||'').trim();
