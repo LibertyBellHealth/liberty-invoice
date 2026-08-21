@@ -1549,25 +1549,6 @@ function promptInvNote(idx){
     saveProfilesLS(p2);saveProfileSP(activeProfileName,p2[activeProfileName]);renderInvHistory();renderOverviewPane();
   },{title:'Invoice Note',okText:'Save Note'});
 }
-function saveInvNote(input){
-  var p=getProfiles(),idx=parseInt(input.dataset.idx);
-  var clientName=activeProfileName; // capture the client now; activeProfileName may change before the flush
-  if(p[clientName]&&p[clientName].invoices&&p[clientName].invoices[idx]){
-    p[clientName].invoices[idx].invoiceNote=input.value;
-    saveProfilesLS(p);
-    // Debounce the backend save (per-client key so switching clients can't cancel it), and
-    // register it so a tab-close can flush the pending save (F4).
-    _scheduleNoteSave('inv:'+clientName, function(){
-      // Re-read the CURRENT store at flush time (not the keystroke-time snapshot) so a
-      // concurrent status/note/reload write in the 600ms window isn't reverted, and use the
-      // captured clientName in case the user navigated away.
-      var pNow=getProfiles(); if(!pNow[clientName])return;
-      // D8: surface a failure toast instead of silently saving to LS only.
-      var doSave=function(){return surfaceSaveFailure(saveProfileSP(clientName,pNow[clientName],true),'Invoice note',doSave);};
-      doSave();
-    });
-  }
-}
 function deleteInv(idx){
   var p=getProfiles(),inv=p[activeProfileName].invoices[idx];
   if(!inv)return;
@@ -1633,7 +1614,7 @@ function renderNotesPane(){
   ta._nl=function(){
     // Capture the client NOW — activeProfileName may change before the 600ms flush. And write
     // LS SYNCHRONOUSLY (not inside the timer) so closing the tab / switching clients within the
-    // debounce can't lose the note. Only the backend save is debounced. (Parity with saveInvNote.)
+    // debounce can't lose the note. Only the backend save is debounced.
     var clientName=activeProfileName, val=ta.value;
     var pNow=getProfiles();
     if(pNow[clientName]){ pNow[clientName].clientNotes=val; saveProfilesLS(pNow); }
@@ -2766,7 +2747,7 @@ function _docDrop(e,fileId){
   }
 }
 function renderHcDocList(clientId,docs){
-  renderDocGrid(document.getElementById('hcDocList'),docs,{clientType:'homecare',clientId:clientId,deleteExpr:function(name){return 'deleteHcDoc('+clientId+',\''+encodeURIComponent(name)+'\')';},refresh:function(){loadHcDocs(clientId);}});
+  renderDocGrid(document.getElementById('hcDocList'),docs,{clientType:'homecare',clientId:clientId,refresh:function(){loadHcDocs(clientId);}});
 }
 function uploadHcDoc(){
   var clientId=getHcClientId();
@@ -3792,7 +3773,7 @@ function loadCgDocsAzure(cgId){
   .catch(function(err){ _renderDocLoadError('cgDocListAzure', "loadCgDocsAzure('"+cgId+"')", err); });
 }
 function renderCgDocListAzure(cgId,docs){
-  renderDocGrid(document.getElementById('cgDocListAzure'),docs,{clientType:'caregiver',clientId:cgId,deleteExpr:function(name){return 'deleteCgDocAzure(\''+cgId+'\',\''+encodeURIComponent(name)+'\')';},refresh:function(){loadCgDocsAzure(cgId);}});
+  renderDocGrid(document.getElementById('cgDocListAzure'),docs,{clientType:'caregiver',clientId:cgId,refresh:function(){loadCgDocsAzure(cgId);}});
 }
 function uploadCgDocAzure(){
   var input=document.getElementById('cgDocFileInput2');
@@ -5039,9 +5020,11 @@ async function maybeAutoBackupOneDrive(){
 // Show a small banner near the top of the page when auto-backup needs attention
 function renderOneDriveBackupBanner(state){
   var existing=document.getElementById('odBackupBanner');
-  if(state==='done'||state==='running'){
+  // Only 'done' and 'failed' are ever passed (see the two call sites) — the old 'running' arm was
+  // unreachable and did nothing beyond removing the banner.
+  if(state==='done'){
     if(existing)existing.remove();
-    if(state==='done'){showToast('☁ Weekly backup to OneDrive complete',3500);}
+    showToast('☁ Weekly backup to OneDrive complete',3500);
     return;
   }
   if(state!=='failed')return;
@@ -7616,6 +7599,11 @@ function saveProfileSP(name, data, quiet) {
   // reload permanently.
   try { _p = quiet ? _doSave() : trackSave(name, _doSave); }
   finally { Promise.resolve(_p).then(function(){ _savesInFlight--; }, function(){ _savesInFlight--; }); }
+  // Durable dirty flag: set on a genuine failure so the edit survives a reload, cleared on success.
+  // A 409 is excluded — the server holds the NEWER row there, so pinning the local copy would
+  // recreate the roster deadlock this codebase already fixed once.
+  Promise.resolve(_p).then(function(){ _markClientUnsaved(name, false); },
+                           function(e){ _markClientUnsaved(name, !_isConflict(e)); });
   return _p;
 }
 // Signature of an invoice's PERSISTED fields (exactly what syncNewInvoices sends). Used
@@ -7650,8 +7638,23 @@ function _clientSig(d) {
 // its baseline. Used to protect a pending/failed save from being reverted by a background load's
 // store refresh. Errs toward TRUE (keep local) on any uncertainty — the safe direction is to never
 // discard local work.
+// A DURABLE "this client has an edit the server never accepted" flag. It carries no PHI, so unlike
+// _clientSynced (whose signature embeds the SSN, and which is therefore memory-only) it can be
+// written to disk — which is the whole point: _clientSynced is absent after a cold load, so the
+// dirty check below was a no-op and a failed client-field edit read as CLEAN and got reverted by
+// the next background load. Mirrors _rosterMarkUnsaved, including the lesson from the 409 deadlock:
+// a CONFLICT means the server is newer, so it must NOT set the flag.
+function _markClientUnsaved(name, failed){
+  try{
+    var p=getProfiles(); if(!p[name])return;
+    if(failed)p[name]._unsaved=true; else delete p[name]._unsaved;
+    saveProfilesLS(p);
+  }catch(e){ /* storage full — the merge just falls back to server-wins */ }
+}
 function _profileHasUnsyncedChanges(loc){
   if(!loc) return false;
+  // Survives a reload, unlike the _clientSynced comparison below.
+  if(loc._unsaved === true) return true;
   try{
     // Only judge client-field dirtiness when there's an actual saved baseline to compare against.
     // _clientSynced is MEMORY-ONLY (stripped from localStorage, like SSN), so on the FIRST load of a
@@ -9091,7 +9094,7 @@ function renderCwDocsPane(){
     .catch(function(err){ _renderDocLoadError('cwDocListAzure', 'renderCwDocsPane()', err); });
 }
 function renderCwDocListAzure(cwId,docs){
-  renderDocGrid(document.getElementById('cwDocListAzure'),docs,{clientType:'caseworker',clientId:cwId,deleteExpr:function(name){return 'deleteCwDoc(\''+cwId+'\',\''+encodeURIComponent(name)+'\')';},refresh:function(){renderCwDocsPane();}});
+  renderDocGrid(document.getElementById('cwDocListAzure'),docs,{clientType:'caseworker',clientId:cwId,refresh:function(){renderCwDocsPane();}});
 }
 function uploadCwDoc(){
   var input=document.getElementById('cwDocFileInput');
