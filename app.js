@@ -5398,8 +5398,12 @@ function mergeInvoiceLists(existingInvs, importedInvs){
 // _profileHasUnsyncedChanges then read the client as clean and let the next background load revert it.
 // Restoring a backup to undo bad invoice edits silently undid itself. Clearing the baselines forces the
 // restored data to be re-sent. dbId is deliberately KEPT so the server row is updated, not duplicated.
-function _clearSyncBaselines(store){
-  Object.keys(store||{}).forEach(function(nm){
+// `names` limits the wipe to the clients actually being restored. Applied to the whole store it
+// marked every OTHER client permanently dirty (_profileHasUnsyncedChanges is true for any client
+// with an invoice once _synced is gone), so the local copy won a background load forever and a
+// colleague's edits on another device stopped arriving.
+function _clearSyncBaselines(store, names){
+  (names || Object.keys(store||{})).forEach(function(nm){
     var p=store[nm]; if(!p||typeof p!=='object')return;
     (p.invoices||[]).forEach(function(iv){ if(iv) delete iv._synced; });
     delete p._clientSynced;
@@ -5462,7 +5466,7 @@ function importProfiles(ev){
             merged[name]=incoming;
           }
         });
-        _clearSyncBaselines(merged);
+        _clearSyncBaselines(merged, keys);   // ONLY the imported clients
         saveProfilesLS(merged);
         // A backup also carries the rosters. Restore any that are MISSING locally (a wiped device has
         // none of them) and push each to the server; existing records are left alone so a restore can
@@ -5991,8 +5995,11 @@ function buildInvoiceHTML(){
   });
 
   function syncInputs(root){
+    var _MM={svcMM:1,cplxMM:1,p1MM:1,grandMM:1};
     root.querySelectorAll('input:not([type="checkbox"]):not([type="hidden"])').forEach(function(inp){
-      inp.setAttribute('value',inp.value||'');
+      // Minutes are printed as a DECIMAL beside the hours, so they must be zero-padded: unpadded,
+      // "20" + "." + "5" reads as 20h50m on a form certified to MDHHS.
+      inp.setAttribute('value', _MM[inp.id] ? _padMin(inp.value) : (inp.value||''));
     });
     root.querySelectorAll('input[type="checkbox"]').forEach(function(cb){
       if(cb.checked)cb.setAttribute('checked',''); else cb.removeAttribute('checked');
@@ -7656,7 +7663,11 @@ function saveProfileSP(name, data, quiet) {
   // A 409 is excluded — the server holds the NEWER row there, so pinning the local copy would
   // recreate the roster deadlock this codebase already fixed once.
   Promise.resolve(_p).then(function(){ _markClientUnsaved(name, false); },
-                           function(e){ _markClientUnsaved(name, !_isConflict(e)); });
+                           function(e){
+                             // On a conflict, leave the flag EXACTLY as it is. Clearing it here
+                             // discarded an edit that an earlier genuine failure had protected.
+                             if (!_isConflict(e)) _markClientUnsaved(name, true);
+                           });
   return _p;
 }
 // Signature of an invoice's PERSISTED fields (exactly what syncNewInvoices sends). Used
@@ -7852,6 +7863,14 @@ function syncNewInvoices(name, data) {
         });
         saveProfilesLS(p2);
       }
+    }
+    if (conflicts.length && hardError) {
+      // BOTH happened in one save. Throw the hard failure, not the conflict: _markClientUnsaved
+      // only protects the edit when the error is NOT a conflict, so throwing the conflict here
+      // left the genuinely-failed invoice unprotected and the next background load reverted it.
+      var be = new Error(hardError.message +
+        ' (Also: invoice ' + conflicts.join(', ') + ' was changed by someone else.)');
+      throw be;
     }
     if (conflicts.length) {
       // Another user changed these invoices since we loaded them. The stale write was
@@ -10001,15 +10020,21 @@ function validateInvoiceForSend(name,prof,inv,cwRec){
     if(/^\d{1,3}$/.test(hh)&&parseInt(hh,10)>744)issues.push(label+' hours is '+hh+' — more than a full month');
   };
   _hm('svcHH','svcMM','Total Time'); _hm('cplxHH','cplxMM','Complex care time'); _hm('grandHH','grandMM','Billing-period total');
+  _hm('p1HH','p1MM','Previous-page total');   // also printed on the certified form (see the vector renderer)
   // Cross-check against the authorization: billing more than MDHHS approved is the error that costs the
   // agency a recoupment, and nothing else in the app compares these two numbers.
   try{
     var a=prof&&prof.authorization;
-    if(a&&a.hours!=null&&String(a.hours).trim()!==''&&/^\d{1,3}$/.test(String(d.svcHH||'').trim())){
-      var billed=parseInt(d.svcHH,10)*60+(parseInt(d.svcMM,10)||0);
+    // Compare what is actually CERTIFIED: 'Total Time for Billing Period' (grand = service +
+    // complex care), not service alone. On a complex-care client, checking svc let 15:00 service +
+    // 10:00 complex bill 25:00 against a 20:00 authorization with no warning at all.
+    var _bh=String(d.grandHH||'').trim(), _bm=d.grandMM;
+    if(!/^\d{1,3}$/.test(_bh)){ _bh=String(d.svcHH||'').trim(); _bm=d.svcMM; }   // grand blank → fall back
+    if(a&&a.hours!=null&&String(a.hours).trim()!==''&&/^\d{1,3}$/.test(_bh)){
+      var billed=parseInt(_bh,10)*60+(parseInt(_bm,10)||0);
       var appr=parseInt(a.hours,10)*60+(parseInt(a.minutes,10)||0);
       if(appr>0&&billed>appr)
-        issues.push('Billed time ('+d.svcHH+':'+_padMin(d.svcMM||'00')+') exceeds the authorized '+a.hours+':'+_padMin(a.minutes||0));
+        issues.push('Billed time ('+_bh+':'+_padMin(_bm||'00')+') exceeds the authorized '+a.hours+':'+_padMin(a.minutes||0));
     }
   }catch(e){}
   // Signature: at least one must exist locally so the PDF auto-places it
