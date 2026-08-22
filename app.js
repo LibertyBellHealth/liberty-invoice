@@ -803,7 +803,7 @@ function bulkSetClientStatus(status){
   // client with no authorization is then picked up by invoice generation.
   if(status==='active'){
     var _p0=getProfiles();
-    var _blocked=Array.from(bulkSelected).filter(function(n){
+    var _blocked=Object.keys(bulkSelected).filter(function(n){
       var pr=_p0[n]; return pr && pr.program!=='carrier' && !hasAuthorization(pr);
     });
     if(_blocked.length){
@@ -5492,7 +5492,17 @@ function importProfiles(ev){
             Object.keys(parsed.caregivers).forEach(function(id){
               if(!cgs[id]&&parsed.caregivers[id]){ cgs[id]=parsed.caregivers[id]; cgAdd.push(id); }
             });
-            if(cgAdd.length){ saveCaregiversLS(cgs); restored.caregivers=cgAdd.length;
+            if(cgAdd.length){
+              // A MASKED backup carries '***-**-1234' in .ssn, which is NOT an SSN. saveCaregiverAPI
+              // only skips an EMPTY ssn, so pushing these records verbatim overwrote the real
+              // encrypted SSN on the server with the mask — irrecoverable, and the weekly auto-backup
+              // is always masked. Demote the mask to the last-4 display field instead.
+              cgAdd.forEach(function(id){
+                var _c=cgs[id]; if(!_c||!/^\*+-\*+-/.test(_c.ssn||''))return;
+                if(!_c.ssnLast4){ var _d=String(_c.ssn).replace(/\D/g,''); if(_d.length>=4)_c.ssnLast4=_d.slice(-4); }
+                delete _c.ssn;
+              });
+              saveCaregiversLS(cgs); restored.caregivers=cgAdd.length;
               cgAdd.forEach(function(id){ if(typeof saveCaregiverAPI==='function')saveCaregiverAPI(id,cgs[id],true); }); }
           }
           if(Array.isArray(parsed.caseworkers)){
@@ -7675,7 +7685,12 @@ function saveProfileSP(name, data, quiet) {
       })
       .then(function (result) {
         if (!dbId && result.id) {
-          idMap[name] = result.id; localStorage.setItem('lhca_id_map', JSON.stringify(idMap));
+          // Re-READ the map here instead of writing back the snapshot taken at call time: a restore
+          // saves every client in one synchronous pass, so each resolver would otherwise clobber the
+          // ids its siblings just wrote (leaving them pointing at DEAD rows, which syncNewInvoices
+          // then bills against).
+          var idMap2 = getIdMap();
+          idMap2[name] = result.id; localStorage.setItem('lhca_id_map', JSON.stringify(idMap2));
           var p = getProfiles(); if (p[name]) { p[name]._dbId = result.id; saveProfilesLS(p); }
         }
         // Refresh the concurrency token so the NEXT save carries the current one (both in
@@ -8119,7 +8134,7 @@ function saveCaregiverAPI(id, cg, quiet) {
         dob: cg.dob || '', drivers_license: cg.driversLicense || '', ssn: cg.ssn || ''
     };
     // S8: only send ssn when present; omitting it makes the backend keep the stored value.
-    if (!cg.ssn) delete body.ssn;
+    if (!cg.ssn || /^\*+-\*+-/.test(cg.ssn)) delete body.ssn;
     // Optimistic concurrency: send the row_version we last read so a stale save is rejected
     // (409) instead of silently overwriting another user's edit.
     if (cg._rowVersion) body.expected_version = cg._rowVersion;
@@ -10607,10 +10622,13 @@ function _proratedFirstMonth(a, effectiveDate){
   var mm=parseInt(eff[0],10), dd=parseInt(eff[1],10), yyyy=parseInt(eff[2],10);
   if(!mm||!dd||!yyyy)return null;
   var inMonth=daysIn(String(mm).padStart(2,'0'),String(yyyy));
-  if(dd<=1)return null;                       // started on the 1st — nothing to prorate
+  // dd comes from OCR, so '02/31/2026' is realistic. Without the upper bound `served` goes
+  // negative and the dialog offered to "Prorate to -2:-26"; dd===inMonth+1 offered 0:00.
+  if(dd<=1||dd>inMonth)return null;           // started on the 1st (or an impossible day) — don't prorate
   var served=inMonth-dd+1;
   var totalMin=(parseInt(a.hours,10)||0)*60+(parseInt(a.minutes,10)||0);
   var proMin=Math.round(totalMin*served/inMonth);
+  if(proMin<=0)return null;                   // never offer a certified invoice with no billed time
   return { hours:Math.floor(proMin/60), minutes:proMin%60, daysServed:served, daysInMonth:inMonth, day:dd };
 }
 // Create a first invoice (Draft) for the active client from their DHS-1210 authorization.
@@ -10638,16 +10656,16 @@ function createFirstInvoiceFromAuth(){
       '• Full month — the whole authorized '+_full+' (correct when MDHHS pays the monthly amount regardless of start day)\n'+
       '• Prorate — '+_part+', for the '+_pro.daysServed+' of '+_pro.daysInMonth+' days actually served\n\n'+
       'Either way the invoice is created as a Draft you can edit before sending.',
-      function(){ _createFirstInvoice(prof,a,period,null); },
+      function(){ _createFirstInvoice(p,prof,a,period,null); },
       { title:'Partial first month', okText:'Bill full month', danger:false,
-        extraText:'Prorate to '+_part, onExtra:function(){ _createFirstInvoice(prof,a,period,_pro); } }
+        extraText:'Prorate to '+_part, onExtra:function(){ _createFirstInvoice(p,prof,a,period,_pro); } }
     );
     return;
   }
-  _createFirstInvoice(prof,a,period,null);
+  _createFirstInvoice(p,prof,a,period,null);
 }
 // `pro` is null for a full month, or the _proratedFirstMonth result to bill only the days served.
-function _createFirstInvoice(prof,a,period,pro){
+function _createFirstInvoice(store,prof,a,period,pro){
   var built=_dhsBuildFirstInvoice({hours:(pro?pro.hours:a.hours), minutes:(pro?pro.minutes:a.minutes),
                                    rate:a.rate, tasks:a.tasks||[]}, prof, period);
   if(!built){ showAlert('Could not build the invoice from this authorization.'); return; }
@@ -10655,7 +10673,7 @@ function _createFirstInvoice(prof,a,period,pro){
     savedAt:new Date().toLocaleString(), status:'draft', invoiceNote:'', data:built.data };
   if(!prof.invoices)prof.invoices=[];
   prof.invoices.unshift(inv);
-  saveProfilesLS(p); saveProfileSP(activeProfileName, prof);
+  saveProfilesLS(store); saveProfileSP(activeProfileName, prof);
   if(typeof logActivity==='function')logActivity('invoice','First invoice created from DHS-1210 for '+activeProfileName+' ('+period+')');
   var msg='✓ Draft invoice created for '+period+' from the authorization.'+
     (pro?('\n\nPRORATED to '+pro.hours+':'+_padMin(pro.minutes)+' for the '+pro.daysServed+' of '+pro.daysInMonth+' days served.'):'')+
@@ -10789,7 +10807,7 @@ async function sendAllCaseworkerEmails(period){
     sendable.map(function(x){return '• '+x.wname+' — '+x.readyCount+' invoice'+(x.readyCount>1?'s':'');}).join('\n')+
     '\n\nThis will send the emails one after another. Continue?',
     async function(){
-      var sentCount=0;
+      var sentCount=0, failedWorkers=[];
       var BULK_THROTTLE_MS=3000; // 3-sec delay between caseworker sends — avoids burst-send pattern that trips spam filters
       for(var i=0;i<sendable.length;i++){
         var item=sendable[i];
@@ -10957,7 +10975,7 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
 
   if(!attachments.length){
     if(po)po.classList.remove('open');
-    showAlert('No PDFs could be generated. Please check the console for errors.');return;
+    showAlert('No PDFs could be generated. Please check the console for errors.');return {ok:false,err:'no_pdfs'};
   }
 
   var workerDisplay=workerName&&workerName!=='(No Worker Assigned)'?workerName:'Caseworker';
@@ -11031,12 +11049,16 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
     }
     showToast(toastMsg,6000);
     // Refresh the modal results if re-opened
+    // The BATCH caller reads this to decide sent-vs-failed. Returning undefined made every
+    // caseworker look failed and crashed the run, so both branches must report.
+    return {ok:true,sent:attachments.length};
   }else{
     var msg2='Email failed to send.';
     if(result.status===401)msg2='Authentication error (401) — please sign out and sign back in.';
     else if(result.status===403)msg2='Permission denied (403) — sign out, sign back in, and accept the Mail.Send permission when prompted.';
     else if(result.err)msg2='Error ('+(result.status||'?')+'):\n'+result.err.slice(0,300);
     showAlert(msg2);
+    return {ok:false,status:result.status,err:result.err};
   }
 }
 
