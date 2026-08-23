@@ -8,6 +8,8 @@ const assert = require('node:assert');
 const { loadApp, resetStorage } = require('./harness');
 
 function quiet(w) {
+  // jsdom implements neither of these; app code calls them for UI polish, not persistence.
+  if (!w.Element.prototype.scrollIntoView) w.Element.prototype.scrollIntoView = function () {};
   w.showAlert = () => {}; w.showToast = () => {}; w.showConfirm = () => {};
   w.addAuditEntry = () => {}; w.logActivity = () => {};
   w.fetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
@@ -91,20 +93,29 @@ test('CASEWORKER: saving an untouched form preserves every field', () => {
 
 test('SUPERVISOR: saving preserves the concurrency token', () => {
   const w = loadApp(); resetStorage(w); quiet(w);
+  // supd-title is a <select> in production (index.html:773), NOT an input. Using an <input> here
+  // made this very test blind to the select-cannot-hold-stored-value class it exists to catch.
+  // Fixtures must mirror the real markup.
   w.document.body.insertAdjacentHTML('beforeend',
-    '<input id="supd-id"><input id="supd-name"><input id="supd-title">' +
+    '<input id="supd-id"><input id="supd-name">' +
+    '<select id="supd-title"><option value=""></option><option>Mr.</option><option>Mrs.</option>' +
+    '<option>Ms.</option><option>Miss</option><option>Dr.</option><option>Mx.</option></select>' +
     '<input id="supd-phone"><input id="supd-email"><div id="supDetailName"></div>');
-  const sup = { id: 'sup1', name: 'Pat Reed', title: 'Supervisor', phone: '313-555-7000',
+  const sup = { id: 'sup1', name: 'Pat Reed', title: 'APS Supervisor', phone: '313-555-7000',
                 email: 'pat@michigan.gov', _rowVersion: '00000000000012AB' };
   w.saveSupervisorsLS({ sup1: sup });
-  ['id','name','title','phone','email'].forEach((f) => {
-    w.document.getElementById('supd-' + f).value = sup[f === 'id' ? 'id' : f] || '';
-  });
+  w.document.body.insertAdjacentHTML('beforeend',
+    '<div id="cwViewCaseworkers"></div><div id="cwViewSupervisors"></div><div id="supDetailView"></div>' +
+    '<div id="supDetailAvatar"></div><div id="supDetailMeta"></div><div id="supDetailCwList"></div>');
+  w.renderSupCaseworkers = () => {};
+  w.openSupDetail('sup1');   // the REAL opener, so the option-list rebuild actually runs
   w.document.getElementById('supd-phone').value = '313-555-9999';
   w.saveSupDetail();
   const after = w.getSupervisors().sup1;
   assert.strictEqual(after.phone, '313-555-9999', 'the save must actually have run');
   assert.strictEqual(after.name, 'Pat Reed');
+  assert.strictEqual(after.title, 'APS Supervisor',
+    'a real job title is not one of the 7 honorifics the select offers, so it read back as "" and saving destroyed it');
   assert.strictEqual(after._rowVersion, '00000000000012AB',
     'saveSupDetail rebuilds the record from 5 fields, dropping the row_version — so the next save ' +
     'sends no expected_version and a concurrent edit is silently overwritten');
@@ -188,4 +199,45 @@ test('CAREGIVER: a blank employment type is not silently promoted to Full-Time',
   assert.strictEqual(w.getCaregivers().cg2.emptype, '',
     'the select had no blank option, so an unset employment type rendered as Full-Time and SAVED ' +
     'as Full-Time — a silent change to a plausible wrong value, not an obvious blank');
+});
+
+// ── The SECOND caseworker editor ─────────────────────────────────────────────────────────────
+// showCaseworkerForm/saveCaseworker is a separate path from the detail pane, and every fix applied
+// to saveCwInfoPane was missing here: it REBUILDS the record from the form (dropping _rowVersion,
+// like saveSupDetail did), blanks the agency unless org==='MDHHS', and reads Title/Org from fixed
+// option lists that cannot hold real stored values such as 'ASW'.
+const CW_FORM_IDS = ['cw-editing-id','cw-first-name','cw-middle-name','cw-last-name','cw-nickname',
+  'cw-agency','cw-phone','cw-fax','cw-email','cw-street','cw-city','cw-state','cw-zip','cw-county','cw-notes'];
+
+function seedCwGridForm(w) {
+  if (!w.document.getElementById('cw-editing-id')) {
+    w.document.body.insertAdjacentHTML('beforeend',
+      CW_FORM_IDS.map((i) => '<input id="' + i + '">').join('') +
+      // Title/Org/Supervisor are <select>s; the app is responsible for giving them options that can
+      // hold whatever is stored, so the test deliberately supplies them EMPTY.
+      '<select id="cw-title"></select><select id="cw-org"></select><select id="cw-supervisor"></select>' +
+      '<div id="cwFormWrap"></div><div id="cwFormTitle"></div><div id="cwGridView"></div>' +
+      '<div id="cwDetailView"></div><button id="cwDeleteBtn"></button>');
+  }
+}
+
+test('CASEWORKER (grid form): saving an untouched form preserves every field', () => {
+  const w = loadApp(); resetStorage(w); quiet(w);
+  seedCwGridForm(w);
+  w.saveSupervisorsLS({ sup1: { id: 'sup1', name: 'Pat Reed' } });
+  const cw = { id: 'cw1', name: 'Marcus Ojeda', first_name: 'Marcus', last_name: 'Ojeda',
+    middle_name: '', nickname: '', title: 'ASW', agency: 'MDHHS - Oakland', org: '',
+    phone: '313-555-1000', fax: '313-555-1001', email: 'mo@michigan.gov', street: '3 State',
+    city: 'Pontiac', state: 'MI', zip: '48341', county: 'Oakland', notes: 'Prefers email',
+    supervisor_id: 'sup1', _rowVersion: '00000000000033AA' };
+  w.saveCaseworkersLS([cw]);
+  w.activeCwId = null;
+  const before = JSON.parse(JSON.stringify(w.getCaseworkers()[0]));
+  w.showCaseworkerForm('cw1');
+  const check = positiveControl(w, 'cw-phone', '313-555-7777', () => w.getCaseworkers()[0].phone);
+  w.saveCaseworker();
+  check();
+  const after = w.getCaseworkers()[0];
+  const lost = diffFields(before, after, ['_unsaved','phone']);
+  assert.deepStrictEqual(lost, [], 'fields destroyed by an untouched save:\n  ' + lost.join('\n  '));
 });
