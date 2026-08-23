@@ -9186,9 +9186,17 @@ function saveCwInfoPane(){
   var titleEl=document.getElementById('cwi-title');cw.title=titleEl?(titleEl.value||''):(cw.title||'');
   cw.first_name=first;cw.middle_name=document.getElementById('cwi-middle').value;cw.last_name=last;
   cw.name=(first+(document.getElementById('cwi-middle').value?' '+document.getElementById('cwi-middle').value:'')+' '+last).trim();
-  cw.agency=document.getElementById('cwi-agency').value;
   var _cwiOrg=document.getElementById('cwi-org');if(_cwiOrg)cw.org=_cwiOrg.value;
-  if((cw.org||'')!=='MDHHS')cw.agency='';   // Agency is MDHHS-only (hidden otherwise) — don't keep a stale one
+  // Take the agency from the form ONLY when that input is actually shown (org === 'MDHHS').
+  // This used to read the hidden input and then blank the value for any other org — which
+  // DESTROYED the Bill To on every caseworker whose org is unset (''), i.e. every one created
+  // before the org field existed. It fired on ANY save, including one that only changed the
+  // email, the field is hidden so it could not be seen or typed back, and the first symptom was
+  // invoices refusing to send with "Caseworker has no Agency set". Never silently discard it:
+  // a stale agency is visible on the invoice and fixable, a destroyed one is neither.
+  if((cw.org||'')==='MDHHS'){
+    var _ag=document.getElementById('cwi-agency'); if(_ag)cw.agency=_ag.value;
+  }
   cw.phone=document.getElementById('cwi-phone').value;cw.fax=document.getElementById('cwi-fax').value;
   cw.email=document.getElementById('cwi-email').value;
   cw.street=document.getElementById('cwi-street').value;cw.city=document.getElementById('cwi-city').value;
