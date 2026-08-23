@@ -1093,7 +1093,7 @@ function renderInfoPane(){
       '<option value="carrier"'+(_pg==='carrier'?' selected':'')+'>Carrier (Managed Care)</option>'+
     '</select></div>'+
     '<div class="info-field" id="ei-carrier-wrap"><label for="ei-carrier">Carrier</label><select id="ei-carrier" onchange="unsavedChanges=true;">'+
-      ['','Humana','Priority Health','Aetna','UnitedHealthcare','HAP','Molina','Meridian','Other'].map(function(c){return '<option value="'+esc(c)+'"'+((prof.carrier||'')===c?' selected':'')+'>'+(c||'— Select carrier —')+'</option>';}).join('')+
+      _selOpts([['','— Select carrier —'],['Humana','Humana'],['Priority Health','Priority Health'],['Aetna','Aetna'],['UnitedHealthcare','UnitedHealthcare'],['HAP','HAP'],['Molina','Molina'],['Meridian','Meridian'],['Other','Other']],prof.carrier)+
     '</select></div>'+
     '<div class="info-field" id="ei-member-wrap"><label for="ei-member">Member #</label><input id="ei-member" value="'+esc(prof.memberId||'')+'" autocomplete="off" oninput="unsavedChanges=true;"></div>';
   g.appendChild(dProg);
@@ -1105,9 +1105,7 @@ function renderInfoPane(){
   var dGender=document.createElement('div');dGender.className='info-field';
   var gv=prof.gender||'';
   dGender.innerHTML='<label for="ei-gender">Gender</label><select id="ei-gender" onchange="unsavedChanges=true;">'+
-    '<option value=""'+(gv===''?' selected':'')+'>—</option>'+
-    '<option value="Male"'+(gv==='Male'?' selected':'')+'>Male</option>'+
-    '<option value="Female"'+(gv==='Female'?' selected':'')+'>Female</option>'+
+    _selOpts([['','—'],['Male','Male'],['Female','Female']],gv)+
   '</select>';
   g.appendChild(dGender);
   // Hourly Rate: numeric-guarded (formatRate) like caregiver pay, so it can't hold
@@ -1438,6 +1436,13 @@ function saveClientInfo(){
     // lhca_id_map is keyed by client NAME and is how syncNewInvoices finds the client's db id.
     // Leaving it under the old name made every later invoice save silently no-op (no dbId → early return).
     try{ var _m=getIdMap(); if(_m[activeProfileName]!==undefined){ _m[newName]=_m[activeProfileName]; delete _m[activeProfileName]; localStorage.setItem('lhca_id_map',JSON.stringify(_m)); } }catch(e){}
+    // Tasks are keyed by client NAME too. Left behind, they no longer appear on the client's
+    // Overview and the next task edit writes the link away entirely.
+    try{
+      var _td=getTodos(), _tdMoved=0;
+      _td.forEach(function(t){ if(t&&t.client===activeProfileName){ t.client=newName; _tdMoved++; } });
+      if(_tdMoved){ saveTodos(_td); _td.forEach(function(t){ if(t&&t.client===newName&&typeof saveTaskAPI==='function')saveTaskAPI(t); }); }
+    }catch(e){}
     // The audit trail is keyed by client NAME and must never be rewritten, so link the two names
     // from both sides: whoever opens either record can follow the rename to the other.
     try{
@@ -3756,7 +3761,10 @@ function saveCgInfoPane(){
   cg.payRate=document.getElementById('cgi-pay').value;
   var cgiChamps=document.getElementById('cgi-champs');if(cgiChamps)cg.champsId=cgiChamps.value;
   var cgiMiu=document.getElementById('cgi-milogin-user');if(cgiMiu)cg.miloginUsername=cgiMiu.value;
-  var cgiMip=document.getElementById('cgi-milogin-pass');if(cgiMip)cg.miloginPassword=cgiMip.value;
+  // Renders blank and is only filled after the user focuses it (see _revealSecret), so an empty
+  // box means "not loaded", NOT "cleared" — writing it through blanked the stored credential
+  // locally on every save. Same guard the SSN field above already has.
+  var cgiMip=document.getElementById('cgi-milogin-pass');if(cgiMip&&cgiMip.value.trim())cg.miloginPassword=cgiMip.value;
   saveCaregiversLS(cgs);saveCaregiverAPI(activeCgId,cg);
   document.getElementById('cgDetailName').textContent=cg.name;
   var st=cg.status||'active';
@@ -4439,6 +4447,10 @@ function showTaskEditModal(opts){
     var profs=getProfiles();
     // Any status — tasks get attached to In Progress / onboarding clients too, not just active
     var names=Object.keys(profs).sort(function(a,b){return a.localeCompare(b);});
+    // Carry the task's OWN client into the list even if it is no longer a profile name (renamed
+    // client, or profiles not loaded yet). Without this the select reports '' and saving an
+    // unrelated field — a due date — silently unlinked the task from its client.
+    if(opts.client&&names.indexOf(opts.client)<0)names.push(opts.client);
     clientSel.innerHTML='<option value="">— No client —</option>'+names.map(function(n){return '<option value="'+esc(n)+'"'+(n===(opts.client||'')?' selected':'')+'>'+esc(n)+'</option>';}).join('');
   }
   var saveBtn=document.getElementById('taskEditSaveBtn');
@@ -8408,10 +8420,17 @@ function populateSupervisorDropdown(selectEl,currentId){
   };
 }
 function refreshSupervisorDropdowns(){
+  // Re-derive the selection from the RECORD, not from the select's own value. The supervisor roster
+  // loads asynchronously, so on a repopulate the select is often still empty — reading sel.value
+  // then threw the stored assignment away, and left a fully-populated select with nothing selected,
+  // which also slipped past the options.length guard in saveCwInfoPane.
+  var _cwRec=null;
+  try{ var _eid=(document.getElementById('cw-editing-id')||{}).value||activeCwId;
+       if(_eid)_cwRec=getCaseworkers().find(function(c){return c&&c.id===_eid;})||null; }catch(e){}
   var sel1=document.getElementById('cw-supervisor');
-  if(sel1)populateSupervisorDropdown(sel1,sel1.value);
+  if(sel1)populateSupervisorDropdown(sel1,sel1.value||(_cwRec&&_cwRec.supervisor_id)||'');
   var sel2=document.getElementById('cwi-supervisor');
-  if(sel2)populateSupervisorDropdown(sel2,sel2.value);
+  if(sel2)populateSupervisorDropdown(sel2,sel2.value||(_cwRec&&_cwRec.supervisor_id)||'');
 }
 // ── Supervisor profile (detail page) ─────────────────────────
 // Caseworker + supervisor emails are all @michigan.gov. Type just the username and this
@@ -8429,7 +8448,11 @@ function openSupDetail(id){
   var supView=document.getElementById('cwViewSupervisors'); if(supView)supView.style.display='none';
   var det=document.getElementById('supDetailView'); if(det)det.style.display='block';
   document.getElementById('supd-id').value=id;
-  document.getElementById('supd-title').value=s.title||'';
+  // Static <select> in index.html holds only 7 honorifics; assigning an unlisted stored title
+  // selects nothing, so .value reads '' and saving DESTROYS it. Rebuild the options to fit.
+  var _supdT=document.getElementById('supd-title');
+  if(_supdT)_supdT.innerHTML=_selOpts([['',''],['Mr.','Mr.'],['Mrs.','Mrs.'],['Ms.','Ms.'],['Miss','Miss'],['Dr.','Dr.'],['Mx.','Mx.']],s.title);
+  if(_supdT)_supdT.value=s.title||'';
   document.getElementById('supd-name').value=s.name||'';
   document.getElementById('supd-phone').value=s.phone||'';
   document.getElementById('supd-email').value=s.email||'';
@@ -8502,7 +8525,7 @@ function _openSupervisorModal(editId){
       '<h3>'+(editId?'Edit Supervisor':'New Supervisor')+'</h3>'+
       '<div style="display:flex;gap:8px;margin-top:8px;">'+
         '<div class="ff" style="flex:0 0 110px;"><label for="sup-title">Title</label>'+
-          '<select id="sup-title">'+['','Mr.','Mrs.','Ms.','Miss','Dr.','Mx.'].map(function(t){return '<option'+(String(sup.title||'')===t?' selected':'')+'>'+t+'</option>';}).join('')+'</select></div>'+
+          '<select id="sup-title">'+_selOpts([['',''],['Mr.','Mr.'],['Mrs.','Mrs.'],['Ms.','Ms.'],['Miss','Miss'],['Dr.','Dr.'],['Mx.','Mx.']],sup.title)+'</select></div>'+
         '<div class="ff" style="flex:1;"><label for="sup-name">Name *</label><input id="sup-name" value="'+esc(sup.name||'')+'" placeholder="Full name" maxlength="120"></div>'+
       '</div>'+
       '<div class="ff" style="margin-top:8px;"><label for="sup-phone">Phone</label><input id="sup-phone" value="'+esc(sup.phone||'')+'" placeholder="(555) 555-5555" maxlength="30"></div>'+
@@ -8527,7 +8550,9 @@ function _saveSupervisorFromModal(editId){
   var title=titleEl?(titleEl.value||''):'';
   var sups=getSupervisors();
   var id=editId||supId();
-  sups[id]={id:id,name:name,title:title,phone:phone,email:email};
+  // MERGE, don't replace: rebuilding from these five fields discarded _rowVersion (and anything
+  // else stored), so a later save carried no expected_version and the concurrency guard was lost.
+  sups[id]=Object.assign({}, sups[id]||{}, {id:id,name:name,title:title,phone:phone,email:email});
   saveSupervisorsLS(sups);
   saveSupervisorAPI(sups[id]);
   document.getElementById('supModal').remove();
@@ -8793,6 +8818,12 @@ function showCaseworkerForm(id){
       var nameParts=(cw.name||'').trim().split(' ');
       var firstName=nameParts[0]||'';
       var lastName=nameParts.slice(1).join(' ')||'';
+      // Static <select>s in index.html with fixed lists — rebuild them so an unlisted stored value
+      // (a real title like 'ASW', an org from the shared backend) stays selectable and survives.
+      var _cwT=document.getElementById('cw-title');
+      if(_cwT)_cwT.innerHTML=_selOpts([['',''],['Mr.','Mr.'],['Mrs.','Mrs.'],['Ms.','Ms.'],['Miss','Miss'],['Dr.','Dr.'],['Mx.','Mx.']],cw.title);
+      var _cwO=document.getElementById('cw-org');
+      if(_cwO)_cwO.innerHTML=_selOpts(['','MDHHS','Humana','Priority Health','Aetna','UnitedHealthcare','HAP','Molina','Meridian','Other'].map(function(o){return [o,o||'— Select —'];}),cw.org);
       document.getElementById('cw-title').value=cw.title||'';
       document.getElementById('cw-first-name').value=cw.first_name||firstName;
       document.getElementById('cw-middle-name').value=cw.middle_name||'';
@@ -8842,12 +8873,15 @@ function saveCaseworker(){
   if(!name){showAlert('Name is required.');return;}
   var cws=getCaseworkers();
   var editingId=document.getElementById('cw-editing-id').value;
+  var _prevCw=editingId?(cws.find(function(c){return c&&c.id===editingId;})||{}):{};
+  var _newOrg=(document.getElementById('cw-org')||{}).value||'';
   var rec={
     id:editingId||cwId(),name:name,title:document.getElementById('cw-title').value,first_name:firstName,middle_name:middleName,last_name:lastName,nickname:nickname,
-    // Agency is only shown when Org = MDHHS (see cwOrgToggle) — clear it otherwise so a coordinator
-    // moved to a carrier org doesn't keep a stale MDHHS agency on the record.
-    agency:(((document.getElementById('cw-org')||{}).value||'')==='MDHHS')?document.getElementById('cw-agency').value:'',
-    org:(document.getElementById('cw-org')||{}).value||'',
+    // Agency is only shown when Org = MDHHS (see cwOrgToggle). Take it from the form only when it
+    // is visible; otherwise KEEP what is stored. Blanking it here destroyed the invoice "Bill To"
+    // on every caseworker whose org is unset — the same defect fixed in saveCwInfoPane.
+    agency:(_newOrg==='MDHHS')?document.getElementById('cw-agency').value:(_prevCw.agency||''),
+    org:_newOrg,
     phone:document.getElementById('cw-phone').value,
     fax:document.getElementById('cw-fax').value,
     email:document.getElementById('cw-email').value,
@@ -8857,11 +8891,19 @@ function saveCaseworker(){
     zip:document.getElementById('cw-zip').value,
     county:document.getElementById('cw-county').value,
     notes:document.getElementById('cw-notes').value,
-    supervisor_id:(document.getElementById('cw-supervisor')||{}).value||''
+    supervisor_id:(function(){
+      // The dropdown fills from a roster that loads asynchronously; an unpopulated select reports ''
+      // and would silently unassign the supervisor (who is CC'd on the monthly invoice emails).
+      var _s=document.getElementById('cw-supervisor');
+      if(_s&&_s.options&&_s.options.length>1)return _s.value||'';
+      return _prevCw.supervisor_id||'';
+    })()
   };
   if(editingId){
     var idx=cws.findIndex(function(c){return c.id===editingId;});
-    if(idx>=0){cws[idx]=rec;}
+    // MERGE onto the stored record: a straight replace discarded _rowVersion (losing the 409
+    // concurrency guard) and every field this form does not carry.
+    if(idx>=0){cws[idx]=Object.assign({},cws[idx],rec);}
   } else {
     cws.push(rec);
   }
@@ -9172,7 +9214,7 @@ function renderCwInfoPane(){
   var _cwOrgOpts=['','MDHHS','Humana','Priority Health','Aetna','UnitedHealthcare','HAP','Molina','Meridian','Other'];
   var dCwOrg=document.createElement('div');dCwOrg.className='info-field full';
   dCwOrg.innerHTML='<label for="cwi-org">Organization <span style="font-weight:400;font-size:10px;color:#5c7590;">(MDHHS, or the carrier for a managed-care coordinator)</span></label>'+
-    '<select id="cwi-org" onchange="cwiOrgToggle()">'+_cwOrgOpts.map(function(o){return '<option value="'+esc(o)+'"'+((cw.org||'')===o?' selected':'')+'>'+(o||'— Select —')+'</option>';}).join('')+'</select>';
+    '<select id="cwi-org" onchange="cwiOrgToggle()">'+_selOpts(_cwOrgOpts.map(function(o){return [o,o||'— Select —'];}),cw.org)+'</select>';
   g.appendChild(dCwOrg);
   cwiOrgToggle();   // Agency (MDHHS office) shows only when Org = MDHHS
   mkRow('<div class="info-field"><label for="cwi-phone">Phone</label><input id="cwi-phone" value="'+esc(cw.phone||'')+'"></div>'+
