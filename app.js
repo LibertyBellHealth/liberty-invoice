@@ -1404,12 +1404,16 @@ function saveClientInfo(){
   rec.firstName=first;rec.middleName=middle;rec.lastName=last;rec.nickname=nickname;
   rec.clientName=newName;rec.medicaidId=document.getElementById('ei-medicaid').value;
   rec.medicare=(document.getElementById('ei-medicare')||{}).value||'';
+  var _prevProgram=rec.program;   // capture BEFORE the select overwrites it
   var _pgEl=document.getElementById('ei-program');if(_pgEl)rec.program=_pgEl.value;
   var _caEl=document.getElementById('ei-carrier');if(_caEl)rec.carrier=_caEl.value;
   var _meEl=document.getElementById('ei-member');if(_meEl)rec.memberId=_meEl.value;
-  // Carrier/member # are HIDDEN for a CHAMPS client — clear them when the program switches so a
-  // stale carrier doesn't linger on the record (inert for billing, but it shows up in exports).
-  if(rec.program!=='carrier'){ rec.carrier=''; rec.memberId=''; }
+  // Carrier/member # are HIDDEN for a CHAMPS client — clear them when the program is switched AWAY
+  // from carrier, so a stale carrier doesn't linger (inert for billing, but it shows in exports).
+  // Only on an actual SWITCH: legacy records have program '' and the select then renders CHAMPS, so
+  // testing `!== 'carrier'` wiped the carrier and member # of every client whose program was never
+  // set — on a save that touched neither field.
+  if(_prevProgram==='carrier'&&rec.program!=='carrier'){ rec.carrier=''; rec.memberId=''; }
   var dobEl=document.getElementById('ei-dob');if(dobEl)rec.dob=dobEl.value||'';
   var genderEl=document.getElementById('ei-gender');if(genderEl)rec.gender=genderEl.value||'';
   rec.hourlyRate=document.getElementById('ei-rate').value;
@@ -3678,7 +3682,7 @@ function renderCgInfoPane(){
 
   // DOB + Gender row (moved up — needed for state forms / identity)
   mkRow('<div class="info-field"><label for="cgi-dob">Date of Birth <span style="font-weight:400;font-size:11px;color:#5c7590;">(double-click to copy)</span></label><input id="cgi-dob" type="date" value="'+esc(cg.dob||cg.dateOfBirth||'')+'" autocomplete="off" ondblclick="_copyField(this,\'mdy\')" title="Double-click to copy as MM/DD/YYYY"></div>'+
-    '<div class="info-field"><label for="cgi-gender">Gender</label><select id="cgi-gender"><option value=""'+(!cg.gender?' selected':'')+'>—</option><option value="Male"'+(cg.gender==='Male'?' selected':'')+'>Male</option><option value="Female"'+(cg.gender==='Female'?' selected':'')+'>Female</option></select></div>');
+    '<div class="info-field"><label for="cgi-gender">Gender</label><select id="cgi-gender">'+_selOpts([['','—'],['Male','Male'],['Female','Female']],cg.gender)+'</select></div>');
 
   mkRow('<div class="info-field"><label for="cgi-nickname">Nickname</label><input id="cgi-nickname" value="'+esc(cg.nickname||'')+'"></div>'+
     '<div class="info-field"><label for="cgi-status">Status</label><select id="cgi-status"><option value="active"'+((!cg.status||cg.status==="active")?" selected":"")+'>Active</option><option value="inactive"'+(cg.status==="inactive"?" selected":"")+'>Inactive</option><option value="terminated"'+(cg.status==="terminated"?" selected":"")+'>Terminated</option></select></div>');
@@ -3708,7 +3712,9 @@ function renderCgInfoPane(){
 
   mkDiv('Employment');
   mkRow('<div class="info-field"><label for="cgi-hire">Hire Date <span style="font-weight:400;font-size:11px;color:#5c7590;">(double-click to copy)</span></label><input id="cgi-hire" type="date" value="'+esc(cg.hireDate||'')+'" ondblclick="_copyField(this,\'mdy\')" title="Double-click to copy as MM/DD/YYYY"></div>'+
-    '<div class="info-field"><label for="cgi-emptype">Employment Type</label><select id="cgi-emptype"><option value="full-time"'+(cg.emptype==='full-time'?' selected':'')+'>Full-Time</option><option value="part-time"'+(cg.emptype==='part-time'?' selected':'')+'>Part-Time</option><option value="per-diem"'+(cg.emptype==='per-diem'?' selected':'')+'>Per Diem</option></select></div>');
+    // No blank option meant a caregiver with no employment type set rendered as Full-Time and was
+    // SAVED as Full-Time — a silent change to a plausible-looking wrong value, not an obvious blank.
+    '<div class="info-field"><label for="cgi-emptype">Employment Type</label><select id="cgi-emptype">'+_selOpts([['','—'],['full-time','Full-Time'],['part-time','Part-Time'],['per-diem','Per Diem']],cg.emptype)+'</select></div>');
   mkRow('<div class="info-field"><label for="cgi-pay">Pay Rate ($/hr)</label><input id="cgi-pay" value="'+esc(cg.payRate||'')+'" inputmode="decimal" oninput="formatRate(this)"></div>');
 
   var actions=document.createElement('div');actions.style.cssText='margin-top:16px;display:flex;gap:8px;';
@@ -3716,6 +3722,15 @@ function renderCgInfoPane(){
     '<button class="btn btn-danger btn-sm" onclick="deleteCaregiverFromDetail()" style="padding:6px 14px;">Delete Caregiver</button>';
   c.appendChild(actions);
   wireCopyableFields('cgInfoContent');
+}
+// Build <option>s that can always represent `cur`: keeps a blank selectable and carries a stored
+// value the list doesn't know about, so no save can silently rewrite it. See saveCwInfoPane's Title.
+function _selOpts(pairs, cur){
+  var c=String(cur==null?'':cur), seen=pairs.some(function(p){return String(p[0])===c;});
+  var all=seen?pairs.slice():pairs.concat([[c, c||'—']]);
+  return all.map(function(p){
+    return '<option value="'+esc(String(p[0]))+'"'+(String(p[0])===c?' selected':'')+'>'+esc(String(p[1]))+'</option>';
+  }).join('');
 }
 function saveCgInfoPane(){
   if(!activeCgId)return;
@@ -8442,10 +8457,15 @@ function saveSupDetail(){
   var id=document.getElementById('supd-id').value;
   var name=(document.getElementById('supd-name').value||'').trim();
   if(!name){ showAlert('Name is required.'); return; }
-  var sup={ id:id, name:name, title:document.getElementById('supd-title').value||'',
+  var sups=getSupervisors();
+  // MERGE onto the stored record rather than replacing it. Rebuilding from these five fields threw
+  // away everything else the record carried — including _rowVersion, so the next save sent no
+  // expected_version and the 409 concurrency guard silently degraded to last-write-wins.
+  var sup=Object.assign({}, sups[id]||{}, { id:id, name:name,
+    title:document.getElementById('supd-title').value||'',
     phone:(document.getElementById('supd-phone').value||'').trim(),
-    email:(document.getElementById('supd-email').value||'').trim() };
-  var sups=getSupervisors(); sups[id]=sup; saveSupervisorsLS(sups);
+    email:(document.getElementById('supd-email').value||'').trim() });
+  sups[id]=sup; saveSupervisorsLS(sups);
   saveSupervisorAPI(sup);
   var nm=document.getElementById('supDetailName'); if(nm)nm.textContent=(sup.title?sup.title+' ':'')+sup.name;
   if(typeof refreshSupervisorDropdowns==='function') refreshSupervisorDropdowns();
@@ -9137,7 +9157,12 @@ function renderCwInfoPane(){
   var firstName=cw.first_name||(cw.name||'').split(' ')[0]||'';
   var lastName=cw.last_name||(cw.name||'').split(' ').slice(1).join(' ')||'';
   var dName=document.createElement('div');dName.className='info-field-row full';dName.style.gridTemplateColumns='84px 1fr 1fr 1fr';
-  dName.innerHTML='<div class="info-field"><label for="cwi-title">Title</label><select id="cwi-title">'+['','Mr.','Mrs.','Ms.','Miss','Dr.','Mx.'].map(function(t){return '<option'+(String(cw.title||'')===t?' selected':'')+'>'+t+'</option>';}).join('')+'</select></div>'+
+  // A stored title that isn't one of the fixed options can't be selected, so the select reports ''
+  // and saving DESTROYS it — real caseworkers carry titles like 'ASW'. Carry the stored value into
+  // the option list so it stays selected and survives a save.
+  var _cwTitles=['','Mr.','Mrs.','Ms.','Miss','Dr.','Mx.'];
+  if(cw.title&&_cwTitles.indexOf(String(cw.title))<0)_cwTitles.push(String(cw.title));
+  dName.innerHTML='<div class="info-field"><label for="cwi-title">Title</label><select id="cwi-title">'+_cwTitles.map(function(t){return '<option'+(String(cw.title||'')===t?' selected':'')+'>'+esc(t)+'</option>';}).join('')+'</select></div>'+
     '<div class="info-field"><label for="cwi-first">First Name *</label><input id="cwi-first" value="'+esc(firstName)+'"></div>'+
     '<div class="info-field"><label for="cwi-middle">Middle Name</label><input id="cwi-middle" value="'+esc(cw.middle_name||'')+'"></div>'+
     '<div class="info-field"><label for="cwi-last">Last Name *</label><input id="cwi-last" value="'+esc(lastName)+'"></div>';
@@ -9201,7 +9226,12 @@ function saveCwInfoPane(){
   cw.email=document.getElementById('cwi-email').value;
   cw.street=document.getElementById('cwi-street').value;cw.city=document.getElementById('cwi-city').value;
   cw.state=document.getElementById('cwi-state').value;cw.zip=document.getElementById('cwi-zip').value;cw.county=document.getElementById('cwi-county').value;
-  var cwiSup=document.getElementById('cwi-supervisor');if(cwiSup)cw.supervisor_id=cwiSup.value||'';
+  // The supervisor dropdown is populated on a LATER TICK (setTimeout in renderCwInfoPane) and from
+  // a roster that may still be loading. Until then it holds no matching option and reports '' —
+  // which silently unassigned the supervisor, who is CC'd on the monthly invoice emails. Only trust
+  // it once it actually carries options; an empty value from a POPULATED select is a real "none".
+  var cwiSup=document.getElementById('cwi-supervisor');
+  if(cwiSup&&cwiSup.options&&cwiSup.options.length>1)cw.supervisor_id=cwiSup.value||'';
   saveCaseworkersLS(arr);saveCaseworkerAPI(cw);
   document.getElementById('cwDetailName').textContent=(cw.title?cw.title+' ':'')+cw.name;
   document.getElementById('cwDetailMeta').innerHTML=esc(cw.agency||'')+(cw.phone?' · '+esc(cw.phone):'')+(cw.org?' &nbsp;'+_cwOrgBadge(cw):'');
@@ -10123,6 +10153,16 @@ function validateInvoiceForSend(name,prof,inv,cwRec){
         issues.push('Billed time ('+_bh+':'+_padMin(_bm||'00')+') exceeds the authorized '+a.hours+':'+_padMin(a.minutes||0));
     }
   }catch(e){}
+  // A CHAMPS client is billed to MDHHS. If their caseworker is listed under a CARRIER organisation,
+  // this invoice — a Medicaid claim carrying the client's name, Medicaid ID and service detail —
+  // would be emailed to a private insurer. Nothing checked this: the CLIENT's program is enforced
+  // (carrier clients are never invoiced here), but the CASEWORKER's org was only ever a badge, so a
+  // CHAMPS client assigned to a carrier caseworker sent PHI to the wrong organisation silently.
+  // An unset org is 'unknown', not 'wrong' — those are left alone.
+  if(!isCarrierClient(prof) && cwRec && cwRec.org && cwRec.org!=='MDHHS'){
+    issues.push('Caseworker '+(cwRec.name||'')+' is listed under '+cwRec.org+', not MDHHS — a Medicaid '+
+      'invoice must not be emailed to a carrier. Fix the caseworker\'s Organization, or assign this client to an MDHHS caseworker.');
+  }
   // Signature: at least one must exist locally so the PDF auto-places it
   if(!getSigs().length)issues.push('Missing signature — PDF will export with no signature on it');
   return issues;
