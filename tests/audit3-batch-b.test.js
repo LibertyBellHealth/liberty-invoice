@@ -117,3 +117,45 @@ test('a 409 does not clear a dirty flag an earlier failure set', async () => {
   assert.ok(w.getProfiles()['Jane Doe']._unsaved,
     'clearing on a 409 discarded the earlier edit at the next background load');
 });
+
+// ── A Medicaid invoice must never be emailed to a carrier ────────────────────────────────────
+// The CLIENT's program was enforced (carrier clients are never invoiced), but the CASEWORKER's org
+// was only ever a badge — so a CHAMPS client assigned to a Humana caseworker sent that client's PHI
+// to a private insurer with no warning anywhere.
+const CWC = { id: 9, name: 'Daniel Voss', email: 'dv@example.com', agency: 'MDHHS - Wayne' };
+function cleanInv() { return { billingPeriod: '08/2026', status: 'draft',
+  data: { svcHH: '10', svcMM: '00' } }; }
+function champsProf() { return { clientName: 'Eleanor Whitfield', medicaidId: '26230923',
+  worker: 'Daniel Voss', caseworkerId: 9, program: '' }; }
+
+test('a CHAMPS client whose caseworker belongs to a carrier is blocked', () => {
+  const w = loadApp(); resetStorage(w); w.saveSigsLS([{ id: 1, data: 'x' }]);
+  const issues = w.validateInvoiceForSend('Eleanor Whitfield', champsProf(), cleanInv(),
+    Object.assign({}, CWC, { org: 'Humana' }));
+  assert.ok(issues.some((i) => /not MDHHS/.test(i)),
+    'this emails a Medicaid claim with the client’s PHI to a private insurer');
+});
+
+test('an MDHHS caseworker is fine', () => {
+  const w = loadApp(); resetStorage(w); w.saveSigsLS([{ id: 1, data: 'x' }]);
+  const issues = w.validateInvoiceForSend('Eleanor Whitfield', champsProf(), cleanInv(),
+    Object.assign({}, CWC, { org: 'MDHHS' }));
+  assert.strictEqual(issues.length, 0, 'a correctly-assigned invoice must still send: ' + issues.join(' | '));
+});
+
+test('an UNSET caseworker org is not treated as wrong', () => {
+  const w = loadApp(); resetStorage(w); w.saveSigsLS([{ id: 1, data: 'x' }]);
+  const issues = w.validateInvoiceForSend('Eleanor Whitfield', champsProf(), cleanInv(),
+    Object.assign({}, CWC, { org: '' }));
+  assert.strictEqual(issues.length, 0,
+    'most existing caseworkers have no org set — unknown is not the same as wrong, and blocking them would stop all billing');
+});
+
+test('a CARRIER client is unaffected (it is never invoiced here anyway)', () => {
+  const w = loadApp(); resetStorage(w); w.saveSigsLS([{ id: 1, data: 'x' }]);
+  const prof = Object.assign(champsProf(), { program: 'carrier' });
+  const issues = w.validateInvoiceForSend('Eleanor Whitfield', prof, cleanInv(),
+    Object.assign({}, CWC, { org: 'Humana' }));
+  assert.ok(!issues.some((i) => /not MDHHS/.test(i)),
+    'a managed-care client SHOULD go to their carrier caseworker');
+});
