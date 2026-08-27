@@ -3144,7 +3144,7 @@ function bulkDeleteCaregivers(){
     'Delete '+ids.length+' caregiver'+(ids.length>1?'s':'')+'?\n\n'+preview+'\n\nThis cannot be undone.',
     function(){
       var deleted=0;
-      ids.forEach(function(id){if(cgs[id]){delete cgs[id];try{deleteCaregiverAPI(id);}catch(e){}deleted++;}});
+      ids.forEach(function(id){if(cgs[id]){var _nm=cgs[id].name||'';delete cgs[id];try{deleteCaregiverAPI(id);}catch(e){}_detachDeletedRoster('caregiver',id,_nm);deleted++;}});
       saveCaregiversLS(cgs);
       logActivity('delete','Bulk caregiver delete: '+deleted+' removed');
       clearCgBulkSelect();updateStats();
@@ -3220,6 +3220,7 @@ function _doDeleteCaregiver(id){
   try{ var _n=(getCaregivers()[id]||{}).name||id; addAuditEntry('',"Caregiver DELETED: "+_n+' by '+currentUserEmail()); }catch(e){}
   var cgs=getCaregivers();var cgName=(cgs[id]&&cgs[id].name)||id;
   delete cgs[id];saveCaregiversLS(cgs);deleteCaregiverAPI(id);
+  _detachDeletedRoster('caregiver', id, cgName);
   aiTrack('CaregiverDeleted',{caregiverId:id,caregiverName:cgName});
   hideCgForm();activeCgId=null;
   document.getElementById('cgDetailView').style.display='none';
@@ -3553,7 +3554,9 @@ function deleteCaregiverFromDetail(){
 function _doDeleteCaregiverFromDetail(){
   var cgs=getCaregivers();
   var cgName=(cgs[activeCgId]&&cgs[activeCgId].name)||activeCgId;   // read BEFORE the delete; `cg` is the caller's local
+  var _cgDelId=activeCgId, _cgDelName=(cgs[activeCgId]&&cgs[activeCgId].name)||'';
   delete cgs[activeCgId];saveCaregiversLS(cgs);deleteCaregiverAPI(activeCgId);
+  _detachDeletedRoster('caregiver', _cgDelId, _cgDelName);
   aiTrack('CaregiverDeleted',{caregiverId:activeCgId,caregiverName:cgName});
   showCgGrid();
 }
@@ -8551,12 +8554,47 @@ function backToSupList(){
   var supView=document.getElementById('cwViewSupervisors'); if(supView)supView.style.display='block';
   if(typeof renderSupervisorList==='function') renderSupervisorList();
 }
+// Clear every reference to a roster record that is being deleted. ONE function, called from all
+// seven delete paths, so they cannot drift apart again — that drift is the whole bug.
+function _detachDeletedRoster(kind, id, name){
+  try{
+    if(kind==='caregiver'||kind==='caseworker'){
+      var p=getProfiles(), touched=[];
+      Object.keys(p).forEach(function(n){
+        var pr=p[n]; if(!pr)return; var hit=false;
+        if(kind==='caregiver' && String(pr.caregiverId||'')===String(id)){ pr.caregiverId=''; hit=true; }
+        if(kind==='caseworker'){
+          if(String(pr.caseworkerId||'')===String(id)){ pr.caseworkerId=''; hit=true; }
+          // `worker` holds the caseworker's NAME and is what the billing run groups on. Left set, the
+          // client still passes the "no caseworker assigned" check but resolves to no email, so
+          // Send All skips it with no error — the invoice looks ready and is never sent.
+          if(name && String(pr.worker||'').trim()===String(name).trim()){ pr.worker=''; hit=true; }
+        }
+        if(hit) touched.push(n);
+      });
+      if(touched.length){
+        saveProfilesLS(p);
+        touched.forEach(function(n){ try{ if(typeof saveProfileSP==='function')saveProfileSP(n,p[n],true); }catch(e){} });
+      }
+    } else if(kind==='supervisor'){
+      var arr=getCaseworkers(), any=false;
+      arr.forEach(function(c){
+        if(c && String(c.supervisor_id||'')===String(id)){
+          c.supervisor_id=''; any=true;
+          try{ if(typeof saveCaseworkerAPI==='function')saveCaseworkerAPI(c,true); }catch(e){}
+        }
+      });
+      if(any) saveCaseworkersLS(arr);
+    }
+  }catch(e){ console.error('detach-after-delete failed for '+kind+' '+id, e); }
+}
 function deleteSupervisorFromDetail(){
   var id=document.getElementById('supd-id').value;
   var sups=getSupervisors(); var name=(sups[id]&&sups[id].name)||'this supervisor';
   showConfirm('Delete supervisor "'+name+'"? Caseworkers assigned to them will show no supervisor.',function(){
     var s=getSupervisors(); delete s[id]; saveSupervisorsLS(s);
     if(typeof deleteSupervisorAPI==='function') deleteSupervisorAPI(id);
+    _detachDeletedRoster('supervisor', id);   // the modal path already did this; this one did not
     backToSupList();
   },{title:'Delete Supervisor',okText:'Delete'});
 }
@@ -8978,6 +9016,7 @@ function deleteCaseworker(){
     addAuditEntry('','Caseworker DELETED: '+cws.name+' by '+currentUserEmail());
     saveCaseworkersLS(getCaseworkers().filter(function(c){return c.id!==id;}));
     deleteCaseworkerAPI(id);
+    _detachDeletedRoster('caseworker', id, cws.name||'');
     activeCwId=null;
     hideCaseworkerForm();
     showCwGrid();
@@ -8990,6 +9029,7 @@ function deleteCaseworkerFromDetail(){
   showConfirm('Delete caseworker "'+cw.name+'"? This cannot be undone.',function(){
     saveCaseworkersLS(getCaseworkers().filter(function(c){return c.id!==idToDelete;}));
     deleteCaseworkerAPI(idToDelete);
+    _detachDeletedRoster('caseworker', idToDelete, cw.name||'');
     aiTrack('CaseworkerDeleted',{caseworkerId:idToDelete,caseworkerName:cw.name||idToDelete});
     showCwGrid();
   },{title:'Delete Caseworker',okText:'Delete'});
@@ -9132,7 +9172,11 @@ function bulkDeleteCaseworkers(){
     function(){
       var keep=cws.filter(function(c){return ids.indexOf(c.id)===-1;});
       saveCaseworkersLS(keep);
-      ids.forEach(function(id){try{deleteCaseworkerAPI(id);}catch(e){}});
+      ids.forEach(function(id){
+        var _cwNm=(cws.find(function(c){return c&&c.id===id;})||{}).name||'';
+        try{deleteCaseworkerAPI(id);}catch(e){}
+        _detachDeletedRoster('caseworker', id, _cwNm);
+      });
       logActivity('delete','Bulk caseworker delete: '+ids.length+' removed');
       clearCwBulkSelect();
       showAlert(ids.length+' caseworker'+(ids.length!==1?'s':'')+' deleted.');
@@ -10213,6 +10257,8 @@ function validateInvoiceForSend(name,prof,inv,cwRec){
   if(!cwRec||!cwRec.agency)issues.push('Caseworker has no Agency set (Bill To will be empty)');
   if(!cwRec||!cwRec.email)issues.push('Caseworker has no email');
   if(!prof.worker&&!prof.caseworkerId)issues.push('No caseworker assigned');
+  else if(!cwRec||!cwRec.name)
+    issues.push('Assigned caseworker "'+(prof.worker||prof.caseworkerId)+'" no longer exists — reassign this client, or Send All will skip it silently.');
   // Total Time HH must be present
   if(!d.svcHH||String(d.svcHH).trim()===''){
     var hasTask=d.tasks&&d.tasks.svc&&d.tasks.svc.some(function(r){return r&&r.some(function(c){return c;});});
@@ -11419,7 +11465,25 @@ function _asstOpenEmail(args){
   //      (the ✉ caseworker action on the document card).
   // This tool only ever attaches a freshly GENERATED (unsigned) form, so with no recipient named it
   // is step 1 — the caregiver. 'caseworker' still works when the user asks for it explicitly.
-  if(/@/.test(recipient)){ toEmail=recipient; recipLabel='recipient'; }
+  // The model is TOLD the opposite of this by its own tool description (the backend said an empty
+  // recipient on a 4676 routes to the caseworker and 'caregiver' is refused). So the model could omit
+  // recipient believing it goes to the caseworker, the code would address it to the CAREGIVER, and
+  // the model would then report to the owner that it went to the caseworker. Rather than pick a
+  // default and hope the description gets fixed, REFUSE to guess on a PHI-bearing form.
+  if(_is4676 && !recipient)
+    return Promise.resolve({error:'Say who the MSA-4676 goes to: "caregiver" (step 1 — they sign the blank form) or "caseworker" (step 2 — send the SIGNED copy from the client\u2019s Documents instead). I will not guess on a form that carries PHI.'});
+  if(/@/.test(recipient)){
+    toEmail=recipient; recipLabel='recipient';
+    // A literal address is neither the caregiver nor the caseworker on file. Say so loudly — this is
+    // the one path where a model-chosen address could send PHI off-site on a single misread click.
+    var _known=(function(){
+      var cgm=(p.caregiverId&&cgs[p.caregiverId])?cgs[p.caregiverId]:null;
+      var cwm=(p.caseworkerId&&cws.find(function(c){return c.id===p.caseworkerId;}))||null;
+      var e=recipient.toLowerCase();
+      return (cgm&&(cgm.email||'').toLowerCase()===e)||(cwm&&(cwm.email||'').toLowerCase()===e);
+    })();
+    if(!_known) recipLabel='\u26a0 '+recipient+' — NOT the caregiver or caseworker on file';
+  }
   else if(/case|worker|coordinator/i.test(recipient)){
     var cw=null;
     if(p.caseworkerId)cw=cws.find(function(c){return c.id===p.caseworkerId;});
@@ -11579,9 +11643,22 @@ function _asstUpdateClient(args){
   if(!profs[key]){ var f=Object.keys(profs).find(function(k){return k.toLowerCase()===cname.toLowerCase();}); if(f)key=f; }
   var p=profs[key]; if(!p)return {error:'No client named "'+cname+'" found.'};
   var fieldRaw=String(args.field||'').toLowerCase().replace(/\s+/g,'_');
-  var prop=_ASST_UPDATABLE[fieldRaw];
+  // hasOwnProperty: a plain-object lookup lets INHERITED keys through, so field:'constructor' or
+  // '__proto__' passed the whitelist and wrote a stringified junk key onto the client record.
+  var prop=Object.prototype.hasOwnProperty.call(_ASST_UPDATABLE, fieldRaw) ? _ASST_UPDATABLE[fieldRaw] : null;
   if(!prop)return {error:'I can only update: phone, email, address, city, state, zip, county, medicaid ID, medicare, DOB, hourly rate, start date, status, program, carrier, or member #. (SSN and license must be edited on the client page.)'};
   var value=(args.value==null?'':String(args.value)).trim();
+  if(prop==='dob'||prop==='startDate'){
+    // Both render as <input type="date">, which reports '' for anything that isn't YYYY-MM-DD — so
+    // storing free text here means the NEXT unrelated save silently blanks the field. A blank
+    // startDate additionally drops the client out of every billing surface (clientWasActiveInPeriod)
+    // and makes saveClientInfo refuse to save an Active client at all. Refuse it here instead.
+    if(value!==''){
+      var _pd=_asstParseDate(value);
+      if(!_pd) return {error:'I need that date as YYYY-MM-DD or MM/DD/YYYY (I got "'+value+'").'};
+      value=_pd.y+'-'+String(_pd.m).padStart(2,'0')+'-'+String(_pd.d).padStart(2,'0');
+    }
+  }
   if(prop==='clientStatus'){
     var sv=value.toLowerCase(); value=(sv==='in progress')?'inactive':sv;
     if(['active','inactive','lost','terminated'].indexOf(value)<0)
@@ -11658,6 +11735,21 @@ function _asstExportData(args){
     title='Clients';
   }
   if(!rows.length)return {error:'Nothing to export — the query returned no rows.'};
+  // Every other side-effecting tool opens a review dialog; this one wrote the file immediately.
+  // It runs uncapped, so one model decision could drop a full roster with Medicaid IDs into
+  // Downloads — outside the app's idle PHI wipe. Gate it like the others.
+  if(typeof showConfirm==='function'){
+    return new Promise(function(resolve){
+      showConfirm('Export '+rows.length+' '+source+' row'+(rows.length===1?'':'s')+' as '+format.toUpperCase()+'?\n\n'+
+        'This writes a file to your Downloads folder. It may contain PHI (names, Medicaid IDs), and files there are NOT covered by the app\'s automatic sign-out wipe.',
+        function(){ resolve(_asstDoExport(cols,rows,title,source,format)); },
+        { title:'Export data?', okText:'Export', danger:true,
+          onCancel:function(){ resolve({cancelled:true, note:'The user declined the export. Do not retry it.'}); } });
+    });
+  }
+  return _asstDoExport(cols,rows,title,source,format);
+}
+function _asstDoExport(cols,rows,title,source,format){
   var fname=(title.replace(/[^a-z0-9]+/gi,'_').replace(/^_|_$/g,'')||'export')+'_'+today().replace(/\//g,'-');
   try{
     if(format==='csv'){ _asstDownloadCsv(cols,rows,fname+'.csv'); }
