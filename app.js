@@ -407,6 +407,10 @@ function confirmNewInvoice(mode){
         nextBP=String(lm).padStart(2,'0')+'/'+ly;
       }
     }
+    // This is a NEW invoice for a NEW period, so it bills the CURRENT state rate. applyFullInvoice
+    // above deliberately restored the copied invoice's stored rate (right when reopening an old
+    // invoice, wrong here) — re-stamp it, exactly as copyMonth() does.
+    var _hrNew=document.getElementById('hourlyRate'); if(_hrNew)_hrNew.value=stateRate();
     document.getElementById('billingPeriod').value=nextBP;
     document.getElementById('billingPeriod2').value=nextBP;
     var T=today();
@@ -3886,6 +3890,10 @@ function _mergeByIdKeepUnsynced(serverArr, localArr, syncedProp){
   var out=(serverArr||[]).slice();
   (localArr||[]).forEach(function(x){
     if(!x || x.id==null) return;
+    // A durable failed-save marker wins in BOTH directions. A locally created task keeps its local
+    // id until a full reload, so it is NOT in `have` and falls through to the syncedProp drop below
+    // — which is exactly the in-session case the flag exists to protect.
+    if(!have[x.id] && x._unsaved === true){ out.push(x); return; }
     if(have[x.id]){
       // A durable failed-save marker wins over the server's older row — same rule _mergeRosterArr
       // already applies. Without this the _unsaved flag written for tasks was never read, so a
@@ -6958,6 +6966,9 @@ function loadSettingsAPI(){
       // Every other loader gates on this; settings did not, so a GET in flight could revert a rate
       // the owner had just saved. The state rate is stamped on every invoice.
       if(_savesInFlight>0) return;
+      // Capture the baseline BEFORE overwriting local storage, or the dirty test compares the DOM
+      // against the value it is about to be judged against.
+      var _agBase={}; try{ _agBase=JSON.parse(localStorage.getItem('lhca_agency')||'{}'); }catch(e){}
       if(s.state_rate!=null && s.state_rate!=='') localStorage.setItem('lhca_state_rate', String(s.state_rate));
       if(s.agency && typeof s.agency==='object') localStorage.setItem('lhca_agency', JSON.stringify(s.agency));
       // Never repaint the agency form while it is being edited: these inputs have no dirty tracking,
@@ -6965,15 +6976,23 @@ function loadSettingsAPI(){
       // values back out of the DOM and persisted them over the owner's change.
       var _agDirty=false;
       try{
-        var _agStored=JSON.parse(localStorage.getItem('lhca_agency')||'{}');
-        ['ag-name','ag-id','ag-phone','ag-address','ag-city','ag-state','ag-zip'].forEach(function(id){
+        // EXPLICIT map: 'ag-name'/'ag-id' are stored as agency_provider_name/agency_provider_id, not
+        // agency_name/agency_id. Deriving the key by string-replace got those two wrong, so `was` was
+        // always '' against a non-empty default and the form was treated as permanently dirty.
+        var _AG_KEYS={ 'ag-name':'agency_provider_name', 'ag-id':'agency_provider_id',
+                       'ag-phone':'agency_phone', 'ag-address':'agency_address',
+                       'ag-city':'agency_city', 'ag-state':'agency_state', 'ag-zip':'agency_zip' };
+        Object.keys(_AG_KEYS).forEach(function(id){
           var e=document.getElementById(id); if(!e)return;
-          var k=id.replace('ag-','agency_'), was=_agStored[k]!=null?String(_agStored[k]):'';
+          var was=_agBase[_AG_KEYS[id]]!=null?String(_agBase[_AG_KEYS[id]]):'';
           if(String(e.value||'')!==was) _agDirty=true;
         });
       }catch(e){}
       if(!_agDirty && typeof renderAgencySettings==='function' && document.getElementById('ag-name')) renderAgencySettings();
-      var sr=document.getElementById('stateRateInput'); if(sr && s.state_rate && !_agDirty) sr.value=String(s.state_rate);
+      // The rate box is independent of the agency form — gating it on _agDirty meant a stale rate
+      // stayed on screen and could be pushed back over the server's newer one.
+      var sr=document.getElementById('stateRateInput');
+      if(sr && s.state_rate && document.activeElement!==sr) sr.value=String(s.state_rate);
     })
     .catch(function(e){ console.warn('Load settings failed (using local):', e); });
 }
@@ -10285,13 +10304,23 @@ function validateInvoiceForSend(name,prof,inv,cwRec){
     // Compare what is actually CERTIFIED: 'Total Time for Billing Period' (grand = service +
     // complex care), not service alone. On a complex-care client, checking svc let 15:00 service +
     // 10:00 complex bill 25:00 against a 20:00 authorization with no warning at all.
-    var _bh=String(d.grandHH||'').trim(), _bm=d.grandMM;
-    if(!/^\d{1,3}$/.test(_bh)){ _bh=String(d.svcHH||'').trim(); _bm=d.svcMM; }   // grand blank → fall back
-    if(a&&a.hours!=null&&String(a.hours).trim()!==''&&/^\d{1,3}$/.test(_bh)){
-      var billed=parseInt(_bh,10)*60+(parseInt(_bm,10)||0);
+    var _mins=function(hh,mm){ hh=String(hh==null?'':hh).trim();
+      return /^\d{1,3}$/.test(hh) ? (parseInt(hh,10)*60+(parseInt(mm,10)||0)) : -1; };
+    var _svc=_mins(d.svcHH,d.svcMM), _cplx=_mins(d.cplxHH,d.cplxMM), _grand=_mins(d.grandHH,d.grandMM);
+    // The largest figure the certified form could carry. grandHH is inside the hidden complex-care
+    // section, so on an ordinary invoice it holds a stale value while svcHH — the field the owner
+    // actually edits, and the one printed on page 1 — carries the real number. Checking grand alone
+    // let a 20-hour over-bill through silently; checking svc alone missed complex-care totals.
+    var billed=Math.max(_svc, _grand, (_svc>=0?_svc:0)+(_cplx>=0?_cplx:0));
+    var _bh=Math.floor(billed/60), _bm=billed%60;
+    if(a&&a.hours!=null&&String(a.hours).trim()!==''&&billed>=0){
       var appr=parseInt(a.hours,10)*60+(parseInt(a.minutes,10)||0);
       if(appr>0&&billed>appr)
-        issues.push('Billed time ('+_bh+':'+_padMin(_bm||'00')+') exceeds the authorized '+a.hours+':'+_padMin(a.minutes||0));
+        issues.push('Billed time ('+_bh+':'+_padMin(_bm)+') exceeds the authorized '+a.hours+':'+_padMin(a.minutes||0));
+      // Complex care marked but no billing-period total typed: the form certifies svc + cplx across
+      // two pages while grand is blank, so nothing downstream shows the real total.
+      if(_cplx>0&&_grand<0)
+        issues.push('Complex care is filled in but "Total Time for Billing Period" is blank — enter the combined total so the certified form and the authorization check agree.');
     }
   }catch(e){}
   // A CHAMPS client is billed to MDHHS. If their caseworker is listed under a CARRIER organisation,
@@ -11655,7 +11684,12 @@ function _asstUpdateClient(args){
     // and makes saveClientInfo refuse to save an Active client at all. Refuse it here instead.
     if(value!==''){
       var _pd=_asstParseDate(value);
-      if(!_pd) return {error:'I need that date as YYYY-MM-DD or MM/DD/YYYY (I got "'+value+'").'};
+      // _asstParseDate is range-unchecked, so '13/05/2026' (a day-first date) and '02/31/2026' parse
+      // "successfully" into a value <input type="date"> still rejects — which blanks the field on the
+      // next save, the very thing this guard exists to stop. Verify the date is REAL.
+      var _ok=!!_pd && _pd.m>=1 && _pd.m<=12 && _pd.d>=1 &&
+              _pd.d<=(new Date(_pd.y,_pd.m,0).getDate()) && _pd.y>=1900 && _pd.y<=2200;
+      if(!_ok) return {error:'That is not a date I can store ("'+value+'"). Give it as YYYY-MM-DD, e.g. 2026-05-12.'};
       value=_pd.y+'-'+String(_pd.m).padStart(2,'0')+'-'+String(_pd.d).padStart(2,'0');
     }
   }
@@ -11740,11 +11774,19 @@ function _asstExportData(args){
   // Downloads — outside the app's idle PHI wipe. Gate it like the others.
   if(typeof showConfirm==='function'){
     return new Promise(function(resolve){
+      // Escape closes the modal without running onCancel, which would leave this Promise pending
+      // forever and hang the assistant. Settle on ANY dismissal.
+      var _settled=false;
+      var _finish=function(v){ if(_settled)return; _settled=true; resolve(v); };
+      var _esc=function(ev){ if(ev.key==='Escape'){ document.removeEventListener('keydown',_esc,true);
+        _finish({cancelled:true, note:'The user dismissed the export. Do not retry it.'}); } };
+      document.addEventListener('keydown',_esc,true);
       showConfirm('Export '+rows.length+' '+source+' row'+(rows.length===1?'':'s')+' as '+format.toUpperCase()+'?\n\n'+
         'This writes a file to your Downloads folder. It may contain PHI (names, Medicaid IDs), and files there are NOT covered by the app\'s automatic sign-out wipe.',
-        function(){ resolve(_asstDoExport(cols,rows,title,source,format)); },
+        function(){ document.removeEventListener('keydown',_esc,true); _finish(_asstDoExport(cols,rows,title,source,format)); },
         { title:'Export data?', okText:'Export', danger:true,
-          onCancel:function(){ resolve({cancelled:true, note:'The user declined the export. Do not retry it.'}); } });
+          onCancel:function(){ document.removeEventListener('keydown',_esc,true);
+            _finish({cancelled:true, note:'The user declined the export. Do not retry it.'}); } });
     });
   }
   return _asstDoExport(cols,rows,title,source,format);
