@@ -5173,6 +5173,28 @@ async function backupToOneDrive(){
   );
 }
 
+// Read every caregiver's MI Login credential for a FULL backup. They are never written to
+// localStorage (saveCaregiversLS strips them), so unlike the SSN there is no in-memory overlay to
+// read — each one has to be fetched from the server. Each fetch is audited server-side as a PHI
+// read, which is correct: a backup that captures credentials SHOULD leave a trail.
+async function _fetchMiloginForBackup(){
+  var out={}, cgs=getCaregivers();
+  var ids=Object.keys(cgs).filter(function(id){
+    var c=cgs[id]; return c && (c.miloginUsername||c.milogin_username);
+  });
+  var failed=[];
+  for(var i=0;i<ids.length;i++){
+    try{
+      var r=await fetch(API_BASE+'/caregivers/'+encodeURIComponent(ids[i])+'/milogin',{headers:apiHeaders()});
+      if(!r.ok){ failed.push(ids[i]); continue; }
+      var d=await r.json();
+      if(d&&typeof d.milogin_password==='string'&&d.milogin_password) out[ids[i]]=d.milogin_password;
+    }catch(e){ failed.push(ids[i]); }
+  }
+  // Never let a partial read pass as complete — a backup you believe holds the credentials but
+  // doesn't is worse than one you know doesn't.
+  return { creds:out, failed:failed };
+}
 async function doBackupToOneDrive(includeFullSSN,silent){
   var btn=document.getElementById('oneDriveBackupBtn');
   var oldText=btn?btn.textContent:'';
@@ -5188,7 +5210,17 @@ async function doBackupToOneDrive(includeFullSSN,silent){
     // Build the backup payload (same logic as JSON export)
     var p=getProfiles();
     if(!Object.keys(p).length){throw new Error('No clients yet.');}
-    var payload=_buildBackupPayload(includeFullSSN);
+    var _mi={creds:{},failed:[]};
+    if(includeFullSSN){
+      _mi=await _fetchMiloginForBackup();
+      if(_mi.failed.length&&!silent){
+        showAlert('Could not read the MI Login credential for '+_mi.failed.length+' caregiver'+
+          (_mi.failed.length===1?'':'s')+'. The backup will be written WITHOUT '+
+          (_mi.failed.length===1?'that one':'those')+' — everything else is included.',
+          {title:'Some credentials not backed up',danger:true});
+      }
+    }
+    var payload=_buildBackupPayload(includeFullSSN,_mi.creds);
     var content=JSON.stringify(payload,null,2);
     var bytes=new Blob([content]).size;
     if(bytes>4*1024*1024){throw new Error('Backup too large for direct upload ('+(bytes/1024/1024).toFixed(1)+' MB). Contact support to add chunked upload.');}
@@ -5227,7 +5259,7 @@ async function doBackupToOneDrive(includeFullSSN,silent){
         'File: '+fname+'\n'+
         'Folder: Liberty Home Care Backups\n'+
         'Size: '+(bytes/1024).toFixed(1)+' KB\n'+
-        (includeFullSSN?'\n⚠️ This backup contains full SSN — keep your OneDrive access controlled.':'')+
+        (includeFullSSN?'\n⚠️ This backup contains full SSNs AND MI Login passwords. Anyone who opens the file can sign in to the State portal as your agency, which reaches EVERY client\u2019s records — not just the ones in this file. Keep your OneDrive access controlled and do not share or email it.':'')+
         '\n\nClick Open to view in OneDrive, or OK to dismiss.',
         function(){if(info.webUrl)window.open(info.webUrl,'_blank');},
         {title:'Manual Backup Complete',okText:'Open in OneDrive',danger:false,extraText:'OK',onExtra:function(){}}
@@ -5256,7 +5288,7 @@ function _maskSsnValue(v){
 }
 // The whole backup payload, built in one testable place. Everything that leaves this device for
 // OneDrive goes through here, so the SSN rules are enforced once and can be pinned by a test.
-function _buildBackupPayload(includeFullSSN){
+function _buildBackupPayload(includeFullSSN,miloginByCgId){
   var copy=_stripInternalPHI(JSON.parse(JSON.stringify(getProfiles())));
   if(!includeFullSSN){
     Object.keys(copy).forEach(function(name){
@@ -5270,6 +5302,10 @@ function _buildBackupPayload(includeFullSSN){
   Object.keys(cgCopy).forEach(function(id){
     var c=cgCopy[id]; if(!c)return;
     delete c.miloginPassword; delete c.milogin_password;
+    // FULL backup only: restore the credential so the file can actually rebuild a wiped device.
+    // saveCaregiverAPI sends milogin_password and the backend keeps the stored value when it is
+    // empty, so this round-trips on import without a further change.
+    if(includeFullSSN && miloginByCgId && miloginByCgId[id]) c.miloginPassword=miloginByCgId[id];
     if(!includeFullSSN && c.ssn) c.ssn=_maskSsnValue(c.ssn);
   });
   return {
