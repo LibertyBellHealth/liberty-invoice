@@ -9821,6 +9821,9 @@ function _buildFormDataDict(clientName){
   var dict={
     client_name:fullName, client_first_name:firstN, client_last_name:lastN,
     client_dob:_normalizeDate(prof.dob||''), medicaid_id:prof.medicaidId||'', case_number:'', recipient_id:prof.medicaidId||'',
+    // The 4676 field map asks for `start_date` (msa_start) but this dict never defined it, so the
+    // lookup returned undefined and every generated MSA-4676 carried a BLANK "Start of Service".
+    start_date:_normalizeDate(prof.startDate||''),
     client_address:prof.street||prof.address||'', client_city:prof.city||'', client_state:prof.state||'MI', client_zip:prof.zip||'',
     client_phone:prof.phone||'', client_email:prof.clientEmail||prof.cemail||'', client_county:prof.county||'',
     worker_name:cw.name||prof.worker||'', worker_phone:cw.phone||'', worker_email:cw.email||'', worker_fax:'',
@@ -9892,7 +9895,7 @@ var STATE_FORM_FIELD_MAPS={
     'Phone #':'agency_phone',
     'RelationShip':'agency_relationship',
     // Manual-fill: per-case start date
-    'Start Date':''
+    'Start Date':'start_date'
   }
 };
 // Match Adobe's auto-detected field names (which use the form's printed labels)
@@ -10122,7 +10125,30 @@ async function buildStateFormBytes(formType, clientName){
   var pdfDoc=await PDFLib.PDFDocument.load(bytes);
   var helv=await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
   var pages=pdfDoc.getPages();
-  (def.fields||[]).forEach(function(f){
+  var _acro=null, _acroFields=[];
+  try{ _acro=pdfDoc.getForm(); _acroFields=_acro.getFields(); }catch(e){ _acroFields=[]; }
+  if(_acroFields.length){
+    // Fill the REAL form fields, exactly as the Forms UI download does.
+    _acroFields.forEach(function(field){
+      var fname=field.getName();
+      try{
+        if(typeof field.setText==='function'){
+          var av=_matchAcroFormField(fname,dict,formType);
+          if(av)field.setText(String(av));
+          try{ field.acroField.dict.set(PDFLib.PDFName.of('DA'),PDFLib.PDFString.of('0 0 0 rg /Helv 10 Tf')); }catch(e){}
+        } else if(typeof field.check==='function'){
+          if((STATE_FORM_CHECKS[formType]||{})[fname]===true){ try{field.check();}catch(e){} }
+        } else if(typeof field.select==='function'){
+          var av2=_matchAcroFormField(fname,dict,formType);
+          if(av2){ try{field.select(String(av2));}catch(e){} }
+        }
+      }catch(e){ console.warn('[StateForm] field "'+fname+'" set failed:',e.message); }
+    });
+    try{ _acro.updateFieldAppearances(helv); }
+    catch(e){ try{ _acro.acroForm.dict.set(PDFLib.PDFName.of('NeedAppearances'),PDFLib.PDFBool.True); }catch(e2){} }
+    // Deliberately NOT flattened: this copy is emailed for the caregiver to sign.
+  }
+  (_acroFields.length ? [] : (def.fields||[])).forEach(function(f){
     var v=dict[inputMap[f.inputId]]; v=(v==null?'':String(v)).trim();
     if(!v)return;
     var page=pages[f.page||0]; if(!page)return;

@@ -159,6 +159,7 @@ var API_BASE = (window.location.host.indexOf('localhost') >= 0)
   : 'https://liberty-crm-api-cyb3dkhnd2e7a3cy.centralus-01.azurewebsites.net/api';
 
 var token = (new URLSearchParams(window.location.search)).get('t') || '';
+var _verifiedDob = '';   // in-memory only; re-sent at completion so identity is proven AT SIGNING
 var requestData = null;
 var documentData = null; // populated after DOB verification
 var sigMode = 'draw';
@@ -215,6 +216,10 @@ function showDobGate(){
 async function submitDob(){
   var dob = $('dobInput').value;
   $('dobError').classList.add('hidden');
+  // Kept in memory only (never stored) so the signature step can re-prove identity. The server used
+  // to accept a one-time "verified" flag, which meant that after this step anyone holding the link
+  // could complete the signature without knowing the date of birth.
+  _verifiedDob = dob;
   if (!dob){ $('dobError').textContent = 'Please enter your date of birth.'; show('dobError'); return; }
   $('dobBtn').disabled = true;
   $('dobBtn').textContent = 'Checking…';
@@ -382,6 +387,9 @@ async function submitSignature(){
         typedName: ($('typedName').value || '').trim(),
         signatureDataUrl: buildSignatureDataUrl(),
         agreed: $('agreeBox').checked,
+        // REQUIRED by the server. Without it every completion is refused — the backend change and
+        // this line must ship together.
+        dob: _verifiedDob || ($('dobInput') ? $('dobInput').value : ''),
       }),
     });
     var data = await resp.json();
