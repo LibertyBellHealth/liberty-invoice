@@ -8,21 +8,29 @@ const { loadApp, resetStorage } = require('./harness');
 // ── MSA-4676 routing (owner-confirmed workflow, 2026-08-20): the CAREGIVER signs the generated
 // form first; the signed copy is then sent from Documents to the caseworker. open_email only ever
 // attaches a freshly generated (unsigned) form, so that is the caregiver leg. ──
-test('open_email: a generated 4676 with no recipient goes to the caregiver (the signature step)', async () => {
+test('open_email: a 4676 with NO recipient is refused rather than defaulted', async () => {
   const w = loadApp(); resetStorage(w);
   w.localStorage.setItem('lhca_caregivers', JSON.stringify({ cg1: { name: 'Casey Giver', email: 'caregiver@example.com' } }));
   w.localStorage.setItem('lhca_caseworkers', JSON.stringify([{ id: 'cw1', name: 'Case Worker', email: 'worker@michigan.gov' }]));
   w.localStorage.setItem('lhca_profiles', JSON.stringify({ 'Jane Doe': { clientName: 'Jane Doe', caregiverId: 'cg1', caseworkerId: 'cw1' } }));
   w._profilesCache = null;
-  // PDF generation can't run under jsdom, so the result is the form-build error — what this pins is
-  // that resolution did NOT fail on the caseworker leg (which would error about a caseworker email).
+  // This test used to pin "no recipient -> caregiver". That default was the bug: the model's own tool
+  // description said an empty recipient routes to the CASEWORKER, so the model omitted it believing
+  // that, the code addressed the caregiver, and the model then told the owner it went to the
+  // caseworker. On a form carrying PHI, refusing to guess is the only safe answer.
   const r = await w._asstOpenEmail({ client_name: 'Jane Doe', attach_form: 'msa4676' });
-  assert.ok(!/caseworker/i.test(JSON.stringify(r)), 'an unsigned 4676 is not routed to the caseworker');
+  assert.ok(r && r.error && /goes to/i.test(r.error), 'an unaddressed 4676 must be refused, not routed');
+});
 
-  // With no caregiver email on file it errors ABOUT the caregiver — proof of which branch ran.
+test('open_email: an EXPLICIT caregiver 4676 is still step 1 and resolves to the caregiver', async () => {
+  const w = loadApp(); resetStorage(w);
   w.localStorage.setItem('lhca_caregivers', JSON.stringify({ cg1: { name: 'Casey Giver', email: '' } }));
-  const r2 = await w._asstOpenEmail({ client_name: 'Jane Doe', attach_form: 'msa4676' });
-  assert.match(String(r2.error || ''), /caregiver/i);
+  w.localStorage.setItem('lhca_caseworkers', JSON.stringify([{ id: 'cw1', name: 'Case Worker', email: 'worker@michigan.gov' }]));
+  w.localStorage.setItem('lhca_profiles', JSON.stringify({ 'Jane Doe': { clientName: 'Jane Doe', caregiverId: 'cg1', caseworkerId: 'cw1' } }));
+  w._profilesCache = null;
+  // No caregiver email on file, so it errors ABOUT the caregiver — proof of which branch ran.
+  const r = await w._asstOpenEmail({ client_name: 'Jane Doe', attach_form: 'msa4676', recipient: 'caregiver' });
+  assert.match(String(r.error || ''), /caregiver/i, 'the blank form still goes to the caregiver to sign');
 });
 
 test('open_email: an explicit caseworker recipient still routes there', async () => {
