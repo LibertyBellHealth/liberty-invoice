@@ -5634,9 +5634,14 @@ function applyFullInvoice(data){
   resetSigArea(1); resetSigArea(2);
   var f=['clientName','medicaidId','worker','billingPeriod','svcHH','svcMM','cplxHH','cplxMM','p1HH','p1MM','grandHH','grandMM','dateSubmitted','sigDate1','sigDate2'];
   f.forEach(function(id){var el=document.getElementById(id);if(el&&data[id]!==undefined)el.value=data[id];});
-  // Hourly rate = the client's own rate (from DHS-1210 or manual), else the Settings state rate
+  // The rate SAVED on the invoice wins. An invoice is a certified record of what was billed, so
+  // re-deriving today's state rate here rewrote history: opening a prior-year invoice showed the
+  // current rate, and saving it wrote that rate over the original. Fall back to the current rate
+  // only when the invoice carries none (a fresh invoice, or one saved before this field existed).
   var profCur=(activeProfileName&&getProfiles()[activeProfileName])||{};
-  document.getElementById('hourlyRate').value=clientInvoiceRate(profCur);
+  var _hrEl=document.getElementById('hourlyRate');
+  if(_hrEl)_hrEl.value=(data.hourlyRate!=null&&String(data.hourlyRate).trim()!=='')
+    ? data.hourlyRate : clientInvoiceRate(profCur);
   // Bill To: always from caseworker billing code, not whatever was saved on the invoice
   var cwApply=getCaseworkers().find(function(c){return c.id===profCur.caseworkerId||c.name===(data.worker||profCur.worker);})||{};
   document.getElementById('billTo').value=(cwApply.agency||cwApply.county||data.billTo||'');
@@ -6568,7 +6573,10 @@ async function loadInvoiceForCapture(clientName,inv,period){
   document.getElementById('billingPeriod').value=period;
   document.getElementById('billingPeriod2').value=period;
   document.getElementById('medicaidId').value=prof.medicaidId||'';
-  document.getElementById('hourlyRate').value=stateRate();
+  // Same rule on the PDF/email path: print the rate the invoice was BILLED at, not today's.
+  var _invRate=(inv&&inv.data&&inv.data.hourlyRate!=null&&String(inv.data.hourlyRate).trim()!=='')
+    ? inv.data.hourlyRate : stateRate();
+  document.getElementById('hourlyRate').value=_invRate;
   var cwRecCapture=getCaseworkers().find(function(c){return c.id===prof.caseworkerId||c.name===prof.worker;})||{};
   document.getElementById('billTo').value=(cwRecCapture.agency||cwRecCapture.county||'');
   document.getElementById('worker').value=prof.worker||'';
