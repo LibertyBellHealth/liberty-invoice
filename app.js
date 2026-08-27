@@ -1474,6 +1474,18 @@ function deleteClient(){
     addAuditEntry(name,'CLIENT RECORD DELETED by '+currentUserEmail());   // durable record — aiTrack is scrubbed telemetry, not an audit trail
     var p=getProfiles();deleteProfileSP(name);delete p[name];
     try{localStorage.removeItem('lhca_draft_'+name);}catch(e){}
+    // PHI: these overlays are keyed by NAME and getProfiles re-attaches them to ANY profile with a
+    // matching name. Left behind, a later client with the same name inherited the deleted person's
+    // SSN and had it encrypted into their row.
+    try{ delete _ssnMem[name]; }catch(e){}
+    try{ delete _clientSyncedMem[name]; }catch(e){}
+    // Tasks are name-keyed too. Left pointing at a deleted client they vanish from every view and
+    // are silently adopted by the next client created with that name — detach them instead.
+    try{
+      var _td=getTodos(), _n=0;
+      _td.forEach(function(t){ if(t&&t.client===name){ t.client=''; _n++; } });
+      if(_n){ saveTodos(_td); _td.forEach(function(t){ if(t&&t.client===''&&typeof saveTaskAPI==='function')saveTaskAPI(t); }); }
+    }catch(e){}
     saveProfilesLS(p);activeProfileName=null;logActivity('delete','Client deleted: '+name);navHome();
   },{title:'Delete Client',okText:'Delete'});
 }
@@ -3866,10 +3878,18 @@ function sigId(){return 'sig_'+Date.now()+'_'+Math.random().toString(36).slice(2
 // by the server and is now gone → deleted elsewhere → drop). Pass no syncedProp to always keep
 // local-only items (signatures have no per-row sync marker).
 function _mergeByIdKeepUnsynced(serverArr, localArr, syncedProp){
-  var have={}; (serverArr||[]).forEach(function(x){ if(x&&x.id!=null) have[x.id]=true; });
+  var have={}, idx={};
+  (serverArr||[]).forEach(function(x,i){ if(x&&x.id!=null){ have[x.id]=true; idx[x.id]=i; } });
   var out=(serverArr||[]).slice();
   (localArr||[]).forEach(function(x){
-    if(!x || x.id==null || have[x.id]) return;
+    if(!x || x.id==null) return;
+    if(have[x.id]){
+      // A durable failed-save marker wins over the server's older row — same rule _mergeRosterArr
+      // already applies. Without this the _unsaved flag written for tasks was never read, so a
+      // failed edit to an already-synced task was reverted by the next load, silently.
+      if(x._unsaved === true) out[idx[x.id]] = x;
+      return;
+    }
     if(syncedProp && x[syncedProp]) return;   // was synced, now absent from server → deleted elsewhere
     out.push(x);
   });
@@ -6921,18 +6941,36 @@ function _pushSettings(obj){
     // Not signed in is the normal local-only state, not a sync failure — flag it so callers stay quiet.
     var _e=new Error('not signed in'); _e.notSignedIn=true; return Promise.reject(_e);
   }
-  return fetch(API_BASE+'/settings',{method:'POST',headers:apiHeaders(),body:JSON.stringify(obj)})
-    .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r; });
+  // Join the in-flight counter so a settings GET can't land between this POST and its LS write and
+  // revert it (see the guard in loadSettingsAPI).
+  return _trackRosterSave(
+    fetch(API_BASE+'/settings',{method:'POST',headers:apiHeaders(),body:JSON.stringify(obj)})
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r; }));
 }
 function loadSettingsAPI(){
   return fetch(API_BASE+'/settings',{headers:apiHeaders()})
     .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); return r.json(); })
     .then(function(s){
       if(!s||typeof s!=='object') return;
+      // Every other loader gates on this; settings did not, so a GET in flight could revert a rate
+      // the owner had just saved. The state rate is stamped on every invoice.
+      if(_savesInFlight>0) return;
       if(s.state_rate!=null && s.state_rate!=='') localStorage.setItem('lhca_state_rate', String(s.state_rate));
       if(s.agency && typeof s.agency==='object') localStorage.setItem('lhca_agency', JSON.stringify(s.agency));
-      if(typeof renderAgencySettings==='function' && document.getElementById('ag-name')) renderAgencySettings();
-      var sr=document.getElementById('stateRateInput'); if(sr && s.state_rate) sr.value=String(s.state_rate);
+      // Never repaint the agency form while it is being edited: these inputs have no dirty tracking,
+      // so a GET resolving mid-typing wiped the characters, and the next Save read the SERVER's
+      // values back out of the DOM and persisted them over the owner's change.
+      var _agDirty=false;
+      try{
+        var _agStored=JSON.parse(localStorage.getItem('lhca_agency')||'{}');
+        ['ag-name','ag-id','ag-phone','ag-address','ag-city','ag-state','ag-zip'].forEach(function(id){
+          var e=document.getElementById(id); if(!e)return;
+          var k=id.replace('ag-','agency_'), was=_agStored[k]!=null?String(_agStored[k]):'';
+          if(String(e.value||'')!==was) _agDirty=true;
+        });
+      }catch(e){}
+      if(!_agDirty && typeof renderAgencySettings==='function' && document.getElementById('ag-name')) renderAgencySettings();
+      var sr=document.getElementById('stateRateInput'); if(sr && s.state_rate && !_agDirty) sr.value=String(s.state_rate);
     })
     .catch(function(e){ console.warn('Load settings failed (using local):', e); });
 }
@@ -7859,6 +7897,13 @@ function _mergeProfilesLoad(serverProfiles, localProfiles){
       out[name]=loc;                                                    // unsynced add (or edited row deleted elsewhere)
     }
     // else: previously-synced, clean, and gone from the server → deleted elsewhere → drop.
+  }
+  // Carry forward LOCAL-ONLY fields the server never round-trips. `tasks` is the client's default
+  // day-grid pattern: it lives only in localStorage, is not in the load map or _clientSig, and so
+  // was silently destroyed whenever the server copy won — forcing the pattern to be re-entered by
+  // hand every month. Only fill where the server copy has none, so a real edit still wins.
+  for (var _n in out) {
+    if (out[_n] && localProfiles[_n] && localProfiles[_n].tasks && !out[_n].tasks) out[_n].tasks = localProfiles[_n].tasks;
   }
   return out;
 }
