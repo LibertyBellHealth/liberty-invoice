@@ -6824,7 +6824,13 @@ async function sendEmail(){
     var profSE=getProfiles()[cn]||{};
     var invSE=(profSE.invoices||[]).find(function(i){return i.billingPeriod===bp;});
     var cwRecSE=getCaseworkers().find(function(c){return c.id===profSE.caseworkerId||c.name===profSE.worker;})||{};
-    var issuesSE=validateInvoiceForSend(cn,profSE,invSE,cwRecSE);
+    // Validate WHAT WILL BE SENT. The PDF is built from the live form further down, so validating
+    // the stored invoice checked a different document than the one that reaches MDHHS — an edit made
+    // after the last save was never examined at all. status is forced to 'draft' here because we are
+    // actively sending: validateInvoiceForSend deliberately returns [] for submitted/paid so the
+    // monthly PREVIEW doesn't nag about already-sent work, but a re-send must still be checked.
+    var _liveSE={ billingPeriod:bp, status:'draft', data:captureFullInvoice() };
+    var issuesSE=validateInvoiceForSend(cn,profSE,_liveSE,cwRecSE);
     if(issuesSE.length){
       var proceed=false;
       await new Promise(function(res){
@@ -10931,6 +10937,17 @@ function _createFirstInvoice(store,prof,a,period,pro){
 
 // Returns clients eligible for auto-gen: active in the period, missing this period's invoice, and
 // (required) with a DHS authorization to build from. No authorization → no auto-generated invoice.
+// True when the client's service start date falls INSIDE the billing period — i.e. this is a
+// partial first month, not a full one.
+function _startsInsidePeriod(prof,period){
+  try{
+    var sd=String((prof&&prof.startDate)||'').trim(); if(!sd)return false;
+    var pp=String(period||'').split('/'); if(pp.length!==2)return false;
+    var pm=parseInt(pp[0],10), py=parseInt(pp[1],10); if(!pm||!py)return false;
+    var d=new Date(sd); if(isNaN(d.getTime()))return false;
+    return (d.getFullYear()===py) && ((d.getMonth()+1)===pm) && (d.getDate()>1);
+  }catch(e){ return false; }
+}
 function findClientsEligibleForAutoGen(period){
   var profiles=getProfiles();var out=[];
   Object.keys(profiles).forEach(function(name){
@@ -10941,6 +10958,9 @@ function findClientsEligibleForAutoGen(period){
     if(!hasBillableAuthorization(p))return;   // need APPROVED HOURS — never generate a blank-total invoice
     var hasCurrent=(p.invoices||[]).some(function(i){return i.billingPeriod===period;});
     if(hasCurrent)return;
+    // Service STARTS inside this period → partial month → the owner must choose full-month or
+    // prorate. Never make that call automatically in either direction.
+    if(_startsInsidePeriod(p,period)){ out.push({name:name,partialMonth:true}); return; }
     // Most recent prior invoice (if any) — kept only as a fallback signal; the grid is built fresh
     // from the authorization, not copied from it.
     var prior=(p.invoices||[]).slice().sort(function(a,b){return new Date(b.savedAt||0)-new Date(a.savedAt||0);})[0];
@@ -10974,11 +10994,14 @@ function autoGenerateMonthlyInvoices(period){
 function _doAutoGenerateInvoices(eligible,period){
   if(!isInvoiceAdmin()){showAlert('Only the account owner can generate invoices.');return;}
   var profiles=getProfiles();
-  var generated=0,skipped=0,unmappedBy={};
+  var generated=0,skipped=0,unmappedBy={},partialMonth=[];
   var undoBatch={id:'b_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),period:period,when:Date.now(),invoices:[]};
   eligible.forEach(function(e){
     // Build the month's grid from the client's DHS authorization (correct counts per the authorized
     // frequency, varied each month). Eligibility already requires an authorization.
+    // Partial first month — held back by findClientsEligibleForAutoGen so the owner makes the
+    // full-month-or-prorate call on the client's Authorization tab, which asks.
+    if(e.partialMonth){ partialMonth.push(e.name); return; }
     var prof=profiles[e.name], a=prof&&prof.authorization, newInv=null;
     var built=(a && hasBillableAuthorization(prof)) ? _dhsBuildFirstInvoice({hours:a.hours,minutes:a.minutes,rate:a.rate,tasks:a.tasks||[]}, prof, period) : null;
     if(built) newInv={ billingPeriod:period, savedAt:new Date().toLocaleString(), status:'draft', invoiceNote:'', data:built.data };
@@ -11002,6 +11025,8 @@ function _doAutoGenerateInvoices(eligible,period){
     (_unNames.length>10?('\n…and '+(_unNames.length-10)+' more client(s).'):'')):'';
   showAlert(
     '✓ Auto-generated '+generated+' invoice'+(generated!==1?'s':'')+' for '+period+(skipped>0?' ('+skipped+' skipped — missing data)':'')+'.\n\n'+
+    (partialMonth.length?('⚠ NOT generated — service starts partway through '+period+', so these are a PARTIAL month and\nyou need to choose full-month or prorated:\n• '+partialMonth.join('\n• ')+
+      '\n\nCreate each from the client’s Authorization tab, which asks. Auto-generating would have billed\nthe FULL authorized hours for a month that was only partly served.\n\n'):'')+
     'All new invoices are marked Draft. An Undo banner will stay on the Clients page for 24 hours — use it if you change your mind.'+_unMsg,
     {title:'Auto-Generation Complete'}
   );
@@ -11195,12 +11220,20 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
   invPage.style.position='fixed';invPage.style.left='-9999px';invPage.style.top='0';invPage.style.zIndex='-1';
 
   var attachments=[];
+  var _skippedNoInvoice=[];
   for(var i=0;i<withInv.length;i++){
     var c=withInv[i];
     if(pb)pb.style.width=Math.round(((i)/withInv.length)*100)+'%';
     if(pl)pl.textContent='Processing: '+c.name+' ('+(i+1)+' of '+withInv.length+')';
     var prof=profiles[c.name]||{};
-    var inv=(prof.invoices||[]).find(function(inv2){return inv2.billingPeriod===period;})||{};
+    var inv=(prof.invoices||[]).find(function(inv2){return inv2.billingPeriod===period;});
+    if(!inv||!inv.data){
+      // No invoice for this period any more (deleted, or its period was edited after the preview
+      // was built). Substituting {} here produced a signed, certified, COMPLETELY BLANK MSA-1904.
+      console.error('Send All: no invoice for '+c.name+' '+period+' — skipped');
+      _skippedNoInvoice.push(c.name);
+      continue;
+    }
     await loadInvoiceForCapture(c.name,inv,period);
     try{
       var base64=await captureInvoicePDF();
@@ -11220,7 +11253,18 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
 
   if(!attachments.length){
     if(po)po.classList.remove('open');
-    showAlert('No PDFs could be generated. Please check the console for errors.');return {ok:false,err:'no_pdfs'};
+    showAlert(_skippedNoInvoice.length
+      ? ('No invoice exists for '+period+' for:\n\n• '+_skippedNoInvoice.join('\n• ')+
+         '\n\nNothing was sent to '+workerName+'. Create the invoices, then run Send All again.')
+      : 'No PDFs could be generated. Please check the console for errors.');
+    return {ok:false,err:_skippedNoInvoice.length?'no_invoice':'no_pdfs'};
+  }
+  // A skip must never be silent — the owner would otherwise believe these clients were billed.
+  if(_skippedNoInvoice.length){
+    showAlert('These clients have no invoice for '+period+', so they were NOT included in '+
+      workerName+'’s email:\n\n• '+_skippedNoInvoice.join('\n• ')+
+      '\n\nThey are still unbilled. Create the invoices and send them separately.',
+      {title:'Some clients were skipped',danger:true});
   }
 
   var workerDisplay=workerName&&workerName!=='(No Worker Assigned)'?workerName:'Caseworker';
