@@ -9802,6 +9802,10 @@ function _buildFormDataDict(clientName){
   var dict={
     client_name:fullName, client_first_name:firstN, client_last_name:lastN,
     client_dob:_normalizeDate(prof.dob||''), medicaid_id:prof.medicaidId||'', case_number:'', recipient_id:prof.medicaidId||'',
+    // The MSA-4676 field map asks for `start_date` (msa_start) but this dict never defined it, so the
+    // lookup returned undefined, the stamper skipped the field, and every generated MSA-4676 went out
+    // with a BLANK "Start of Service" — on a certified MDHHS agreement, emailed for signature.
+    start_date:_normalizeDate(prof.startDate||''),
     client_address:prof.street||prof.address||'', client_city:prof.city||'', client_state:prof.state||'MI', client_zip:prof.zip||'',
     client_phone:prof.phone||'', client_email:prof.clientEmail||prof.cemail||'', client_county:prof.county||'',
     worker_name:cw.name||prof.worker||'', worker_phone:cw.phone||'', worker_email:cw.email||'', worker_fax:'',
