@@ -5655,7 +5655,11 @@ function loadProfileIntoForm(prof){
 function captureFullInvoice(){
   var f=['clientName','medicaidId','billTo','worker','billingPeriod','hourlyRate','svcHH','svcMM','cplxHH','cplxMM','p1HH','p1MM','grandHH','grandMM','dateSubmitted','sigDate1','sigDate2'],d={};
   f.forEach(function(id){var el=document.getElementById(id);if(el)d[id]=el.value;});
-  d.hasComplex=document.getElementById('showComplex').checked;d.tasks=captureStates();return d;
+  d.hasComplex=document.getElementById('showComplex').checked;d.tasks=captureStates();
+  // Which signature certified this invoice. Stored so a reprint or re-send replays the SAME one.
+  var _s1=document.getElementById('sigArea1');
+  d.sigId=(_s1&&_s1.getAttribute&&_s1.getAttribute('data-sig-id'))||'';
+  return d;
 }
 function applyFullInvoice(data){
   // A signature belongs to the invoice it was placed on. Loading another invoice (from history, or
@@ -6608,13 +6612,21 @@ async function loadInvoiceForCapture(clientName,inv,period){
   var _invRate=(inv&&inv.data&&inv.data.hourlyRate!=null&&String(inv.data.hourlyRate).trim()!=='')
     ? inv.data.hourlyRate : stateRate();
   document.getElementById('hourlyRate').value=_invRate;
+  // Prefer what the invoice was SAVED with, falling back to the live record. Re-deriving these from
+  // the current profile meant reassigning or renaming a caseworker silently rewrote the "Bill To" and
+  // "Attention" lines on every historic invoice reprint — and if the caseworker had no agency on
+  // file, the PDF printed Bill To BLANK while the screen showed the saved value.
+  var _d=(inv&&inv.data)||{};
   var cwRecCapture=getCaseworkers().find(function(c){return c.id===prof.caseworkerId||c.name===prof.worker;})||{};
-  document.getElementById('billTo').value=(cwRecCapture.agency||cwRecCapture.county||'');
-  document.getElementById('worker').value=prof.worker||'';
-  document.getElementById('worker2').value=prof.worker||'';
-  document.getElementById('dateSubmitted').value=today();
-  document.getElementById('sigDate1').value=today();
-  document.getElementById('sigDate2').value=today();
+  document.getElementById('billTo').value=(_d.billTo||cwRecCapture.agency||cwRecCapture.county||'');
+  document.getElementById('worker').value=(_d.worker||prof.worker||'');
+  document.getElementById('worker2').value=(_d.worker||prof.worker||'');
+  if(_d.medicaidId)document.getElementById('medicaidId').value=_d.medicaidId;
+  // An invoice certifies the dates it was SIGNED on. Forcing today() meant reprinting a March
+  // invoice in August produced a certified form dated August.
+  document.getElementById('dateSubmitted').value=(_d.dateSubmitted||today());
+  document.getElementById('sigDate1').value=(_d.sigDate1||today());
+  document.getElementById('sigDate2').value=(_d.sigDate2||today());
   if(inv.data&&inv.data.tasks)applyStates(inv.data.tasks);
   var fields=['svcHH','svcMM','cplxHH','cplxMM','p1HH','p1MM','grandHH','grandMM'];
   fields.forEach(function(id){var el=document.getElementById(id);if(el)el.value=(inv.data&&inv.data[id])||'';});
@@ -6626,8 +6638,14 @@ async function loadInvoiceForCapture(clientName,inv,period){
   resetSigArea(1);resetSigArea(2);
   var sigs=getSigs();
   if(sigs.length){
-    stampSignatureData(1,sigs[0].data);
-    if(hc)stampSignatureData(2,sigs[0].data);
+    // Replay the signature this invoice was certified with. sigs[0] is only the fallback for records
+    // saved before the id was stored — otherwise deleting or reordering signatures would re-certify
+    // already-sent invoices under a different person.
+    var _want=_d.sigId&&sigs.find(function(x){return x&&String(x.id)===String(_d.sigId);});
+    var _use=_want||sigs[0];
+    if(_d.sigId&&!_want)console.warn('Invoice '+period+' was signed with a signature that no longer exists — falling back to the primary signature.');
+    stampSignatureData(1,_use.data,_use.id);
+    if(hc)stampSignatureData(2,_use.data,_use.id);
   }
   await new Promise(function(r){setTimeout(r,150);});
 }
@@ -7051,19 +7069,23 @@ function placeSignature(target){
   pendingSigTarget=target;
   var sigs=getSigs();
   if(!sigs.length){openAddSigModal();return;}
-  if(sigs.length===1){stampSignatureData(target,sigs[0].data);return;}
+  if(sigs.length===1){stampSignatureData(target,sigs[0].data,sigs[0].id);return;}
   var list=document.getElementById('pickSigList');list.innerHTML='';
   sigs.forEach(function(s,i){
     var item=document.createElement('div');item.style.cssText='display:flex;align-items:center;gap:10px;padding:8px;border:1px solid #e1e5ea;border-radius:6px;cursor:pointer;';
     item.innerHTML='<img src="'+s.data+'" style="max-height:26px;max-width:140px;"><span style="font-size:12px;color:#1a2b45;">'+esc(s.label||'Signature '+(i+1))+'</span>';
-    item.addEventListener('click',function(){stampSignatureData(target,s.data);document.getElementById('pickSigModal').classList.remove('open');});
+    item.addEventListener('click',function(){stampSignatureData(target,s.data,s.id);document.getElementById('pickSigModal').classList.remove('open');});
     list.appendChild(item);
   });
   document.getElementById('pickSigModal').classList.add('open');
 }
-function stampSignatureData(target,dataUrl){
+function stampSignatureData(target,dataUrl,sigId){
   var area=document.getElementById('sigArea'+target);if(!area)return;
   var img=document.createElement('img');img.src=dataUrl;img.className='sig-stamp';img.title='Click to clear';img.id='sigArea'+target;
+  // Record WHICH signature this is. Without it the reprint path just took sigs[0], so placing your
+  // second signature emailed your first, and deleting or reordering signatures silently re-certified
+  // every already-sent invoice under a different person's name.
+  if(sigId)img.setAttribute('data-sig-id',String(sigId));
   img.addEventListener('click',function(){resetSigArea(target);});area.parentNode.replaceChild(img,area);
 }
 function resetSigArea(t){var a=document.getElementById('sigArea'+t);if(!a)return;var ph=document.createElement('div');ph.id='sigArea'+t;ph.className='sig-placeholder';ph.textContent='Click to place signature';ph.addEventListener('click',function(){placeSignature(t);});a.parentNode.replaceChild(ph,a);}
@@ -10841,15 +10863,39 @@ function _padMin(v){ v=(v==null?'':String(v)).trim(); return /^\d$/.test(v)?('0'
 // Build the data for an invoice from a parsed authorization (res) + client (prof) + period MM/YYYY.
 // The day grid is derived from each task's authorized frequency/count (see _dhsTaskDays), varied per
 // month. Returns { data, unmapped:[taskNames] } — unmapped tasks are surfaced, never dropped silently.
+// Parse a stored date into {y,m,d} WITHOUT a Date object. `new Date('2026-07-21')` is read as UTC
+// midnight, so in any timezone behind UTC .getDate() returns the PREVIOUS day — which silently
+// shifted a service start back by one and certified a day of service that never happened.
+function _ymd(v){
+  var t=String(v||'').trim(); if(!t)return null;
+  var m=t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);          // YYYY-MM-DD (what the app stores)
+  if(m)return {y:+m[1],m:+m[2],d:+m[3]};
+  m=t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);             // MM/DD/YYYY (legacy / OCR)
+  if(m)return {y:+m[3],m:+m[1],d:+m[2]};
+  return null;
+}
 function _dhsBuildFirstInvoice(res, prof, period){
   var pp=String(period||'').split('/'); if(pp.length!==2||pp[1].length!==4)return null;
   var days=daysIn(pp[0],pp[1]); var cols=_dhsSvcColNames();
   var grid=[]; for(var d=0;d<days;d++){ var row=[]; for(var c=0;c<cols.length;c++)row.push(false); grid.push(row); }
   var unmapped=[]; var seed=_dhsPeriodSeed(period);
+  // The day grid is the MSA-1904's "verification of services" — a mark on it certifies that service
+  // was delivered that day. Marks were spread across the WHOLE month even when service started
+  // partway through it (and even on the prorated branch, which passes only the reduced HOURS), so a
+  // client starting on the 21st was certified for 20 days of service that never happened. Derived
+  // here rather than at the call sites so the manual and auto-generate paths both get it.
+  var _firstDay=1;
+  try{
+    var _sd=_ymd(prof&&prof.startDate);
+    if(_sd && _sd.y===parseInt(pp[1],10) && _sd.m===parseInt(pp[0],10))
+      _firstDay=Math.max(1,_sd.d);
+  }catch(e){}
   (res.tasks||[]).forEach(function(t){
     var col=_dhsMapTaskToCol(t.task);
     if(col<0){ unmapped.push(t.task); return; }
-    _dhsTaskDays(t, days, seed).forEach(function(di){ if(di>=0&&di<days)grid[di][col]=true; });
+    _dhsTaskDays(t, days, seed).forEach(function(di){
+      if(di>=(_firstDay-1)&&di<days)grid[di][col]=true;   // never before the first day of service
+    });
   });
   var hours=res.hours!=null?String(res.hours):'', mins=res.minutes!=null?_padMin(res.minutes):'';
   var rate=stateRate();  // invoices always bill the flat state rate ($27), not the form's printed rate
