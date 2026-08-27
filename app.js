@@ -10944,8 +10944,13 @@ function _startsInsidePeriod(prof,period){
     var sd=String((prof&&prof.startDate)||'').trim(); if(!sd)return false;
     var pp=String(period||'').split('/'); if(pp.length!==2)return false;
     var pm=parseInt(pp[0],10), py=parseInt(pp[1],10); if(!pm||!py)return false;
-    var d=new Date(sd); if(isNaN(d.getTime()))return false;
-    return (d.getFullYear()===py) && ((d.getMonth()+1)===pm) && (d.getDate()>1);
+    // `new Date('2026-07-21')` parses as UTC midnight, so in any timezone behind UTC .getDate()
+    // returns the PREVIOUS day — a client starting on the 1st would look like a partial month, and
+    // one starting on the 2nd would be judged against the wrong day. Parse the parts directly.
+    var m=sd.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/) ;
+    if(!m) m=(function(){ var q=sd.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); return q?[null,q[3],q[1],q[2]]:null; })();
+    if(!m) return false;
+    return (+m[1]===py) && (+m[2]===pm) && (+m[3]>1);
   }catch(e){ return false; }
 }
 function findClientsEligibleForAutoGen(period){

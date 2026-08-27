@@ -98,3 +98,15 @@ test('Email Worker validates what is on the form, not the last saved version', a
   assert.match(shown, /exceeds the authorized/,
     'validating the SAVED invoice checked a different document than the one that reaches MDHHS');
 });
+
+test('the partial-month check is not shifted by the timezone', () => {
+  const w = loadApp(); resetStorage(w);
+  // new Date('2026-07-01') is UTC midnight = 30 June locally in any zone behind UTC, which made a
+  // 1st-of-month start look like a partial month and held it back from auto-generate forever.
+  assert.strictEqual(w._startsInsidePeriod({ startDate: '2026-07-01' }, '07/2026'), false,
+    'a start on the 1st is a FULL month');
+  assert.strictEqual(w._startsInsidePeriod({ startDate: '2026-07-02' }, '07/2026'), true);
+  assert.strictEqual(w._startsInsidePeriod({ startDate: '2026-08-01' }, '08/2026'), false);
+  assert.strictEqual(w._startsInsidePeriod({ startDate: '07/21/2026' }, '07/2026'), true,
+    'legacy MM/DD/YYYY must work too');
+});
