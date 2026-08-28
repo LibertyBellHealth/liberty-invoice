@@ -356,7 +356,11 @@ function navDetail(name,tab){
 function navInvoice(loadSpecific){
   if(!activeProfileName){showAlert('Select a client first.');return;}
   var prof=getProfiles()[activeProfileName];
+  // In Progress (stored 'inactive'), Lost and Terminated clients are never invoiced. Every BULK
+  // surface enforces that; these three per-client entry points checked only for a carrier client,
+  // so an invoice for a terminated client could be created and emailed one at a time.
   if(isCarrierClient(prof)){showAlert('This is a managed-care (carrier) client — billing goes through the carrier’s software, so invoices aren’t created here.');return;}
+  if(!isInvoiceableStatus(prof)){showAlert('“'+activeProfileName+'” is '+((prof&&prof.clientStatus==='inactive')?'In Progress':(prof&&prof.clientStatus)||'not active')+', so they are not invoiced. Set the client Active first if service has started.',{title:'Not an invoiceable client'});return;}
   if(loadSpecific){
     showPage('invoice');
     document.getElementById('invClientTag').textContent=activeProfileName;
@@ -382,7 +386,11 @@ function navInvoice(loadSpecific){
 }
 function confirmNewInvoice(mode){
   var prof=getProfiles()[activeProfileName];
+  // In Progress (stored 'inactive'), Lost and Terminated clients are never invoiced. Every BULK
+  // surface enforces that; these three per-client entry points checked only for a carrier client,
+  // so an invoice for a terminated client could be created and emailed one at a time.
   if(isCarrierClient(prof)){showAlert('This is a managed-care (carrier) client — billing goes through the carrier’s software, so no invoice is created here.');return;}
+  if(!isInvoiceableStatus(prof)){showAlert('“'+activeProfileName+'” is '+((prof&&prof.clientStatus==='inactive')?'In Progress':(prof&&prof.clientStatus)||'not active')+', so no invoice should be created. Set the client Active first if service has started.',{title:'Not an invoiceable client'});return;}
   document.getElementById('newInvChoiceModal').classList.remove('open');
   showPage('invoice');
   document.getElementById('invClientTag').textContent=activeProfileName;
@@ -6306,7 +6314,9 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
     cell(x0,y,b1,rowH,'Contact Person','Thomas Jaboro');
     cell(x0+b1,y,b2,rowH,'Billing Period',data.billingPeriod);
     cell(x0+b1+b2,y,b3,rowH,'Date Submitted',data.dateSubmitted);
-    cell(x0+b1+b2+b3,y,b4,rowH,'Hourly Rate',data.hourlyRate||'27.00');
+    // A hard-coded 27.00 kept printing on the certified form after the state rate changed, and was
+    // backed by no stored value at all. Fall back to the CURRENT Settings rate instead.
+    cell(x0+b1+b2+b3,y,b4,rowH,'Hourly Rate',data.hourlyRate||stateRate());
     y+=rowH;
     // Row 3: 'Client Name: VAL' (one cell)  |  'Client Medicaid ID Number: VAL' (one cell)
     var halfW=W/2;
@@ -6869,7 +6879,11 @@ function _emailSig(){return '<p>'+_emailClose()+'<br><b>Thomas Jaboro</b><br>Lib
 // ── Send single invoice email ─────────────────────────────────
 async function sendEmail(){
   var cn=document.getElementById('clientName').value.trim();
+  // In Progress (stored 'inactive'), Lost and Terminated clients are never invoiced. Every BULK
+  // surface enforces that; these three per-client entry points checked only for a carrier client,
+  // so an invoice for a terminated client could be created and emailed one at a time.
   if(cn&&isCarrierClient(getProfiles()[cn])){showAlert('This is a managed-care (carrier) client — invoices are handled in the carrier’s software, so there is nothing to email here.');return;}
+  if(cn&&!isInvoiceableStatus(getProfiles()[cn])){showAlert('“'+cn+'” is not an Active client, so this invoice should not be sent to MDHHS. Set the client Active first if service has started.',{title:'Not an invoiceable client'});return;}
   var bp=document.getElementById('billingPeriod').value.trim();
   var ae=document.getElementById('activeAgentEmail').value.trim();
   var w=document.getElementById('worker').value.trim();
@@ -10424,6 +10438,14 @@ function validateInvoiceForSend(name,prof,inv,cwRec){
     issues.push('Caseworker '+(cwRec.name||'')+' is listed under '+cwRec.org+', not MDHHS — a Medicaid '+
       'invoice must not be emailed to a carrier. Fix the caseworker\'s Organization, or assign this client to an MDHHS caseworker.');
   }
+  // No authorization AT ALL means the over-bill cross-check never ran, and silence there reads as
+  // "checked and fine" — the opposite of true. The DHS-1210 is what authorises billing, and it
+  // already gates Active status, so a client with none should not be reaching MDHHS.
+  // Deliberately NOT triggered when an authorization exists but its HOURS did not parse: every
+  // issue blocks the batch send, and blocking on a failed OCR read would stop legitimate billing
+  // for a client who is genuinely authorised. That case stays silent, as before.
+  if(!hasAuthorization(prof))
+    issues.push('No DHS-1210 on file — nothing authorises this billing, and the hours could not be checked against anything.');
   // Signature: at least one must exist locally so the PDF auto-places it
   if(!getSigs().length)issues.push('Missing signature — PDF will export with no signature on it');
   return issues;
