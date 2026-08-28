@@ -2210,11 +2210,10 @@ function exportCaregiverTaskSheet(){
     '</div>'+
     '</body></html>';
 
-  var w=window.open('','_blank');
-  // Track it: the sheet carries the client's name, authorized hours and worker contact, and the
-  // 45-minute idle wipe only clears THIS document — a popup left open kept PHI on screen after the
-  // session ended. clearPHIFromStorage closes anything still open here.
-  try{ if(w) _phiWindows.push(w); }catch(e){}
+  // The sheet carries the client's name, authorized hours and worker contact, and the 45-minute
+  // idle wipe only clears THIS document — a popup left open kept PHI on screen after the session
+  // ended. _openPhiWindow registers it so clearPHIFromStorage closes it.
+  var w=_openPhiWindow('','_blank');
   if(!w){showAlert('Pop-up was blocked. Allow pop-ups from this site to open the task sheet.');return;}
   w.document.write(html); w.document.close(); w.focus();
 }
@@ -2729,7 +2728,7 @@ function openDocPreview(index){
   var ext=(name.split('.').pop()||'').toLowerCase();
   var isImg=['jpg','jpeg','png','gif','webp','bmp'].indexOf(ext)>=0;
   var isPdf=ext==='pdf';
-  if(!isImg&&!isPdf){window.open(d.url,'_blank');return false;}
+  if(!isImg&&!isPdf){_openPhiWindow(d.url);return false;}
   var ov=document.createElement('div');ov.className='modal-overlay open doc-lightbox';
   var body=isImg?'<img src="'+esc(d.url)+'" alt="'+esc(name)+'" class="doc-lb-img">':'<iframe src="'+esc(d.url)+'" class="doc-lb-frame" title="'+esc(name)+'"></iframe>';
   ov.innerHTML='<div class="doc-lb-box">'+
@@ -3373,7 +3372,7 @@ async function downloadSignedDoc(id){
     var resp=await fetch(API_BASE+'/signing/'+id+'/signed-url',{headers:apiHeaders()});
     var data=await resp.json();
     if(!resp.ok)throw new Error(data.error||'HTTP '+resp.status);
-    window.open(data.url,'_blank');
+    _openPhiWindow(data.url);
   }catch(e){showAlert('Could not open signed copy: '+(e.message||e));}
 }
 function revokeSigningRequest(id){
@@ -4960,9 +4959,22 @@ function exportReportExcel(){
 // authenticated API on load. saveProfilesLS strips ssn before persisting and caches it in
 // memory; getProfiles overlays it back for display. Saves send ssn only when present, and
 // the backend keeps the stored value when a save omits it (provided-guard).
-// Windows this session opened that display PHI (caregiver task sheets). They are separate documents
-// the idle/sign-out wipe cannot otherwise reach, so they are tracked and closed with it.
+// Windows this session opened that display PHI. They are separate documents the idle/sign-out
+// wipe cannot otherwise reach — blanking inputs and raising the login wall does nothing to a tab
+// already showing a scanned SSN card — so they are tracked and closed with it.
 var _phiWindows = [];
+// ALWAYS open a PHI document through here, never window.open directly. The registry existed but
+// only the caregiver task sheet was ever registered, so a document lightbox fallback (SSN cards,
+// driver's licences, DHS authorizations), a signed agreement and both invoice PDF previews stayed
+// open and readable after sign-out and after the inactivity timeout.
+// NOTE the limit, so nobody mistakes this for more than it is: closing the tab does not revoke a
+// SAS URL that was already handed out, and it cannot reach a file the browser has downloaded.
+function _openPhiWindow(url, target){
+  var w = null;
+  try { w = window.open(url, target || '_blank'); } catch (e) { console.error('window.open failed', e); }
+  try { if (w) _phiWindows.push(w); } catch (e) {}
+  return w;
+}
 var _ssnMem = Object.create(null);
 // _clientSynced is the client dirty-tracking baseline, but its signature string EMBEDS the
 // plaintext ssn (see _clientSig) — so it must be kept in memory ONLY, never written to disk,
@@ -5203,6 +5215,36 @@ async function _fetchMiloginForBackup(){
   // doesn't is worse than one you know doesn't.
   return { creds:out, failed:failed };
 }
+// Caregiver SSNs are NOT in the roster and NOT in localStorage. The bulk load returns only
+// ssn_last4 (caregivers.js strips the rest), saveCaregiversLS strips ssn to the in-memory
+// _cgSsnMem, and getCaregivers re-overlays only what that map happens to hold — which is just the
+// caregivers whose SSN field someone revealed in THIS browser session. So _buildBackupPayload,
+// which serialises getCaregivers(), wrote a file labelled FULL that on a fresh page load contained
+// no caregiver SSNs at all. Restoring it into a wiped system could not recover them.
+// Fetch them explicitly for the backup, exactly as the MI Login credential already is.
+async function _fetchSsnForBackup(){
+  var out={}, cgs=getCaregivers();
+  // Anyone who HAS a stored SSN: last4 present (the roster's proof one exists), or a full value
+  // already in memory. A caregiver with neither has nothing to back up.
+  var ids=Object.keys(cgs).filter(function(id){
+    var c=cgs[id]; return c && (c.ssnLast4 || c.ssn_last4 || c.ssn);
+  });
+  var failed=[];
+  for(var i=0;i<ids.length;i++){
+    var id=ids[i];
+    try{
+      var r=await fetch(API_BASE+'/caregivers/'+encodeURIComponent(id)+'/ssn',{headers:apiHeaders()});
+      if(!r.ok){ failed.push(id); continue; }
+      var d=await r.json();
+      if(d&&typeof d.ssn==='string'&&d.ssn) out[id]=d.ssn;
+      else if(cgs[id]&&cgs[id].ssn) out[id]=cgs[id].ssn;   // server has none but memory does
+      else failed.push(id);
+    }catch(e){ failed.push(id); }
+  }
+  // Same rule as the credentials: a backup you BELIEVE holds the SSNs but doesn't is worse than
+  // one you know doesn't. Report what could not be read.
+  return { ssns:out, failed:failed };
+}
 async function doBackupToOneDrive(includeFullSSN,silent){
   var btn=document.getElementById('oneDriveBackupBtn');
   var oldText=btn?btn.textContent:'';
@@ -5218,17 +5260,21 @@ async function doBackupToOneDrive(includeFullSSN,silent){
     // Build the backup payload (same logic as JSON export)
     var p=getProfiles();
     if(!Object.keys(p).length){throw new Error('No clients yet.');}
-    var _mi={creds:{},failed:[]};
+    var _mi={creds:{},failed:[]}, _ss={ssns:{},failed:[]};
     if(includeFullSSN){
       _mi=await _fetchMiloginForBackup();
-      if(_mi.failed.length&&!silent){
-        showAlert('Could not read the MI Login credential for '+_mi.failed.length+' caregiver'+
-          (_mi.failed.length===1?'':'s')+'. The backup will be written WITHOUT '+
-          (_mi.failed.length===1?'that one':'those')+' — everything else is included.',
-          {title:'Some credentials not backed up',danger:true});
+      _ss=await _fetchSsnForBackup();
+      var _missing=[];
+      if(_mi.failed.length)_missing.push(_mi.failed.length+' MI Login credential'+(_mi.failed.length===1?'':'s'));
+      if(_ss.failed.length)_missing.push(_ss.failed.length+' caregiver SSN'+(_ss.failed.length===1?'':'s'));
+      if(_missing.length&&!silent){
+        showAlert('Could not read '+_missing.join(' and ')+'. The backup will be written WITHOUT '+
+          'them — everything else is included. A FULL backup missing these cannot fully rebuild a '+
+          'wiped device, so re-run it once the connection is healthy.',
+          {title:'Backup is not complete',danger:true});
       }
     }
-    var payload=_buildBackupPayload(includeFullSSN,_mi.creds);
+    var payload=_buildBackupPayload(includeFullSSN,_mi.creds,_ss.ssns);
     var content=JSON.stringify(payload,null,2);
     var bytes=new Blob([content]).size;
     if(bytes>4*1024*1024){throw new Error('Backup too large for direct upload ('+(bytes/1024/1024).toFixed(1)+' MB). Contact support to add chunked upload.');}
@@ -5296,7 +5342,7 @@ function _maskSsnValue(v){
 }
 // The whole backup payload, built in one testable place. Everything that leaves this device for
 // OneDrive goes through here, so the SSN rules are enforced once and can be pinned by a test.
-function _buildBackupPayload(includeFullSSN,miloginByCgId){
+function _buildBackupPayload(includeFullSSN,miloginByCgId,ssnByCgId){
   var copy=_stripInternalPHI(JSON.parse(JSON.stringify(getProfiles())));
   if(!includeFullSSN){
     Object.keys(copy).forEach(function(name){
@@ -5314,6 +5360,10 @@ function _buildBackupPayload(includeFullSSN,miloginByCgId){
     // saveCaregiverAPI sends milogin_password and the backend keeps the stored value when it is
     // empty, so this round-trips on import without a further change.
     if(includeFullSSN && miloginByCgId && miloginByCgId[id]) c.miloginPassword=miloginByCgId[id];
+    // FULL backup only: the SSN fetched from the server for this backup. getCaregivers() supplies
+    // one only for caregivers touched this session, so without this a FULL backup silently held
+    // last-4 for everyone else.
+    if(includeFullSSN && ssnByCgId && ssnByCgId[id]) c.ssn=ssnByCgId[id];
     if(!includeFullSSN && c.ssn) c.ssn=_maskSsnValue(c.ssn);
   });
   return {
@@ -5588,6 +5638,13 @@ function importProfiles(ev){
         // none of them) and push each to the server; existing records are left alone so a restore can
         // never silently overwrite work done since the backup was taken.
         var restored={caregivers:0,caseworkers:0,supervisors:0,signatures:0};
+        // Every server write this restore starts, so completion can be REPORTED rather than assumed.
+        // These were all fire-and-forget: the dialog said "Imported N clients" the instant the local
+        // writes finished, whether or not a single record reached the database. A restore that only
+        // populated this browser's localStorage looked identical to one that succeeded — and the
+        // point of a restore is that the data is safe somewhere other than this browser.
+        var writes=[];
+        var _track=function(label,pr){ if(pr&&typeof pr.then==='function')writes.push({label:label,p:pr}); };
         try{
           if(parsed.caregivers&&typeof parsed.caregivers==='object'){
             var cgs=getCaregivers(),cgAdd=[];
@@ -5605,13 +5662,13 @@ function importProfiles(ev){
                 delete _c.ssn;
               });
               saveCaregiversLS(cgs); restored.caregivers=cgAdd.length;
-              cgAdd.forEach(function(id){ if(typeof saveCaregiverAPI==='function')saveCaregiverAPI(id,cgs[id],true); }); }
+              cgAdd.forEach(function(id){ if(typeof saveCaregiverAPI==='function')_track('caregiver '+((cgs[id]&&cgs[id].name)||id),saveCaregiverAPI(id,cgs[id],true)); }); }
           }
           if(Array.isArray(parsed.caseworkers)){
             var cws=getCaseworkers(),have={}; cws.forEach(function(c){ if(c&&c.id!=null)have[c.id]=1; });
             var cwAdd=parsed.caseworkers.filter(function(c){ return c&&c.id!=null&&!have[c.id]; });
             if(cwAdd.length){ saveCaseworkersLS(cws.concat(cwAdd)); restored.caseworkers=cwAdd.length;
-              cwAdd.forEach(function(c){ if(typeof saveCaseworkerAPI==='function')saveCaseworkerAPI(c,true); }); }
+              cwAdd.forEach(function(c){ if(typeof saveCaseworkerAPI==='function')_track('caseworker '+((c&&c.name)||(c&&c.id)),saveCaseworkerAPI(c,true)); }); }
           }
           if(parsed.supervisors&&typeof parsed.supervisors==='object'){
             var sups=getSupervisors(),supAdd=[];
@@ -5619,7 +5676,7 @@ function importProfiles(ev){
               if(!sups[id]&&parsed.supervisors[id]){ sups[id]=parsed.supervisors[id]; supAdd.push(id); }
             });
             if(supAdd.length){ saveSupervisorsLS(sups); restored.supervisors=supAdd.length;
-              supAdd.forEach(function(id){ if(typeof saveSupervisorAPI==='function')saveSupervisorAPI(sups[id]); }); }
+              supAdd.forEach(function(id){ if(typeof saveSupervisorAPI==='function')_track('supervisor '+((sups[id]&&sups[id].name)||id),saveSupervisorAPI(sups[id])); }); }
           }
           if(Array.isArray(parsed.signatures)&&typeof saveSigsLS==='function'){
             var sigs=getSigs(),sHave={}; sigs.forEach(function(x){ if(x&&x.id)sHave[x.id]=1; });
@@ -5630,17 +5687,19 @@ function importProfiles(ev){
               // next device to sync had none. A signature is what certifies an invoice.
               sAdd.forEach(function(x){
                 try{
-                  fetch(API_BASE+'/signatures',{method:'POST',headers:apiHeaders(),
-                    body:JSON.stringify({id:x.id,label:x.label||'',data_url:x.data||x.data_url||''})})
-                    .catch(function(e){console.error('signature restore push failed',e);});
-                }catch(e){console.error('signature restore push failed',e);}
+                  _track('signature '+(x.label||x.id),
+                    fetch(API_BASE+'/signatures',{method:'POST',headers:apiHeaders(),
+                      body:JSON.stringify({id:x.id,label:x.label||'',data_url:x.data||x.data_url||''})})
+                      .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); return r; }));
+                }catch(e){ _track('signature '+(x.label||x.id), Promise.reject(e)); }
               });
             }
           }
         }catch(e){ console.error('roster restore failed',e); }
         // Persist each imported client to the backend so the data isn't just local
         keys.forEach(function(name){
-          try{saveProfileSP(name,merged[name]);}catch(e){console.error('Failed to sync an imported client to DB',e);}
+          try{ _track('client '+name, saveProfileSP(name,merged[name])); }
+          catch(e){ _track('client '+name, Promise.reject(e)); }
         });
         renderSidebarClients();renderClientGrid();updateStats();
         var _extra=[];
@@ -5651,9 +5710,40 @@ function importProfiles(ev){
         var _meta=parsed.meta&&parsed.meta.exportedAt?('\n\nBackup taken '+new Date(parsed.meta.exportedAt).toLocaleString()+
           (parsed.meta.exportedBy?(' by '+parsed.meta.exportedBy):'')+
           (parsed.meta.includesFullSSN?'':'\n\nNote: this backup was MASKED, so SSNs were not restored — they remain as stored on the server.')):'';
-        showConfirm('Imported '+keys.length+' client'+(keys.length>1?'s':'')+
-          (_extra.length?(', plus '+_extra.join(', ')):'')+'.'+_meta,
-          function(){},{title:'Import Complete',okText:'OK',danger:false});
+        var _summary='Imported '+keys.length+' client'+(keys.length>1?'s':'')+
+          (_extra.length?(', plus '+_extra.join(', ')):'')+'.'+_meta;
+        if(!writes.length){
+          showConfirm(_summary,function(){},{title:'Import Complete',okText:'OK',danger:false});
+          return;
+        }
+        showToast('Restoring '+writes.length+' record'+(writes.length===1?'':'s')+' to the database…',4000);
+        // allSettled, not all: one failed record must not hide the fate of the other 200.
+        Promise.allSettled(writes.map(function(x){return x.p;})).then(function(results){
+          var failed=[];
+          results.forEach(function(r,i){
+            if(r.status==='rejected'){
+              failed.push(writes[i].label);
+              console.error('restore write failed ['+writes[i].label+']:', r.reason);
+            }
+          });
+          var okCount=results.length-failed.length;
+          if(!failed.length){
+            logActivity('import','Restore complete — '+okCount+' record(s) written to the database');
+            showConfirm(_summary+'\n\nAll '+okCount+' record'+(okCount===1?'':'s')+' confirmed saved to the database.',
+              function(){},{title:'Import Complete',okText:'OK',danger:false});
+            return;
+          }
+          // NEVER say "complete" when something did not land. Name the records so they can be
+          // re-tried deliberately; the local copies are still here, so a second import fixes them.
+          logActivity('import','Restore INCOMPLETE — '+okCount+' saved, '+failed.length+' FAILED: '+failed.slice(0,20).join(', '));
+          showConfirm(_summary+
+            '\n\n⚠ NOT FULLY RESTORED. '+okCount+' record'+(okCount===1?'':'s')+' reached the database, but '+
+            failed.length+' FAILED:\n\n• '+failed.slice(0,15).join('\n• ')+
+            (failed.length>15?('\n…and '+(failed.length-15)+' more.'):'')+
+            '\n\nThose records exist only in this browser right now. Check your connection and import the '+
+            'same file again — records that already saved are left alone.',
+            function(){},{title:'Import INCOMPLETE',okText:'OK',danger:true});
+        });
       }
       if(conf.length){
         showConfirm('Overwrite existing client'+(conf.length>1?'s':'')+'?\n\n'+conf.join(', '),doImport,{title:'Overwrite Confirm',okText:'Overwrite'});
@@ -5721,9 +5811,14 @@ function applyFullInvoice(data){
   var _hrEl=document.getElementById('hourlyRate');
   if(_hrEl)_hrEl.value=(data.hourlyRate!=null&&String(data.hourlyRate).trim()!=='')
     ? data.hourlyRate : clientInvoiceRate(profCur);
-  // Bill To: always from caseworker billing code, not whatever was saved on the invoice
+  // Bill To: the value SAVED on the invoice wins, exactly like hourlyRate above and like the
+  // PDF/email path (loadInvoiceForCapture). This used to prefer the caseworker's CURRENT agency,
+  // so reassigning a caseworker — or moving one between organisations — rewrote the Bill To line
+  // on every historic invoice the moment it was opened, and saving wrote that rewrite into the
+  // record. An invoice is a certified statement of who was billed; it is not recomputed later.
+  // The live caseworker is only a fallback for an invoice that carries no Bill To of its own.
   var cwApply=getCaseworkers().find(function(c){return c.id===profCur.caseworkerId||c.name===(data.worker||profCur.worker);})||{};
-  document.getElementById('billTo').value=(cwApply.agency||cwApply.county||data.billTo||'');
+  document.getElementById('billTo').value=(data.billTo||cwApply.agency||cwApply.county||'');
   document.getElementById('clientName2').value=data.clientName||'';document.getElementById('worker2').value=data.worker||'';document.getElementById('billingPeriod2').value=data.billingPeriod||'';
   var bp=data.billingPeriod||'',p=bp.split('/');rebuild(p.length===2&&p[1].length===4?daysIn(p[0],p[1]):31);
   if(data.tasks){applyStates(data.tasks);lastLoadedStates=data.tasks;}
@@ -7525,12 +7620,29 @@ function clearPHIFromStorage() {
   }catch(e){}
 }
 function signOut() {
-  aiTrack('UserSignOut');
-  clearPHIFromStorage();
+  // Cover the screen FIRST, before anything that can throw. Sign-out used to run wipe -> MSAL and
+  // never raise the wall itself: it relied on the logoutPopup flow to end the session. If that
+  // popup was blocked or dismissed — or if any earlier step threw, which is how this was found;
+  // clearPHIFromStorage reaches msalInstance — the PHI already rendered into the page (client
+  // grid, sidebar, invoice history, assistant replies) stayed on screen with nothing over it, on a
+  // workstation whose owner had just walked away. The inactivity path already locks correctly.
+  try { var _wall = document.getElementById('loginWall'); if (_wall) _wall.style.display = 'flex'; }
+  catch (e) { console.error('sign-out: could not raise the lock wall', e); }
+  // Each remaining step is independent and every one of them must be ATTEMPTED: a failure in any
+  // single step used to abort the rest of sign-out, which is the opposite of failing safe.
+  try { aiTrack('UserSignOut'); } catch (e) {}
+  try { clearPHIFromStorage(); } catch (e) { console.error('sign-out: PHI wipe failed', e); }
   spToken = null;
   _apiToken = null;
   clearTimeout(_apiTokenTimer); _apiTokenTimer = null;
-  msalInstance.logoutPopup({ redirectUri: REDIRECT_URI });
+  try { updateAuthUI(false); } catch (e) { console.error('sign-out: auth UI reset failed', e); }
+  try { msalInstance.logoutPopup({ redirectUri: REDIRECT_URI }); }
+  catch (e) {
+    // Local session is already dead, but the Microsoft session is not — say so rather than
+    // letting the user believe they signed out everywhere.
+    console.error('sign-out: logout popup failed', e);
+    try { showToast('Signed out of this app, but the Microsoft sign-out did not complete. Close the browser to finish.', 8000); } catch (e2) {}
+  }
 }
 function updateAuthUI(on) {
   applyInvoiceAdminVisibility();
@@ -8020,6 +8132,57 @@ function _parseAuth(v){
 // false "Saved ✓". Existing invoices send the row_version last seen; the backend rejects a
 // stale write with 409 (optimistic concurrency). Fresh row_versions + new dbIds are written
 // back to LS in one pass. Every save path routes through here via saveProfileSP.
+// Write the outcome of a 409 to BOTH the in-memory invoice and the stored copy. `conflicted`
+// true means the server holds different content under this id: keep the local work, record the
+// server's version so an explicit overwrite is still possible, and leave rowVersion unset so
+// nothing can be written under a token this content was never derived from.
+function _adoptInvoiceConflict(name, period, savedAt, inv, dbId, rowVersion, syncedSig, conflicted, serverVer) {
+  var apply = function (t) {
+    if (!t) return;
+    t.dbId = dbId;
+    if (conflicted) {
+      t._conflict = true;
+      t._conflictVersion = serverVer || null;   // what an explicit "keep mine" would have to overwrite
+      delete t.rowVersion;                      // never send a token this content did not come from
+      delete t._synced;
+    } else {
+      delete t._conflict; delete t._conflictVersion;
+      t.rowVersion = rowVersion || null;
+      if (syncedSig) t._synced = syncedSig;     // identical to the server — a lost response, not a conflict
+    }
+  };
+  apply(inv);
+  try {
+    var pc = getProfiles();
+    var list = (pc[name] && pc[name].invoices) || [];
+    var target = list.filter(function (x) { return x && x.dbId === dbId; })[0] ||
+                 list.filter(function (x) { return x && !x.dbId && (x.billingPeriod || '') === (period || '') && x.savedAt === savedAt; })[0];
+    if (target) { apply(target); saveProfilesLS(pc); }
+  } catch (e) { console.error('invoice conflict writeback failed', e); }
+}
+
+// Resolve a flagged invoice conflict. Deliberate, one invoice at a time — this is the ONLY way a
+// local copy can overwrite a server row it was not derived from, and it is a choice a person makes.
+//   keep === 'mine'   -> take the server's current version as the token, so the next save wins.
+//   keep === 'server' -> drop the local copy; the next background load brings the server's back.
+function resolveInvoiceConflict(clientName, billingPeriod, keep) {
+  var pc = getProfiles(), prof = pc[clientName];
+  if (!prof || !prof.invoices) return false;
+  var i = prof.invoices.findIndex(function (x) { return x && x._conflict && (x.billingPeriod || '') === (billingPeriod || ''); });
+  if (i < 0) return false;
+  if (keep === 'server') {
+    prof.invoices.splice(i, 1);
+    logActivity('invoice', 'Invoice conflict ' + billingPeriod + ' for ' + clientName + ' resolved: kept the SERVER copy');
+  } else if (keep === 'mine') {
+    var iv = prof.invoices[i];
+    iv.rowVersion = iv._conflictVersion || null;
+    delete iv._conflict; delete iv._conflictVersion; delete iv._synced;
+    logActivity('invoice', 'Invoice conflict ' + billingPeriod + ' for ' + clientName + ' resolved: OVERWROTE the server with the local copy');
+  } else { return false; }
+  saveProfilesLS(pc);
+  saveProfileSP(clientName, pc[clientName]);
+  return true;
+}
 function syncNewInvoices(name, data) {
   var idMap = getIdMap(); var clientDbId = idMap[name];
   if (!clientDbId || !data.invoices) return Promise.resolve();
@@ -8033,6 +8196,10 @@ function syncNewInvoices(name, data) {
     // on rows the user never touched). A brand-new invoice (no dbId) is always sent.
     var sig = _invoiceSig(inv);
     if (inv.dbId && inv._synced === sig) return Promise.resolve();
+    // A conflicted invoice is NEVER auto-sent. The server holds different content under this id,
+    // and this copy was not derived from it, so any write here destroys the other one. It stays
+    // local and keeps being reported until resolveInvoiceConflict() picks a winner.
+    if (inv._conflict) { conflicts.push(inv.billingPeriod || '(no period)'); return Promise.resolve(); }
     var payload = {
       homecare_client_id: clientDbId,
       billing_period: inv.billingPeriod || '',
@@ -8059,25 +8226,43 @@ function syncNewInvoices(name, data) {
       method: 'POST', headers: apiHeaders(), body: JSON.stringify(payload),
     }).then(function (r) {
       if (r.status === 409) {
-        // The server already has an invoice for this client+period (created on another device, or a
-        // save whose response we lost). The backend returns that row's id and row_version — ADOPT
-        // them, otherwise this invoice stays dbId-less forever: _profileHasUnsyncedChanges keeps the
-        // local copy, the next save is another no-id POST, and the client can never be saved again.
-        // Adopting the id alone would silently overwrite the other device on the next save, so the
-        // conflict is still reported: this attempt does NOT write, the user is told, and a second
-        // deliberate save goes down the version-checked UPDATE path.
+        // The server already holds a row for this client+period (created on another device, or a
+        // save whose response we lost). Adopt its ID: without one this invoice stays dbId-less
+        // forever, _profileHasUnsyncedChanges pins the local copy, every save is another no-id
+        // POST, and the client can never be saved again.
+        //
+        // Do NOT adopt its row_version onto this local content. `expected_version` means "the
+        // version whose content I edited". Pinning the SERVER's CURRENT version to a local copy
+        // that was never derived from it makes the backend's `AND row_version = @expectedVersion`
+        // guard compare the server against itself — so the guard passes and the write lands. And
+        // the next write is automatic, not a deliberate retry: the 409 leaves _synced unset, so
+        // the invoice is still dirty and the very next save of this client (a note, a phone
+        // number, anything) re-sent it. Optimistic concurrency silently failed at the one moment
+        // it existed for, overwriting the other device's invoice with this stale one.
+        //
+        // Instead, read what the server actually holds. Byte-identical means this was a lost
+        // response, not a conflict — adopt the token and mark it synced. Different means a real
+        // conflict: flag it, stop sending it, and make someone choose (resolveInvoiceConflict).
         return r.json().catch(function(){ return null; }).then(function (bodyJson) {
-          if (bodyJson && bodyJson.id) {
-            try {
-              var pc = getProfiles();
-              var list = (pc[name] && pc[name].invoices) || [];
-              var target = list.find(function (x) { return x && !x.dbId && (x.billingPeriod || '') === (period || '') && x.savedAt === savedAt; });
-              if (target) { target.dbId = bodyJson.id; target.rowVersion = bodyJson.row_version || null; saveProfilesLS(pc); }
-              if (inv) { inv.dbId = bodyJson.id; inv.rowVersion = bodyJson.row_version || null; }
-            } catch (e) {}
-          }
-          conflicts.push(period || '(no period)');
-          return null;
+          if (!(bodyJson && bodyJson.id)) { conflicts.push(period || '(no period)'); return null; }
+          var serverId = bodyJson.id, serverVer = bodyJson.row_version || null;
+          return fetch(API_BASE + '/invoices?clientId=' + encodeURIComponent(clientDbId), { headers: apiHeaders() })
+            .then(function (rr) { return rr.ok ? rr.json() : null; })
+            .catch(function () { return null; })
+            .then(function (rows) {
+              var srv = Array.isArray(rows) ? rows.filter(function (x) { return x && x.id === serverId; })[0] : null;
+              // Compare every field this save would have written. If the server could not be read,
+              // `srv` is null and we treat it as a conflict — fail closed, never overwrite blind.
+              var same = !!srv &&
+                String(srv.invoice_data || '')  === String(payload.invoice_data || '') &&
+                String(srv.billing_period || '') === String(payload.billing_period || '') &&
+                String(srv.status || 'draft')    === String(payload.status || 'draft') &&
+                String(srv.invoice_note || '')   === String(payload.invoice_note || '');
+              _adoptInvoiceConflict(name, period, savedAt, inv, serverId,
+                                    same ? serverVer : null, same ? sig : null, !same, serverVer);
+              if (!same) conflicts.push(period || '(no period)');
+              return null;
+            });
         });
       }
       if (!r.ok) {
@@ -8127,8 +8312,11 @@ function syncNewInvoices(name, data) {
       // Another user changed these invoices since we loaded them. The stale write was
       // REJECTED (not clobbered) — surface it so the user reloads + re-applies rather than
       // losing their edit or silently overwriting the other person's.
-      var ce = new Error('Invoice ' + conflicts.join(', ') + ' was changed by someone else. Reload to get the latest, then re-apply your edit.');
+      var ce = new Error('Invoice ' + conflicts.join(', ') + ' was changed by someone else. Your copy is kept ' +
+        'locally and is NOT being sent, so nothing was overwritten. Reload to see the server copy, then either ' +
+        're-apply your edit or keep the server version.');
       ce.isConflict = true;
+      ce.conflictPeriods = conflicts.slice();
       throw ce;
     }
     if (hardError) throw hardError;
@@ -10303,7 +10491,7 @@ async function generateStateFormPdf(){
     var clientTag=(activeFormClientName||'client').replace(/[^a-z0-9]/gi,'_');
     var fname=def.title+'_'+clientTag+'_'+today().replace(/\//g,'-')+'.pdf';
     // Open in a new tab so user can print or save
-    var w=window.open(url,'_blank');
+    var w=_openPhiWindow(url);
     var a=document.createElement('a');a.href=url;a.download=fname;a.style.display='none';document.body.appendChild(a);a.click();setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},2000);
     showToast('✓ Generated '+fname,5000);
   }catch(e){
@@ -10358,7 +10546,7 @@ async function previewClientInvoice(clientName,period){
     for(var i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
     var blob=new Blob([bytes],{type:'application/pdf'});
     var url=URL.createObjectURL(blob);
-    window.open(url,'_blank');
+    _openPhiWindow(url);
     // Cleanup blob after a delay so the new tab can render
     setTimeout(function(){URL.revokeObjectURL(url);},10000);
   }catch(e){showAlert('Preview failed: '+e.message);console.error(e);}
@@ -11048,8 +11236,15 @@ function _startsInsidePeriod(prof,period){
     var sd=String((prof&&prof.startDate)||'').trim(); if(!sd)return false;
     var pp=String(period||'').split('/'); if(pp.length!==2)return false;
     var pm=parseInt(pp[0],10), py=parseInt(pp[1],10); if(!pm||!py)return false;
-    var d=new Date(sd); if(isNaN(d.getTime()))return false;
-    return (d.getFullYear()===py) && ((d.getMonth()+1)===pm) && (d.getDate()>1);
+    // _ymd, not new Date(): 'YYYY-MM-DD' is parsed by Date as UTC MIDNIGHT, and getMonth()/
+    // getDate() then read it back in local time. In Michigan (UTC-4/-5) that shifts every date
+    // back one day, so a service start on the 2nd reported day 1 — "not a partial month" — and
+    // the client fell through to auto-generation at the FULL authorized hours for a month that
+    // began on the 2nd. The day grid (_dhsBuildFirstInvoice) already used _ymd and correctly
+    // started marking on the 2nd, so the certified form carried full-month hours over a grid
+    // that showed one fewer day. Calendar dates are components, never instants.
+    var d=_ymd(sd); if(!d)return false;
+    return (d.y===py) && (d.m===pm) && (d.d>1);
   }catch(e){ return false; }
 }
 function findClientsEligibleForAutoGen(period){

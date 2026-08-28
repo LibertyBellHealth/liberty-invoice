@@ -13,18 +13,34 @@ function fakePdf(sink) {
            text(t){ sink.push(String(t)); } };
 }
 
-test('PDF renderer: no minutes field is ever drawn as a single digit', () => {
+// The renderer runs to completion against the harness DOM. It is NOT wrapped in try/catch: an
+// exception here means the invoice PDF does not render at all, which must fail the suite. The
+// previous version swallowed every exception and then asserted that the (empty) output contained
+// no bad minutes — so replacing the whole renderer with `throw` left all 249 tests green.
+// Every assertion below is therefore paired: prove the field was DRAWN, then prove it was correct.
+test('PDF renderer: draws the invoice, and no minutes field is a single digit', () => {
   const w = loadApp();
   const data = { clientName:'Jane Doe', billingPeriod:'08/2026', hourlyRate:'27.00',
                  svcHH:'20', svcMM:'5', cplxHH:'4', cplxMM:'5', p1HH:'20', p1MM:'5',
-                 grandHH:'24', grandMM:'5', tasks:{ svc:[], cplx:[] } };
+                 grandHH:'24', grandMM:'5', hasComplex:true, tasks:{ svc:[], cplx:[] } };
+  const REQUIRED = {
+    1: ['Jane Doe', '08/2026', '27.00', '20.05'],           // client, period, rate, Total Time
+    2: ['Jane Doe', '08/2026', '4.05', '20.05', '24.05'],   // complex care, previous page, grand total
+  };
   for (const page2 of [false, true]) {
+    const pageNo = page2 ? 2 : 1;
     const out = [];
-    try { w.drawInvoicePageVector(fakePdf(out), data, page2, 31); }
-    catch (e) { /* layout helpers may need more DOM; whatever was drawn before is still asserted */ }
-    const singleDigitMinutes = out.filter(s => /^\d+\.\d$/.test(s.trim()));
+    w.drawInvoicePageVector(fakePdf(out), data, page2, 31);
+
+    assert.ok(out.length > 20, 'page ' + pageNo + ' drew almost nothing (' + out.length + ' strings)');
+    for (const expected of REQUIRED[pageNo]) {
+      assert.ok(out.some(s => String(s).trim() === expected),
+        'page ' + pageNo + ' never drew ' + JSON.stringify(expected) +
+        ' — a certified form missing this field is not a passing render');
+    }
+    const singleDigitMinutes = out.filter(s => /^\d+\.\d$/.test(String(s).trim()));
     assert.deepStrictEqual(singleDigitMinutes, [],
-      'page ' + (page2 ? 2 : 1) + ' drew a 1-digit minute (reads as tens of minutes on a state invoice): ' +
+      'page ' + pageNo + ' drew a 1-digit minute (reads as tens of minutes on a state invoice): ' +
       singleDigitMinutes.join(', '));
   }
 });
