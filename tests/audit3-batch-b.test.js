@@ -126,7 +126,10 @@ const CWC = { id: 9, name: 'Daniel Voss', email: 'dv@example.com', agency: 'MDHH
 function cleanInv() { return { billingPeriod: '08/2026', status: 'draft',
   data: { svcHH: '10', svcMM: '00' } }; }
 function champsProf() { return { clientName: 'Eleanor Whitfield', medicaidId: '26230923',
-  worker: 'Daniel Voss', caseworkerId: 9, program: '' }; }
+  worker: 'Daniel Voss', caseworkerId: 9, program: '',
+  // A sendable client always has a DHS-1210 — it gates Active status. Without one the (correct)
+  // "nothing authorises this billing" issue fires and these org-gate assertions can't be read.
+  authorization: { hours: '40', minutes: '0' } }; }
 
 test('a CHAMPS client whose caseworker belongs to a carrier is blocked', () => {
   const w = loadApp(); resetStorage(w); w.saveSigsLS([{ id: 1, data: 'x' }]);
