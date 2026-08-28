@@ -39,10 +39,22 @@ function loadApp() {
   window.appInsights = window.appInsights || {
     trackEvent() {}, trackException() {}, trackPageView() {}, trackTrace() {},
   };
-  // Run app.js in global scope. Its INIT block at the very end touches page elements that don't
-  // exist here and throws — swallow it. Every function is declared BEFORE init, so they're all
-  // defined regardless.
-  try { window.eval(src); } catch (e) { /* expected: INIT block DOM access */ }
+  // Run app.js in global scope, and let ANY top-level exception fail the suite.
+  //
+  // This used to be wrapped in `try { ... } catch (e) {}` on the theory that the INIT block always
+  // throws in jsdom and every function is hoisted anyway. Neither half held up. app.js evaluates
+  // cleanly against the initDom above (its own init paths are internally guarded), so the catch
+  // caught nothing real — it just stood ready to swallow the next genuine startup regression. And
+  // hoisting only covers function declarations: a `var X = {...}` after the throw point is left
+  // undefined, which is exactly how whole areas of the file silently stopped being tested before.
+  // If app.js cannot be loaded, that IS the failure — do not hide it behind 249 green checkmarks.
+  window.eval(src);
+  // Belt and braces: a sentinel from the LAST few hundred lines of the file. If evaluation ever
+  // stops early without throwing, this is undefined and every suite fails loudly instead of
+  // quietly testing a half-loaded app.
+  if (typeof window._ASST_UPDATABLE === 'undefined') {
+    throw new Error('harness: app.js did not evaluate to completion — late declarations are missing');
+  }
   _win = window;
   return window;
 }
