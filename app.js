@@ -1757,17 +1757,24 @@ function parseDHS1210(pages){
   var out={warnings:[]};
   // Detect which form this is so downstream UI can label it correctly
   out.formType = /MDHHS-?6064/i.test(flat) ? 'MDHHS-6064' : 'DHS-1210';
-  // Read "approved for 29 Hours and 47 Minutes per month" (DHS-1210 style).
-  // MDHHS-6064 doesn't have this line — it uses the "Total per month" row instead,
-  // which we back-fill from a sibling regex below if the primary miss.
-  var m=flat.match(/approved for\s+(\d+)\s*Hours?\s+(?:and\s+)?(\d+)\s*Minutes?/i)
-       || flat.match(/(\d+)\s*Hours?\s+(?:and\s+)?(\d+)\s*Minutes?\s+per\s+month/i);
-  if(m){out.hours=+m[1];out.minutes=+m[2];}
-  // MDHHS-6064 fallback: "Total per month  HH:MM  $NNN.NN" — take the HH:MM as approved hours.
-  // Tried BEFORE the unlabeled fallback below: it's anchored to a real label, so it can't be a task row.
-  if(out.hours==null){
-    var tm=flat.match(/Total\s*per\s*month[^0-9]*(\d{1,3}):(\d{2})/i);
-    if(tm){out.hours=+tm[1]; out.minutes=+tm[2];}
+  // The approved monthly total can appear TWICE and the two can disagree. A real packet states
+  // "approved for 62 Hours and 20 Minutes" in the DHS-1210-A cover letter while its MDHHS-6064 task
+  // table prints "Total per month 62:21" — and the task rows sum to 62:21 exactly. The TABLE WINS
+  // (owner's ruling, 2026-09-01): it is the provider billing form, its own rows add up to it, and
+  // MDHHS has paid against it. Reading the letter's figure billed a minute LESS than authorized on
+  // every invoice for that client. When they disagree, say so rather than silently choosing.
+  var _letter=flat.match(/approved for\s+(\d+)\s*Hours?\s+(?:and\s+)?(\d+)\s*Minutes?/i)
+           || flat.match(/(\d+)\s*Hours?\s+(?:and\s+)?(\d+)\s*Minutes?\s+per\s+month/i);
+  var _tableM=flat.match(/Total\s*per\s*month[^0-9]*(\d{1,3}):(\d{2})/i);
+  var _lMin=_letter?(+_letter[1]*60 + +_letter[2]):null;
+  var _tMin=_tableM?(+_tableM[1]*60 + +_tableM[2]):null;
+  var _hm=function(v){return Math.floor(v/60)+':'+_padMin(String(v%60));};
+  if(_tMin!=null){ out.hours=Math.floor(_tMin/60); out.minutes=_tMin%60; }
+  else if(_lMin!=null){ out.hours=Math.floor(_lMin/60); out.minutes=_lMin%60; }
+  if(_lMin!=null && _tMin!=null && _lMin!==_tMin){
+    out.totalsDisagree=true;
+    out.warnings.push('the form states two different monthly totals — task table '+_hm(_tMin)+
+      ', approval letter '+_hm(_lMin)+'. The task table was used (it is what the task rows add up to).');
   }
   // Last resort: ANY "N Hours M Minutes" on the form. That can be a single task's time rather than
   // the monthly authorization, so it's flagged — the review modal shows the warning, and the
