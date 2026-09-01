@@ -11860,7 +11860,6 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
   var _list='<ul>'+attachments.map(function(a){return '<li>'+esc(a.clientName)+'</li>';}).join('')+'</ul>';
   var multi=attachments.length>1;
   var _seed=(email||'')+'|'+(period||'');
-  var _mword=(periodLabel||'').split(' ')[0];
   var _apprec=_apprecLine(_seed,multi);  // plural matches count: "these" (multi) / "this" (one)
   var body;
   if(isFollowUp){
@@ -11868,14 +11867,26 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
       '<p>A quick follow-up to my earlier note — attached '+(multi?'are a few additional invoices':'is one additional invoice')+' for '+periodLabel+' that I wanted to be sure reached you, listed below. Please let me know if you have any questions.'+_apprec+'</p>'+
       _list+_emailSig();
   } else {
-    // Rotated, month-start opener — seeded per caseworker so a batch doesn't read identically.
+    // Rotated opener — seeded per caseworker so a batch doesn't read identically.
+    // The greeting names the month it is being SENT in, not the month being billed: an invoice for
+    // August goes out in September, and greeting a caseworker with "Hope August is off to a good
+    // start" on 1 September reads as though nobody checked the date. The billing period is stated
+    // in the same sentence so there is no doubt which month the invoice covers.
+    var _now=new Date();
+    var _nowWord=['January','February','March','April','May','June','July','August','September',
+      'October','November','December'][_now.getMonth()];
+    var _inv=(multi?'are the ':'is the ')+periodLabel+' invoice'+(multi?'s':'')+
+      ' for our shared client'+(multi?'s':'')+', listed below.';
     var _openers=[
-      'Hope '+_mword+' is off to a good start. Attached '+(multi?'are the':'is the')+' invoice'+(multi?'s':'')+' for our shared client'+(multi?'s':'')+', listed below.',
-      'Now that '+_mword+' is underway, here '+(multi?'are the':'is the')+' invoice'+(multi?'s':'')+' for our shared client'+(multi?'s':'')+' below.',
-      'Attached '+(multi?'are the':'is the')+' '+periodLabel+' invoice'+(multi?'s':'')+' for our shared client'+(multi?'s':'')+', listed below.'
+      'Hope '+_nowWord+' is off to a good start. Attached '+_inv,
+      'Now that '+_nowWord+' is underway, here '+_inv,
+      'Attached '+_inv
     ];
+    // "off to a good start" / "underway" only make sense early in the month; later on, use the
+    // plain opener rather than commenting on a month that is half over.
+    var _pick=(_now.getDate()<=10)?_emailSeed(_seed,_openers.length):(_openers.length-1);
     body='<p>Hi '+esc(workerFirst)+',</p>'+
-      '<p>'+_openers[_emailSeed(_seed,_openers.length)]+' Please review at your convenience and let me know if anything needs to be adjusted.'+_apprec+'</p>'+
+      '<p>'+_openers[_pick]+' Please review at your convenience and let me know if anything needs to be adjusted.'+_apprec+'</p>'+
       _list+_emailSig();
   }
 
