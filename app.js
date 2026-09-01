@@ -1814,7 +1814,14 @@ function parseDHS1210(pages){
   if(out.hours!=null){
     var mins=tasks.reduce(function(a,x){var p=(x.perMonth||'0:0').split(':');return a+(+p[0])*60+(+p[1]);},0);
     out.taskMinuteSum=mins; out.approvedTotalMin=out.hours*60+out.minutes;
-    out.timeReconciles=Math.abs(mins-out.approvedTotalMin)<=1;
+    // The 6064 rounds every task row to the whole minute, so N rows can legitimately add up to N
+    // minutes BELOW the total the form itself prints — every real 6064 lands 2 minutes short and
+    // was being flagged "Task times DO NOT match the approved hours". That shortfall costs the
+    // agency nothing: invoices bill the approved total, not this sum. A shortfall bigger than the
+    // rounding can explain is still a misread, and rows that OVERRUN the authorization are flagged
+    // as tightly as before — that is the direction that ends in a recoupment.
+    var _diff=mins-out.approvedTotalMin;
+    out.timeReconciles = _diff<=0 ? (-_diff<=tasks.length) : (_diff<=1);
   }
   // Reassessment due = effective + 6 months, advanced to the next date on/after today (so an old
   // form doesn't show a long-past reassessment — see _nextReassessment).
@@ -11192,6 +11199,8 @@ function _proratedFirstMonth(a, effectiveDate){
   if(dd<=1||dd>inMonth)return null;           // started on the 1st (or an impossible day) — don't prorate
   var served=inMonth-dd+1;
   var totalMin=(parseInt(a.hours,10)||0)*60+(parseInt(a.minutes,10)||0);
+  // Nearest minute, not ceiling: the billed number must be exactly the time authorized for the days
+  // served — rounding up would bill time the agency did not earn (owner's rule, 2026-09-01).
   var proMin=Math.round(totalMin*served/inMonth);
   if(proMin<=0)return null;                   // never offer a certified invoice with no billed time
   return { hours:Math.floor(proMin/60), minutes:proMin%60, daysServed:served, daysInMonth:inMonth, day:dd };
