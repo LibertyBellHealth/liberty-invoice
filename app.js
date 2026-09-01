@@ -1279,7 +1279,8 @@ function renderAuthPane(edit){
   if(a.reassessDate){var dp=a.reassessDate.split('/');if(dp.length===3){var dd=new Date(+dp[2],(+dp[0])-1,+dp[1]);var days=Math.floor((dd-new Date())/86400000);
     if(days<0){dueTxt=' · overdue';dueColor='#b03030';}else if(days<=30){dueTxt=' · '+days+' days';dueColor='#c67605';}}}
   var kv=function(l,v,color){return '<div style="display:flex;justify-content:space-between;gap:16px;padding:6px 0;border-bottom:1px solid #f0f3f7;"><span style="color:#5c7590;font-size:13px;">'+l+'</span><span style="font-weight:600;color:'+(color||'#1a2b45')+';font-size:13px;">'+v+'</span></div>';};
-  var rows=(a.tasks||[]).map(function(t){
+  var _sheetTasks=_taskSheetPaddedTasks(a.tasks, (a.hours!=null)?(a.hours*60+(a.minutes||0)):0);
+  var rows=_sheetTasks.map(function(t){
     return '<tr><td style="padding:4px 8px;">'+esc(t.task||'')+'</td><td style="padding:4px 8px;color:#5c7590;">'+esc(t.perDay||'—')+'</td><td style="padding:4px 8px;color:#5c7590;">'+esc(t.freq||'')+'</td><td style="padding:4px 8px;text-align:right;">'+esc(t.perMonth||'')+'</td><td style="padding:4px 8px;text-align:right;">'+(t.amount!=null?'$'+Number(t.amount).toFixed(2):'—')+'</td></tr>';
   }).join('');
   // First invoice: offer it when there's no invoice yet for the authorization's effective month.
@@ -2102,6 +2103,41 @@ function _caregiverClientLabel(prof, fullName){
   }
   return (first+(last?(' '+last.charAt(0).toUpperCase()+'.'):'')).trim() || String(fullName||'').trim();
 }
+// ── Caregiver task sheet: schedule slightly OVER the authorization ─────────────
+// The sheet the caregiver works from should never leave the agency short of the time MDHHS
+// authorized, so the per-task times on it are padded up to the next half hour, with at least 15
+// minutes of headroom (owner's rule, 2026-09-01: "I never want to be under time"). This affects the
+// CAREGIVER'S SHEET ONLY. Invoices bill the authorization's exact approved total and are untouched
+// — billing more than was authorized is what triggers a recoupment.
+// 80:36 -> 81:00 (+24) · 80:05 -> 80:30 (+25) · 80:55 -> 81:30 (+35)
+function _taskSheetTargetMin(authMin){
+  if(!(authMin>0))return 0;
+  return Math.ceil((authMin+15)/30)*30;
+}
+// Spread the headroom across the task rows in proportion to their authorized monthly time, using
+// largest-remainder so the padded rows total the target exactly rather than drifting by rounding.
+// Returns tasks with perMonth padded; task name, time/day and frequency stay exactly as authorized.
+function _taskSheetPaddedTasks(tasks, authMin){
+  var list=(tasks||[]).map(function(t){return {task:t.task,perDay:t.perDay,freq:t.freq,perMonth:t.perMonth,amount:t.amount};});
+  var target=_taskSheetTargetMin(authMin);
+  var base=list.map(function(t){return _dhsHmToMin(t.perMonth);});
+  var sum=base.reduce(function(a,b){return a+b;},0);
+  if(!target||!sum||target<=sum)return list;   // nothing to pad, or the rows already meet the target
+  var extra=target-sum;
+  var exact=base.map(function(m){return extra*m/sum;});
+  var give=exact.map(Math.floor);
+  var left=extra-give.reduce(function(a,b){return a+b;},0);
+  // Hand the leftover minutes to the largest fractional parts first.
+  exact.map(function(v,i){return {i:i,frac:v-Math.floor(v)};})
+       .sort(function(a,b){return b.frac-a.frac;})
+       .slice(0,left)
+       .forEach(function(o){give[o.i]++;});
+  list.forEach(function(t,i){
+    var m=base[i]+give[i];
+    t.perMonth=String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+  });
+  return list;
+}
 function exportCaregiverTaskSheet(){
   if(!activeProfileName){showAlert('Open a client first.');return;}
   var prof=getProfiles()[activeProfileName]||{};
@@ -2142,7 +2178,7 @@ function exportCaregiverTaskSheet(){
   if(totalHours) _emailLines.push('Approved per month: '+totalHours);
   if(a.aswName)  _emailLines.push('Caseworker (ASW): '+a.aswName+(a.aswPhone?' — '+a.aswPhone:''));
   _emailLines.push('', 'Authorized tasks (perform during each scheduled visit):');
-  (a.tasks||[]).forEach(function(t){
+  _sheetTasks.forEach(function(t){
     _emailLines.push('• '+(t.task||'')+' — '+(t.perDay||'—')+'/day · '+(t.freq||'')+(t.perMonth?(' · '+t.perMonth+'/month'):''));
   });
   _emailLines.push('', 'Note: Complete each authorized task during each scheduled visit. If a task cannot be performed on a given day, note the reason in your visit log. Do not perform tasks outside this authorization list without checking with the office first.');
