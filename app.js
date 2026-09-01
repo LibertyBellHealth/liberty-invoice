@@ -471,7 +471,7 @@ function navCaregivers(){
   if(typeof spToken!=='undefined'&&spToken&&Object.keys(getCaregivers()).length===0&&typeof loadCaregiversAPI==='function')loadCaregiversAPI();
   if(typeof revalidate==='function')revalidate();
 }
-function navSettings(){showPage('settings');bc([{l:'Settings'}]);document.getElementById('topbarActions').innerHTML='';renderSigSettings();updateSettingsAuth();renderEmailAuditTable();if(typeof loadSigningTemplates==='function')loadSigningTemplates();if(typeof revalidate==='function')revalidate();var sr=document.getElementById('stateRateInput');if(sr)sr.value=stateRate();var srs=document.getElementById('stateRateStatus');if(srs)srs.textContent='';if(typeof renderAgencySettings==='function')renderAgencySettings();}
+function navSettings(){showPage('settings');bc([{l:'Settings'}]);document.getElementById('topbarActions').innerHTML='';renderSigSettings();updateSettingsAuth();renderEmailAuditTable();if(typeof loadSigningTemplates==='function')loadSigningTemplates();if(typeof revalidate==='function')revalidate();var sr=document.getElementById('stateRateInput');if(sr)sr.value=stateRate();var srs=document.getElementById('stateRateStatus');if(srs){if(stateRateIsDefault()){srs.style.color='#8a6d3b';srs.textContent='⚠ Not saved — invoices are using the built-in default $'+STATE_RATE_DEFAULT+'/hr. Press Save to confirm it.';}else{srs.style.color='#1a7740';srs.textContent='';}}if(typeof renderAgencySettings==='function')renderAgencySettings();}
 function navTasks(){showPage('tasks');bc([{l:'Tasks'}]);document.getElementById('topbarActions').innerHTML='';populateTodoClientSelect();renderTodos();if(typeof revalidate==='function')revalidate();}
 function navReports(){showPage('reports');bc([{l:'Reports'}]);document.getElementById('topbarActions').innerHTML='';renderReports();}
 
@@ -1732,6 +1732,21 @@ async function _dhsPageLines(page){
   }).filter(Boolean);
 }
 
+// The "Number of Days" column, as MDHHS actually writes it. ONE definition, used by both the
+// single-line row pattern and the OCR cell pass, and kept in step with what _dhsFreqToDays can
+// convert into service days. They had drifted: the reader accepted only "N days per week/month"
+// and "Once per week/month", so a real row reading "Twice per month" was DROPPED — the task
+// vanished from the authorization, the caregiver task sheet and the invoice day grid, while
+// _dhsFreqToDays had understood that wording all along. The form's own printed totals caught it
+// (both reconciliation checks failed by exactly the missing row), which is what they are for.
+var _DHS_FREQ_SRC='(?:\\d+\\s*(?:days?|times?)\\s*per\\s*(?:week|month)'+
+  '|(?:once|twice|thrice|three\\s*times|four\\s*times|five\\s*times|six\\s*times)\\s*per\\s*(?:week|month)'+
+  '|daily|every\\s*day|weekly|monthly)';
+var _DHS_ROW_RE=new RegExp('^(.+?)\\s+(\\d{2}:\\d{2})\\s+('+_DHS_FREQ_SRC+')\\s+(\\d{2}:\\d{2})(?:\\s+\\$?([\\d,]+\\.\\d{2}))?','i');
+var _DHS_FREQ_RE=new RegExp('^'+_DHS_FREQ_SRC+'$','i');
+// A row shaped like a task row whose frequency we do NOT recognise — so a new wording is reported
+// rather than silently dropped the way "Twice per month" was.
+var _DHS_ROWISH_RE=/^(.+?)\s+(\d{2}:\d{2})\s+(.+?)\s+(\d{2}:\d{2})(?:\s+\$?[\d,]+\.\d{2})?\s*$/i;
 // Parse the grouped lines into a structured authorization. Self-checks the extraction
 // against the form's own printed totals (task $ = total; task minutes = approved hours).
 // Handles both DHS-1210 (older) and MDHHS-6064-P (newer, effective 9-25) — the two
@@ -1742,17 +1757,24 @@ function parseDHS1210(pages){
   var out={warnings:[]};
   // Detect which form this is so downstream UI can label it correctly
   out.formType = /MDHHS-?6064/i.test(flat) ? 'MDHHS-6064' : 'DHS-1210';
-  // Read "approved for 29 Hours and 47 Minutes per month" (DHS-1210 style).
-  // MDHHS-6064 doesn't have this line — it uses the "Total per month" row instead,
-  // which we back-fill from a sibling regex below if the primary miss.
-  var m=flat.match(/approved for\s+(\d+)\s*Hours?\s+(?:and\s+)?(\d+)\s*Minutes?/i)
-       || flat.match(/(\d+)\s*Hours?\s+(?:and\s+)?(\d+)\s*Minutes?\s+per\s+month/i);
-  if(m){out.hours=+m[1];out.minutes=+m[2];}
-  // MDHHS-6064 fallback: "Total per month  HH:MM  $NNN.NN" — take the HH:MM as approved hours.
-  // Tried BEFORE the unlabeled fallback below: it's anchored to a real label, so it can't be a task row.
-  if(out.hours==null){
-    var tm=flat.match(/Total\s*per\s*month[^0-9]*(\d{1,3}):(\d{2})/i);
-    if(tm){out.hours=+tm[1]; out.minutes=+tm[2];}
+  // The approved monthly total can appear TWICE and the two can disagree. A real packet states
+  // "approved for 62 Hours and 20 Minutes" in the DHS-1210-A cover letter while its MDHHS-6064 task
+  // table prints "Total per month 62:21" — and the task rows sum to 62:21 exactly. The TABLE WINS
+  // (owner's ruling, 2026-09-01): it is the provider billing form, its own rows add up to it, and
+  // MDHHS has paid against it. Reading the letter's figure billed a minute LESS than authorized on
+  // every invoice for that client. When they disagree, say so rather than silently choosing.
+  var _letter=flat.match(/approved for\s+(\d+)\s*Hours?\s+(?:and\s+)?(\d+)\s*Minutes?/i)
+           || flat.match(/(\d+)\s*Hours?\s+(?:and\s+)?(\d+)\s*Minutes?\s+per\s+month/i);
+  var _tableM=flat.match(/Total\s*per\s*month[^0-9]*(\d{1,3}):(\d{2})/i);
+  var _lMin=_letter?(+_letter[1]*60 + +_letter[2]):null;
+  var _tMin=_tableM?(+_tableM[1]*60 + +_tableM[2]):null;
+  var _hm=function(v){return Math.floor(v/60)+':'+_padMin(String(v%60));};
+  if(_tMin!=null){ out.hours=Math.floor(_tMin/60); out.minutes=_tMin%60; }
+  else if(_lMin!=null){ out.hours=Math.floor(_lMin/60); out.minutes=_lMin%60; }
+  if(_lMin!=null && _tMin!=null && _lMin!==_tMin){
+    out.totalsDisagree=true;
+    out.warnings.push('the form states two different monthly totals — task table '+_hm(_tMin)+
+      ', approval letter '+_hm(_lMin)+'. The task table was used (it is what the task rows add up to).');
   }
   // Last resort: ANY "N Hours M Minutes" on the form. That can be a single task's time rather than
   // the monthly authorization, so it's flagged — the review modal shows the warning, and the
@@ -1800,10 +1822,15 @@ function parseDHS1210(pages){
   });});
   var t=flat.match(/Total per month[\s\S]*?\$\s*([\d,]+\.\d{2})/i); if(t)out.printedTotal=+t[1].replace(/,/g,'');
   // Task rows: <task> <HH:MM/day> <frequency> <HH:MM/month> [$amount]
-  var tasks=[],seen={};
+  var tasks=[],seen={},unknownFreqs=[];
   pages.forEach(function(ls){ls.forEach(function(ln){
-    var r=ln.match(/^(.+?)\s+(\d{2}:\d{2})\s+(\d+ days? per week|Once per (?:week|month)|\d+ days? per month)\s+(\d{2}:\d{2})(?:\s+\$?([\d,]+\.\d{2}))?/i);
+    var r=ln.match(_DHS_ROW_RE);
     if(r){var nm=r[1].trim(); if(!seen[nm]){seen[nm]=1;tasks.push({task:nm,perDay:r[2],freq:r[3],perMonth:r[4],amount:r[5]?+r[5].replace(/,/g,''):null});}}
+    else{
+      var _rw=ln.match(_DHS_ROWISH_RE);
+      if(_rw && !_DHS_FREQ_RE.test(_rw[3].trim()) && _rw[3].trim().length<40 && /[a-z]/i.test(_rw[3]))
+        unknownFreqs.push(_rw[3].trim());
+    }
   });});
   // OCR fallback. Document Intelligence returns a table as one CELL per line in reading order, so a
   // row arrives as 4-5 consecutive lines ("Bathing" / "00:05" / "7 days per week" / "02:30" /
@@ -1813,7 +1840,7 @@ function parseDHS1210(pages){
   // form's own printed totals by the reconciliation below.
   if(!tasks.length){
     var _HM=/^\d{1,3}:\d{2}$/;
-    var _FREQ=/^(\d+ days? per week|Once per (?:week|month)|\d+ days? per month)$/i;
+    var _FREQ=_DHS_FREQ_RE;
     var _NAME=/^[A-Za-z][A-Za-z .,'\/&-]{1,59}$/;
     var _AMT=/^\$?\s*([\d,]+\.\d{2})$/;
     for(var _i=0;_i+3<lines.length;_i++){
@@ -1857,6 +1884,10 @@ function parseDHS1210(pages){
   // nothing — the import then showed the approved hours, no task list, and a red "Task times DO
   // NOT match the approved hours" that blamed a mismatch for what was really a total miss. Without
   // tasks there is no caregiver task sheet and no day grid for an invoice, so say so plainly.
+  if(unknownFreqs.length){
+    var _uf=unknownFreqs.filter(function(v,i,a){return a.indexOf(v)===i;}).slice(0,3);
+    out.warnings.push('a task row with an unrecognised frequency ("'+_uf.join('", "')+'") — that task was NOT imported');
+  }
   if(!tasks.length) out.warnings.push('the task table (no tasks were read — the caregiver task sheet and invoice day grid need them)');
   if(tasks.length){
     var sum=Math.round(tasks.filter(function(x){return x.amount!=null;}).reduce(function(a,x){return a+x.amount;},0)*100)/100;
@@ -1958,6 +1989,40 @@ function handleDhsImport(input){
 
 function _dhsChip(ok){return ok?'<span style="color:#1a7f4b;font-weight:700;">✓</span>':(ok===false?'<span style="color:#c0392b;font-weight:700;">✗</span>':'<span style="color:#5c7590;">–</span>');}
 
+// Find the caseworker a form's ASW already is. Matching was email-only, so when the email could
+// not be read the import fell through to "Add <name> as a caseworker" with the box CHECKED — and
+// created a second record for someone already on the roster. That is how a duplicate "A Sawyer"
+// appeared alongside "Addison Sawyer" on the same email: the old address pattern dropped any local
+// part containing a digit (SawyerA2@), so there was no email to match on.
+//
+// MDHHS prints the worker as initial + surname ("A Sawyer") while the roster holds the full name
+// ("Addison Sawyer"), so name matching has to understand that shape. Email first (authoritative),
+// then phone digits, then initial+surname.
+function _dhsCwNameKey(n){
+  var t=String(n||'').toLowerCase().replace(/[^a-z\s]/g,' ').trim().split(/\s+/).filter(Boolean);
+  if(t.length<2)return null;
+  return {first:t[0], last:t[t.length-1]};
+}
+function _dhsMatchCaseworker(res, cws){
+  cws=cws||[];
+  var em=String(res&&res.aswEmail||'').trim().toLowerCase();
+  var byEmail=em?cws.find(function(c){return String(c.email||'').trim().toLowerCase()===em;}):null;
+  if(byEmail)return byEmail;
+  var ph=String(res&&res.aswPhone||'').replace(/\D/g,'');
+  if(ph.length>=10){
+    var byPhone=cws.find(function(c){return String(c.phone||'').replace(/\D/g,'').slice(-10)===ph.slice(-10);});
+    if(byPhone)return byPhone;
+  }
+  var f=_dhsCwNameKey(res&&res.aswName);
+  if(!f)return null;
+  return cws.find(function(c){
+    var r=_dhsCwNameKey(c.name); if(!r||r.last!==f.last)return false;
+    // "A Sawyer" matches "Addison Sawyer"; "Addison" also matches "A".
+    return r.first===f.first ||
+           (f.first.length===1 && r.first.charAt(0)===f.first) ||
+           (r.first.length===1 && f.first.charAt(0)===r.first);
+  })||null;
+}
 // #5: fields a DHS-1210 suggests updating on the client / matched caseworker. Only when the form
 // has a value that DIFFERS from what's stored — never suggests blanking a field. Client NAME is
 // intentionally excluded (renaming a client changes its record key — too risky to auto-suggest).
@@ -1995,7 +2060,7 @@ function showDhsReview(file,res){
   var targetName=activeProfileName;
   var prof=getProfiles()[targetName]||{};
   var cws=getCaseworkers();
-  var match=res.aswEmail?cws.find(function(c){return (c.email||'').toLowerCase()===res.aswEmail.toLowerCase();}):null;
+  var match=_dhsMatchCaseworker(res, cws);
   var hasCw=!!prof.caseworkerId;
   var row=function(l,v){return '<div style="display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:13px;"><span style="color:#5c7590;">'+l+'</span><span style="font-weight:600;color:#1a2b45;text-align:right;">'+v+'</span></div>';};
   var warn=(res.warnings&&res.warnings.length)?'<div style="background:#fff3cd;border:1px solid #ffeaa7;color:#856404;font-size:12px;padding:6px 10px;border-radius:6px;margin:8px 0;">Couldn\'t read: '+esc(res.warnings.join(', '))+' — verify before saving.</div>':'';
@@ -7199,9 +7264,17 @@ async function sendEmail(){
   }catch(e){showAlert('Error generating PDF: '+e.message);}
   if(btn){btn.disabled=false;btn.textContent='✉ Email Worker';}
 }
+// The rate used until one is saved. $27.00 is the Michigan Home Help rate as of 2026-09; it is a
+// fallback, not an authority — see stateRateIsDefault.
+var STATE_RATE_DEFAULT='27.00';
 // The government/state hourly rate billed on every invoice (NOT the caregiver pay rate).
 // Configurable in Settings so the once-a-year rate change is a setting, not a code edit.
-function stateRate(){ var v=(localStorage.getItem('lhca_state_rate')||'').trim(); return v||'27.00'; }
+function stateRate(){ var v=(localStorage.getItem('lhca_state_rate')||'').trim(); return v||STATE_RATE_DEFAULT; }
+// True when NO rate has ever been saved on this device and invoices are running on the built-in
+// default. A saved 27.00 and a never-saved rate look identical on screen — the Settings box is
+// filled by stateRate() either way — so the day MDHHS changes the rate, an unsynced device would
+// keep certifying 27.00 with nothing to show it was a guess. Callers surface it; nothing blocks.
+function stateRateIsDefault(){ return !(localStorage.getItem('lhca_state_rate')||'').trim(); }
 // The rate to bill a client's invoices at: ALWAYS the state rate ($27). The state pays a flat
 // provider rate, so every invoice uses it — the client "Hourly Rate" field is NOT a billing rate
 // (it does not affect invoices). prof kept for call-site compatibility.
@@ -10089,7 +10162,7 @@ function changeStateFormClient(name){
 }
 
 // Re-render the PDF in the iframe whenever an input changes (debounced)
-var _sfPreviewTimer=null,_sfPreviewBlobUrl=null,_sfPreviewBytes=null;
+var _sfPreviewTimer=null,_sfPreviewBlobUrl=null;
 function scheduleSfPreview(delay){
   clearTimeout(_sfPreviewTimer);
   var ms=(delay==null||typeof delay==='object')?350:delay;
@@ -10409,13 +10482,16 @@ async function renderSfPreview(){
     var iframe=document.getElementById('sfPreviewFrame');
     if(!def||!iframe)return;
     if(!window.PDFLib){setTimeout(renderSfPreview,400);return;}
-    // Live preview keeps fields editable so user can also tweak in the iframe
-    var out=await _renderStateFormBytes({flatten:false});
-    _sfPreviewBytes=out;
+    // Flattened on purpose. Unflattened, the preview's fields stayed typeable, so a form looked
+    // like it could be corrected on screen — but Download regenerates from the app's inputs and
+    // threw that typing away silently. Flattening makes the preview what it actually is: a picture
+    // of what will be produced. Edits belong in the form's fields on the page; a form the CLIENT
+    // still has to complete is exported through "Download (fillable)", which is unaffected.
+    var out=await _renderStateFormBytes({flatten:true});
     var blob=new Blob([out],{type:'application/pdf'});
     if(_sfPreviewBlobUrl)URL.revokeObjectURL(_sfPreviewBlobUrl);
     _sfPreviewBlobUrl=URL.createObjectURL(blob);
-    iframe.src=_sfPreviewBlobUrl+'#toolbar=1&navpanes=0&view=FitH';
+    iframe.src=_sfPreviewBlobUrl+'#toolbar=0&navpanes=0&view=FitH';
     var s=document.querySelector('.sf-preview-status');var t=document.getElementById('sfPreviewStatusText');
     if(s)s.classList.add('idle');if(t)t.textContent='Preview up to date';
   }catch(e){
@@ -11195,9 +11271,51 @@ function _dhsFreqToDays(freq, days){
 function _dhsHmToMin(s){ var m=String(s||'').match(/(\d+):(\d+)/); return m?(parseInt(m[1],10)*60+parseInt(m[2],10)):0; }
 // A stable per-month seed from "MM/YYYY" — a distinct integer per month so each month's generated
 // pattern differs from the last, but regenerating the SAME month reproduces it (no randomness).
+// Weekday index (0=Sunday) of the 1st of month m in year y. Sakamoto's method — deliberately not
+// `new Date(...)`, which is read as UTC and lands on the previous day in any zone behind UTC.
+function _dhsFirstWeekday(y, m){
+  if(!y||!m)return -1;
+  var t=[0,3,2,5,0,3,5,1,4,6,2,4], yy=y;
+  if(m<3)yy-=1;
+  return (yy+Math.floor(yy/4)-Math.floor(yy/100)+Math.floor(yy/400)+t[m-1]+1)%7;
+}
 function _dhsPeriodSeed(period){ var p=String(period||'').split('/'); var mm=parseInt(p[0],10)||1, yy=parseInt(p[1],10)||2000; return yy*12+(mm-1); }
 // Place `count` day-indices spread EVENLY across a `days`-long month, rotated by `seed` so the exact
 // days vary month to month. Always returns `count` distinct in-range indices (or all days if count≥days).
+// Travel time is transport FOR another task, so it belongs on the SAME days as the task it serves.
+// Everything else gets its own group, so two tasks never sit on identical days by default.
+function _dhsTaskGroupKey(name){
+  var n=String(name||'').toLowerCase().trim();
+  if(/shop/.test(n))return 'shopping';        // "Shopping for Food/Meds" + "Travel For Shopping"
+  if(/laundry/.test(n))return 'laundry';      // "Laundry" + "Travel Time for Laundry"
+  return n;
+}
+// Days for one task, anchored to weekdays so the sheet reads like a real schedule — laundry on
+// Tuesdays, shopping on Fridays — instead of every task starting on the same date because they
+// shared one period seed. `variant` separates the groups; `firstWeekday` is the month's 1st.
+// Returns exactly `count` distinct in-range day indices.
+function _dhsWeekdaySpread(count, days, firstWeekday, variant, seed){
+  count=Math.max(0,Math.min(days,count|0)); if(count<=0)return [];
+  if(count>=days){var all=[];for(var i=0;i<days;i++)all.push(i);return all;}
+  var perWeek=count/(days/7);
+  var anchorCount=Math.max(1,Math.min(7,Math.round(perWeek)));
+  // Each group starts on a different weekday; within a group the anchors are spread across the week
+  // (two-a-week lands ~3 days apart, not back to back).
+  var start=(((variant*3)+(seed|0))%7+7)%7, anchors=[];
+  for(var j=0;j<anchorCount;j++)anchors.push((start+Math.round(j*7/anchorCount))%7);
+  var cand=[];
+  for(var d=0;d<days;d++)if(anchors.indexOf((firstWeekday+d)%7)>=0)cand.push(d);
+  var out=[];
+  if(cand.length>=count){
+    for(var k=0;k<count;k++){
+      var pos=cand[count===1?Math.floor(cand.length/2):Math.round(k*(cand.length-1)/(count-1))];
+      if(out.indexOf(pos)<0)out.push(pos);
+    }
+  } else out=cand.slice();
+  // Top up (or trim) so the authorized number of days is always what lands on the form.
+  for(var f=0;out.length<count&&f<days;f++){var c=(f+start)%days; if(out.indexOf(c)<0)out.push(c);}
+  return out.slice(0,count).sort(function(a,b){return a-b;});
+}
 function _dhsSpreadDays(count, days, seed){
   count=Math.max(0,Math.min(days, count|0)); if(count<=0)return [];
   if(count>=days){ var all=[]; for(var i=0;i<days;i++)all.push(i); return all; }
@@ -11213,14 +11331,56 @@ function _dhsSpreadDays(count, days, seed){
 //  • "7 days per week" (daily) → EVERY day the month has (owner's rule).
 //  • otherwise → the authorized monthly count = Time/Month ÷ Time/Day (falls back to the frequency
 //    pattern's length if those times are missing), spread evenly and varied by the period seed.
-function _dhsTaskDays(task, days, seed){
+// What the "Number of Days" column actually authorizes. MDHHS fills the day grid from THIS, not
+// from dividing the monthly time by the daily time (owner, 2026-09-01) — so it is read first and the
+// times are only a fallback for a frequency we cannot parse.
+function _dhsFreqSpec(freq){
+  var f=String(freq||'').toLowerCase().trim();
+  if(/7 days? per week|daily|every day/.test(f))return {per:'day'};
+  var wk=f.match(/(\d+)\s*(?:days?|times?)\s*per\s*week/);
+  if(wk)return {per:'week',n:Math.max(1,Math.min(7,parseInt(wk[1],10)||1))};
+  if(/\btwice\b[^.]*week/.test(f))return {per:'week',n:2};
+  if(/(?:three\s*times|\bthrice\b)[^.]*week/.test(f))return {per:'week',n:3};
+  if(/four\s*times[^.]*week/.test(f))return {per:'week',n:4};
+  if(/\bonce\b[^.]*week|\bweekly\b/.test(f))return {per:'week',n:1};
+  var mo=f.match(/(\d+)\s*(?:days?|times?)\s*per\s*month/);
+  if(mo)return {per:'month',n:Math.max(1,parseInt(mo[1],10)||1)};
+  if(/\btwice\b[^.]*month/.test(f))return {per:'month',n:2};
+  if(/(?:three\s*times|\bthrice\b)[^.]*month/.test(f))return {per:'month',n:3};
+  if(/four\s*times[^.]*month/.test(f))return {per:'month',n:4};
+  if(/\bonce\b[^.]*month|\bmonthly\b/.test(f))return {per:'month',n:1};
+  return null;
+}
+// The weekdays a group is scheduled on: n distinct weekdays, spread across the week, starting on a
+// weekday that differs per task group and walks forward one per month.
+function _dhsAnchors(n, variant, seed){
+  var start=(((variant*3)+(seed|0))%7+7)%7, a=[];
+  for(var j=0;j<Math.max(1,Math.min(7,n));j++)a.push((start+Math.round(j*7/Math.max(1,n)))%7);
+  return a;
+}
+function _dhsTaskDays(task, days, seed, variant, firstWeekday){
   var freq=String((task&&task.freq)||'').toLowerCase();
   if(/7 days? per week|daily|every day/.test(freq)){ var all=[]; for(var i=0;i<days;i++)all.push(i); return all; }
   var pd=_dhsHmToMin(task&&task.perDay), pm=_dhsHmToMin(task&&task.perMonth);
   // FLOOR so days×Time/Day never EXCEEDS the authorized Time/Month (never document more than
   // authorized); at least 1 day for any task that has a frequency at all.
+  var spec=_dhsFreqSpec(task&&task.freq), i;
+  if(spec&&spec.per==='day'){var all2=[];for(i=0;i<days;i++)all2.push(i);return all2;}
+  if(spec&&firstWeekday!=null&&firstWeekday>=0){
+    if(spec.per==='week'){
+      // N days a week means EVERY occurrence of N weekdays in this month — so a 31-day month
+      // yields the 9 or 10 visits it actually contains, not a figure divided down from the times.
+      var anch=_dhsAnchors(spec.n, variant|0, seed), wk=[];
+      for(i=0;i<days;i++)if(anch.indexOf((firstWeekday+i)%7)>=0)wk.push(i);
+      return wk;
+    }
+    return _dhsWeekdaySpread(spec.n, days, firstWeekday, variant|0, seed);   // N times a month
+  }
+  // Frequency unreadable: fall back to the authorized time, floored so the grid cannot certify
+  // more service than the monthly total allows.
   var count=(pd>0&&pm>0)?Math.max(1,Math.floor(pm/pd)):_dhsFreqToDays(task&&task.freq, days).length;
-  return _dhsSpreadDays(count, days, seed);
+  if(firstWeekday==null||firstWeekday<0)return _dhsSpreadDays(count, days, seed+(variant|0));
+  return _dhsWeekdaySpread(count, days, firstWeekday, variant|0, seed);
 }
 // Minutes are printed as the ".MM" half of "HH.MM" on the certified form, so a bare "5" reads as
 // 50 minutes: "20 hours 5 minutes" printed "20.5" — 45 minutes of over-billed time. Always 2 digits.
@@ -11244,6 +11404,14 @@ function _dhsBuildFirstInvoice(res, prof, period){
   var days=daysIn(pp[0],pp[1]); var cols=_dhsSvcColNames();
   var grid=[]; for(var d=0;d<days;d++){ var row=[]; for(var c=0;c<cols.length;c++)row.push(false); grid.push(row); }
   var unmapped=[]; var seed=_dhsPeriodSeed(period);
+  // Weekday of the 1st, so each task can be anchored to real weekdays. Computed from the period
+  // arithmetically (no Date parsing — see _ymd for why that matters here).
+  var _fw=_dhsFirstWeekday(parseInt(pp[1],10), parseInt(pp[0],10));
+  // One variant per task GROUP, in the order the form lists them, so distinct tasks never share a
+  // day pattern while a task and its travel time still do.
+  var _groups=[]; (res.tasks||[]).forEach(function(t){
+    var g=_dhsTaskGroupKey(t.task); if(_groups.indexOf(g)<0)_groups.push(g);
+  });
   // The day grid is the MSA-1904's "verification of services" — a mark on it certifies that service
   // was delivered that day. Marks were spread across the WHOLE month even when service started
   // partway through it (and even on the prorated branch, which passes only the reduced HOURS), so a
@@ -11258,7 +11426,7 @@ function _dhsBuildFirstInvoice(res, prof, period){
   (res.tasks||[]).forEach(function(t){
     var col=_dhsMapTaskToCol(t.task);
     if(col<0){ unmapped.push(t.task); return; }
-    _dhsTaskDays(t, days, seed).forEach(function(di){
+    _dhsTaskDays(t, days, seed, _groups.indexOf(_dhsTaskGroupKey(t.task)), _fw).forEach(function(di){
       if(di>=(_firstDay-1)&&di<days)grid[di][col]=true;   // never before the first day of service
     });
   });
@@ -11397,9 +11565,14 @@ function autoGenerateMonthlyInvoices(period){
     return;
   }
   var names=eligible.map(function(e){return '• '+e.name;}).join('\n');
+  // Say it here, where a wrong rate would be stamped onto real invoices, not only in Settings.
+  var rateNote=stateRateIsDefault()
+    ? '⚠ No state rate has been saved on this device, so these will bill at the built-in default $'+
+      STATE_RATE_DEFAULT+'/hr. Confirm it in Settings if MDHHS has changed the rate.\n\n'
+    : '';
   showConfirm(
     'Auto-generate '+eligible.length+' invoice'+(eligible.length>1?'s':'')+' for '+period+'?\n\n'+
-    names+'\n\n'+
+    names+'\n\n'+rateNote+
     'For each client WITH a DHS authorization, this builds the grid from the authorized tasks:\n'+
     '• Daily tasks (7 days/week) checked every day of the month\n'+
     '• Weekly/monthly tasks get their authorized count, spread out and varied so each month differs\n'+
@@ -11703,7 +11876,6 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
   var _list='<ul>'+attachments.map(function(a){return '<li>'+esc(a.clientName)+'</li>';}).join('')+'</ul>';
   var multi=attachments.length>1;
   var _seed=(email||'')+'|'+(period||'');
-  var _mword=(periodLabel||'').split(' ')[0];
   var _apprec=_apprecLine(_seed,multi);  // plural matches count: "these" (multi) / "this" (one)
   var body;
   if(isFollowUp){
@@ -11711,14 +11883,26 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
       '<p>A quick follow-up to my earlier note — attached '+(multi?'are a few additional invoices':'is one additional invoice')+' for '+periodLabel+' that I wanted to be sure reached you, listed below. Please let me know if you have any questions.'+_apprec+'</p>'+
       _list+_emailSig();
   } else {
-    // Rotated, month-start opener — seeded per caseworker so a batch doesn't read identically.
+    // Rotated opener — seeded per caseworker so a batch doesn't read identically.
+    // The greeting names the month it is being SENT in, not the month being billed: an invoice for
+    // August goes out in September, and greeting a caseworker with "Hope August is off to a good
+    // start" on 1 September reads as though nobody checked the date. The billing period is stated
+    // in the same sentence so there is no doubt which month the invoice covers.
+    var _now=new Date();
+    var _nowWord=['January','February','March','April','May','June','July','August','September',
+      'October','November','December'][_now.getMonth()];
+    var _inv=(multi?'are the ':'is the ')+periodLabel+' invoice'+(multi?'s':'')+
+      ' for our shared client'+(multi?'s':'')+', listed below.';
     var _openers=[
-      'Hope '+_mword+' is off to a good start. Attached '+(multi?'are the':'is the')+' invoice'+(multi?'s':'')+' for our shared client'+(multi?'s':'')+', listed below.',
-      'Now that '+_mword+' is underway, here '+(multi?'are the':'is the')+' invoice'+(multi?'s':'')+' for our shared client'+(multi?'s':'')+' below.',
-      'Attached '+(multi?'are the':'is the')+' '+periodLabel+' invoice'+(multi?'s':'')+' for our shared client'+(multi?'s':'')+', listed below.'
+      'Hope '+_nowWord+' is off to a good start. Attached '+_inv,
+      'Now that '+_nowWord+' is underway, here '+_inv,
+      'Attached '+_inv
     ];
+    // "off to a good start" / "underway" only make sense early in the month; later on, use the
+    // plain opener rather than commenting on a month that is half over.
+    var _pick=(_now.getDate()<=10)?_emailSeed(_seed,_openers.length):(_openers.length-1);
     body='<p>Hi '+esc(workerFirst)+',</p>'+
-      '<p>'+_openers[_emailSeed(_seed,_openers.length)]+' Please review at your convenience and let me know if anything needs to be adjusted.'+_apprec+'</p>'+
+      '<p>'+_openers[_pick]+' Please review at your convenience and let me know if anything needs to be adjusted.'+_apprec+'</p>'+
       _list+_emailSig();
   }
 
