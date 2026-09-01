@@ -356,7 +356,11 @@ function navDetail(name,tab){
 function navInvoice(loadSpecific){
   if(!activeProfileName){showAlert('Select a client first.');return;}
   var prof=getProfiles()[activeProfileName];
+  // In Progress (stored 'inactive'), Lost and Terminated clients are never invoiced. Every BULK
+  // surface enforces that; these three per-client entry points checked only for a carrier client,
+  // so an invoice for a terminated client could be created and emailed one at a time.
   if(isCarrierClient(prof)){showAlert('This is a managed-care (carrier) client — billing goes through the carrier’s software, so invoices aren’t created here.');return;}
+  if(!isInvoiceableStatus(prof)){showAlert('“'+activeProfileName+'” is '+((prof&&prof.clientStatus==='inactive')?'In Progress':(prof&&prof.clientStatus)||'not active')+', so they are not invoiced. Set the client Active first if service has started.',{title:'Not an invoiceable client'});return;}
   if(loadSpecific){
     showPage('invoice');
     document.getElementById('invClientTag').textContent=activeProfileName;
@@ -382,7 +386,11 @@ function navInvoice(loadSpecific){
 }
 function confirmNewInvoice(mode){
   var prof=getProfiles()[activeProfileName];
+  // In Progress (stored 'inactive'), Lost and Terminated clients are never invoiced. Every BULK
+  // surface enforces that; these three per-client entry points checked only for a carrier client,
+  // so an invoice for a terminated client could be created and emailed one at a time.
   if(isCarrierClient(prof)){showAlert('This is a managed-care (carrier) client — billing goes through the carrier’s software, so no invoice is created here.');return;}
+  if(!isInvoiceableStatus(prof)){showAlert('“'+activeProfileName+'” is '+((prof&&prof.clientStatus==='inactive')?'In Progress':(prof&&prof.clientStatus)||'not active')+', so no invoice should be created. Set the client Active first if service has started.',{title:'Not an invoiceable client'});return;}
   document.getElementById('newInvChoiceModal').classList.remove('open');
   showPage('invoice');
   document.getElementById('invClientTag').textContent=activeProfileName;
@@ -407,6 +415,10 @@ function confirmNewInvoice(mode){
         nextBP=String(lm).padStart(2,'0')+'/'+ly;
       }
     }
+    // This is a NEW invoice for a NEW period, so it bills the CURRENT state rate. applyFullInvoice
+    // above deliberately restored the copied invoice's stored rate (right when reopening an old
+    // invoice, wrong here) — re-stamp it, exactly as copyMonth() does.
+    var _hrNew=document.getElementById('hourlyRate'); if(_hrNew)_hrNew.value=stateRate();
     document.getElementById('billingPeriod').value=nextBP;
     document.getElementById('billingPeriod2').value=nextBP;
     var T=today();
@@ -1474,6 +1486,18 @@ function deleteClient(){
     addAuditEntry(name,'CLIENT RECORD DELETED by '+currentUserEmail());   // durable record — aiTrack is scrubbed telemetry, not an audit trail
     var p=getProfiles();deleteProfileSP(name);delete p[name];
     try{localStorage.removeItem('lhca_draft_'+name);}catch(e){}
+    // PHI: these overlays are keyed by NAME and getProfiles re-attaches them to ANY profile with a
+    // matching name. Left behind, a later client with the same name inherited the deleted person's
+    // SSN and had it encrypted into their row.
+    try{ delete _ssnMem[name]; }catch(e){}
+    try{ delete _clientSyncedMem[name]; }catch(e){}
+    // Tasks are name-keyed too. Left pointing at a deleted client they vanish from every view and
+    // are silently adopted by the next client created with that name — detach them instead.
+    try{
+      var _td=getTodos(), _n=0;
+      _td.forEach(function(t){ if(t&&t.client===name){ t.client=''; _n++; } });
+      if(_n){ saveTodos(_td); _td.forEach(function(t){ if(t&&t.client===''&&typeof saveTaskAPI==='function')saveTaskAPI(t); }); }
+    }catch(e){}
     saveProfilesLS(p);activeProfileName=null;logActivity('delete','Client deleted: '+name);navHome();
   },{title:'Delete Client',okText:'Delete'});
 }
@@ -1738,15 +1762,27 @@ function parseDHS1210(pages){
       out.warnings.push('approved hours (read from an unlabeled line — verify the total)'); }
   }
   if(out.hours==null) out.warnings.push('approved hours');
-  // Effective date. DHS-1210 says "effective MM/DD/YYYY". MDHHS-6064 uses a plain
-  // "Date  MM/DD/YYYY" in Section 2. Try both.
+  // Effective date. The DHS-1210-A cover letter says "effective MM/DD/YYYY" — that is the real
+  // start of service. A STANDALONE MDHHS-6064-P has no such sentence; its only date is Section 2's
+  // "Date", which is when the ASW signed the form, not necessarily when service starts.
   var e=flat.match(/effective\s+(\d{2}\/\d{2}\/\d{4})/i);
-  if(!e && out.formType==='MDHHS-6064'){
-    // Grab a Date field that appears in Section 2 near the ASW block
-    e=flat.match(/(?:^|\s)Date\s+(\d{2}\/\d{2}\/\d{4})/i);
+  if(e)out.effectiveDate=e[1];
+  else if(out.formType==='MDHHS-6064'){
+    // Section 2 is a two-column table: the LABELS ("ASW Email Address  Date") sit on one line and
+    // the VALUES ("ColemanT1@michigan.gov  08/06/2026") on the next, so "Date" is never followed by
+    // its own value — the old label-anchored match could not fire on any real 6064. Take the date
+    // that sits beside the ASW email instead, then fall back to the label form for other layouts.
+    var g=flat.match(/@michigan\.gov\s+(\d{2}\/\d{2}\/\d{4})/i)
+        || flat.match(/(?:^|\s)Date\s+(\d{2}\/\d{2}\/\d{4})/i);
+    if(g){
+      out.effectiveDate=g[1]; out.effectiveDateGuessed=true;
+      out.warnings.push('effective date (read from the form\'s Date field — confirm the service start date)');
+    } else out.warnings.push('effective date');
   }
-  if(e)out.effectiveDate=e[1]; else out.warnings.push('effective date');
-  var em=flat.match(/([A-Za-z][A-Za-z.]*@michigan\.gov)/i); if(em)out.aswEmail=em[1];
+  else out.warnings.push('effective date');
+  // Digits are legal in the local part and MDHHS uses them to disambiguate workers with the same
+  // surname (SawyerA2@, ColemanT1@) — the old [A-Za-z.] class silently dropped exactly those.
+  var em=flat.match(/([A-Za-z][A-Za-z0-9._-]*@michigan\.gov)/i); if(em)out.aswEmail=em[1];
   var ph=flat.match(/(\d{3}-\d{3}-\d{4})/); if(ph)out.aswPhone=ph[1];
   var co=flat.match(/\b(\d{2}-[A-Z]{3,})\b/); if(co)out.county=co[1];
   // Client ID (= Medicaid #). Anchored to the "Client ID" label so it doesn't grab the Case Number.
@@ -2186,11 +2222,10 @@ function exportCaregiverTaskSheet(){
     '</div>'+
     '</body></html>';
 
-  var w=window.open('','_blank');
-  // Track it: the sheet carries the client's name, authorized hours and worker contact, and the
-  // 45-minute idle wipe only clears THIS document — a popup left open kept PHI on screen after the
-  // session ended. clearPHIFromStorage closes anything still open here.
-  try{ if(w) _phiWindows.push(w); }catch(e){}
+  // The sheet carries the client's name, authorized hours and worker contact, and the 45-minute
+  // idle wipe only clears THIS document — a popup left open kept PHI on screen after the session
+  // ended. _openPhiWindow registers it so clearPHIFromStorage closes it.
+  var w=_openPhiWindow('','_blank');
   if(!w){showAlert('Pop-up was blocked. Allow pop-ups from this site to open the task sheet.');return;}
   w.document.write(html); w.document.close(); w.focus();
 }
@@ -2705,7 +2740,7 @@ function openDocPreview(index){
   var ext=(name.split('.').pop()||'').toLowerCase();
   var isImg=['jpg','jpeg','png','gif','webp','bmp'].indexOf(ext)>=0;
   var isPdf=ext==='pdf';
-  if(!isImg&&!isPdf){window.open(d.url,'_blank');return false;}
+  if(!isImg&&!isPdf){_openPhiWindow(d.url);return false;}
   var ov=document.createElement('div');ov.className='modal-overlay open doc-lightbox';
   var body=isImg?'<img src="'+esc(d.url)+'" alt="'+esc(name)+'" class="doc-lb-img">':'<iframe src="'+esc(d.url)+'" class="doc-lb-frame" title="'+esc(name)+'"></iframe>';
   ov.innerHTML='<div class="doc-lb-box">'+
@@ -3132,7 +3167,7 @@ function bulkDeleteCaregivers(){
     'Delete '+ids.length+' caregiver'+(ids.length>1?'s':'')+'?\n\n'+preview+'\n\nThis cannot be undone.',
     function(){
       var deleted=0;
-      ids.forEach(function(id){if(cgs[id]){delete cgs[id];try{deleteCaregiverAPI(id);}catch(e){}deleted++;}});
+      ids.forEach(function(id){if(cgs[id]){var _nm=cgs[id].name||'';delete cgs[id];try{deleteCaregiverAPI(id);}catch(e){}_detachDeletedRoster('caregiver',id,_nm);deleted++;}});
       saveCaregiversLS(cgs);
       logActivity('delete','Bulk caregiver delete: '+deleted+' removed');
       clearCgBulkSelect();updateStats();
@@ -3208,6 +3243,7 @@ function _doDeleteCaregiver(id){
   try{ var _n=(getCaregivers()[id]||{}).name||id; addAuditEntry('',"Caregiver DELETED: "+_n+' by '+currentUserEmail()); }catch(e){}
   var cgs=getCaregivers();var cgName=(cgs[id]&&cgs[id].name)||id;
   delete cgs[id];saveCaregiversLS(cgs);deleteCaregiverAPI(id);
+  _detachDeletedRoster('caregiver', id, cgName);
   aiTrack('CaregiverDeleted',{caregiverId:id,caregiverName:cgName});
   hideCgForm();activeCgId=null;
   document.getElementById('cgDetailView').style.display='none';
@@ -3348,7 +3384,7 @@ async function downloadSignedDoc(id){
     var resp=await fetch(API_BASE+'/signing/'+id+'/signed-url',{headers:apiHeaders()});
     var data=await resp.json();
     if(!resp.ok)throw new Error(data.error||'HTTP '+resp.status);
-    window.open(data.url,'_blank');
+    _openPhiWindow(data.url);
   }catch(e){showAlert('Could not open signed copy: '+(e.message||e));}
 }
 function revokeSigningRequest(id){
@@ -3541,7 +3577,9 @@ function deleteCaregiverFromDetail(){
 function _doDeleteCaregiverFromDetail(){
   var cgs=getCaregivers();
   var cgName=(cgs[activeCgId]&&cgs[activeCgId].name)||activeCgId;   // read BEFORE the delete; `cg` is the caller's local
+  var _cgDelId=activeCgId, _cgDelName=(cgs[activeCgId]&&cgs[activeCgId].name)||'';
   delete cgs[activeCgId];saveCaregiversLS(cgs);deleteCaregiverAPI(activeCgId);
+  _detachDeletedRoster('caregiver', _cgDelId, _cgDelName);
   aiTrack('CaregiverDeleted',{caregiverId:activeCgId,caregiverName:cgName});
   showCgGrid();
 }
@@ -3866,10 +3904,22 @@ function sigId(){return 'sig_'+Date.now()+'_'+Math.random().toString(36).slice(2
 // by the server and is now gone → deleted elsewhere → drop). Pass no syncedProp to always keep
 // local-only items (signatures have no per-row sync marker).
 function _mergeByIdKeepUnsynced(serverArr, localArr, syncedProp){
-  var have={}; (serverArr||[]).forEach(function(x){ if(x&&x.id!=null) have[x.id]=true; });
+  var have={}, idx={};
+  (serverArr||[]).forEach(function(x,i){ if(x&&x.id!=null){ have[x.id]=true; idx[x.id]=i; } });
   var out=(serverArr||[]).slice();
   (localArr||[]).forEach(function(x){
-    if(!x || x.id==null || have[x.id]) return;
+    if(!x || x.id==null) return;
+    // A durable failed-save marker wins in BOTH directions. A locally created task keeps its local
+    // id until a full reload, so it is NOT in `have` and falls through to the syncedProp drop below
+    // — which is exactly the in-session case the flag exists to protect.
+    if(!have[x.id] && x._unsaved === true){ out.push(x); return; }
+    if(have[x.id]){
+      // A durable failed-save marker wins over the server's older row — same rule _mergeRosterArr
+      // already applies. Without this the _unsaved flag written for tasks was never read, so a
+      // failed edit to an already-synced task was reverted by the next load, silently.
+      if(x._unsaved === true) out[idx[x.id]] = x;
+      return;
+    }
     if(syncedProp && x[syncedProp]) return;   // was synced, now absent from server → deleted elsewhere
     out.push(x);
   });
@@ -4921,9 +4971,22 @@ function exportReportExcel(){
 // authenticated API on load. saveProfilesLS strips ssn before persisting and caches it in
 // memory; getProfiles overlays it back for display. Saves send ssn only when present, and
 // the backend keeps the stored value when a save omits it (provided-guard).
-// Windows this session opened that display PHI (caregiver task sheets). They are separate documents
-// the idle/sign-out wipe cannot otherwise reach, so they are tracked and closed with it.
+// Windows this session opened that display PHI. They are separate documents the idle/sign-out
+// wipe cannot otherwise reach — blanking inputs and raising the login wall does nothing to a tab
+// already showing a scanned SSN card — so they are tracked and closed with it.
 var _phiWindows = [];
+// ALWAYS open a PHI document through here, never window.open directly. The registry existed but
+// only the caregiver task sheet was ever registered, so a document lightbox fallback (SSN cards,
+// driver's licences, DHS authorizations), a signed agreement and both invoice PDF previews stayed
+// open and readable after sign-out and after the inactivity timeout.
+// NOTE the limit, so nobody mistakes this for more than it is: closing the tab does not revoke a
+// SAS URL that was already handed out, and it cannot reach a file the browser has downloaded.
+function _openPhiWindow(url, target){
+  var w = null;
+  try { w = window.open(url, target || '_blank'); } catch (e) { console.error('window.open failed', e); }
+  try { if (w) _phiWindows.push(w); } catch (e) {}
+  return w;
+}
 var _ssnMem = Object.create(null);
 // _clientSynced is the client dirty-tracking baseline, but its signature string EMBEDS the
 // plaintext ssn (see _clientSig) — so it must be kept in memory ONLY, never written to disk,
@@ -5142,6 +5205,58 @@ async function backupToOneDrive(){
   );
 }
 
+// Read every caregiver's MI Login credential for a FULL backup. They are never written to
+// localStorage (saveCaregiversLS strips them), so unlike the SSN there is no in-memory overlay to
+// read — each one has to be fetched from the server. Each fetch is audited server-side as a PHI
+// read, which is correct: a backup that captures credentials SHOULD leave a trail.
+async function _fetchMiloginForBackup(){
+  var out={}, cgs=getCaregivers();
+  var ids=Object.keys(cgs).filter(function(id){
+    var c=cgs[id]; return c && (c.miloginUsername||c.milogin_username);
+  });
+  var failed=[];
+  for(var i=0;i<ids.length;i++){
+    try{
+      var r=await fetch(API_BASE+'/caregivers/'+encodeURIComponent(ids[i])+'/milogin',{headers:apiHeaders()});
+      if(!r.ok){ failed.push(ids[i]); continue; }
+      var d=await r.json();
+      if(d&&typeof d.milogin_password==='string'&&d.milogin_password) out[ids[i]]=d.milogin_password;
+    }catch(e){ failed.push(ids[i]); }
+  }
+  // Never let a partial read pass as complete — a backup you believe holds the credentials but
+  // doesn't is worse than one you know doesn't.
+  return { creds:out, failed:failed };
+}
+// Caregiver SSNs are NOT in the roster and NOT in localStorage. The bulk load returns only
+// ssn_last4 (caregivers.js strips the rest), saveCaregiversLS strips ssn to the in-memory
+// _cgSsnMem, and getCaregivers re-overlays only what that map happens to hold — which is just the
+// caregivers whose SSN field someone revealed in THIS browser session. So _buildBackupPayload,
+// which serialises getCaregivers(), wrote a file labelled FULL that on a fresh page load contained
+// no caregiver SSNs at all. Restoring it into a wiped system could not recover them.
+// Fetch them explicitly for the backup, exactly as the MI Login credential already is.
+async function _fetchSsnForBackup(){
+  var out={}, cgs=getCaregivers();
+  // Anyone who HAS a stored SSN: last4 present (the roster's proof one exists), or a full value
+  // already in memory. A caregiver with neither has nothing to back up.
+  var ids=Object.keys(cgs).filter(function(id){
+    var c=cgs[id]; return c && (c.ssnLast4 || c.ssn_last4 || c.ssn);
+  });
+  var failed=[];
+  for(var i=0;i<ids.length;i++){
+    var id=ids[i];
+    try{
+      var r=await fetch(API_BASE+'/caregivers/'+encodeURIComponent(id)+'/ssn',{headers:apiHeaders()});
+      if(!r.ok){ failed.push(id); continue; }
+      var d=await r.json();
+      if(d&&typeof d.ssn==='string'&&d.ssn) out[id]=d.ssn;
+      else if(cgs[id]&&cgs[id].ssn) out[id]=cgs[id].ssn;   // server has none but memory does
+      else failed.push(id);
+    }catch(e){ failed.push(id); }
+  }
+  // Same rule as the credentials: a backup you BELIEVE holds the SSNs but doesn't is worse than
+  // one you know doesn't. Report what could not be read.
+  return { ssns:out, failed:failed };
+}
 async function doBackupToOneDrive(includeFullSSN,silent){
   var btn=document.getElementById('oneDriveBackupBtn');
   var oldText=btn?btn.textContent:'';
@@ -5157,7 +5272,21 @@ async function doBackupToOneDrive(includeFullSSN,silent){
     // Build the backup payload (same logic as JSON export)
     var p=getProfiles();
     if(!Object.keys(p).length){throw new Error('No clients yet.');}
-    var payload=_buildBackupPayload(includeFullSSN);
+    var _mi={creds:{},failed:[]}, _ss={ssns:{},failed:[]};
+    if(includeFullSSN){
+      _mi=await _fetchMiloginForBackup();
+      _ss=await _fetchSsnForBackup();
+      var _missing=[];
+      if(_mi.failed.length)_missing.push(_mi.failed.length+' MI Login credential'+(_mi.failed.length===1?'':'s'));
+      if(_ss.failed.length)_missing.push(_ss.failed.length+' caregiver SSN'+(_ss.failed.length===1?'':'s'));
+      if(_missing.length&&!silent){
+        showAlert('Could not read '+_missing.join(' and ')+'. The backup will be written WITHOUT '+
+          'them — everything else is included. A FULL backup missing these cannot fully rebuild a '+
+          'wiped device, so re-run it once the connection is healthy.',
+          {title:'Backup is not complete',danger:true});
+      }
+    }
+    var payload=_buildBackupPayload(includeFullSSN,_mi.creds,_ss.ssns);
     var content=JSON.stringify(payload,null,2);
     var bytes=new Blob([content]).size;
     if(bytes>4*1024*1024){throw new Error('Backup too large for direct upload ('+(bytes/1024/1024).toFixed(1)+' MB). Contact support to add chunked upload.');}
@@ -5196,7 +5325,7 @@ async function doBackupToOneDrive(includeFullSSN,silent){
         'File: '+fname+'\n'+
         'Folder: Liberty Home Care Backups\n'+
         'Size: '+(bytes/1024).toFixed(1)+' KB\n'+
-        (includeFullSSN?'\n⚠️ This backup contains full SSN — keep your OneDrive access controlled.':'')+
+        (includeFullSSN?'\n⚠️ This backup contains full SSNs AND MI Login passwords. Anyone who opens the file can sign in to the State portal as your agency, which reaches EVERY client\u2019s records — not just the ones in this file. Keep your OneDrive access controlled and do not share or email it.':'')+
         '\n\nClick Open to view in OneDrive, or OK to dismiss.',
         function(){if(info.webUrl)window.open(info.webUrl,'_blank');},
         {title:'Manual Backup Complete',okText:'Open in OneDrive',danger:false,extraText:'OK',onExtra:function(){}}
@@ -5225,7 +5354,7 @@ function _maskSsnValue(v){
 }
 // The whole backup payload, built in one testable place. Everything that leaves this device for
 // OneDrive goes through here, so the SSN rules are enforced once and can be pinned by a test.
-function _buildBackupPayload(includeFullSSN){
+function _buildBackupPayload(includeFullSSN,miloginByCgId,ssnByCgId){
   var copy=_stripInternalPHI(JSON.parse(JSON.stringify(getProfiles())));
   if(!includeFullSSN){
     Object.keys(copy).forEach(function(name){
@@ -5239,6 +5368,14 @@ function _buildBackupPayload(includeFullSSN){
   Object.keys(cgCopy).forEach(function(id){
     var c=cgCopy[id]; if(!c)return;
     delete c.miloginPassword; delete c.milogin_password;
+    // FULL backup only: restore the credential so the file can actually rebuild a wiped device.
+    // saveCaregiverAPI sends milogin_password and the backend keeps the stored value when it is
+    // empty, so this round-trips on import without a further change.
+    if(includeFullSSN && miloginByCgId && miloginByCgId[id]) c.miloginPassword=miloginByCgId[id];
+    // FULL backup only: the SSN fetched from the server for this backup. getCaregivers() supplies
+    // one only for caregivers touched this session, so without this a FULL backup silently held
+    // last-4 for everyone else.
+    if(includeFullSSN && ssnByCgId && ssnByCgId[id]) c.ssn=ssnByCgId[id];
     if(!includeFullSSN && c.ssn) c.ssn=_maskSsnValue(c.ssn);
   });
   return {
@@ -5513,6 +5650,13 @@ function importProfiles(ev){
         // none of them) and push each to the server; existing records are left alone so a restore can
         // never silently overwrite work done since the backup was taken.
         var restored={caregivers:0,caseworkers:0,supervisors:0,signatures:0};
+        // Every server write this restore starts, so completion can be REPORTED rather than assumed.
+        // These were all fire-and-forget: the dialog said "Imported N clients" the instant the local
+        // writes finished, whether or not a single record reached the database. A restore that only
+        // populated this browser's localStorage looked identical to one that succeeded — and the
+        // point of a restore is that the data is safe somewhere other than this browser.
+        var writes=[];
+        var _track=function(label,pr){ if(pr&&typeof pr.then==='function')writes.push({label:label,p:pr}); };
         try{
           if(parsed.caregivers&&typeof parsed.caregivers==='object'){
             var cgs=getCaregivers(),cgAdd=[];
@@ -5530,13 +5674,13 @@ function importProfiles(ev){
                 delete _c.ssn;
               });
               saveCaregiversLS(cgs); restored.caregivers=cgAdd.length;
-              cgAdd.forEach(function(id){ if(typeof saveCaregiverAPI==='function')saveCaregiverAPI(id,cgs[id],true); }); }
+              cgAdd.forEach(function(id){ if(typeof saveCaregiverAPI==='function')_track('caregiver '+((cgs[id]&&cgs[id].name)||id),saveCaregiverAPI(id,cgs[id],true)); }); }
           }
           if(Array.isArray(parsed.caseworkers)){
             var cws=getCaseworkers(),have={}; cws.forEach(function(c){ if(c&&c.id!=null)have[c.id]=1; });
             var cwAdd=parsed.caseworkers.filter(function(c){ return c&&c.id!=null&&!have[c.id]; });
             if(cwAdd.length){ saveCaseworkersLS(cws.concat(cwAdd)); restored.caseworkers=cwAdd.length;
-              cwAdd.forEach(function(c){ if(typeof saveCaseworkerAPI==='function')saveCaseworkerAPI(c,true); }); }
+              cwAdd.forEach(function(c){ if(typeof saveCaseworkerAPI==='function')_track('caseworker '+((c&&c.name)||(c&&c.id)),saveCaseworkerAPI(c,true)); }); }
           }
           if(parsed.supervisors&&typeof parsed.supervisors==='object'){
             var sups=getSupervisors(),supAdd=[];
@@ -5544,7 +5688,7 @@ function importProfiles(ev){
               if(!sups[id]&&parsed.supervisors[id]){ sups[id]=parsed.supervisors[id]; supAdd.push(id); }
             });
             if(supAdd.length){ saveSupervisorsLS(sups); restored.supervisors=supAdd.length;
-              supAdd.forEach(function(id){ if(typeof saveSupervisorAPI==='function')saveSupervisorAPI(sups[id]); }); }
+              supAdd.forEach(function(id){ if(typeof saveSupervisorAPI==='function')_track('supervisor '+((sups[id]&&sups[id].name)||id),saveSupervisorAPI(sups[id])); }); }
           }
           if(Array.isArray(parsed.signatures)&&typeof saveSigsLS==='function'){
             var sigs=getSigs(),sHave={}; sigs.forEach(function(x){ if(x&&x.id)sHave[x.id]=1; });
@@ -5555,17 +5699,19 @@ function importProfiles(ev){
               // next device to sync had none. A signature is what certifies an invoice.
               sAdd.forEach(function(x){
                 try{
-                  fetch(API_BASE+'/signatures',{method:'POST',headers:apiHeaders(),
-                    body:JSON.stringify({id:x.id,label:x.label||'',data_url:x.data||x.data_url||''})})
-                    .catch(function(e){console.error('signature restore push failed',e);});
-                }catch(e){console.error('signature restore push failed',e);}
+                  _track('signature '+(x.label||x.id),
+                    fetch(API_BASE+'/signatures',{method:'POST',headers:apiHeaders(),
+                      body:JSON.stringify({id:x.id,label:x.label||'',data_url:x.data||x.data_url||''})})
+                      .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); return r; }));
+                }catch(e){ _track('signature '+(x.label||x.id), Promise.reject(e)); }
               });
             }
           }
         }catch(e){ console.error('roster restore failed',e); }
         // Persist each imported client to the backend so the data isn't just local
         keys.forEach(function(name){
-          try{saveProfileSP(name,merged[name]);}catch(e){console.error('Failed to sync an imported client to DB',e);}
+          try{ _track('client '+name, saveProfileSP(name,merged[name])); }
+          catch(e){ _track('client '+name, Promise.reject(e)); }
         });
         renderSidebarClients();renderClientGrid();updateStats();
         var _extra=[];
@@ -5576,9 +5722,40 @@ function importProfiles(ev){
         var _meta=parsed.meta&&parsed.meta.exportedAt?('\n\nBackup taken '+new Date(parsed.meta.exportedAt).toLocaleString()+
           (parsed.meta.exportedBy?(' by '+parsed.meta.exportedBy):'')+
           (parsed.meta.includesFullSSN?'':'\n\nNote: this backup was MASKED, so SSNs were not restored — they remain as stored on the server.')):'';
-        showConfirm('Imported '+keys.length+' client'+(keys.length>1?'s':'')+
-          (_extra.length?(', plus '+_extra.join(', ')):'')+'.'+_meta,
-          function(){},{title:'Import Complete',okText:'OK',danger:false});
+        var _summary='Imported '+keys.length+' client'+(keys.length>1?'s':'')+
+          (_extra.length?(', plus '+_extra.join(', ')):'')+'.'+_meta;
+        if(!writes.length){
+          showConfirm(_summary,function(){},{title:'Import Complete',okText:'OK',danger:false});
+          return;
+        }
+        showToast('Restoring '+writes.length+' record'+(writes.length===1?'':'s')+' to the database…',4000);
+        // allSettled, not all: one failed record must not hide the fate of the other 200.
+        Promise.allSettled(writes.map(function(x){return x.p;})).then(function(results){
+          var failed=[];
+          results.forEach(function(r,i){
+            if(r.status==='rejected'){
+              failed.push(writes[i].label);
+              console.error('restore write failed ['+writes[i].label+']:', r.reason);
+            }
+          });
+          var okCount=results.length-failed.length;
+          if(!failed.length){
+            logActivity('import','Restore complete — '+okCount+' record(s) written to the database');
+            showConfirm(_summary+'\n\nAll '+okCount+' record'+(okCount===1?'':'s')+' confirmed saved to the database.',
+              function(){},{title:'Import Complete',okText:'OK',danger:false});
+            return;
+          }
+          // NEVER say "complete" when something did not land. Name the records so they can be
+          // re-tried deliberately; the local copies are still here, so a second import fixes them.
+          logActivity('import','Restore INCOMPLETE — '+okCount+' saved, '+failed.length+' FAILED: '+failed.slice(0,20).join(', '));
+          showConfirm(_summary+
+            '\n\n⚠ NOT FULLY RESTORED. '+okCount+' record'+(okCount===1?'':'s')+' reached the database, but '+
+            failed.length+' FAILED:\n\n• '+failed.slice(0,15).join('\n• ')+
+            (failed.length>15?('\n…and '+(failed.length-15)+' more.'):'')+
+            '\n\nThose records exist only in this browser right now. Check your connection and import the '+
+            'same file again — records that already saved are left alone.',
+            function(){},{title:'Import INCOMPLETE',okText:'OK',danger:true});
+        });
       }
       if(conf.length){
         showConfirm('Overwrite existing client'+(conf.length>1?'s':'')+'?\n\n'+conf.join(', '),doImport,{title:'Overwrite Confirm',okText:'Overwrite'});
@@ -5624,7 +5801,11 @@ function loadProfileIntoForm(prof){
 function captureFullInvoice(){
   var f=['clientName','medicaidId','billTo','worker','billingPeriod','hourlyRate','svcHH','svcMM','cplxHH','cplxMM','p1HH','p1MM','grandHH','grandMM','dateSubmitted','sigDate1','sigDate2'],d={};
   f.forEach(function(id){var el=document.getElementById(id);if(el)d[id]=el.value;});
-  d.hasComplex=document.getElementById('showComplex').checked;d.tasks=captureStates();return d;
+  d.hasComplex=document.getElementById('showComplex').checked;d.tasks=captureStates();
+  // Which signature certified this invoice. Stored so a reprint or re-send replays the SAME one.
+  var _s1=document.getElementById('sigArea1');
+  d.sigId=(_s1&&_s1.getAttribute&&_s1.getAttribute('data-sig-id'))||'';
+  return d;
 }
 function applyFullInvoice(data){
   // A signature belongs to the invoice it was placed on. Loading another invoice (from history, or
@@ -5634,12 +5815,22 @@ function applyFullInvoice(data){
   resetSigArea(1); resetSigArea(2);
   var f=['clientName','medicaidId','worker','billingPeriod','svcHH','svcMM','cplxHH','cplxMM','p1HH','p1MM','grandHH','grandMM','dateSubmitted','sigDate1','sigDate2'];
   f.forEach(function(id){var el=document.getElementById(id);if(el&&data[id]!==undefined)el.value=data[id];});
-  // Hourly rate = the client's own rate (from DHS-1210 or manual), else the Settings state rate
+  // The rate SAVED on the invoice wins. An invoice is a certified record of what was billed, so
+  // re-deriving today's state rate here rewrote history: opening a prior-year invoice showed the
+  // current rate, and saving it wrote that rate over the original. Fall back to the current rate
+  // only when the invoice carries none (a fresh invoice, or one saved before this field existed).
   var profCur=(activeProfileName&&getProfiles()[activeProfileName])||{};
-  document.getElementById('hourlyRate').value=clientInvoiceRate(profCur);
-  // Bill To: always from caseworker billing code, not whatever was saved on the invoice
+  var _hrEl=document.getElementById('hourlyRate');
+  if(_hrEl)_hrEl.value=(data.hourlyRate!=null&&String(data.hourlyRate).trim()!=='')
+    ? data.hourlyRate : clientInvoiceRate(profCur);
+  // Bill To: the value SAVED on the invoice wins, exactly like hourlyRate above and like the
+  // PDF/email path (loadInvoiceForCapture). This used to prefer the caseworker's CURRENT agency,
+  // so reassigning a caseworker — or moving one between organisations — rewrote the Bill To line
+  // on every historic invoice the moment it was opened, and saving wrote that rewrite into the
+  // record. An invoice is a certified statement of who was billed; it is not recomputed later.
+  // The live caseworker is only a fallback for an invoice that carries no Bill To of its own.
   var cwApply=getCaseworkers().find(function(c){return c.id===profCur.caseworkerId||c.name===(data.worker||profCur.worker);})||{};
-  document.getElementById('billTo').value=(cwApply.agency||cwApply.county||data.billTo||'');
+  document.getElementById('billTo').value=(data.billTo||cwApply.agency||cwApply.county||'');
   document.getElementById('clientName2').value=data.clientName||'';document.getElementById('worker2').value=data.worker||'';document.getElementById('billingPeriod2').value=data.billingPeriod||'';
   var bp=data.billingPeriod||'',p=bp.split('/');rebuild(p.length===2&&p[1].length===4?daysIn(p[0],p[1]):31);
   if(data.tasks){applyStates(data.tasks);lastLoadedStates=data.tasks;}
@@ -6230,7 +6421,9 @@ function drawInvoicePageVector(pdf,data,isPage2,cols){
     cell(x0,y,b1,rowH,'Contact Person','Thomas Jaboro');
     cell(x0+b1,y,b2,rowH,'Billing Period',data.billingPeriod);
     cell(x0+b1+b2,y,b3,rowH,'Date Submitted',data.dateSubmitted);
-    cell(x0+b1+b2+b3,y,b4,rowH,'Hourly Rate',data.hourlyRate||'27.00');
+    // A hard-coded 27.00 kept printing on the certified form after the state rate changed, and was
+    // backed by no stored value at all. Fall back to the CURRENT Settings rate instead.
+    cell(x0+b1+b2+b3,y,b4,rowH,'Hourly Rate',data.hourlyRate||stateRate());
     y+=rowH;
     // Row 3: 'Client Name: VAL' (one cell)  |  'Client Medicaid ID Number: VAL' (one cell)
     var halfW=W/2;
@@ -6568,14 +6761,25 @@ async function loadInvoiceForCapture(clientName,inv,period){
   document.getElementById('billingPeriod').value=period;
   document.getElementById('billingPeriod2').value=period;
   document.getElementById('medicaidId').value=prof.medicaidId||'';
-  document.getElementById('hourlyRate').value=stateRate();
+  // Same rule on the PDF/email path: print the rate the invoice was BILLED at, not today's.
+  var _invRate=(inv&&inv.data&&inv.data.hourlyRate!=null&&String(inv.data.hourlyRate).trim()!=='')
+    ? inv.data.hourlyRate : stateRate();
+  document.getElementById('hourlyRate').value=_invRate;
+  // Prefer what the invoice was SAVED with, falling back to the live record. Re-deriving these from
+  // the current profile meant reassigning or renaming a caseworker silently rewrote the "Bill To" and
+  // "Attention" lines on every historic invoice reprint — and if the caseworker had no agency on
+  // file, the PDF printed Bill To BLANK while the screen showed the saved value.
+  var _d=(inv&&inv.data)||{};
   var cwRecCapture=getCaseworkers().find(function(c){return c.id===prof.caseworkerId||c.name===prof.worker;})||{};
-  document.getElementById('billTo').value=(cwRecCapture.agency||cwRecCapture.county||'');
-  document.getElementById('worker').value=prof.worker||'';
-  document.getElementById('worker2').value=prof.worker||'';
-  document.getElementById('dateSubmitted').value=today();
-  document.getElementById('sigDate1').value=today();
-  document.getElementById('sigDate2').value=today();
+  document.getElementById('billTo').value=(_d.billTo||cwRecCapture.agency||cwRecCapture.county||'');
+  document.getElementById('worker').value=(_d.worker||prof.worker||'');
+  document.getElementById('worker2').value=(_d.worker||prof.worker||'');
+  if(_d.medicaidId)document.getElementById('medicaidId').value=_d.medicaidId;
+  // An invoice certifies the dates it was SIGNED on. Forcing today() meant reprinting a March
+  // invoice in August produced a certified form dated August.
+  document.getElementById('dateSubmitted').value=(_d.dateSubmitted||today());
+  document.getElementById('sigDate1').value=(_d.sigDate1||today());
+  document.getElementById('sigDate2').value=(_d.sigDate2||today());
   if(inv.data&&inv.data.tasks)applyStates(inv.data.tasks);
   var fields=['svcHH','svcMM','cplxHH','cplxMM','p1HH','p1MM','grandHH','grandMM'];
   fields.forEach(function(id){var el=document.getElementById(id);if(el)el.value=(inv.data&&inv.data[id])||'';});
@@ -6587,8 +6791,14 @@ async function loadInvoiceForCapture(clientName,inv,period){
   resetSigArea(1);resetSigArea(2);
   var sigs=getSigs();
   if(sigs.length){
-    stampSignatureData(1,sigs[0].data);
-    if(hc)stampSignatureData(2,sigs[0].data);
+    // Replay the signature this invoice was certified with. sigs[0] is only the fallback for records
+    // saved before the id was stored — otherwise deleting or reordering signatures would re-certify
+    // already-sent invoices under a different person.
+    var _want=_d.sigId&&sigs.find(function(x){return x&&String(x.id)===String(_d.sigId);});
+    var _use=_want||sigs[0];
+    if(_d.sigId&&!_want)console.warn('Invoice '+period+' was signed with a signature that no longer exists — falling back to the primary signature.');
+    stampSignatureData(1,_use.data,_use.id);
+    if(hc)stampSignatureData(2,_use.data,_use.id);
   }
   await new Promise(function(r){setTimeout(r,150);});
 }
@@ -6776,7 +6986,11 @@ function _emailSig(){return '<p>'+_emailClose()+'<br><b>Thomas Jaboro</b><br>Lib
 // ── Send single invoice email ─────────────────────────────────
 async function sendEmail(){
   var cn=document.getElementById('clientName').value.trim();
+  // In Progress (stored 'inactive'), Lost and Terminated clients are never invoiced. Every BULK
+  // surface enforces that; these three per-client entry points checked only for a carrier client,
+  // so an invoice for a terminated client could be created and emailed one at a time.
   if(cn&&isCarrierClient(getProfiles()[cn])){showAlert('This is a managed-care (carrier) client — invoices are handled in the carrier’s software, so there is nothing to email here.');return;}
+  if(cn&&!isInvoiceableStatus(getProfiles()[cn])){showAlert('“'+cn+'” is not an Active client, so this invoice should not be sent to MDHHS. Set the client Active first if service has started.',{title:'Not an invoiceable client'});return;}
   var bp=document.getElementById('billingPeriod').value.trim();
   var ae=document.getElementById('activeAgentEmail').value.trim();
   var w=document.getElementById('worker').value.trim();
@@ -6785,7 +6999,13 @@ async function sendEmail(){
     var profSE=getProfiles()[cn]||{};
     var invSE=(profSE.invoices||[]).find(function(i){return i.billingPeriod===bp;});
     var cwRecSE=getCaseworkers().find(function(c){return c.id===profSE.caseworkerId||c.name===profSE.worker;})||{};
-    var issuesSE=validateInvoiceForSend(cn,profSE,invSE,cwRecSE);
+    // Validate WHAT WILL BE SENT. The PDF is built from the live form further down, so validating
+    // the stored invoice checked a different document than the one that reaches MDHHS — an edit made
+    // after the last save was never examined at all. status is forced to 'draft' here because we are
+    // actively sending: validateInvoiceForSend deliberately returns [] for submitted/paid so the
+    // monthly PREVIEW doesn't nag about already-sent work, but a re-send must still be checked.
+    var _liveSE={ billingPeriod:bp, status:'draft', data:captureFullInvoice() };
+    var issuesSE=validateInvoiceForSend(cn,profSE,_liveSE,cwRecSE);
     if(issuesSE.length){
       var proceed=false;
       await new Promise(function(res){
@@ -6913,18 +7133,47 @@ function _pushSettings(obj){
     // Not signed in is the normal local-only state, not a sync failure — flag it so callers stay quiet.
     var _e=new Error('not signed in'); _e.notSignedIn=true; return Promise.reject(_e);
   }
-  return fetch(API_BASE+'/settings',{method:'POST',headers:apiHeaders(),body:JSON.stringify(obj)})
-    .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r; });
+  // Join the in-flight counter so a settings GET can't land between this POST and its LS write and
+  // revert it (see the guard in loadSettingsAPI).
+  return _trackRosterSave(
+    fetch(API_BASE+'/settings',{method:'POST',headers:apiHeaders(),body:JSON.stringify(obj)})
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r; }));
 }
 function loadSettingsAPI(){
   return fetch(API_BASE+'/settings',{headers:apiHeaders()})
     .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); return r.json(); })
     .then(function(s){
       if(!s||typeof s!=='object') return;
+      // Every other loader gates on this; settings did not, so a GET in flight could revert a rate
+      // the owner had just saved. The state rate is stamped on every invoice.
+      if(_savesInFlight>0) return;
+      // Capture the baseline BEFORE overwriting local storage, or the dirty test compares the DOM
+      // against the value it is about to be judged against.
+      var _agBase={}; try{ _agBase=JSON.parse(localStorage.getItem('lhca_agency')||'{}'); }catch(e){}
       if(s.state_rate!=null && s.state_rate!=='') localStorage.setItem('lhca_state_rate', String(s.state_rate));
       if(s.agency && typeof s.agency==='object') localStorage.setItem('lhca_agency', JSON.stringify(s.agency));
-      if(typeof renderAgencySettings==='function' && document.getElementById('ag-name')) renderAgencySettings();
-      var sr=document.getElementById('stateRateInput'); if(sr && s.state_rate) sr.value=String(s.state_rate);
+      // Never repaint the agency form while it is being edited: these inputs have no dirty tracking,
+      // so a GET resolving mid-typing wiped the characters, and the next Save read the SERVER's
+      // values back out of the DOM and persisted them over the owner's change.
+      var _agDirty=false;
+      try{
+        // EXPLICIT map: 'ag-name'/'ag-id' are stored as agency_provider_name/agency_provider_id, not
+        // agency_name/agency_id. Deriving the key by string-replace got those two wrong, so `was` was
+        // always '' against a non-empty default and the form was treated as permanently dirty.
+        var _AG_KEYS={ 'ag-name':'agency_provider_name', 'ag-id':'agency_provider_id',
+                       'ag-phone':'agency_phone', 'ag-address':'agency_address',
+                       'ag-city':'agency_city', 'ag-state':'agency_state', 'ag-zip':'agency_zip' };
+        Object.keys(_AG_KEYS).forEach(function(id){
+          var e=document.getElementById(id); if(!e)return;
+          var was=_agBase[_AG_KEYS[id]]!=null?String(_agBase[_AG_KEYS[id]]):'';
+          if(String(e.value||'')!==was) _agDirty=true;
+        });
+      }catch(e){}
+      if(!_agDirty && typeof renderAgencySettings==='function' && document.getElementById('ag-name')) renderAgencySettings();
+      // The rate box is independent of the agency form — gating it on _agDirty meant a stale rate
+      // stayed on screen and could be pushed back over the server's newer one.
+      var sr=document.getElementById('stateRateInput');
+      if(sr && s.state_rate && document.activeElement!==sr) sr.value=String(s.state_rate);
     })
     .catch(function(e){ console.warn('Load settings failed (using local):', e); });
 }
@@ -6977,19 +7226,23 @@ function placeSignature(target){
   pendingSigTarget=target;
   var sigs=getSigs();
   if(!sigs.length){openAddSigModal();return;}
-  if(sigs.length===1){stampSignatureData(target,sigs[0].data);return;}
+  if(sigs.length===1){stampSignatureData(target,sigs[0].data,sigs[0].id);return;}
   var list=document.getElementById('pickSigList');list.innerHTML='';
   sigs.forEach(function(s,i){
     var item=document.createElement('div');item.style.cssText='display:flex;align-items:center;gap:10px;padding:8px;border:1px solid #e1e5ea;border-radius:6px;cursor:pointer;';
     item.innerHTML='<img src="'+s.data+'" style="max-height:26px;max-width:140px;"><span style="font-size:12px;color:#1a2b45;">'+esc(s.label||'Signature '+(i+1))+'</span>';
-    item.addEventListener('click',function(){stampSignatureData(target,s.data);document.getElementById('pickSigModal').classList.remove('open');});
+    item.addEventListener('click',function(){stampSignatureData(target,s.data,s.id);document.getElementById('pickSigModal').classList.remove('open');});
     list.appendChild(item);
   });
   document.getElementById('pickSigModal').classList.add('open');
 }
-function stampSignatureData(target,dataUrl){
+function stampSignatureData(target,dataUrl,sigId){
   var area=document.getElementById('sigArea'+target);if(!area)return;
   var img=document.createElement('img');img.src=dataUrl;img.className='sig-stamp';img.title='Click to clear';img.id='sigArea'+target;
+  // Record WHICH signature this is. Without it the reprint path just took sigs[0], so placing your
+  // second signature emailed your first, and deleting or reordering signatures silently re-certified
+  // every already-sent invoice under a different person's name.
+  if(sigId)img.setAttribute('data-sig-id',String(sigId));
   img.addEventListener('click',function(){resetSigArea(target);});area.parentNode.replaceChild(img,area);
 }
 function resetSigArea(t){var a=document.getElementById('sigArea'+t);if(!a)return;var ph=document.createElement('div');ph.id='sigArea'+t;ph.className='sig-placeholder';ph.textContent='Click to place signature';ph.addEventListener('click',function(){placeSignature(t);});a.parentNode.replaceChild(ph,a);}
@@ -7379,12 +7632,29 @@ function clearPHIFromStorage() {
   }catch(e){}
 }
 function signOut() {
-  aiTrack('UserSignOut');
-  clearPHIFromStorage();
+  // Cover the screen FIRST, before anything that can throw. Sign-out used to run wipe -> MSAL and
+  // never raise the wall itself: it relied on the logoutPopup flow to end the session. If that
+  // popup was blocked or dismissed — or if any earlier step threw, which is how this was found;
+  // clearPHIFromStorage reaches msalInstance — the PHI already rendered into the page (client
+  // grid, sidebar, invoice history, assistant replies) stayed on screen with nothing over it, on a
+  // workstation whose owner had just walked away. The inactivity path already locks correctly.
+  try { var _wall = document.getElementById('loginWall'); if (_wall) _wall.style.display = 'flex'; }
+  catch (e) { console.error('sign-out: could not raise the lock wall', e); }
+  // Each remaining step is independent and every one of them must be ATTEMPTED: a failure in any
+  // single step used to abort the rest of sign-out, which is the opposite of failing safe.
+  try { aiTrack('UserSignOut'); } catch (e) {}
+  try { clearPHIFromStorage(); } catch (e) { console.error('sign-out: PHI wipe failed', e); }
   spToken = null;
   _apiToken = null;
   clearTimeout(_apiTokenTimer); _apiTokenTimer = null;
-  msalInstance.logoutPopup({ redirectUri: REDIRECT_URI });
+  try { updateAuthUI(false); } catch (e) { console.error('sign-out: auth UI reset failed', e); }
+  try { msalInstance.logoutPopup({ redirectUri: REDIRECT_URI }); }
+  catch (e) {
+    // Local session is already dead, but the Microsoft session is not — say so rather than
+    // letting the user believe they signed out everywhere.
+    console.error('sign-out: logout popup failed', e);
+    try { showToast('Signed out of this app, but the Microsoft sign-out did not complete. Close the browser to finish.', 8000); } catch (e2) {}
+  }
 }
 function updateAuthUI(on) {
   applyInvoiceAdminVisibility();
@@ -7852,6 +8122,13 @@ function _mergeProfilesLoad(serverProfiles, localProfiles){
     }
     // else: previously-synced, clean, and gone from the server → deleted elsewhere → drop.
   }
+  // Carry forward LOCAL-ONLY fields the server never round-trips. `tasks` is the client's default
+  // day-grid pattern: it lives only in localStorage, is not in the load map or _clientSig, and so
+  // was silently destroyed whenever the server copy won — forcing the pattern to be re-entered by
+  // hand every month. Only fill where the server copy has none, so a real edit still wins.
+  for (var _n in out) {
+    if (out[_n] && localProfiles[_n] && localProfiles[_n].tasks && !out[_n].tasks) out[_n].tasks = localProfiles[_n].tasks;
+  }
   return out;
 }
 // DHS-1210 authorization JSON may arrive as a string (from SQL) or already-parsed object.
@@ -7867,6 +8144,57 @@ function _parseAuth(v){
 // false "Saved ✓". Existing invoices send the row_version last seen; the backend rejects a
 // stale write with 409 (optimistic concurrency). Fresh row_versions + new dbIds are written
 // back to LS in one pass. Every save path routes through here via saveProfileSP.
+// Write the outcome of a 409 to BOTH the in-memory invoice and the stored copy. `conflicted`
+// true means the server holds different content under this id: keep the local work, record the
+// server's version so an explicit overwrite is still possible, and leave rowVersion unset so
+// nothing can be written under a token this content was never derived from.
+function _adoptInvoiceConflict(name, period, savedAt, inv, dbId, rowVersion, syncedSig, conflicted, serverVer) {
+  var apply = function (t) {
+    if (!t) return;
+    t.dbId = dbId;
+    if (conflicted) {
+      t._conflict = true;
+      t._conflictVersion = serverVer || null;   // what an explicit "keep mine" would have to overwrite
+      delete t.rowVersion;                      // never send a token this content did not come from
+      delete t._synced;
+    } else {
+      delete t._conflict; delete t._conflictVersion;
+      t.rowVersion = rowVersion || null;
+      if (syncedSig) t._synced = syncedSig;     // identical to the server — a lost response, not a conflict
+    }
+  };
+  apply(inv);
+  try {
+    var pc = getProfiles();
+    var list = (pc[name] && pc[name].invoices) || [];
+    var target = list.filter(function (x) { return x && x.dbId === dbId; })[0] ||
+                 list.filter(function (x) { return x && !x.dbId && (x.billingPeriod || '') === (period || '') && x.savedAt === savedAt; })[0];
+    if (target) { apply(target); saveProfilesLS(pc); }
+  } catch (e) { console.error('invoice conflict writeback failed', e); }
+}
+
+// Resolve a flagged invoice conflict. Deliberate, one invoice at a time — this is the ONLY way a
+// local copy can overwrite a server row it was not derived from, and it is a choice a person makes.
+//   keep === 'mine'   -> take the server's current version as the token, so the next save wins.
+//   keep === 'server' -> drop the local copy; the next background load brings the server's back.
+function resolveInvoiceConflict(clientName, billingPeriod, keep) {
+  var pc = getProfiles(), prof = pc[clientName];
+  if (!prof || !prof.invoices) return false;
+  var i = prof.invoices.findIndex(function (x) { return x && x._conflict && (x.billingPeriod || '') === (billingPeriod || ''); });
+  if (i < 0) return false;
+  if (keep === 'server') {
+    prof.invoices.splice(i, 1);
+    logActivity('invoice', 'Invoice conflict ' + billingPeriod + ' for ' + clientName + ' resolved: kept the SERVER copy');
+  } else if (keep === 'mine') {
+    var iv = prof.invoices[i];
+    iv.rowVersion = iv._conflictVersion || null;
+    delete iv._conflict; delete iv._conflictVersion; delete iv._synced;
+    logActivity('invoice', 'Invoice conflict ' + billingPeriod + ' for ' + clientName + ' resolved: OVERWROTE the server with the local copy');
+  } else { return false; }
+  saveProfilesLS(pc);
+  saveProfileSP(clientName, pc[clientName]);
+  return true;
+}
 function syncNewInvoices(name, data) {
   var idMap = getIdMap(); var clientDbId = idMap[name];
   if (!clientDbId || !data.invoices) return Promise.resolve();
@@ -7880,6 +8208,10 @@ function syncNewInvoices(name, data) {
     // on rows the user never touched). A brand-new invoice (no dbId) is always sent.
     var sig = _invoiceSig(inv);
     if (inv.dbId && inv._synced === sig) return Promise.resolve();
+    // A conflicted invoice is NEVER auto-sent. The server holds different content under this id,
+    // and this copy was not derived from it, so any write here destroys the other one. It stays
+    // local and keeps being reported until resolveInvoiceConflict() picks a winner.
+    if (inv._conflict) { conflicts.push(inv.billingPeriod || '(no period)'); return Promise.resolve(); }
     var payload = {
       homecare_client_id: clientDbId,
       billing_period: inv.billingPeriod || '',
@@ -7906,25 +8238,43 @@ function syncNewInvoices(name, data) {
       method: 'POST', headers: apiHeaders(), body: JSON.stringify(payload),
     }).then(function (r) {
       if (r.status === 409) {
-        // The server already has an invoice for this client+period (created on another device, or a
-        // save whose response we lost). The backend returns that row's id and row_version — ADOPT
-        // them, otherwise this invoice stays dbId-less forever: _profileHasUnsyncedChanges keeps the
-        // local copy, the next save is another no-id POST, and the client can never be saved again.
-        // Adopting the id alone would silently overwrite the other device on the next save, so the
-        // conflict is still reported: this attempt does NOT write, the user is told, and a second
-        // deliberate save goes down the version-checked UPDATE path.
+        // The server already holds a row for this client+period (created on another device, or a
+        // save whose response we lost). Adopt its ID: without one this invoice stays dbId-less
+        // forever, _profileHasUnsyncedChanges pins the local copy, every save is another no-id
+        // POST, and the client can never be saved again.
+        //
+        // Do NOT adopt its row_version onto this local content. `expected_version` means "the
+        // version whose content I edited". Pinning the SERVER's CURRENT version to a local copy
+        // that was never derived from it makes the backend's `AND row_version = @expectedVersion`
+        // guard compare the server against itself — so the guard passes and the write lands. And
+        // the next write is automatic, not a deliberate retry: the 409 leaves _synced unset, so
+        // the invoice is still dirty and the very next save of this client (a note, a phone
+        // number, anything) re-sent it. Optimistic concurrency silently failed at the one moment
+        // it existed for, overwriting the other device's invoice with this stale one.
+        //
+        // Instead, read what the server actually holds. Byte-identical means this was a lost
+        // response, not a conflict — adopt the token and mark it synced. Different means a real
+        // conflict: flag it, stop sending it, and make someone choose (resolveInvoiceConflict).
         return r.json().catch(function(){ return null; }).then(function (bodyJson) {
-          if (bodyJson && bodyJson.id) {
-            try {
-              var pc = getProfiles();
-              var list = (pc[name] && pc[name].invoices) || [];
-              var target = list.find(function (x) { return x && !x.dbId && (x.billingPeriod || '') === (period || '') && x.savedAt === savedAt; });
-              if (target) { target.dbId = bodyJson.id; target.rowVersion = bodyJson.row_version || null; saveProfilesLS(pc); }
-              if (inv) { inv.dbId = bodyJson.id; inv.rowVersion = bodyJson.row_version || null; }
-            } catch (e) {}
-          }
-          conflicts.push(period || '(no period)');
-          return null;
+          if (!(bodyJson && bodyJson.id)) { conflicts.push(period || '(no period)'); return null; }
+          var serverId = bodyJson.id, serverVer = bodyJson.row_version || null;
+          return fetch(API_BASE + '/invoices?clientId=' + encodeURIComponent(clientDbId), { headers: apiHeaders() })
+            .then(function (rr) { return rr.ok ? rr.json() : null; })
+            .catch(function () { return null; })
+            .then(function (rows) {
+              var srv = Array.isArray(rows) ? rows.filter(function (x) { return x && x.id === serverId; })[0] : null;
+              // Compare every field this save would have written. If the server could not be read,
+              // `srv` is null and we treat it as a conflict — fail closed, never overwrite blind.
+              var same = !!srv &&
+                String(srv.invoice_data || '')  === String(payload.invoice_data || '') &&
+                String(srv.billing_period || '') === String(payload.billing_period || '') &&
+                String(srv.status || 'draft')    === String(payload.status || 'draft') &&
+                String(srv.invoice_note || '')   === String(payload.invoice_note || '');
+              _adoptInvoiceConflict(name, period, savedAt, inv, serverId,
+                                    same ? serverVer : null, same ? sig : null, !same, serverVer);
+              if (!same) conflicts.push(period || '(no period)');
+              return null;
+            });
         });
       }
       if (!r.ok) {
@@ -7974,8 +8324,11 @@ function syncNewInvoices(name, data) {
       // Another user changed these invoices since we loaded them. The stale write was
       // REJECTED (not clobbered) — surface it so the user reloads + re-applies rather than
       // losing their edit or silently overwriting the other person's.
-      var ce = new Error('Invoice ' + conflicts.join(', ') + ' was changed by someone else. Reload to get the latest, then re-apply your edit.');
+      var ce = new Error('Invoice ' + conflicts.join(', ') + ' was changed by someone else. Your copy is kept ' +
+        'locally and is NOT being sent, so nothing was overwritten. Reload to see the server copy, then either ' +
+        're-apply your edit or keep the server version.');
       ce.isConflict = true;
+      ce.conflictPeriods = conflicts.slice();
       throw ce;
     }
     if (hardError) throw hardError;
@@ -8498,12 +8851,47 @@ function backToSupList(){
   var supView=document.getElementById('cwViewSupervisors'); if(supView)supView.style.display='block';
   if(typeof renderSupervisorList==='function') renderSupervisorList();
 }
+// Clear every reference to a roster record that is being deleted. ONE function, called from all
+// seven delete paths, so they cannot drift apart again — that drift is the whole bug.
+function _detachDeletedRoster(kind, id, name){
+  try{
+    if(kind==='caregiver'||kind==='caseworker'){
+      var p=getProfiles(), touched=[];
+      Object.keys(p).forEach(function(n){
+        var pr=p[n]; if(!pr)return; var hit=false;
+        if(kind==='caregiver' && String(pr.caregiverId||'')===String(id)){ pr.caregiverId=''; hit=true; }
+        if(kind==='caseworker'){
+          if(String(pr.caseworkerId||'')===String(id)){ pr.caseworkerId=''; hit=true; }
+          // `worker` holds the caseworker's NAME and is what the billing run groups on. Left set, the
+          // client still passes the "no caseworker assigned" check but resolves to no email, so
+          // Send All skips it with no error — the invoice looks ready and is never sent.
+          if(name && String(pr.worker||'').trim()===String(name).trim()){ pr.worker=''; hit=true; }
+        }
+        if(hit) touched.push(n);
+      });
+      if(touched.length){
+        saveProfilesLS(p);
+        touched.forEach(function(n){ try{ if(typeof saveProfileSP==='function')saveProfileSP(n,p[n],true); }catch(e){} });
+      }
+    } else if(kind==='supervisor'){
+      var arr=getCaseworkers(), any=false;
+      arr.forEach(function(c){
+        if(c && String(c.supervisor_id||'')===String(id)){
+          c.supervisor_id=''; any=true;
+          try{ if(typeof saveCaseworkerAPI==='function')saveCaseworkerAPI(c,true); }catch(e){}
+        }
+      });
+      if(any) saveCaseworkersLS(arr);
+    }
+  }catch(e){ console.error('detach-after-delete failed for '+kind+' '+id, e); }
+}
 function deleteSupervisorFromDetail(){
   var id=document.getElementById('supd-id').value;
   var sups=getSupervisors(); var name=(sups[id]&&sups[id].name)||'this supervisor';
   showConfirm('Delete supervisor "'+name+'"? Caseworkers assigned to them will show no supervisor.',function(){
     var s=getSupervisors(); delete s[id]; saveSupervisorsLS(s);
     if(typeof deleteSupervisorAPI==='function') deleteSupervisorAPI(id);
+    _detachDeletedRoster('supervisor', id);   // the modal path already did this; this one did not
     backToSupList();
   },{title:'Delete Supervisor',okText:'Delete'});
 }
@@ -8925,6 +9313,7 @@ function deleteCaseworker(){
     addAuditEntry('','Caseworker DELETED: '+cws.name+' by '+currentUserEmail());
     saveCaseworkersLS(getCaseworkers().filter(function(c){return c.id!==id;}));
     deleteCaseworkerAPI(id);
+    _detachDeletedRoster('caseworker', id, cws.name||'');
     activeCwId=null;
     hideCaseworkerForm();
     showCwGrid();
@@ -8937,6 +9326,7 @@ function deleteCaseworkerFromDetail(){
   showConfirm('Delete caseworker "'+cw.name+'"? This cannot be undone.',function(){
     saveCaseworkersLS(getCaseworkers().filter(function(c){return c.id!==idToDelete;}));
     deleteCaseworkerAPI(idToDelete);
+    _detachDeletedRoster('caseworker', idToDelete, cw.name||'');
     aiTrack('CaseworkerDeleted',{caseworkerId:idToDelete,caseworkerName:cw.name||idToDelete});
     showCwGrid();
   },{title:'Delete Caseworker',okText:'Delete'});
@@ -9079,7 +9469,11 @@ function bulkDeleteCaseworkers(){
     function(){
       var keep=cws.filter(function(c){return ids.indexOf(c.id)===-1;});
       saveCaseworkersLS(keep);
-      ids.forEach(function(id){try{deleteCaseworkerAPI(id);}catch(e){}});
+      ids.forEach(function(id){
+        var _cwNm=(cws.find(function(c){return c&&c.id===id;})||{}).name||'';
+        try{deleteCaseworkerAPI(id);}catch(e){}
+        _detachDeletedRoster('caseworker', id, _cwNm);
+      });
       logActivity('delete','Bulk caseworker delete: '+ids.length+' removed');
       clearCwBulkSelect();
       showAlert(ids.length+' caseworker'+(ids.length!==1?'s':'')+' deleted.');
@@ -9705,6 +10099,10 @@ function _buildFormDataDict(clientName){
   var dict={
     client_name:fullName, client_first_name:firstN, client_last_name:lastN,
     client_dob:_normalizeDate(prof.dob||''), medicaid_id:prof.medicaidId||'', case_number:'', recipient_id:prof.medicaidId||'',
+    // The MSA-4676 field map asks for `start_date` (msa_start) but this dict never defined it, so the
+    // lookup returned undefined, the stamper skipped the field, and every generated MSA-4676 went out
+    // with a BLANK "Start of Service" — on a certified MDHHS agreement, emailed for signature.
+    start_date:_normalizeDate(prof.startDate||''),
     client_address:prof.street||prof.address||'', client_city:prof.city||'', client_state:prof.state||'MI', client_zip:prof.zip||'',
     client_phone:prof.phone||'', client_email:prof.clientEmail||prof.cemail||'', client_county:prof.county||'',
     worker_name:cw.name||prof.worker||'', worker_phone:cw.phone||'', worker_email:cw.email||'', worker_fax:'',
@@ -9776,7 +10174,7 @@ var STATE_FORM_FIELD_MAPS={
     'Phone #':'agency_phone',
     'RelationShip':'agency_relationship',
     // Manual-fill: per-case start date
-    'Start Date':''
+    'Start Date':'start_date'
   }
 };
 // Match Adobe's auto-detected field names (which use the form's printed labels)
@@ -10006,7 +10404,30 @@ async function buildStateFormBytes(formType, clientName){
   var pdfDoc=await PDFLib.PDFDocument.load(bytes);
   var helv=await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
   var pages=pdfDoc.getPages();
-  (def.fields||[]).forEach(function(f){
+  var _acro=null, _acroFields=[];
+  try{ _acro=pdfDoc.getForm(); _acroFields=_acro.getFields(); }catch(e){ _acroFields=[]; }
+  if(_acroFields.length){
+    // Fill the REAL form fields, exactly as the Forms UI download does.
+    _acroFields.forEach(function(field){
+      var fname=field.getName();
+      try{
+        if(typeof field.setText==='function'){
+          var av=_matchAcroFormField(fname,dict,formType);
+          if(av)field.setText(String(av));
+          try{ field.acroField.dict.set(PDFLib.PDFName.of('DA'),PDFLib.PDFString.of('0 0 0 rg /Helv 10 Tf')); }catch(e){}
+        } else if(typeof field.check==='function'){
+          if((STATE_FORM_CHECKS[formType]||{})[fname]===true){ try{field.check();}catch(e){} }
+        } else if(typeof field.select==='function'){
+          var av2=_matchAcroFormField(fname,dict,formType);
+          if(av2){ try{field.select(String(av2));}catch(e){} }
+        }
+      }catch(e){ console.warn('[StateForm] field "'+fname+'" set failed:',e.message); }
+    });
+    try{ _acro.updateFieldAppearances(helv); }
+    catch(e){ try{ _acro.acroForm.dict.set(PDFLib.PDFName.of('NeedAppearances'),PDFLib.PDFBool.True); }catch(e2){} }
+    // Deliberately NOT flattened: this copy is emailed for the caregiver to sign.
+  }
+  (_acroFields.length ? [] : (def.fields||[])).forEach(function(f){
     var v=dict[inputMap[f.inputId]]; v=(v==null?'':String(v)).trim();
     if(!v)return;
     var page=pages[f.page||0]; if(!page)return;
@@ -10082,7 +10503,7 @@ async function generateStateFormPdf(){
     var clientTag=(activeFormClientName||'client').replace(/[^a-z0-9]/gi,'_');
     var fname=def.title+'_'+clientTag+'_'+today().replace(/\//g,'-')+'.pdf';
     // Open in a new tab so user can print or save
-    var w=window.open(url,'_blank');
+    var w=_openPhiWindow(url);
     var a=document.createElement('a');a.href=url;a.download=fname;a.style.display='none';document.body.appendChild(a);a.click();setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},2000);
     showToast('✓ Generated '+fname,5000);
   }catch(e){
@@ -10137,7 +10558,7 @@ async function previewClientInvoice(clientName,period){
     for(var i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
     var blob=new Blob([bytes],{type:'application/pdf'});
     var url=URL.createObjectURL(blob);
-    window.open(url,'_blank');
+    _openPhiWindow(url);
     // Cleanup blob after a delay so the new tab can render
     setTimeout(function(){URL.revokeObjectURL(url);},10000);
   }catch(e){showAlert('Preview failed: '+e.message);console.error(e);}
@@ -10160,6 +10581,8 @@ function validateInvoiceForSend(name,prof,inv,cwRec){
   if(!cwRec||!cwRec.agency)issues.push('Caseworker has no Agency set (Bill To will be empty)');
   if(!cwRec||!cwRec.email)issues.push('Caseworker has no email');
   if(!prof.worker&&!prof.caseworkerId)issues.push('No caseworker assigned');
+  else if(!cwRec||!cwRec.name)
+    issues.push('Assigned caseworker "'+(prof.worker||prof.caseworkerId)+'" no longer exists — reassign this client, or Send All will skip it silently.');
   // Total Time HH must be present
   if(!d.svcHH||String(d.svcHH).trim()===''){
     var hasTask=d.tasks&&d.tasks.svc&&d.tasks.svc.some(function(r){return r&&r.some(function(c){return c;});});
@@ -10186,13 +10609,23 @@ function validateInvoiceForSend(name,prof,inv,cwRec){
     // Compare what is actually CERTIFIED: 'Total Time for Billing Period' (grand = service +
     // complex care), not service alone. On a complex-care client, checking svc let 15:00 service +
     // 10:00 complex bill 25:00 against a 20:00 authorization with no warning at all.
-    var _bh=String(d.grandHH||'').trim(), _bm=d.grandMM;
-    if(!/^\d{1,3}$/.test(_bh)){ _bh=String(d.svcHH||'').trim(); _bm=d.svcMM; }   // grand blank → fall back
-    if(a&&a.hours!=null&&String(a.hours).trim()!==''&&/^\d{1,3}$/.test(_bh)){
-      var billed=parseInt(_bh,10)*60+(parseInt(_bm,10)||0);
+    var _mins=function(hh,mm){ hh=String(hh==null?'':hh).trim();
+      return /^\d{1,3}$/.test(hh) ? (parseInt(hh,10)*60+(parseInt(mm,10)||0)) : -1; };
+    var _svc=_mins(d.svcHH,d.svcMM), _cplx=_mins(d.cplxHH,d.cplxMM), _grand=_mins(d.grandHH,d.grandMM);
+    // The largest figure the certified form could carry. grandHH is inside the hidden complex-care
+    // section, so on an ordinary invoice it holds a stale value while svcHH — the field the owner
+    // actually edits, and the one printed on page 1 — carries the real number. Checking grand alone
+    // let a 20-hour over-bill through silently; checking svc alone missed complex-care totals.
+    var billed=Math.max(_svc, _grand, (_svc>=0?_svc:0)+(_cplx>=0?_cplx:0));
+    var _bh=Math.floor(billed/60), _bm=billed%60;
+    if(a&&a.hours!=null&&String(a.hours).trim()!==''&&billed>=0){
       var appr=parseInt(a.hours,10)*60+(parseInt(a.minutes,10)||0);
       if(appr>0&&billed>appr)
-        issues.push('Billed time ('+_bh+':'+_padMin(_bm||'00')+') exceeds the authorized '+a.hours+':'+_padMin(a.minutes||0));
+        issues.push('Billed time ('+_bh+':'+_padMin(_bm)+') exceeds the authorized '+a.hours+':'+_padMin(a.minutes||0));
+      // Complex care marked but no billing-period total typed: the form certifies svc + cplx across
+      // two pages while grand is blank, so nothing downstream shows the real total.
+      if(_cplx>0&&_grand<0)
+        issues.push('Complex care is filled in but "Total Time for Billing Period" is blank — enter the combined total so the certified form and the authorization check agree.');
     }
   }catch(e){}
   // A CHAMPS client is billed to MDHHS. If their caseworker is listed under a CARRIER organisation,
@@ -10205,6 +10638,14 @@ function validateInvoiceForSend(name,prof,inv,cwRec){
     issues.push('Caseworker '+(cwRec.name||'')+' is listed under '+cwRec.org+', not MDHHS — a Medicaid '+
       'invoice must not be emailed to a carrier. Fix the caseworker\'s Organization, or assign this client to an MDHHS caseworker.');
   }
+  // No authorization AT ALL means the over-bill cross-check never ran, and silence there reads as
+  // "checked and fine" — the opposite of true. The DHS-1210 is what authorises billing, and it
+  // already gates Active status, so a client with none should not be reaching MDHHS.
+  // Deliberately NOT triggered when an authorization exists but its HOURS did not parse: every
+  // issue blocks the batch send, and blocking on a failed OCR read would stop legitimate billing
+  // for a client who is genuinely authorised. That case stays silent, as before.
+  if(!hasAuthorization(prof))
+    issues.push('No DHS-1210 on file — nothing authorises this billing, and the hours could not be checked against anything.');
   // Signature: at least one must exist locally so the PDF auto-places it
   if(!getSigs().length)issues.push('Missing signature — PDF will export with no signature on it');
   return issues;
@@ -10680,15 +11121,39 @@ function _padMin(v){ v=(v==null?'':String(v)).trim(); return /^\d$/.test(v)?('0'
 // Build the data for an invoice from a parsed authorization (res) + client (prof) + period MM/YYYY.
 // The day grid is derived from each task's authorized frequency/count (see _dhsTaskDays), varied per
 // month. Returns { data, unmapped:[taskNames] } — unmapped tasks are surfaced, never dropped silently.
+// Parse a stored date into {y,m,d} WITHOUT a Date object. `new Date('2026-07-21')` is read as UTC
+// midnight, so in any timezone behind UTC .getDate() returns the PREVIOUS day — which silently
+// shifted a service start back by one and certified a day of service that never happened.
+function _ymd(v){
+  var t=String(v||'').trim(); if(!t)return null;
+  var m=t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);          // YYYY-MM-DD (what the app stores)
+  if(m)return {y:+m[1],m:+m[2],d:+m[3]};
+  m=t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);             // MM/DD/YYYY (legacy / OCR)
+  if(m)return {y:+m[3],m:+m[1],d:+m[2]};
+  return null;
+}
 function _dhsBuildFirstInvoice(res, prof, period){
   var pp=String(period||'').split('/'); if(pp.length!==2||pp[1].length!==4)return null;
   var days=daysIn(pp[0],pp[1]); var cols=_dhsSvcColNames();
   var grid=[]; for(var d=0;d<days;d++){ var row=[]; for(var c=0;c<cols.length;c++)row.push(false); grid.push(row); }
   var unmapped=[]; var seed=_dhsPeriodSeed(period);
+  // The day grid is the MSA-1904's "verification of services" — a mark on it certifies that service
+  // was delivered that day. Marks were spread across the WHOLE month even when service started
+  // partway through it (and even on the prorated branch, which passes only the reduced HOURS), so a
+  // client starting on the 21st was certified for 20 days of service that never happened. Derived
+  // here rather than at the call sites so the manual and auto-generate paths both get it.
+  var _firstDay=1;
+  try{
+    var _sd=_ymd(prof&&prof.startDate);
+    if(_sd && _sd.y===parseInt(pp[1],10) && _sd.m===parseInt(pp[0],10))
+      _firstDay=Math.max(1,_sd.d);
+  }catch(e){}
   (res.tasks||[]).forEach(function(t){
     var col=_dhsMapTaskToCol(t.task);
     if(col<0){ unmapped.push(t.task); return; }
-    _dhsTaskDays(t, days, seed).forEach(function(di){ if(di>=0&&di<days)grid[di][col]=true; });
+    _dhsTaskDays(t, days, seed).forEach(function(di){
+      if(di>=(_firstDay-1)&&di<days)grid[di][col]=true;   // never before the first day of service
+    });
   });
   var hours=res.hours!=null?String(res.hours):'', mins=res.minutes!=null?_padMin(res.minutes):'';
   var rate=stateRate();  // invoices always bill the flat state rate ($27), not the form's printed rate
@@ -10776,6 +11241,24 @@ function _createFirstInvoice(store,prof,a,period,pro){
 
 // Returns clients eligible for auto-gen: active in the period, missing this period's invoice, and
 // (required) with a DHS authorization to build from. No authorization → no auto-generated invoice.
+// True when the client's service start date falls INSIDE the billing period — i.e. this is a
+// partial first month, not a full one.
+function _startsInsidePeriod(prof,period){
+  try{
+    var sd=String((prof&&prof.startDate)||'').trim(); if(!sd)return false;
+    var pp=String(period||'').split('/'); if(pp.length!==2)return false;
+    var pm=parseInt(pp[0],10), py=parseInt(pp[1],10); if(!pm||!py)return false;
+    // _ymd, not new Date(): 'YYYY-MM-DD' is parsed by Date as UTC MIDNIGHT, and getMonth()/
+    // getDate() then read it back in local time. In Michigan (UTC-4/-5) that shifts every date
+    // back one day, so a service start on the 2nd reported day 1 — "not a partial month" — and
+    // the client fell through to auto-generation at the FULL authorized hours for a month that
+    // began on the 2nd. The day grid (_dhsBuildFirstInvoice) already used _ymd and correctly
+    // started marking on the 2nd, so the certified form carried full-month hours over a grid
+    // that showed one fewer day. Calendar dates are components, never instants.
+    var d=_ymd(sd); if(!d)return false;
+    return (d.y===py) && (d.m===pm) && (d.d>1);
+  }catch(e){ return false; }
+}
 function findClientsEligibleForAutoGen(period){
   var profiles=getProfiles();var out=[];
   Object.keys(profiles).forEach(function(name){
@@ -10786,6 +11269,9 @@ function findClientsEligibleForAutoGen(period){
     if(!hasBillableAuthorization(p))return;   // need APPROVED HOURS — never generate a blank-total invoice
     var hasCurrent=(p.invoices||[]).some(function(i){return i.billingPeriod===period;});
     if(hasCurrent)return;
+    // Service STARTS inside this period → partial month → the owner must choose full-month or
+    // prorate. Never make that call automatically in either direction.
+    if(_startsInsidePeriod(p,period)){ out.push({name:name,partialMonth:true}); return; }
     // Most recent prior invoice (if any) — kept only as a fallback signal; the grid is built fresh
     // from the authorization, not copied from it.
     var prior=(p.invoices||[]).slice().sort(function(a,b){return new Date(b.savedAt||0)-new Date(a.savedAt||0);})[0];
@@ -10819,11 +11305,14 @@ function autoGenerateMonthlyInvoices(period){
 function _doAutoGenerateInvoices(eligible,period){
   if(!isInvoiceAdmin()){showAlert('Only the account owner can generate invoices.');return;}
   var profiles=getProfiles();
-  var generated=0,skipped=0,unmappedBy={};
+  var generated=0,skipped=0,unmappedBy={},partialMonth=[];
   var undoBatch={id:'b_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),period:period,when:Date.now(),invoices:[]};
   eligible.forEach(function(e){
     // Build the month's grid from the client's DHS authorization (correct counts per the authorized
     // frequency, varied each month). Eligibility already requires an authorization.
+    // Partial first month — held back by findClientsEligibleForAutoGen so the owner makes the
+    // full-month-or-prorate call on the client's Authorization tab, which asks.
+    if(e.partialMonth){ partialMonth.push(e.name); return; }
     var prof=profiles[e.name], a=prof&&prof.authorization, newInv=null;
     var built=(a && hasBillableAuthorization(prof)) ? _dhsBuildFirstInvoice({hours:a.hours,minutes:a.minutes,rate:a.rate,tasks:a.tasks||[]}, prof, period) : null;
     if(built) newInv={ billingPeriod:period, savedAt:new Date().toLocaleString(), status:'draft', invoiceNote:'', data:built.data };
@@ -10847,6 +11336,8 @@ function _doAutoGenerateInvoices(eligible,period){
     (_unNames.length>10?('\n…and '+(_unNames.length-10)+' more client(s).'):'')):'';
   showAlert(
     '✓ Auto-generated '+generated+' invoice'+(generated!==1?'s':'')+' for '+period+(skipped>0?' ('+skipped+' skipped — missing data)':'')+'.\n\n'+
+    (partialMonth.length?('⚠ NOT generated — service starts partway through '+period+', so these are a PARTIAL month and\nyou need to choose full-month or prorated:\n• '+partialMonth.join('\n• ')+
+      '\n\nCreate each from the client’s Authorization tab, which asks. Auto-generating would have billed\nthe FULL authorized hours for a month that was only partly served.\n\n'):'')+
     'All new invoices are marked Draft. An Undo banner will stay on the Clients page for 24 hours — use it if you change your mind.'+_unMsg,
     {title:'Auto-Generation Complete'}
   );
@@ -11040,12 +11531,20 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
   invPage.style.position='fixed';invPage.style.left='-9999px';invPage.style.top='0';invPage.style.zIndex='-1';
 
   var attachments=[];
+  var _skippedNoInvoice=[];
   for(var i=0;i<withInv.length;i++){
     var c=withInv[i];
     if(pb)pb.style.width=Math.round(((i)/withInv.length)*100)+'%';
     if(pl)pl.textContent='Processing: '+c.name+' ('+(i+1)+' of '+withInv.length+')';
     var prof=profiles[c.name]||{};
-    var inv=(prof.invoices||[]).find(function(inv2){return inv2.billingPeriod===period;})||{};
+    var inv=(prof.invoices||[]).find(function(inv2){return inv2.billingPeriod===period;});
+    if(!inv||!inv.data){
+      // No invoice for this period any more (deleted, or its period was edited after the preview
+      // was built). Substituting {} here produced a signed, certified, COMPLETELY BLANK MSA-1904.
+      console.error('Send All: no invoice for '+c.name+' '+period+' — skipped');
+      _skippedNoInvoice.push(c.name);
+      continue;
+    }
     await loadInvoiceForCapture(c.name,inv,period);
     try{
       var base64=await captureInvoicePDF();
@@ -11065,7 +11564,18 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
 
   if(!attachments.length){
     if(po)po.classList.remove('open');
-    showAlert('No PDFs could be generated. Please check the console for errors.');return {ok:false,err:'no_pdfs'};
+    showAlert(_skippedNoInvoice.length
+      ? ('No invoice exists for '+period+' for:\n\n• '+_skippedNoInvoice.join('\n• ')+
+         '\n\nNothing was sent to '+workerName+'. Create the invoices, then run Send All again.')
+      : 'No PDFs could be generated. Please check the console for errors.');
+    return {ok:false,err:_skippedNoInvoice.length?'no_invoice':'no_pdfs'};
+  }
+  // A skip must never be silent — the owner would otherwise believe these clients were billed.
+  if(_skippedNoInvoice.length){
+    showAlert('These clients have no invoice for '+period+', so they were NOT included in '+
+      workerName+'’s email:\n\n• '+_skippedNoInvoice.join('\n• ')+
+      '\n\nThey are still unbilled. Create the invoices and send them separately.',
+      {title:'Some clients were skipped',danger:true});
   }
 
   var workerDisplay=workerName&&workerName!=='(No Worker Assigned)'?workerName:'Caseworker';
@@ -11366,7 +11876,25 @@ function _asstOpenEmail(args){
   //      (the ✉ caseworker action on the document card).
   // This tool only ever attaches a freshly GENERATED (unsigned) form, so with no recipient named it
   // is step 1 — the caregiver. 'caseworker' still works when the user asks for it explicitly.
-  if(/@/.test(recipient)){ toEmail=recipient; recipLabel='recipient'; }
+  // The model is TOLD the opposite of this by its own tool description (the backend said an empty
+  // recipient on a 4676 routes to the caseworker and 'caregiver' is refused). So the model could omit
+  // recipient believing it goes to the caseworker, the code would address it to the CAREGIVER, and
+  // the model would then report to the owner that it went to the caseworker. Rather than pick a
+  // default and hope the description gets fixed, REFUSE to guess on a PHI-bearing form.
+  if(_is4676 && !recipient)
+    return Promise.resolve({error:'Say who the MSA-4676 goes to: "caregiver" (step 1 — they sign the blank form) or "caseworker" (step 2 — send the SIGNED copy from the client\u2019s Documents instead). I will not guess on a form that carries PHI.'});
+  if(/@/.test(recipient)){
+    toEmail=recipient; recipLabel='recipient';
+    // A literal address is neither the caregiver nor the caseworker on file. Say so loudly — this is
+    // the one path where a model-chosen address could send PHI off-site on a single misread click.
+    var _known=(function(){
+      var cgm=(p.caregiverId&&cgs[p.caregiverId])?cgs[p.caregiverId]:null;
+      var cwm=(p.caseworkerId&&cws.find(function(c){return c.id===p.caseworkerId;}))||null;
+      var e=recipient.toLowerCase();
+      return (cgm&&(cgm.email||'').toLowerCase()===e)||(cwm&&(cwm.email||'').toLowerCase()===e);
+    })();
+    if(!_known) recipLabel='\u26a0 '+recipient+' — NOT the caregiver or caseworker on file';
+  }
   else if(/case|worker|coordinator/i.test(recipient)){
     var cw=null;
     if(p.caseworkerId)cw=cws.find(function(c){return c.id===p.caseworkerId;});
@@ -11526,9 +12054,27 @@ function _asstUpdateClient(args){
   if(!profs[key]){ var f=Object.keys(profs).find(function(k){return k.toLowerCase()===cname.toLowerCase();}); if(f)key=f; }
   var p=profs[key]; if(!p)return {error:'No client named "'+cname+'" found.'};
   var fieldRaw=String(args.field||'').toLowerCase().replace(/\s+/g,'_');
-  var prop=_ASST_UPDATABLE[fieldRaw];
+  // hasOwnProperty: a plain-object lookup lets INHERITED keys through, so field:'constructor' or
+  // '__proto__' passed the whitelist and wrote a stringified junk key onto the client record.
+  var prop=Object.prototype.hasOwnProperty.call(_ASST_UPDATABLE, fieldRaw) ? _ASST_UPDATABLE[fieldRaw] : null;
   if(!prop)return {error:'I can only update: phone, email, address, city, state, zip, county, medicaid ID, medicare, DOB, hourly rate, start date, status, program, carrier, or member #. (SSN and license must be edited on the client page.)'};
   var value=(args.value==null?'':String(args.value)).trim();
+  if(prop==='dob'||prop==='startDate'){
+    // Both render as <input type="date">, which reports '' for anything that isn't YYYY-MM-DD — so
+    // storing free text here means the NEXT unrelated save silently blanks the field. A blank
+    // startDate additionally drops the client out of every billing surface (clientWasActiveInPeriod)
+    // and makes saveClientInfo refuse to save an Active client at all. Refuse it here instead.
+    if(value!==''){
+      var _pd=_asstParseDate(value);
+      // _asstParseDate is range-unchecked, so '13/05/2026' (a day-first date) and '02/31/2026' parse
+      // "successfully" into a value <input type="date"> still rejects — which blanks the field on the
+      // next save, the very thing this guard exists to stop. Verify the date is REAL.
+      var _ok=!!_pd && _pd.m>=1 && _pd.m<=12 && _pd.d>=1 &&
+              _pd.d<=(new Date(_pd.y,_pd.m,0).getDate()) && _pd.y>=1900 && _pd.y<=2200;
+      if(!_ok) return {error:'That is not a date I can store ("'+value+'"). Give it as YYYY-MM-DD, e.g. 2026-05-12.'};
+      value=_pd.y+'-'+String(_pd.m).padStart(2,'0')+'-'+String(_pd.d).padStart(2,'0');
+    }
+  }
   if(prop==='clientStatus'){
     var sv=value.toLowerCase(); value=(sv==='in progress')?'inactive':sv;
     if(['active','inactive','lost','terminated'].indexOf(value)<0)
@@ -11605,6 +12151,29 @@ function _asstExportData(args){
     title='Clients';
   }
   if(!rows.length)return {error:'Nothing to export — the query returned no rows.'};
+  // Every other side-effecting tool opens a review dialog; this one wrote the file immediately.
+  // It runs uncapped, so one model decision could drop a full roster with Medicaid IDs into
+  // Downloads — outside the app's idle PHI wipe. Gate it like the others.
+  if(typeof showConfirm==='function'){
+    return new Promise(function(resolve){
+      // Escape closes the modal without running onCancel, which would leave this Promise pending
+      // forever and hang the assistant. Settle on ANY dismissal.
+      var _settled=false;
+      var _finish=function(v){ if(_settled)return; _settled=true; resolve(v); };
+      var _esc=function(ev){ if(ev.key==='Escape'){ document.removeEventListener('keydown',_esc,true);
+        _finish({cancelled:true, note:'The user dismissed the export. Do not retry it.'}); } };
+      document.addEventListener('keydown',_esc,true);
+      showConfirm('Export '+rows.length+' '+source+' row'+(rows.length===1?'':'s')+' as '+format.toUpperCase()+'?\n\n'+
+        'This writes a file to your Downloads folder. It may contain PHI (names, Medicaid IDs), and files there are NOT covered by the app\'s automatic sign-out wipe.',
+        function(){ document.removeEventListener('keydown',_esc,true); _finish(_asstDoExport(cols,rows,title,source,format)); },
+        { title:'Export data?', okText:'Export', danger:true,
+          onCancel:function(){ document.removeEventListener('keydown',_esc,true);
+            _finish({cancelled:true, note:'The user declined the export. Do not retry it.'}); } });
+    });
+  }
+  return _asstDoExport(cols,rows,title,source,format);
+}
+function _asstDoExport(cols,rows,title,source,format){
   var fname=(title.replace(/[^a-z0-9]+/gi,'_').replace(/^_|_$/g,'')||'export')+'_'+today().replace(/\//g,'-');
   try{
     if(format==='csv'){ _asstDownloadCsv(cols,rows,fname+'.csv'); }
