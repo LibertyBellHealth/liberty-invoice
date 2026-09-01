@@ -14,7 +14,9 @@ const OCR_NO_TABLE = [[
   'S Bright 313-618-3273',
   'BrightS@michigan.gov 08/04/2026',
   'Total per month 73:44',
-  'Bathing', '00:05', '7 days per week', '02:30', '$67.72',   // cells, not a row
+  // Cells too damaged to rebuild a row from — no frequency cell, so nothing pairs up.
+  // (A CLEANLY cell-split table IS rebuilt now; see ocr-cell-per-line.test.js.)
+  'Bathing', '00:05', '$67.72', 'Dressing', 'smudge', '00:14',
 ]];
 
 test('an unread task table is reported as its own miss', () => {
