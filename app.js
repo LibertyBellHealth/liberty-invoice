@@ -1840,7 +1840,10 @@ function readDHS1210File(file){
     var totalText=pages.reduce(function(a,p){return a+p.join('').length;},0);
     if(totalText>=200) return parseDHS1210(pages);
     return _dhsOcrFile(file).then(function(ocrPages){
-      return parseDHS1210(ocrPages&&ocrPages.length?ocrPages:pages);
+      var r=parseDHS1210(ocrPages&&ocrPages.length?ocrPages:pages);
+      // The file left the browser. The review modal says so — see showDhsReview.
+      r.viaOcr=true;
+      return r;
     });
   });
 }
@@ -1880,7 +1883,8 @@ function handleDhsImport(input){
   if(!isPdf&&!isImg){showAlert('Please choose the DHS-1210 / MDHHS-6064 PDF, or a photo/scan of it.');return;}
   var status=document.getElementById('hcDocStatus'); if(status)status.textContent='Reading authorization…';
   // PDFs: try pdf.js first, OCR-fallback for scans. Images (phone photos): straight to OCR.
-  var work=isPdf?readDHS1210File(file):_dhsOcrFile(file).then(parseDHS1210);
+  var work=isPdf?readDHS1210File(file)
+                :_dhsOcrFile(file).then(parseDHS1210).then(function(r){r.viaOcr=true;return r;});
   work.then(function(res){
     if(status)status.textContent='';
     showDhsReview(file,res);
@@ -1981,7 +1985,13 @@ function showDhsReview(file,res){
   ov.id='dhsReviewModal'; ov.className='modal-overlay open';
   ov.innerHTML='<div class="modal-box" style="max-width:560px;max-height:88vh;overflow:auto;">'+
     '<h3>'+esc(res.formType||'DHS-1210')+' — review before saving</h3>'+
-    '<p style="font-size:12px;color:#5c7590;margin:-4px 0 8px;">Read from <b>'+esc(file.name)+'</b>. Nothing was sent anywhere — parsed in your browser.</p>'+
+    // Provenance, stated accurately. This line used to read "Nothing was sent anywhere" on EVERY
+    // import, including scans — which are uploaded to Document Intelligence to be read. Telling the
+    // owner PHI stayed local when it did not is the one thing this notice must never do.
+    '<p style="font-size:12px;color:#5c7590;margin:-4px 0 8px;">Read from <b>'+esc(file.name)+'</b>. '+
+      (res.viaOcr
+        ? 'No text in this file, so it was uploaded to your agency\'s Azure Document Intelligence service to be read.'
+        : 'Nothing was sent anywhere — parsed in your browser.')+'</p>'+
     warn+
     '<div style="background:#f4f6f9;border-radius:8px;padding:10px 12px;">'+
       row('Approved / month', (res.hours!=null?res.hours+'h '+res.minutes+'m':'—'))+
