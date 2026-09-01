@@ -1762,15 +1762,27 @@ function parseDHS1210(pages){
       out.warnings.push('approved hours (read from an unlabeled line — verify the total)'); }
   }
   if(out.hours==null) out.warnings.push('approved hours');
-  // Effective date. DHS-1210 says "effective MM/DD/YYYY". MDHHS-6064 uses a plain
-  // "Date  MM/DD/YYYY" in Section 2. Try both.
+  // Effective date. The DHS-1210-A cover letter says "effective MM/DD/YYYY" — that is the real
+  // start of service. A STANDALONE MDHHS-6064-P has no such sentence; its only date is Section 2's
+  // "Date", which is when the ASW signed the form, not necessarily when service starts.
   var e=flat.match(/effective\s+(\d{2}\/\d{2}\/\d{4})/i);
-  if(!e && out.formType==='MDHHS-6064'){
-    // Grab a Date field that appears in Section 2 near the ASW block
-    e=flat.match(/(?:^|\s)Date\s+(\d{2}\/\d{2}\/\d{4})/i);
+  if(e)out.effectiveDate=e[1];
+  else if(out.formType==='MDHHS-6064'){
+    // Section 2 is a two-column table: the LABELS ("ASW Email Address  Date") sit on one line and
+    // the VALUES ("ColemanT1@michigan.gov  08/06/2026") on the next, so "Date" is never followed by
+    // its own value — the old label-anchored match could not fire on any real 6064. Take the date
+    // that sits beside the ASW email instead, then fall back to the label form for other layouts.
+    var g=flat.match(/@michigan\.gov\s+(\d{2}\/\d{2}\/\d{4})/i)
+        || flat.match(/(?:^|\s)Date\s+(\d{2}\/\d{2}\/\d{4})/i);
+    if(g){
+      out.effectiveDate=g[1]; out.effectiveDateGuessed=true;
+      out.warnings.push('effective date (read from the form\'s Date field — confirm the service start date)');
+    } else out.warnings.push('effective date');
   }
-  if(e)out.effectiveDate=e[1]; else out.warnings.push('effective date');
-  var em=flat.match(/([A-Za-z][A-Za-z.]*@michigan\.gov)/i); if(em)out.aswEmail=em[1];
+  else out.warnings.push('effective date');
+  // Digits are legal in the local part and MDHHS uses them to disambiguate workers with the same
+  // surname (SawyerA2@, ColemanT1@) — the old [A-Za-z.] class silently dropped exactly those.
+  var em=flat.match(/([A-Za-z][A-Za-z0-9._-]*@michigan\.gov)/i); if(em)out.aswEmail=em[1];
   var ph=flat.match(/(\d{3}-\d{3}-\d{4})/); if(ph)out.aswPhone=ph[1];
   var co=flat.match(/\b(\d{2}-[A-Z]{3,})\b/); if(co)out.county=co[1];
   // Client ID (= Medicaid #). Anchored to the "Client ID" label so it doesn't grab the Case Number.
