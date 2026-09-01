@@ -43,7 +43,12 @@ const FULL_PACKET = [
     'are approved for Home Help Services effective 03/01/2026. Services have been approved for 41 Hours',
     'and 16 Minutes per month.',
   ],
-  ['MDHHS-6064-P, PROVIDER TIME AND TASK MANAGEMENT', 'Total per month 41:16 $ 1,114.56'],
+  [
+    'MDHHS-6064-P, PROVIDER TIME AND TASK MANAGEMENT',
+    // One row carrying the whole authorization, so the packet reconciles and warns about nothing.
+    'Meal Preparation 01:20 7 days per week 41:16 $1,114.56',
+    'Total per month 41:16 $ 1,114.56',
+  ],
 ];
 
 test('standalone MDHHS-6064: effective date is read from the value line, not the label', () => {
