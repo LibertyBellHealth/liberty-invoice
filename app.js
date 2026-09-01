@@ -11279,14 +11279,54 @@ function _dhsSpreadDays(count, days, seed){
 //  • "7 days per week" (daily) → EVERY day the month has (owner's rule).
 //  • otherwise → the authorized monthly count = Time/Month ÷ Time/Day (falls back to the frequency
 //    pattern's length if those times are missing), spread evenly and varied by the period seed.
+// What the "Number of Days" column actually authorizes. MDHHS fills the day grid from THIS, not
+// from dividing the monthly time by the daily time (owner, 2026-09-01) — so it is read first and the
+// times are only a fallback for a frequency we cannot parse.
+function _dhsFreqSpec(freq){
+  var f=String(freq||'').toLowerCase().trim();
+  if(/7 days? per week|daily|every day/.test(f))return {per:'day'};
+  var wk=f.match(/(\d+)\s*(?:days?|times?)\s*per\s*week/);
+  if(wk)return {per:'week',n:Math.max(1,Math.min(7,parseInt(wk[1],10)||1))};
+  if(/\btwice\b[^.]*week/.test(f))return {per:'week',n:2};
+  if(/(?:three\s*times|\bthrice\b)[^.]*week/.test(f))return {per:'week',n:3};
+  if(/four\s*times[^.]*week/.test(f))return {per:'week',n:4};
+  if(/\bonce\b[^.]*week|\bweekly\b/.test(f))return {per:'week',n:1};
+  var mo=f.match(/(\d+)\s*(?:days?|times?)\s*per\s*month/);
+  if(mo)return {per:'month',n:Math.max(1,parseInt(mo[1],10)||1)};
+  if(/\btwice\b[^.]*month/.test(f))return {per:'month',n:2};
+  if(/(?:three\s*times|\bthrice\b)[^.]*month/.test(f))return {per:'month',n:3};
+  if(/four\s*times[^.]*month/.test(f))return {per:'month',n:4};
+  if(/\bonce\b[^.]*month|\bmonthly\b/.test(f))return {per:'month',n:1};
+  return null;
+}
+// The weekdays a group is scheduled on: n distinct weekdays, spread across the week, starting on a
+// weekday that differs per task group and walks forward one per month.
+function _dhsAnchors(n, variant, seed){
+  var start=(((variant*3)+(seed|0))%7+7)%7, a=[];
+  for(var j=0;j<Math.max(1,Math.min(7,n));j++)a.push((start+Math.round(j*7/Math.max(1,n)))%7);
+  return a;
+}
 function _dhsTaskDays(task, days, seed, variant, firstWeekday){
   var freq=String((task&&task.freq)||'').toLowerCase();
   if(/7 days? per week|daily|every day/.test(freq)){ var all=[]; for(var i=0;i<days;i++)all.push(i); return all; }
   var pd=_dhsHmToMin(task&&task.perDay), pm=_dhsHmToMin(task&&task.perMonth);
   // FLOOR so days×Time/Day never EXCEEDS the authorized Time/Month (never document more than
   // authorized); at least 1 day for any task that has a frequency at all.
+  var spec=_dhsFreqSpec(task&&task.freq), i;
+  if(spec&&spec.per==='day'){var all2=[];for(i=0;i<days;i++)all2.push(i);return all2;}
+  if(spec&&firstWeekday!=null&&firstWeekday>=0){
+    if(spec.per==='week'){
+      // N days a week means EVERY occurrence of N weekdays in this month — so a 31-day month
+      // yields the 9 or 10 visits it actually contains, not a figure divided down from the times.
+      var anch=_dhsAnchors(spec.n, variant|0, seed), wk=[];
+      for(i=0;i<days;i++)if(anch.indexOf((firstWeekday+i)%7)>=0)wk.push(i);
+      return wk;
+    }
+    return _dhsWeekdaySpread(spec.n, days, firstWeekday, variant|0, seed);   // N times a month
+  }
+  // Frequency unreadable: fall back to the authorized time, floored so the grid cannot certify
+  // more service than the monthly total allows.
   var count=(pd>0&&pm>0)?Math.max(1,Math.floor(pm/pd)):_dhsFreqToDays(task&&task.freq, days).length;
-  // firstWeekday<0 means the caller has no calendar context — keep the old even spread.
   if(firstWeekday==null||firstWeekday<0)return _dhsSpreadDays(count, days, seed+(variant|0));
   return _dhsWeekdaySpread(count, days, firstWeekday, variant|0, seed);
 }
