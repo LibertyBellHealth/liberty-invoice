@@ -33,22 +33,38 @@ test('two unrelated tasks with the same day-count do NOT share a day pattern', (
   assert.notDeepStrictEqual(laundry, shopping, 'laundry must not sit on the shopping days');
 });
 
-test('each task still gets exactly its authorized number of days', () => {
+test('the day count comes from the Number of Days column, not the times', () => {
   const g = build('08/2026');
-  assert.strictEqual(daysFor(g, 'Laundry').length, 8);    // 03:26 / 00:24
-  assert.strictEqual(daysFor(g, 'Shopping').length, 8);   // 02:26 / 00:17
-  assert.strictEqual(daysFor(g, 'Bathing').length, 31);   // daily
+  // "2 days per week" = every occurrence of two weekdays in a 31-day August = 9 visits.
+  // Dividing the times (03:26 / 00:24) would have given 8 — MDHHS fills this grid by days.
+  assert.strictEqual(daysFor(g, 'Laundry').length, 9);
+  assert.strictEqual(daysFor(g, 'Shopping').length, 9);
+  assert.strictEqual(daysFor(g, 'Bathing').length, 31);   // 7 days per week = every day
 });
 
-test('a four-a-month task lands on one weekday', () => {
-  // September 2026 starts on a Tuesday.
+test('a "once per month" task gets exactly one day', () => {
+  const g = w._dhsBuildFirstInvoice({ hours: 1, minutes: 0, tasks: [
+    { task: 'Shopping for Food/Meds', perDay: '01:00', freq: 'Once per month', perMonth: '01:00' }] },
+    { clientName: 'T' }, '08/2026').data.tasks.svc;
+  assert.strictEqual(daysFor(g, 'Shopping').length, 1);
+});
+
+test('an unreadable frequency falls back to the authorized time, floored', () => {
+  const g = w._dhsBuildFirstInvoice({ hours: 3, minutes: 26, tasks: [
+    { task: 'Laundry', perDay: '00:24', freq: 'every other Tuesday', perMonth: '03:26' }] },
+    { clientName: 'T' }, '08/2026').data.tasks.svc;
+  assert.strictEqual(daysFor(g, 'Laundry').length, 8);   // floor(206/24)
+});
+
+test('a once-a-week task lands on one weekday, every occurrence of it', () => {
+  // September 2026 starts on a Tuesday; a given weekday occurs 4 or 5 times in the month.
   const g = w._dhsBuildFirstInvoice({ hours: 4, minutes: 0, tasks: [
     { task: 'Laundry', perDay: '01:00', freq: '1 day per week', perMonth: '04:00' }] },
     { clientName: 'T' }, '09/2026').data.tasks.svc;
   const days = daysFor(g, 'Laundry');
-  assert.strictEqual(days.length, 4);
   const weekdays = new Set(days.map(d => (2 + d - 1) % 7));  // 1 Sep 2026 = Tuesday (2)
   assert.strictEqual(weekdays.size, 1, 'expected one weekday, got days ' + days);
+  assert.ok(days.length === 4 || days.length === 5, 'got ' + days.length + ' days: ' + days);
 });
 
 test('the days still never fall before the service start date', () => {
