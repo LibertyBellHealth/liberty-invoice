@@ -2542,6 +2542,17 @@ function _docCatLabel(c){for(var i=0;i<DOC_CATS.length;i++){if(DOC_CATS[i][0]===
 // (_idCat, _CARD_TYPE) matches no matter how the document was tagged. Unknown values pass through.
 function _catKey(c){for(var i=0;i<DOC_CATS.length;i++){if(DOC_CATS[i][0]===c||DOC_CATS[i][1]===c)return DOC_CATS[i][0];}return c;}
 function _fmtDocSize(n){if(!n)return '';return n<1048576?Math.round(n/1024)+' KB':(n/1048576).toFixed(1)+' MB';}
+// Subject line for a document email. The document's own filename is NOT safe to use — files are
+// routinely named after the client ("Delanor Simpson 4676.pdf") — and neither is appending the
+// client's name, which is what both of these subjects used to do. A subject sits unencrypted in
+// server logs, backups and phone notification previews, so it names the FORM only; the body
+// already identifies the client, which is where the reader looks anyway.
+function _docEmailSubject(d, is4676, signed){
+  if(is4676)return (signed?'Signed ':'')+'MSA-4676 Home Help Services Agreement';
+  var label=_docCatLabel(_catKey(d&&d.category));
+  if(!label||/^other$/i.test(label))label='Document';
+  return (signed?'Signed ':'')+label;
+}
 var _docEditCtx=null;
 // Emailing a client document to a CAREGIVER: two gates, both enforced again inside the handler.
 //  • _DOC_EMAIL_BLOCKED — never emailable: ID cards plus the SSN-bearing HR forms (I-9/W-4 has the
@@ -2637,14 +2648,14 @@ function emailDocToCaregiver(index){
   var greet='Hello'+(cgFirst?(' '+cgFirst):'')+',';
   var subject, body;
   if(is4676){
-    subject='MSA-4676 Home Help Services Agreement — '+clientName;
+    subject=_docEmailSubject(d, true, false);
     body=greet+'\n\n'+
       'My name is [your name] with '+agName+(agPhone?(' ('+agPhone+')'):'')+'. I am reaching out about '+clientName+'’s Home Help services.\n\n'+
       'Attached is the MSA-4676 Home Help Services Agreement for '+clientName+'. Please review and sign it so we can transition '+clientName+'’s Home Help services to '+agName+'.\n\n'+
       'Once signed, please reply to this email with the completed form, or let me know if you have any questions.\n\n'+
       'Thank you,\n'+agName;
   } else {
-    subject=display+' — '+clientName;
+    subject=_docEmailSubject(d, false, false);
     body=greet+'\n\n'+
       'Attached is '+display+' for '+clientName+' from '+agName+'. Please review and let me know if you have any questions.\n\n'+
       'Thank you,\n'+agName;
@@ -2674,13 +2685,13 @@ function emailDocToCaseworker(index){
   var greet='Hello'+(cwFirst?(' '+cwFirst):'')+',';
   var subject, body;
   if(is4676){
-    subject='Signed MSA-4676 — '+clientName;
+    subject=_docEmailSubject(d, true, true);
     body=greet+'\n\n'+
       'Attached is the signed MSA-4676 Home Help Services Agreement for '+clientName+', authorizing '+agName+(agPhone?(' ('+agPhone+')'):'')+' as their Home Help provider.\n\n'+
       'Please let me know if you need anything else to complete the transition.\n\n'+
       'Thank you,\n'+agName;
   } else {
-    subject=display+' — '+clientName;
+    subject=_docEmailSubject(d, false, true);
     body=greet+'\n\n'+
       'Attached is '+display+' for '+clientName+' from '+agName+'. Please let me know if you have any questions.\n\n'+
       'Thank you,\n'+agName;
