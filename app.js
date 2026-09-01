@@ -11226,9 +11226,51 @@ function _dhsFreqToDays(freq, days){
 function _dhsHmToMin(s){ var m=String(s||'').match(/(\d+):(\d+)/); return m?(parseInt(m[1],10)*60+parseInt(m[2],10)):0; }
 // A stable per-month seed from "MM/YYYY" — a distinct integer per month so each month's generated
 // pattern differs from the last, but regenerating the SAME month reproduces it (no randomness).
+// Weekday index (0=Sunday) of the 1st of month m in year y. Sakamoto's method — deliberately not
+// `new Date(...)`, which is read as UTC and lands on the previous day in any zone behind UTC.
+function _dhsFirstWeekday(y, m){
+  if(!y||!m)return -1;
+  var t=[0,3,2,5,0,3,5,1,4,6,2,4], yy=y;
+  if(m<3)yy-=1;
+  return (yy+Math.floor(yy/4)-Math.floor(yy/100)+Math.floor(yy/400)+t[m-1]+1)%7;
+}
 function _dhsPeriodSeed(period){ var p=String(period||'').split('/'); var mm=parseInt(p[0],10)||1, yy=parseInt(p[1],10)||2000; return yy*12+(mm-1); }
 // Place `count` day-indices spread EVENLY across a `days`-long month, rotated by `seed` so the exact
 // days vary month to month. Always returns `count` distinct in-range indices (or all days if count≥days).
+// Travel time is transport FOR another task, so it belongs on the SAME days as the task it serves.
+// Everything else gets its own group, so two tasks never sit on identical days by default.
+function _dhsTaskGroupKey(name){
+  var n=String(name||'').toLowerCase().trim();
+  if(/shop/.test(n))return 'shopping';        // "Shopping for Food/Meds" + "Travel For Shopping"
+  if(/laundry/.test(n))return 'laundry';      // "Laundry" + "Travel Time for Laundry"
+  return n;
+}
+// Days for one task, anchored to weekdays so the sheet reads like a real schedule — laundry on
+// Tuesdays, shopping on Fridays — instead of every task starting on the same date because they
+// shared one period seed. `variant` separates the groups; `firstWeekday` is the month's 1st.
+// Returns exactly `count` distinct in-range day indices.
+function _dhsWeekdaySpread(count, days, firstWeekday, variant, seed){
+  count=Math.max(0,Math.min(days,count|0)); if(count<=0)return [];
+  if(count>=days){var all=[];for(var i=0;i<days;i++)all.push(i);return all;}
+  var perWeek=count/(days/7);
+  var anchorCount=Math.max(1,Math.min(7,Math.round(perWeek)));
+  // Each group starts on a different weekday; within a group the anchors are spread across the week
+  // (two-a-week lands ~3 days apart, not back to back).
+  var start=(((variant*3)+(seed|0))%7+7)%7, anchors=[];
+  for(var j=0;j<anchorCount;j++)anchors.push((start+Math.round(j*7/anchorCount))%7);
+  var cand=[];
+  for(var d=0;d<days;d++)if(anchors.indexOf((firstWeekday+d)%7)>=0)cand.push(d);
+  var out=[];
+  if(cand.length>=count){
+    for(var k=0;k<count;k++){
+      var pos=cand[count===1?Math.floor(cand.length/2):Math.round(k*(cand.length-1)/(count-1))];
+      if(out.indexOf(pos)<0)out.push(pos);
+    }
+  } else out=cand.slice();
+  // Top up (or trim) so the authorized number of days is always what lands on the form.
+  for(var f=0;out.length<count&&f<days;f++){var c=(f+start)%days; if(out.indexOf(c)<0)out.push(c);}
+  return out.slice(0,count).sort(function(a,b){return a-b;});
+}
 function _dhsSpreadDays(count, days, seed){
   count=Math.max(0,Math.min(days, count|0)); if(count<=0)return [];
   if(count>=days){ var all=[]; for(var i=0;i<days;i++)all.push(i); return all; }
@@ -11244,14 +11286,16 @@ function _dhsSpreadDays(count, days, seed){
 //  • "7 days per week" (daily) → EVERY day the month has (owner's rule).
 //  • otherwise → the authorized monthly count = Time/Month ÷ Time/Day (falls back to the frequency
 //    pattern's length if those times are missing), spread evenly and varied by the period seed.
-function _dhsTaskDays(task, days, seed){
+function _dhsTaskDays(task, days, seed, variant, firstWeekday){
   var freq=String((task&&task.freq)||'').toLowerCase();
   if(/7 days? per week|daily|every day/.test(freq)){ var all=[]; for(var i=0;i<days;i++)all.push(i); return all; }
   var pd=_dhsHmToMin(task&&task.perDay), pm=_dhsHmToMin(task&&task.perMonth);
   // FLOOR so days×Time/Day never EXCEEDS the authorized Time/Month (never document more than
   // authorized); at least 1 day for any task that has a frequency at all.
   var count=(pd>0&&pm>0)?Math.max(1,Math.floor(pm/pd)):_dhsFreqToDays(task&&task.freq, days).length;
-  return _dhsSpreadDays(count, days, seed);
+  // firstWeekday<0 means the caller has no calendar context — keep the old even spread.
+  if(firstWeekday==null||firstWeekday<0)return _dhsSpreadDays(count, days, seed+(variant|0));
+  return _dhsWeekdaySpread(count, days, firstWeekday, variant|0, seed);
 }
 // Minutes are printed as the ".MM" half of "HH.MM" on the certified form, so a bare "5" reads as
 // 50 minutes: "20 hours 5 minutes" printed "20.5" — 45 minutes of over-billed time. Always 2 digits.
@@ -11275,6 +11319,14 @@ function _dhsBuildFirstInvoice(res, prof, period){
   var days=daysIn(pp[0],pp[1]); var cols=_dhsSvcColNames();
   var grid=[]; for(var d=0;d<days;d++){ var row=[]; for(var c=0;c<cols.length;c++)row.push(false); grid.push(row); }
   var unmapped=[]; var seed=_dhsPeriodSeed(period);
+  // Weekday of the 1st, so each task can be anchored to real weekdays. Computed from the period
+  // arithmetically (no Date parsing — see _ymd for why that matters here).
+  var _fw=_dhsFirstWeekday(parseInt(pp[1],10), parseInt(pp[0],10));
+  // One variant per task GROUP, in the order the form lists them, so distinct tasks never share a
+  // day pattern while a task and its travel time still do.
+  var _groups=[]; (res.tasks||[]).forEach(function(t){
+    var g=_dhsTaskGroupKey(t.task); if(_groups.indexOf(g)<0)_groups.push(g);
+  });
   // The day grid is the MSA-1904's "verification of services" — a mark on it certifies that service
   // was delivered that day. Marks were spread across the WHOLE month even when service started
   // partway through it (and even on the prorated branch, which passes only the reduced HOURS), so a
@@ -11289,7 +11341,7 @@ function _dhsBuildFirstInvoice(res, prof, period){
   (res.tasks||[]).forEach(function(t){
     var col=_dhsMapTaskToCol(t.task);
     if(col<0){ unmapped.push(t.task); return; }
-    _dhsTaskDays(t, days, seed).forEach(function(di){
+    _dhsTaskDays(t, days, seed, _groups.indexOf(_dhsTaskGroupKey(t.task)), _fw).forEach(function(di){
       if(di>=(_firstDay-1)&&di<days)grid[di][col]=true;   // never before the first day of service
     });
   });
