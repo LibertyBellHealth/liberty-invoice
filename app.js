@@ -10154,7 +10154,7 @@ function changeStateFormClient(name){
 }
 
 // Re-render the PDF in the iframe whenever an input changes (debounced)
-var _sfPreviewTimer=null,_sfPreviewBlobUrl=null,_sfPreviewBytes=null;
+var _sfPreviewTimer=null,_sfPreviewBlobUrl=null;
 function scheduleSfPreview(delay){
   clearTimeout(_sfPreviewTimer);
   var ms=(delay==null||typeof delay==='object')?350:delay;
@@ -10474,13 +10474,16 @@ async function renderSfPreview(){
     var iframe=document.getElementById('sfPreviewFrame');
     if(!def||!iframe)return;
     if(!window.PDFLib){setTimeout(renderSfPreview,400);return;}
-    // Live preview keeps fields editable so user can also tweak in the iframe
-    var out=await _renderStateFormBytes({flatten:false});
-    _sfPreviewBytes=out;
+    // Flattened on purpose. Unflattened, the preview's fields stayed typeable, so a form looked
+    // like it could be corrected on screen — but Download regenerates from the app's inputs and
+    // threw that typing away silently. Flattening makes the preview what it actually is: a picture
+    // of what will be produced. Edits belong in the form's fields on the page; a form the CLIENT
+    // still has to complete is exported through "Download (fillable)", which is unaffected.
+    var out=await _renderStateFormBytes({flatten:true});
     var blob=new Blob([out],{type:'application/pdf'});
     if(_sfPreviewBlobUrl)URL.revokeObjectURL(_sfPreviewBlobUrl);
     _sfPreviewBlobUrl=URL.createObjectURL(blob);
-    iframe.src=_sfPreviewBlobUrl+'#toolbar=1&navpanes=0&view=FitH';
+    iframe.src=_sfPreviewBlobUrl+'#toolbar=0&navpanes=0&view=FitH';
     var s=document.querySelector('.sf-preview-status');var t=document.getElementById('sfPreviewStatusText');
     if(s)s.classList.add('idle');if(t)t.textContent='Preview up to date';
   }catch(e){
