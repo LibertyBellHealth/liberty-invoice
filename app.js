@@ -11247,25 +11247,22 @@ function _dhsMapTaskToCol(taskName){
 // Turn a frequency phrase into the day indices to check across `days`. The form gives frequency,
 // not calendar days — this is a reviewable starting pattern (the provider adjusts), not a claim.
 function _dhsFreqToDays(freq, days){
-  var f=String(freq||'').toLowerCase(), out=[], i;
-  if(/7 days? per week|daily|every day/.test(f)){ for(i=0;i<days;i++)out.push(i); return out; }
-  var wk=f.match(/(\d+)\s*days?\s*per\s*week/);
-  if(wk){ var n=Math.min(7,parseInt(wk[1])||1); for(i=0;i<days;i++){ if((i%7)<n)out.push(i); } return out; }
-  // Per-month frequency — numeric ("2 days/times per month") OR spelled out ("Twice per month",
-  // "three times per month"), since MDHHS forms use the word forms. Spread the days evenly; the
-  // count is what matters (provider adjusts exact days).
-  var perMonth=null, mo=f.match(/(\d+)\s*(?:days?|times?)\s*(?:per|a)\s*month/);
-  if(mo){ perMonth=parseInt(mo[1])||1; }
-  else if(/\bonce\b[^.]*month|1\s*day\s*per\s*month|\bmonthly\b/.test(f)){ perMonth=1; }
-  else if(/\btwice\b[^.]*month/.test(f)){ perMonth=2; }
-  else if(/(?:three\s*times|\bthrice\b)[^.]*month/.test(f)){ perMonth=3; }
-  else if(/four\s*times[^.]*month/.test(f)){ perMonth=4; }
-  if(perMonth!=null){
-    var m=Math.max(1,perMonth), step=Math.max(1,Math.floor(days/m));
-    for(i=0;i<m&&i*step<days;i++)out.push(i*step);
+  // Delegates to _dhsFreqSpec so there is ONE reader of the Number of Days column. This function
+  // used to parse the wording itself and only understood the numeric "N days per week" form, so
+  // "Once per week", "Twice per week" and "Weekly" all fell through to [0] — one day a month
+  // instead of four, eight or five. That is the same drift that let a "Twice per month" row be
+  // dropped entirely: two parsers for one field, one of them quietly narrower.
+  var spec=_dhsFreqSpec(freq), out=[], i;
+  if(!spec)return [0];                        // unknown frequency → 1st day only, provider adjusts
+  if(spec.per==='day'){ for(i=0;i<days;i++)out.push(i); return out; }
+  if(spec.per==='week'){
+    var n=Math.max(1,Math.min(7,spec.n));
+    for(i=0;i<days;i++)if((i%7)<n)out.push(i);
     return out;
   }
-  return [0]; // unknown frequency → mark the 1st day only, provider adjusts
+  var m=Math.max(1,spec.n), step=Math.max(1,Math.floor(days/m));
+  for(i=0;i<m&&i*step<days;i++)out.push(i*step);
+  return out;
 }
 // "HH:MM" → minutes (e.g. "02:00" → 120). 0 if unparseable.
 function _dhsHmToMin(s){ var m=String(s||'').match(/(\d+):(\d+)/); return m?(parseInt(m[1],10)*60+parseInt(m[2],10)):0; }
