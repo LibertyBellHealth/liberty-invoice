@@ -1806,13 +1806,21 @@ function parseDHS1210(pages){
     if(r){var nm=r[1].trim(); if(!seen[nm]){seen[nm]=1;tasks.push({task:nm,perDay:r[2],freq:r[3],perMonth:r[4],amount:r[5]?+r[5].replace(/,/g,''):null});}}
   });});
   out.tasks=tasks;
+  // Nothing warned when the task table came back EMPTY. A scan or photo goes through OCR, which
+  // returns the table as loose cells rather than one line per row, so the row pattern matches
+  // nothing — the import then showed the approved hours, no task list, and a red "Task times DO
+  // NOT match the approved hours" that blamed a mismatch for what was really a total miss. Without
+  // tasks there is no caregiver task sheet and no day grid for an invoice, so say so plainly.
+  if(!tasks.length) out.warnings.push('the task table (no tasks were read — the caregiver task sheet and invoice day grid need them)');
   if(tasks.length){
     var sum=Math.round(tasks.filter(function(x){return x.amount!=null;}).reduce(function(a,x){return a+x.amount;},0)*100)/100;
     out.taskAmountSum=sum;
     out.total=out.printedTotal!=null?out.printedTotal:sum; // bill from summed line items; printed total cross-checks
     out.amountReconciles=out.printedTotal!=null?Math.abs(sum-out.printedTotal)<0.02:null;
   }
-  if(out.hours!=null){
+  // Only reconcile when there is something to reconcile — comparing an empty task list against the
+  // approved hours renders a ✗ that reads as "your numbers disagree" instead of "I read no tasks".
+  if(out.hours!=null && tasks.length){
     var mins=tasks.reduce(function(a,x){var p=(x.perMonth||'0:0').split(':');return a+(+p[0])*60+(+p[1]);},0);
     out.taskMinuteSum=mins; out.approvedTotalMin=out.hours*60+out.minutes;
     // The 6064 rounds every task row to the whole minute, so N rows can legitimately add up to N
