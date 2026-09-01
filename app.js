@@ -1739,8 +1739,9 @@ async function _dhsPageLines(page){
 // vanished from the authorization, the caregiver task sheet and the invoice day grid, while
 // _dhsFreqToDays had understood that wording all along. The form's own printed totals caught it
 // (both reconciliation checks failed by exactly the missing row), which is what they are for.
-var _DHS_FREQ_SRC='(?:\\d+\\s*(?:days?|times?)\\s*per\\s*(?:week|month)'+
-  '|(?:once|twice|thrice|three\\s*times|four\\s*times|five\\s*times|six\\s*times)\\s*per\\s*(?:week|month)'+
+// "per week" and "a week" both appear on real paperwork, so accept either.
+var _DHS_FREQ_SRC='(?:\\d+\\s*(?:days?|times?)\\s*(?:per|a)\\s*(?:week|month)'+
+  '|(?:once|twice|thrice|three\\s*times|four\\s*times|five\\s*times|six\\s*times)\\s*(?:per|a)\\s*(?:week|month)'+
   '|daily|every\\s*day|weekly|monthly)';
 var _DHS_ROW_RE=new RegExp('^(.+?)\\s+(\\d{2}:\\d{2})\\s+('+_DHS_FREQ_SRC+')\\s+(\\d{2}:\\d{2})(?:\\s+\\$?([\\d,]+\\.\\d{2}))?','i');
 var _DHS_FREQ_RE=new RegExp('^'+_DHS_FREQ_SRC+'$','i');
@@ -11337,13 +11338,13 @@ function _dhsSpreadDays(count, days, seed){
 function _dhsFreqSpec(freq){
   var f=String(freq||'').toLowerCase().trim();
   if(/7 days? per week|daily|every day/.test(f))return {per:'day'};
-  var wk=f.match(/(\d+)\s*(?:days?|times?)\s*per\s*week/);
+  var wk=f.match(/(\d+)\s*(?:days?|times?)\s*(?:per|a)\s*week/);
   if(wk)return {per:'week',n:Math.max(1,Math.min(7,parseInt(wk[1],10)||1))};
   if(/\btwice\b[^.]*week/.test(f))return {per:'week',n:2};
   if(/(?:three\s*times|\bthrice\b)[^.]*week/.test(f))return {per:'week',n:3};
   if(/four\s*times[^.]*week/.test(f))return {per:'week',n:4};
   if(/\bonce\b[^.]*week|\bweekly\b/.test(f))return {per:'week',n:1};
-  var mo=f.match(/(\d+)\s*(?:days?|times?)\s*per\s*month/);
+  var mo=f.match(/(\d+)\s*(?:days?|times?)\s*(?:per|a)\s*month/);
   if(mo)return {per:'month',n:Math.max(1,parseInt(mo[1],10)||1)};
   if(/\btwice\b[^.]*month/.test(f))return {per:'month',n:2};
   if(/(?:three\s*times|\bthrice\b)[^.]*month/.test(f))return {per:'month',n:3};
