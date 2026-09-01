@@ -1732,6 +1732,21 @@ async function _dhsPageLines(page){
   }).filter(Boolean);
 }
 
+// The "Number of Days" column, as MDHHS actually writes it. ONE definition, used by both the
+// single-line row pattern and the OCR cell pass, and kept in step with what _dhsFreqToDays can
+// convert into service days. They had drifted: the reader accepted only "N days per week/month"
+// and "Once per week/month", so a real row reading "Twice per month" was DROPPED — the task
+// vanished from the authorization, the caregiver task sheet and the invoice day grid, while
+// _dhsFreqToDays had understood that wording all along. The form's own printed totals caught it
+// (both reconciliation checks failed by exactly the missing row), which is what they are for.
+var _DHS_FREQ_SRC='(?:\\d+\\s*(?:days?|times?)\\s*per\\s*(?:week|month)'+
+  '|(?:once|twice|thrice|three\\s*times|four\\s*times|five\\s*times|six\\s*times)\\s*per\\s*(?:week|month)'+
+  '|daily|every\\s*day|weekly|monthly)';
+var _DHS_ROW_RE=new RegExp('^(.+?)\\s+(\\d{2}:\\d{2})\\s+('+_DHS_FREQ_SRC+')\\s+(\\d{2}:\\d{2})(?:\\s+\\$?([\\d,]+\\.\\d{2}))?','i');
+var _DHS_FREQ_RE=new RegExp('^'+_DHS_FREQ_SRC+'$','i');
+// A row shaped like a task row whose frequency we do NOT recognise — so a new wording is reported
+// rather than silently dropped the way "Twice per month" was.
+var _DHS_ROWISH_RE=/^(.+?)\s+(\d{2}:\d{2})\s+(.+?)\s+(\d{2}:\d{2})(?:\s+\$?[\d,]+\.\d{2})?\s*$/i;
 // Parse the grouped lines into a structured authorization. Self-checks the extraction
 // against the form's own printed totals (task $ = total; task minutes = approved hours).
 // Handles both DHS-1210 (older) and MDHHS-6064-P (newer, effective 9-25) — the two
@@ -1800,10 +1815,15 @@ function parseDHS1210(pages){
   });});
   var t=flat.match(/Total per month[\s\S]*?\$\s*([\d,]+\.\d{2})/i); if(t)out.printedTotal=+t[1].replace(/,/g,'');
   // Task rows: <task> <HH:MM/day> <frequency> <HH:MM/month> [$amount]
-  var tasks=[],seen={};
+  var tasks=[],seen={},unknownFreqs=[];
   pages.forEach(function(ls){ls.forEach(function(ln){
-    var r=ln.match(/^(.+?)\s+(\d{2}:\d{2})\s+(\d+ days? per week|Once per (?:week|month)|\d+ days? per month)\s+(\d{2}:\d{2})(?:\s+\$?([\d,]+\.\d{2}))?/i);
+    var r=ln.match(_DHS_ROW_RE);
     if(r){var nm=r[1].trim(); if(!seen[nm]){seen[nm]=1;tasks.push({task:nm,perDay:r[2],freq:r[3],perMonth:r[4],amount:r[5]?+r[5].replace(/,/g,''):null});}}
+    else{
+      var _rw=ln.match(_DHS_ROWISH_RE);
+      if(_rw && !_DHS_FREQ_RE.test(_rw[3].trim()) && _rw[3].trim().length<40 && /[a-z]/i.test(_rw[3]))
+        unknownFreqs.push(_rw[3].trim());
+    }
   });});
   // OCR fallback. Document Intelligence returns a table as one CELL per line in reading order, so a
   // row arrives as 4-5 consecutive lines ("Bathing" / "00:05" / "7 days per week" / "02:30" /
@@ -1813,7 +1833,7 @@ function parseDHS1210(pages){
   // form's own printed totals by the reconciliation below.
   if(!tasks.length){
     var _HM=/^\d{1,3}:\d{2}$/;
-    var _FREQ=/^(\d+ days? per week|Once per (?:week|month)|\d+ days? per month)$/i;
+    var _FREQ=_DHS_FREQ_RE;
     var _NAME=/^[A-Za-z][A-Za-z .,'\/&-]{1,59}$/;
     var _AMT=/^\$?\s*([\d,]+\.\d{2})$/;
     for(var _i=0;_i+3<lines.length;_i++){
@@ -1857,6 +1877,10 @@ function parseDHS1210(pages){
   // nothing — the import then showed the approved hours, no task list, and a red "Task times DO
   // NOT match the approved hours" that blamed a mismatch for what was really a total miss. Without
   // tasks there is no caregiver task sheet and no day grid for an invoice, so say so plainly.
+  if(unknownFreqs.length){
+    var _uf=unknownFreqs.filter(function(v,i,a){return a.indexOf(v)===i;}).slice(0,3);
+    out.warnings.push('a task row with an unrecognised frequency ("'+_uf.join('", "')+'") — that task was NOT imported');
+  }
   if(!tasks.length) out.warnings.push('the task table (no tasks were read — the caregiver task sheet and invoice day grid need them)');
   if(tasks.length){
     var sum=Math.round(tasks.filter(function(x){return x.amount!=null;}).reduce(function(a,x){return a+x.amount;},0)*100)/100;
