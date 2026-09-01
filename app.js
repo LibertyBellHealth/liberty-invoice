@@ -7231,8 +7231,11 @@ async function sendEmail(){
     var _bpP=(bp||'').split('/');
     var bpLabel=(_bpP.length===2&&parseInt(_bpP[0],10)>=1&&parseInt(_bpP[0],10)<=12)?_mo[parseInt(_bpP[0],10)-1]+' '+_bpP[1]:bp;
     var wFirst=(w||'').split(/\s+/)[0];
-    // Subject always leads with "Invoice" + the month/year (agency direction), then client.
-    var subj='Invoice'+(bpLabel?' '+bpLabel:'')+(cn?' – '+cn:'');
+    // Subject is exactly "INVOICE" — same as the bulk send (agency direction). A subject line is
+    // the one part of an email that routinely sits unencrypted in logs, backups and notification
+    // previews, so the client's name and the period stay in the body, which is where the caseworker
+    // reads them anyway.
+    var subj='INVOICE';
     var body='<p>Hi'+(wFirst?' '+esc(wFirst):'')+',</p>'+
       '<p>Attached is the invoice for <b>'+esc(cn)+'</b> for <b>'+esc(bpLabel)+'</b>. Please review it at your convenience, and let me know if you have any questions or if anything needs adjusting.'+_apprecLine((ae||'')+'|'+(bp||''),false)+'</p>'+
       _emailSig();
