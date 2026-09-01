@@ -1805,6 +1805,52 @@ function parseDHS1210(pages){
     var r=ln.match(/^(.+?)\s+(\d{2}:\d{2})\s+(\d+ days? per week|Once per (?:week|month)|\d+ days? per month)\s+(\d{2}:\d{2})(?:\s+\$?([\d,]+\.\d{2}))?/i);
     if(r){var nm=r[1].trim(); if(!seen[nm]){seen[nm]=1;tasks.push({task:nm,perDay:r[2],freq:r[3],perMonth:r[4],amount:r[5]?+r[5].replace(/,/g,''):null});}}
   });});
+  // OCR fallback. Document Intelligence returns a table as one CELL per line in reading order, so a
+  // row arrives as 4-5 consecutive lines ("Bathing" / "00:05" / "7 days per week" / "02:30" /
+  // "$67.72") and the single-line pattern above matches nothing — which is why every scanned or
+  // photographed authorization imported with an empty task table. Only runs when that pass found
+  // nothing, so a normal PDF cannot be affected. The rows it rebuilds are still checked against the
+  // form's own printed totals by the reconciliation below.
+  if(!tasks.length){
+    var _HM=/^\d{1,3}:\d{2}$/;
+    var _FREQ=/^(\d+ days? per week|Once per (?:week|month)|\d+ days? per month)$/i;
+    var _NAME=/^[A-Za-z][A-Za-z .,'\/&-]{1,59}$/;
+    var _AMT=/^\$?\s*([\d,]+\.\d{2})$/;
+    for(var _i=0;_i+3<lines.length;_i++){
+      var _nm=String(lines[_i]||'').trim();
+      if(!_NAME.test(_nm))continue;
+      if(!_HM.test(String(lines[_i+1]||'').trim()))continue;
+      if(!_FREQ.test(String(lines[_i+2]||'').trim()))continue;
+      if(!_HM.test(String(lines[_i+3]||'').trim()))continue;
+      var _am=String(lines[_i+4]||'').trim().match(_AMT);
+      if(!seen[_nm]){
+        seen[_nm]=1;
+        tasks.push({task:_nm,perDay:String(lines[_i+1]).trim(),freq:String(lines[_i+2]).trim(),
+                    perMonth:String(lines[_i+3]).trim(),amount:_am?+_am[1].replace(/,/g,''):null});
+      }
+      _i+=_am?4:3;
+    }
+  }
+  // Provider name/rate are their own cells too ("Provider Pay Rate" then "$ 27.00" on the next
+  // line), so the single-line "<name> $NN.NN" pattern misses them on any OCR'd form.
+  if(out.rate===undefined){
+    lines.forEach(function(ln,i){
+      if(out.rate!==undefined)return;
+      if(/^Provider Pay Rate$/i.test(String(ln).trim())){
+        var m=String(lines[i+1]||'').trim().match(/^\$\s*(\d{1,3}\.\d{2})$/);
+        if(m)out.rate=+m[1];
+      }
+    });
+  }
+  if(!out.providerName){
+    lines.forEach(function(ln,i){
+      if(out.providerName)return;
+      if(/^Provider Name$/i.test(String(ln).trim())){
+        var v=String(lines[i+1]||'').trim();
+        if(v && !/^Provider Pay Rate$/i.test(v))out.providerName=v;
+      }
+    });
+  }
   out.tasks=tasks;
   // Nothing warned when the task table came back EMPTY. A scan or photo goes through OCR, which
   // returns the table as loose cells rather than one line per row, so the row pattern matches
