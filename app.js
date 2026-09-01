@@ -1989,6 +1989,40 @@ function handleDhsImport(input){
 
 function _dhsChip(ok){return ok?'<span style="color:#1a7f4b;font-weight:700;">✓</span>':(ok===false?'<span style="color:#c0392b;font-weight:700;">✗</span>':'<span style="color:#5c7590;">–</span>');}
 
+// Find the caseworker a form's ASW already is. Matching was email-only, so when the email could
+// not be read the import fell through to "Add <name> as a caseworker" with the box CHECKED — and
+// created a second record for someone already on the roster. That is how a duplicate "A Sawyer"
+// appeared alongside "Addison Sawyer" on the same email: the old address pattern dropped any local
+// part containing a digit (SawyerA2@), so there was no email to match on.
+//
+// MDHHS prints the worker as initial + surname ("A Sawyer") while the roster holds the full name
+// ("Addison Sawyer"), so name matching has to understand that shape. Email first (authoritative),
+// then phone digits, then initial+surname.
+function _dhsCwNameKey(n){
+  var t=String(n||'').toLowerCase().replace(/[^a-z\s]/g,' ').trim().split(/\s+/).filter(Boolean);
+  if(t.length<2)return null;
+  return {first:t[0], last:t[t.length-1]};
+}
+function _dhsMatchCaseworker(res, cws){
+  cws=cws||[];
+  var em=String(res&&res.aswEmail||'').trim().toLowerCase();
+  var byEmail=em?cws.find(function(c){return String(c.email||'').trim().toLowerCase()===em;}):null;
+  if(byEmail)return byEmail;
+  var ph=String(res&&res.aswPhone||'').replace(/\D/g,'');
+  if(ph.length>=10){
+    var byPhone=cws.find(function(c){return String(c.phone||'').replace(/\D/g,'').slice(-10)===ph.slice(-10);});
+    if(byPhone)return byPhone;
+  }
+  var f=_dhsCwNameKey(res&&res.aswName);
+  if(!f)return null;
+  return cws.find(function(c){
+    var r=_dhsCwNameKey(c.name); if(!r||r.last!==f.last)return false;
+    // "A Sawyer" matches "Addison Sawyer"; "Addison" also matches "A".
+    return r.first===f.first ||
+           (f.first.length===1 && r.first.charAt(0)===f.first) ||
+           (r.first.length===1 && f.first.charAt(0)===r.first);
+  })||null;
+}
 // #5: fields a DHS-1210 suggests updating on the client / matched caseworker. Only when the form
 // has a value that DIFFERS from what's stored — never suggests blanking a field. Client NAME is
 // intentionally excluded (renaming a client changes its record key — too risky to auto-suggest).
@@ -2026,7 +2060,7 @@ function showDhsReview(file,res){
   var targetName=activeProfileName;
   var prof=getProfiles()[targetName]||{};
   var cws=getCaseworkers();
-  var match=res.aswEmail?cws.find(function(c){return (c.email||'').toLowerCase()===res.aswEmail.toLowerCase();}):null;
+  var match=_dhsMatchCaseworker(res, cws);
   var hasCw=!!prof.caseworkerId;
   var row=function(l,v){return '<div style="display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:13px;"><span style="color:#5c7590;">'+l+'</span><span style="font-weight:600;color:#1a2b45;text-align:right;">'+v+'</span></div>';};
   var warn=(res.warnings&&res.warnings.length)?'<div style="background:#fff3cd;border:1px solid #ffeaa7;color:#856404;font-size:12px;padding:6px 10px;border-radius:6px;margin:8px 0;">Couldn\'t read: '+esc(res.warnings.join(', '))+' — verify before saving.</div>':'';
