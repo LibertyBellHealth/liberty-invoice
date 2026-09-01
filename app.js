@@ -471,7 +471,7 @@ function navCaregivers(){
   if(typeof spToken!=='undefined'&&spToken&&Object.keys(getCaregivers()).length===0&&typeof loadCaregiversAPI==='function')loadCaregiversAPI();
   if(typeof revalidate==='function')revalidate();
 }
-function navSettings(){showPage('settings');bc([{l:'Settings'}]);document.getElementById('topbarActions').innerHTML='';renderSigSettings();updateSettingsAuth();renderEmailAuditTable();if(typeof loadSigningTemplates==='function')loadSigningTemplates();if(typeof revalidate==='function')revalidate();var sr=document.getElementById('stateRateInput');if(sr)sr.value=stateRate();var srs=document.getElementById('stateRateStatus');if(srs)srs.textContent='';if(typeof renderAgencySettings==='function')renderAgencySettings();}
+function navSettings(){showPage('settings');bc([{l:'Settings'}]);document.getElementById('topbarActions').innerHTML='';renderSigSettings();updateSettingsAuth();renderEmailAuditTable();if(typeof loadSigningTemplates==='function')loadSigningTemplates();if(typeof revalidate==='function')revalidate();var sr=document.getElementById('stateRateInput');if(sr)sr.value=stateRate();var srs=document.getElementById('stateRateStatus');if(srs){if(stateRateIsDefault()){srs.style.color='#8a6d3b';srs.textContent='⚠ Not saved — invoices are using the built-in default $'+STATE_RATE_DEFAULT+'/hr. Press Save to confirm it.';}else{srs.style.color='#1a7740';srs.textContent='';}}if(typeof renderAgencySettings==='function')renderAgencySettings();}
 function navTasks(){showPage('tasks');bc([{l:'Tasks'}]);document.getElementById('topbarActions').innerHTML='';populateTodoClientSelect();renderTodos();if(typeof revalidate==='function')revalidate();}
 function navReports(){showPage('reports');bc([{l:'Reports'}]);document.getElementById('topbarActions').innerHTML='';renderReports();}
 
@@ -7264,9 +7264,17 @@ async function sendEmail(){
   }catch(e){showAlert('Error generating PDF: '+e.message);}
   if(btn){btn.disabled=false;btn.textContent='✉ Email Worker';}
 }
+// The rate used until one is saved. $27.00 is the Michigan Home Help rate as of 2026-09; it is a
+// fallback, not an authority — see stateRateIsDefault.
+var STATE_RATE_DEFAULT='27.00';
 // The government/state hourly rate billed on every invoice (NOT the caregiver pay rate).
 // Configurable in Settings so the once-a-year rate change is a setting, not a code edit.
-function stateRate(){ var v=(localStorage.getItem('lhca_state_rate')||'').trim(); return v||'27.00'; }
+function stateRate(){ var v=(localStorage.getItem('lhca_state_rate')||'').trim(); return v||STATE_RATE_DEFAULT; }
+// True when NO rate has ever been saved on this device and invoices are running on the built-in
+// default. A saved 27.00 and a never-saved rate look identical on screen — the Settings box is
+// filled by stateRate() either way — so the day MDHHS changes the rate, an unsynced device would
+// keep certifying 27.00 with nothing to show it was a guess. Callers surface it; nothing blocks.
+function stateRateIsDefault(){ return !(localStorage.getItem('lhca_state_rate')||'').trim(); }
 // The rate to bill a client's invoices at: ALWAYS the state rate ($27). The state pays a flat
 // provider rate, so every invoice uses it — the client "Hourly Rate" field is NOT a billing rate
 // (it does not affect invoices). prof kept for call-site compatibility.
@@ -11554,9 +11562,14 @@ function autoGenerateMonthlyInvoices(period){
     return;
   }
   var names=eligible.map(function(e){return '• '+e.name;}).join('\n');
+  // Say it here, where a wrong rate would be stamped onto real invoices, not only in Settings.
+  var rateNote=stateRateIsDefault()
+    ? '⚠ No state rate has been saved on this device, so these will bill at the built-in default $'+
+      STATE_RATE_DEFAULT+'/hr. Confirm it in Settings if MDHHS has changed the rate.\n\n'
+    : '';
   showConfirm(
     'Auto-generate '+eligible.length+' invoice'+(eligible.length>1?'s':'')+' for '+period+'?\n\n'+
-    names+'\n\n'+
+    names+'\n\n'+rateNote+
     'For each client WITH a DHS authorization, this builds the grid from the authorized tasks:\n'+
     '• Daily tasks (7 days/week) checked every day of the month\n'+
     '• Weekly/monthly tasks get their authorized count, spread out and varied so each month differs\n'+
