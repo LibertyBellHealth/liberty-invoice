@@ -5766,8 +5766,16 @@ function mergeInvoiceLists(existingInvs, importedInvs){
 function _clearSyncBaselines(store, names){
   (names || Object.keys(store||{})).forEach(function(nm){
     var p=store[nm]; if(!p||typeof p!=='object')return;
-    (p.invoices||[]).forEach(function(iv){ if(iv) delete iv._synced; });
+    (p.invoices||[]).forEach(function(iv){ if(iv){ delete iv._synced; delete iv.rowVersion; } });
     delete p._clientSynced;
+    // Drop the concurrency token the backup was taken with. `expected_version` means "the row I
+    // last read" — a restore has read nothing; it is a deliberate overwrite. Replaying the backup's
+    // token made every record that STILL EXISTS on the server 409, so a restore over live rows wrote
+    // nothing, said "NOT FULLY RESTORED — check your connection", and could never succeed on a
+    // retry. Worse, the stale token was persisted locally and _mergeProfilesLoad keeps the pending
+    // local copy, so the client stayed unsaveable through reloads. Restoring onto DELETED rows
+    // always worked (the 404 re-create path), which is why this hid.
+    delete p._rowVersion;
   });
   return store;
 }
@@ -5852,6 +5860,9 @@ function importProfiles(ev){
               // only skips an EMPTY ssn, so pushing these records verbatim overwrote the real
               // encrypted SSN on the server with the mask — irrecoverable, and the weekly auto-backup
               // is always masked. Demote the mask to the last-4 display field instead.
+              // Same stale-token problem as clients: a restored roster record must not claim to
+              // know the server's current row_version.
+              cgAdd.forEach(function(id){ if(cgs[id]) delete cgs[id]._rowVersion; });
               cgAdd.forEach(function(id){
                 var _c=cgs[id]; if(!_c||!/^\*+-\*+-/.test(_c.ssn||''))return;
                 if(!_c.ssnLast4){ var _d=String(_c.ssn).replace(/\D/g,''); if(_d.length>=4)_c.ssnLast4=_d.slice(-4); }
@@ -5863,6 +5874,7 @@ function importProfiles(ev){
           if(Array.isArray(parsed.caseworkers)){
             var cws=getCaseworkers(),have={}; cws.forEach(function(c){ if(c&&c.id!=null)have[c.id]=1; });
             var cwAdd=parsed.caseworkers.filter(function(c){ return c&&c.id!=null&&!have[c.id]; });
+            cwAdd.forEach(function(c){ if(c) delete c._rowVersion; });
             if(cwAdd.length){ saveCaseworkersLS(cws.concat(cwAdd)); restored.caseworkers=cwAdd.length;
               cwAdd.forEach(function(c){ if(typeof saveCaseworkerAPI==='function')_track('caseworker '+((c&&c.name)||(c&&c.id)),saveCaseworkerAPI(c,true)); }); }
           }
@@ -5871,6 +5883,7 @@ function importProfiles(ev){
             Object.keys(parsed.supervisors).forEach(function(id){
               if(!sups[id]&&parsed.supervisors[id]){ sups[id]=parsed.supervisors[id]; supAdd.push(id); }
             });
+            supAdd.forEach(function(id){ if(sups[id]) delete sups[id]._rowVersion; });
             if(supAdd.length){ saveSupervisorsLS(sups); restored.supervisors=supAdd.length;
               supAdd.forEach(function(id){ if(typeof saveSupervisorAPI==='function')_track('supervisor '+((sups[id]&&sups[id].name)||id),saveSupervisorAPI(sups[id])); }); }
           }
