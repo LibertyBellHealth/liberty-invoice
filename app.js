@@ -11720,6 +11720,23 @@ function _doAutoGenerateInvoices(eligible,period){
   var profiles=getProfiles();
   var generated=0,skipped=0,unmappedBy={},partialMonth=[];
   var undoBatch={id:'b_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),period:period,when:Date.now(),invoices:[]};
+  // Eligibility — including "does this client already have an invoice for this period" — was
+  // decided BEFORE the confirmation dialog, and the dialog can sit open for minutes. A background
+  // loadProfilesAPI, or another device, can add that very invoice meanwhile; the generator then
+  // unshifted a second one unconditionally. The monthly preview picks a period's invoice with
+  // .find(), so it showed the fresh Draft and the same client+period went to the caseworker a
+  // second time with re-derived numbers. Re-check against the roster as it is NOW.
+  var alreadyHas=[];
+  eligible=eligible.filter(function(e){
+    var p2=profiles[e.name];
+    if(p2&&(p2.invoices||[]).some(function(i){return i&&i.billingPeriod===period;})){ alreadyHas.push(e.name); return false; }
+    return true;
+  });
+  if(!eligible.length&&alreadyHas.length){
+    showAlert('Nothing generated — '+(alreadyHas.length===1?'that client':'those clients')+' already had an invoice for '+period+
+      ' by the time you confirmed:\n\n• '+alreadyHas.join('\n• '),{title:'Already Invoiced'});
+    return;
+  }
   eligible.forEach(function(e){
     // Build the month's grid from the client's DHS authorization (correct counts per the authorized
     // frequency, varied each month). Eligibility already requires an authorization.
@@ -11749,6 +11766,8 @@ function _doAutoGenerateInvoices(eligible,period){
     (_unNames.length>10?('\n…and '+(_unNames.length-10)+' more client(s).'):'')):'';
   showAlert(
     '✓ Auto-generated '+generated+' invoice'+(generated!==1?'s':'')+' for '+period+(skipped>0?' ('+skipped+' skipped — missing data)':'')+'.\n\n'+
+    // Say who was dropped between the confirm and the write, rather than quietly generating fewer.
+    (alreadyHas.length?('Skipped — an invoice for '+period+' already existed by the time you confirmed:\n• '+alreadyHas.join('\n• ')+'\n\n'):'')+
     (partialMonth.length?('⚠ NOT generated — service starts partway through '+period+', so these are a PARTIAL month and\nyou need to choose full-month or prorated:\n• '+partialMonth.join('\n• ')+
       '\n\nCreate each from the client’s Authorization tab, which asks. Auto-generating would have billed\nthe FULL authorized hours for a month that was only partly served.\n\n'):'')+
     'All new invoices are marked Draft. An Undo banner will stay on the Clients page for 24 hours — use it if you change your mind.'+_unMsg,
