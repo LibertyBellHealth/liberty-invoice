@@ -6067,14 +6067,32 @@ function saveInvoiceToClient(){
     var msg=existingStatus==='submitted'
       ? 'Invoice '+bp+' has already been submitted. Are you sure you want to overwrite it?'
       : 'Invoice for '+bp+' already exists. Overwrite?';
-    showConfirm(msg,function(){_doSaveInvoiceToClient(bp,ex,existingStatus);},{title:'Overwrite Invoice',okText:'Overwrite'});
+    // Deliberately NOT passing `ex`/`existingStatus`: they were read before this dialog opened and
+    // the user may take minutes over it. _doSaveInvoiceToClient re-finds the invoice by its BILLING
+    // PERIOD at the moment it writes.
+    showConfirm(msg,function(){_doSaveInvoiceToClient(bp);},{title:'Overwrite Invoice',okText:'Overwrite'});
     return;
   }
-  _doSaveInvoiceToClient(bp,-1,null);
+  _doSaveInvoiceToClient(bp);
 }
-function _doSaveInvoiceToClient(bp,ex,existingStatus){
+// Writes the on-screen invoice to the client under `bp`. The row is located by billing period HERE,
+// not by an index captured earlier: a background loadProfilesAPI replaces the whole invoices array,
+// re-sorted by saved_at and de-duplicated, and it can land while the overwrite dialog is open. The
+// old code held the pre-dialog index and status, so a sync arriving mid-dialog meant Save wrote the
+// on-screen invoice over a DIFFERENT month's row — taking that row's dbId with it, so the next sync
+// pushed this month's figures onto that month's server record and reset it to Draft. A submitted
+// invoice could be silently replaced and un-submitted, and the "already submitted" warning did not
+// fire because the status was stale too.
+function _doSaveInvoiceToClient(bp){
   aiTrack('InvoiceSaved',{client:activeProfileName,period:bp});
   var p=getProfiles();if(!p[activeProfileName])return;if(!p[activeProfileName].invoices)p[activeProfileName].invoices=[];
+  var ex=p[activeProfileName].invoices.findIndex(function(i){return i&&i.billingPeriod===bp;});
+  var existingStatus=(ex>=0)?(p[activeProfileName].invoices[ex].status||'draft'):null;
+  // Re-assert the lock too — the row may have been marked Paid since the dialog opened.
+  if(ex>=0&&existingStatus==='paid'){
+    showAlert('Invoice '+bp+' is marked Paid and cannot be overwritten. Change the status to Draft first if you need to edit it.',{title:'Invoice Locked'});
+    return;
+  }
   if(ex>=0){
     var prevInv=p[activeProfileName].invoices[ex];
     p[activeProfileName].invoices[ex]=Object.assign({},prevInv,{
