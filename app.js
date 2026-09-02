@@ -11563,11 +11563,21 @@ function _dhsBuildFirstInvoice(res, prof, period){
   });
   var hours=res.hours!=null?String(res.hours):'', mins=res.minutes!=null?_padMin(res.minutes):'';
   var rate=stateRate();  // invoices always bill the flat state rate ($27), not the form's printed rate
+  // Freeze Bill To onto the invoice, the same way the rate and the caseworker NAME are frozen.
+  // Generated invoices carried none, so every reprint fell through to the live caseworker's CURRENT
+  // agency: reassign the client, or move a caseworker between organisations, and a SUBMITTED
+  // invoice reprinted with a different Bill To than the one MDHHS received — while the caseworker
+  // name stored on it stayed the old one, so the reprint contradicted itself. An invoice is a
+  // certified statement of who was billed; it is not recomputed later.
+  var _cwBill=(typeof getCaseworkers==='function'?getCaseworkers():[]).find(function(c){
+    return c&&(c.id===(prof&&prof.caseworkerId)||c.name===(prof&&prof.worker));
+  })||{};
+  var billTo=_cwBill.agency||_cwBill.county||'';
   var T=today();
   return {
     data:{
       clientName:(prof&&prof.clientName)||'', medicaidId:(prof&&prof.medicaidId)||'', worker:(prof&&prof.worker)||'',
-      billingPeriod:period, hourlyRate:rate,
+      billingPeriod:period, hourlyRate:rate, billTo:billTo,
       svcHH:hours, svcMM:mins, cplxHH:'', cplxMM:'', p1HH:'', p1MM:'', grandHH:hours, grandMM:mins,
       dateSubmitted:T, sigDate1:T, sigDate2:T, hasComplex:false, tasks:{svc:grid, cplx:[]}
     },
