@@ -10109,7 +10109,9 @@ function openStateForm(type){
   var selEl=document.getElementById('formClientSelect');
   activeFormClientName=selEl?selEl.value:'';
   var titles={msa4676:'MSA-4676 — Home Help Services Agreement',
-              dhs390:'DHS-390 — Application for Home Help / Adult Services'};
+              dhs390:'DHS-390 — Application for Home Help / Adult Services',
+              dhs4771:'DHS-4771 — Authorization for Withholding of FICA Tax',
+              bphasa2421:'BPHASA-2421 — Live-In Caregiver Attestation'};
   showPage('form-fill');
   bc([{l:'Forms',fn:navForms},{l:titles[type]||type}]);
   ['sb-home','sb-caregivers','sb-settings','sb-tasks','sb-reports','sb-caseworkers','sb-forms'].forEach(function(id){var el=document.getElementById(id);if(el)el.classList.remove('active');});
@@ -10344,6 +10346,46 @@ var STATE_FORM_FIELD_MAPS={
     'Date':'today_date'
     // 'Client Signature X' — left blank on purpose; the client signs it.
   },
+  // DHS-4771 — Authorization for Withholding of FICA Tax. The BENEFICIARY is the employer of their
+  // caregiver, so this is the client's authorization: the address block and the printed name at the
+  // bottom are theirs, not the agency's. Signature is handwritten (no form field for it).
+  dhs4771:{
+    'Client Name':'client_name',
+    'Case Number':'case_number',            // not held in the CRM — left blank for the owner to type
+    'Client ID':'medicaid_id',
+    'County':'client_county',
+    'Adult Services Worker ASW':'worker_name',
+    'ASW Telephone Number':'worker_phone',
+    'Printed Name':'client_name',           // the client signs; this prints their own name
+    'Date':'today_date',
+    'Address':'client_address',
+    'City':'client_city',
+    'State':'client_state',
+    'Zip Code':'client_zip'
+  },
+  // BPHASA-2421 — Live-In Caregiver Attestation (EVV exemption). Section 1 (…Row1) is the
+  // CAREGIVER, Section 2 (…Row1_2) is the BENEFICIARY — the form's own instructions say so, and
+  // getting them the wrong way round would attest that the caregiver lives at their own address
+  // under the client's name. The program checkboxes are deliberately NOT auto-ticked: which
+  // program a beneficiary is enrolled in is a fact about them, not about this form.
+  bphasa2421:{
+    'First NameRow1':'caregiver_first_name',
+    'Last NameRow1':'caregiver_last_name',
+    'Street AddressRow1':'caregiver_address',
+    'CityRow1':'caregiver_city',
+    'StateRow1':'caregiver_state',
+    'Zip CodeRow1':'caregiver_zip',
+    'Email AddressRow1':'caregiver_email',
+    'Phone NumberRow1':'caregiver_phone',
+    'CHAMPS Provider ID NumberRow1':'caregiver_champs_id',
+    'First NameRow1_2':'client_first_name',
+    'Last NameRow1_2':'client_last_name',
+    'Medicaid ID NumberRow1':'medicaid_id',
+    'Street AddressRow1_2':'client_address',
+    'CityRow1_2':'client_city',
+    'StateRow1_2':'client_state',
+    'Zip CodeRow1_2':'client_zip'
+  },
   msa4676:{
     // Caseworker / MDHHS office block (top of form)
     'Caseworker Name':'worker_name',
@@ -10375,9 +10417,11 @@ var STATE_FORM_FIELD_MAPS={
 // Match Adobe's auto-detected field names (which use the form's printed labels)
 // to a key in our data dict. Returns the matching value, or '' if no match.
 function _matchAcroFormField(fieldName,dict,formType){
-  // 1. Per-form explicit map wins
-  var explicit=(STATE_FORM_FIELD_MAPS[formType]||{})[fieldName];
-  if(explicit&&dict[explicit])return dict[explicit];
+  // 1. Per-form explicit map wins — and it wins even when the value is EMPTY. Falling through to
+  // the keyword rules on a blank value is how a deliberately-mapped box gets something else put in
+  // it: the DHS-4771's "Case Number" is blank in the dict, and the guesser would happily fill it.
+  var _map=STATE_FORM_FIELD_MAPS[formType]||{};
+  if(Object.prototype.hasOwnProperty.call(_map,fieldName))return dict[_map[fieldName]]||'';
   var n=(fieldName||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
   // direct exact match by our convention
   var exactKey=fieldName.toLowerCase().replace(/[^a-z0-9_]/g,'');
@@ -10563,6 +10607,18 @@ var STATE_FORM_OVERLAYS={
     title:'DHS-390_Application_for_Home_Help',
     fields:[],            // AcroForm template — filled by field name, not by coordinates
     signature:null        // the CLIENT signs the DHS-390; never auto-sign it
+  },
+  dhs4771:{
+    file:'/forms/DHS-4771.pdf',
+    title:'DHS-4771_FICA_Withholding_Authorization',
+    fields:[],            // AcroForm template — filled by field name
+    signature:null        // the CLIENT signs this one; never auto-sign it
+  },
+  bphasa2421:{
+    file:'/forms/BPHASA-2421.pdf',
+    title:'BPHASA-2421_Live-In_Caregiver_Attestation',
+    fields:[],            // AcroForm template — filled by field name
+    signature:null        // the CAREGIVER signs, and MDHHS countersigns
   },
   msa4676:{
     file:'/forms/MSA-4676.pdf',
