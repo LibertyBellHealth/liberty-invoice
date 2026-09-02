@@ -23,6 +23,13 @@ var _IS_STAGING = (location.hostname === 'zealous-forest-01e406a10-2.centralus.7
 var API_BASE    = (_IS_LOCAL || _IS_STAGING)
   ? 'https://liberty-crm-api-dev.azurewebsites.net/api'
   : 'https://liberty-crm-api-cyb3dkhnd2e7a3cy.centralus-01.azurewebsites.net/api';
+// Backups from every environment land in the SAME OneDrive folder, and the automatic ones are
+// named by date alone — so a staging or localhost session took production's slot for that day and
+// its demo data replaced the real backup. It has already happened: the automatic file for
+// 2026-09-01 holds "Demo Patient One" and "ZZ Carrier Test", so there is no automatic backup of the
+// real clients for that day. Non-production backups are tagged so they cannot collide, and the
+// pruner keeps each environment's history separately instead of letting one evict the other.
+var _BACKUP_ENV_TAG = (_IS_LOCAL ? '_local' : (_IS_STAGING ? '_staging' : ''));
 var API_APP_ID  = '0c1627c1-c186-4e46-b919-e4a12f2f3952'; // Easy Auth app registration
 var _apiToken   = null; // cached Bearer token, refreshed automatically
 var _savesInFlight = 0; // count of in-flight entity saves (client + roster); blocks a background reload from clobbering them
@@ -5353,8 +5360,12 @@ async function pruneOldOneDriveBackups(){
     var data=await r.json();
     // Only auto-backup files (no '_manual' in the name) are eligible for prune
     var autoFiles=(data.value||[]).filter(function(f){
-      return /^liberty_clients_\d{4}-\d{2}-\d{2}_(masked|FULL)\.json$/.test(f.name);
+      return /^liberty_clients_\d{4}-\d{2}-\d{2}(_staging|_local)?_(masked|FULL)\.json$/.test(f.name);
     });
+    // Retention is per environment: a run of staging backups must not evict production's history,
+    // and pruning from production must not be the only thing that clears staging's.
+    var _envOf=function(n){ var m=String(n).match(/^liberty_clients_\d{4}-\d{2}-\d{2}(_staging|_local)?_/); return (m&&m[1])||'_prod'; };
+    autoFiles=autoFiles.filter(function(f){ return _envOf(f.name)===(_BACKUP_ENV_TAG||'_prod'); });
     if(autoFiles.length<=ONEDRIVE_BACKUP_RETENTION)return;
     var toDelete=autoFiles.slice(ONEDRIVE_BACKUP_RETENTION);
     for(var i=0;i<toDelete.length;i++){
@@ -5485,7 +5496,7 @@ async function doBackupToOneDrive(includeFullSSN,silent){
       var hms=ts.slice(11,19).replace(/:/g,'-');
       manualMarker='_'+hms+'_manual';
     }
-    var fname='liberty_clients_'+dateOnly+manualMarker+(includeFullSSN?'_FULL':'_masked')+'.json';
+    var fname='liberty_clients_'+dateOnly+_BACKUP_ENV_TAG+manualMarker+(includeFullSSN?'_FULL':'_masked')+'.json';
     var path='Liberty Home Care Backups/'+fname;
     var url='https://graph.microsoft.com/v1.0/me/drive/root:/'+encodeURIComponent(path).replace(/%2F/g,'/')+':/content';
     var resp=await fetch(url,{
@@ -5592,7 +5603,7 @@ function doExportProfiles(includeFullSSN){
     if(includeFullSSN&&typeof addAuditEntry==='function')
       Object.keys(copy).forEach(function(nm){ addAuditEntry(nm,'Included in a FULL-SSN roster export'); });
   }catch(e){ console.error('export audit failed',e); }
-  var fname='liberty_clients_'+new Date().toISOString().slice(0,10)+(includeFullSSN?'_FULL':'_masked')+'.json';
+  var fname='liberty_clients_'+new Date().toISOString().slice(0,10)+_BACKUP_ENV_TAG+(includeFullSSN?'_FULL':'_masked')+'.json';
   var b=new Blob([JSON.stringify(copy,null,2)],{type:'application/json'}),u=URL.createObjectURL(b);
   var a=document.createElement('a');a.href=u;a.download=fname;a.click();URL.revokeObjectURL(u);
   if(includeFullSSN){
