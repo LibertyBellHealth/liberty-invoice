@@ -5997,6 +5997,26 @@ function applyFullInvoice(data){
   // path read it straight from there — so a later month could go out CERTIFIED with a signature the
   // user never placed for it.
   resetSigArea(1); resetSigArea(2);
+  // ...then put back the one this invoice was actually certified with. Resetting alone (added so a
+  // previous month's stamp could not carry over) left a REOPENED certified invoice unsigned: the
+  // PDF and email paths read the signature straight off the DOM, so Print/Email produced a form
+  // with a blank line under "I certify that...", and captureFullInvoice() read data-sig-id as ''
+  // and wrote that blank back over the stored record — after which a reprint falls back to the
+  // FIRST signature in the library, re-certifying a sent invoice under a different person.
+  // Only an explicitly stored sigId is replayed: an invoice that was never signed stays unsigned.
+  try{
+    if(data&&data.sigId&&typeof getSigs==='function'){
+      var _sigs=getSigs()||[];
+      var _sig=_sigs.find(function(x){return x&&String(x.id)===String(data.sigId);});
+      if(_sig){
+        stampSignatureData(1,_sig.data,_sig.id);
+        if(data.hasComplex)stampSignatureData(2,_sig.data,_sig.id);
+      } else {
+        // Do NOT substitute another signature — the record says which one certified this invoice.
+        console.warn('Invoice '+(data.billingPeriod||'')+' was certified with a signature that no longer exists; leaving it unsigned.');
+      }
+    }
+  }catch(e){ console.warn('signature replay failed',e); }
   var f=['clientName','medicaidId','worker','billingPeriod','svcHH','svcMM','cplxHH','cplxMM','p1HH','p1MM','grandHH','grandMM','dateSubmitted','sigDate1','sigDate2'];
   f.forEach(function(id){var el=document.getElementById(id);if(el&&data[id]!==undefined)el.value=data[id];});
   // The rate SAVED on the invoice wins. An invoice is a certified record of what was billed, so
