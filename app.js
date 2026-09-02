@@ -7148,7 +7148,19 @@ function markInvoiceSubmitted(clientName,period){
   // dirty and gets sent). The separate /status PATCH that used to run here double-wrote the
   // row AND discarded the fresh row_version it returned — leaving a stale token that could
   // spuriously 409 the invoice's next save — so it was removed.
-  saveProfileSP(clientName,p[clientName]);
+  //
+  // The result of that write was thrown away. It runs immediately after an invoice has actually
+  // been EMAILED, so a failure here leaves the invoice Submitted on this device and still Draft on
+  // the server: another device, or this one after it reloads from the server, offers it as unsent
+  // and it goes to MDHHS twice. Surface the failure with a retry, the way the invoice-note save
+  // does — the email cannot be recalled, so the owner has to know the status did not stick.
+  var _persist=function(){
+    return surfaceSaveFailure(
+      Promise.resolve(saveProfileSP(clientName,p[clientName])),
+      'Invoice status for '+clientName+' ('+period+') — it was EMAILED but is still Draft on the server',
+      _persist);
+  };
+  _persist();
 }
 
 // ── Email tone helpers (personalized but SAFE — never asserts a fact that could be wrong) ──
