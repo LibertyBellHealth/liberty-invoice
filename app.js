@@ -591,12 +591,16 @@ function renderAttentionPanel(){
     items.push({cls:'attn-warn',count:missingPrev.length,label:missingPrev.length+' active client'+(missingPrev.length>1?'s':'')+' missing invoice for '+prevPeriod,fn:'showMissingInvoicesModal(\''+prevPeriod+'\')'});
   }
   var stale=[];Object.keys(p).forEach(function(k){(p[k].invoices||[]).forEach(function(inv){if(inv.status==='submitted'){var age=(new Date()-new Date(inv.savedAt))/(1000*60*60*24);if(age>30)stale.push(1);}});});
-  if(stale.length)items.push({cls:'attn-danger',count:stale.length,label:stale.length+' submitted invoice'+(stale.length>1?'s':'')+' pending 30+ days — follow up on payment',fn:'openAllInvoicesModal("outstanding")'});
+  if(stale.length)items.push({cls:'attn-danger',count:stale.length,label:stale.length+' submitted invoice'+(stale.length>1?'s':'')+' pending 30+ days — follow up on payment',fn:'openAllInvoicesModal(\'outstanding\')'});
   var overdueTasks=getTodos().filter(function(t){return !t.done&&t.due&&_isOverdueYmd(t.due);});
   if(overdueTasks.length)items.push({cls:'attn-warn',count:overdueTasks.length,label:overdueTasks.length+' overdue task'+(overdueTasks.length>1?'s':''),fn:'navTasks()'});
   if(!items.length)items.push({cls:'attn-ok',count:'',label:'No items require attention today',fn:null});
   panel.innerHTML=items.map(function(it){
-    return '<div class="attn-item '+it.cls+'"'+(it.fn?' onclick="'+it.fn+'"':'')+'>'+
+    // The handler goes into a DOUBLE-quoted attribute, so any double quote inside it ends the
+    // attribute early: openAllInvoicesModal("outstanding") became onclick="openAllInvoicesModal("
+    // — a syntax error, and the row silently did nothing when clicked. Escape rather than trusting
+    // every future caller to remember.
+    return '<div class="attn-item '+it.cls+'"'+(it.fn?' onclick="'+String(it.fn).replace(/"/g,'&quot;')+'"':'')+'>'+
       (it.count?'<span class="attn-count">'+it.count+'</span>':'')+
       '<span class="attn-label">'+it.label+'</span>'+(it.fn?'<span class="attn-arrow">→</span>':'')+
     '</div>';
