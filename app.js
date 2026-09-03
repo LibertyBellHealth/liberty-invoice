@@ -1,14 +1,10 @@
-// ============================================================
 //  STATE
-// ============================================================
 var SVC=15,CPLX=9,active=31,clipboard={};
 var activeProfileName=null,lastLoadedStates=null;
 var pendingSigTarget=null,sigDrawing=false,sigCanvas=null,sigCtx=null;
 var unsavedChanges=false;
 
-// ============================================================
 //  AZURE FUNCTIONS API CONFIG
-// ============================================================
 // Dev sandbox: when served from localhost, talk to the DEV backend (liberty-crm-db-dev,
 // fake data) so local testing never touches production. Every DEPLOYED hostname (the SWA
 // prod site + PR previews) always uses the prod backend — this switch is localhost-only,
@@ -189,9 +185,7 @@ function _cwOrgBadge(cw){
   return '<span style="display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;background:'+bg+';color:'+fg+';vertical-align:middle;">'+esc(org)+'</span>';
 }
 
-// ============================================================
 //  NAVIGATION
-// ============================================================
 function showPage(p){
   document.querySelectorAll('.page').forEach(function(el){el.classList.remove('active');});
   document.getElementById('page-'+p).classList.add('active');
@@ -214,11 +208,9 @@ function bc(crumbs){
 }
 function navHome(){showPage('home');bc([{l:'Clients'}]);document.getElementById('topbarActions').innerHTML='';unsavedChanges=false;renderClientTable();updateStats();renderSidebarClients();if(typeof revalidate==='function')revalidate();}
 
-// ============================================================
 //  HASH ROUTER — enables right-click "Open in new tab" for records
 //  URL format: #/client/<id>, #/caregiver/<id>, #/caseworker/<id>,
 //              #/forms, #/tasks, #/caregivers, #/caseworkers, #/settings
-// ============================================================
 // Route clients by opaque dbId so the patient NAME never lands in the URL / browser history.
 // Falls back to the name only for a client not yet saved to the server (no dbId yet).
 function buildClientUrl(name){
@@ -296,9 +288,7 @@ function navClick(e, targetHash, targetFn){
   return false;
 }
 
-// ============================================================
 //  MOBILE SIDEBAR — open via hamburger, close via backdrop tap or nav
-// ============================================================
 function toggleMobileSidebar(){
   var sb=document.getElementById('sidebar');
   if(!sb)return;
@@ -479,9 +469,7 @@ function navSettings(){showPage('settings');bc([{l:'Settings'}]);document.getEle
 function navTasks(){showPage('tasks');bc([{l:'Tasks'}]);document.getElementById('topbarActions').innerHTML='';populateTodoClientSelect();renderTodos();if(typeof revalidate==='function')revalidate();}
 function navReports(){showPage('reports');bc([{l:'Reports'}]);document.getElementById('topbarActions').innerHTML='';renderReports();}
 
-// ============================================================
 //  SIDEBAR
-// ============================================================
 function toggleSidebar(){document.getElementById('sidebar').classList.toggle('collapsed');}
 function renderSidebarClients(){
   var list=document.getElementById('sbClientList'),profiles=getProfiles();
@@ -509,9 +497,7 @@ function renderSidebarClients(){
   }
 }
 
-// ============================================================
 //  HOME
-// ============================================================
 function updateStats(){
   var p=getProfiles(),keys=Object.keys(p),ti=0,outstanding=0;
   var activeKeys=keys.filter(function(k){return !p[k].clientStatus||p[k].clientStatus==='active';});
@@ -863,9 +849,7 @@ function bulkDelete(){
   );
 }
 
-// ============================================================
 //  CLIENT DETAIL TABS
-// ============================================================
 function switchTab(tab){
   if(unsavedChanges&&tab!=='info'){
     showConfirm('You have unsaved changes on the Profile tab. Leave anyway?',function(){
@@ -1528,9 +1512,7 @@ function deleteClient(){
   },{title:'Delete Client',okText:'Delete'});
 }
 
-// ============================================================
 //  INVOICE HISTORY
-// ============================================================
 function renderInvHistory(){
   if(!activeProfileName)return;
   var prof=getProfiles()[activeProfileName],invoices=(prof&&prof.invoices)?prof.invoices:[],c=document.getElementById('invHistoryContent');
@@ -1698,9 +1680,7 @@ async function downloadInvoice(idx){
   }
 }
 
-// ============================================================
 //  NOTES
-// ============================================================
 function renderNotesPane(){
   if(!activeProfileName)return;
   var prof=getProfiles()[activeProfileName],ta=document.getElementById('clientNotesArea');
@@ -1745,18 +1725,14 @@ function renderNotesPane(){
   });
 }
 
-// ============================================================
 //  DOCUMENTS (Azure Blob Storage)
-// ============================================================
 function getHcClientId(){
   var prof=getProfiles()[activeProfileName];
   return prof&&prof._dbId?prof._dbId:null;
 }
-// ═══════════════════════════════════════════════════════════════════════════
 // DHS-1210 reader — extract authorized hours/tasks from the MDHHS approval packet.
 // Runs entirely in-browser via pdf.js (self-hosted); the PHI on the form never
 // leaves the machine. Output feeds a review/confirm step, then the client profile.
-// ═══════════════════════════════════════════════════════════════════════════
 function _dhsReady(){ return typeof pdfjsLib!=='undefined'; }
 
 // Group one page's text items into ordered lines (top→bottom, then left→right).
@@ -2271,13 +2247,11 @@ function _applyDhsImport(file,res,opts){
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // Caregiver task sheet — export the authorized tasks (NO dollar amounts) as a
 // printable / emailable one-pager so caregivers know exactly what's approved.
 // Everything runs locally in the browser; opens a new tab with a print-ready
 // layout, plus buttons for Print / Copy / Email so Row can send it however
 // works best (AirDrop, iMessage, email attachment, printed handout).
-// ═══════════════════════════════════════════════════════════════════════════
 // PHI-minimized client label for caregiver-facing outputs: first name + last initial (e.g.
 // "Darnelle D.") instead of the full name. Reduces the identifier that leaves the system when the
 // sheet is texted/emailed. Prefers the structured first/last fields; falls back to parsing the name.
@@ -3162,9 +3136,7 @@ function deleteCgDoc(cgId,encodedName){
   },{title:'Delete Document',okText:'Delete'});
 }
 
-// ============================================================
 //  NEW CLIENT
-// ============================================================
 // Show the carrier + member fields only when Program = Carrier (managed care). Used on both the
 // new-client form (nc-*) and by navNewClient's reset.
 function ncProgramToggle(){
@@ -3233,9 +3205,7 @@ function _doCreateClient(name,first,middle,last,nickname){
   saveProfilesLS(p);saveProfileSP(name,p[name]);logActivity('client','New client added: '+name);navDetail(name);
 }
 
-// ============================================================
 //  CAREGIVERS
-// ============================================================
 var _cgSsnMem = Object.create(null);
 function getCaregivers(){
   try{
@@ -4150,9 +4120,7 @@ function handleCgDocScan(input){
   .catch(function(e){if(status)status.textContent='Upload failed: '+e;});
 }
 
-// ============================================================
 //  SETTINGS
-// ============================================================
 // ── Signatures: DB-backed, LS used as a local display cache ──
 function getSigs(){try{return JSON.parse(localStorage.getItem('lhca_signatures')||'[]');}catch(e){return[];}}
 function saveSigsLS(arr){try{localStorage.setItem('lhca_signatures',JSON.stringify(arr));}catch(e){}}
@@ -4468,13 +4436,9 @@ function clearAllData(){
   );
 }
 
-// ============================================================
 //  EMAIL AUTOCOMPLETE
-// ============================================================
 
-// ============================================================
 //  ZIP LOOKUP
-// ============================================================
 function lookupZip(zipId, cityId, stateId, countyId) {
   var zip = document.getElementById(zipId).value.trim();
   if (zip.length !== 5 || !/^\d{5}$/.test(zip)) return;
@@ -4502,9 +4466,7 @@ function lookupZip(zipId, cityId, stateId, countyId) {
     .catch(function(e){console.warn('ZIP lookup failed:',e);});
 }
 
-// ============================================================
 //  CASEWORKER SEARCH AUTOCOMPLETE
-// ============================================================
 function cwSearch(input, hiddenId, dropId) {
   var val = input.value.trim().toLowerCase();
   var drop = document.getElementById(dropId);
@@ -4542,9 +4504,7 @@ function cwSearch(input, hiddenId, dropId) {
   drop.style.display = 'block';
 }
 
-// ============================================================
 //  CAREGIVER SEARCH AUTOCOMPLETE
-// ============================================================
 function cgSearch(input, hiddenId, dropId) {
   var val = input.value.trim().toLowerCase();
   var drop = document.getElementById(dropId);
@@ -4636,9 +4596,7 @@ function openQuickCreate(kind, prefillName, onCreated){
   setTimeout(function(){ var n = ov.querySelector('#qc-name'); if(n){ n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 30);
 }
 
-// ============================================================
 //  ACTIVITY LOG
-// ============================================================
 function getActivity(){try{return JSON.parse(localStorage.getItem('lhca_activity')||'[]');}catch(e){return[];}}
 function logActivity(type,text){
   var log=getActivity();
@@ -4677,9 +4635,7 @@ function renderActivityFeed(){
     list.appendChild(item);
   });
 }
-// ============================================================
 //  AUDIT TRAIL
-// ============================================================
 function currentUserEmail(){
   return (msalInstance&&msalInstance.getAllAccounts().length?msalInstance.getAllAccounts()[0].username:null)||'Local User';
 }
@@ -4761,9 +4717,7 @@ function _renderAuditPaneLocal(pane){
   pane.appendChild(wrap);
 }
 
-// ============================================================
 //  TASKS / TODOS
-// ============================================================
 function getTodos(){try{return JSON.parse(localStorage.getItem('lhca_todos')||'[]');}catch(e){return[];}}
 function saveTodos(t){localStorage.setItem('lhca_todos',JSON.stringify(t));}
 function todoId(){return 'td_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);}
@@ -5043,9 +4997,7 @@ function updateTaskBadge(){
   if(badge){badge.style.display=overdue?'inline':'none';badge.textContent=overdue;}
 }
 
-// ============================================================
 //  WORKFLOW
-// ============================================================
 var wfSteps=[];
 function openWorkflowModal(){
   wfSteps=[];
@@ -5144,9 +5096,7 @@ function saveWorkflow(){
   showConfirm(msg,function(){},{title:'Workflow Created',okText:'OK',danger:false});
 }
 
-// ============================================================
 //  EMAIL COMPOSER (Microsoft Graph)
-// ============================================================
 function sendGraphEmail(){
   if(!spToken){showAlert('Please sign in with your Microsoft account to send email.');return;}
   var to=document.getElementById('emailTo').value.trim();
@@ -5292,9 +5242,7 @@ function exportReportExcel(){
   XLSX.writeFile(wb,'liberty_invoices_'+_localYmd()+'.xlsx');
 }
 
-// ============================================================
 //  PROFILES (localStorage + SharePoint)
-// ============================================================
 // S8: SSN is kept in memory for this session only — never written to localStorage — so a
 // lost/idle device or a future XSS can't read it off disk. It's repopulated from the
 // authenticated API on load. saveProfilesLS strips ssn before persisting and caches it in
@@ -5399,11 +5347,9 @@ function exportProfiles(){
     }
   );
 }
-// ──────────────────────────────────────────────────────────────────
 //  AUTOMATIC WEEKLY ONEDRIVE BACKUP
 //  Fires once per 7 days on first sign-in, silently uploads to
 //  /Liberty Home Care Backups/. Keeps 26 most recent (auto-deletes older).
-// ──────────────────────────────────────────────────────────────────
 var ONEDRIVE_BACKUP_RETENTION=26;          // keep 26 weekly backups (~6 months)
 var ONEDRIVE_BACKUP_INTERVAL_DAYS=7;
 function _msSinceLastBackup(){
@@ -6117,9 +6063,7 @@ function escJsAttr(v){
     .replace(/[\r\n\u2028\u2029]/g,' '));
 }
 
-// ============================================================
 //  INVOICE FORM
-// ============================================================
 function loadProfileIntoForm(prof){
   document.getElementById('clientName').value=prof.clientName||'';document.getElementById('clientName2').value=prof.clientName||'';
   document.getElementById('medicaidId').value=prof.medicaidId||'';
@@ -6253,17 +6197,13 @@ function clearInvoiceForm(){
   },{title:'Clear Invoice Form',okText:'Clear'});
 }
 
-// ============================================================
 //  AUTOSAVE DRAFT
-// ============================================================
 // (Removed) Draft-autosave was write-only: it wrote lhca_draft_* every 30s and flashed a
 // "Draft autosaved" badge, but no code ever read the key back — drafts could never be
 // recovered, so the timer + badge only misled the user. The removeItem('lhca_draft_'+…)
 // cleanups elsewhere are kept so any legacy draft keys still in a browser get purged.
 
-// ============================================================
 //  INVOICE TABLE HELPERS (unchanged from original)
-// ============================================================
 function today(){var d=new Date();return String(d.getMonth()+1).padStart(2,'0')+'/'+String(d.getDate()).padStart(2,'0')+'/'+d.getFullYear();}
 function daysIn(mm,yyyy){var m=parseInt(mm),y=parseInt(yyyy);if(isNaN(m)||isNaN(y)||m<1||m>12)return 31;return new Date(y,m,0).getDate();}
 function buildRows(tbodyId,cols){
@@ -6700,9 +6640,7 @@ async function printInvoiceAsPDF(){
   }
 }
 
-// ============================================================
 //  VECTOR PDF — direct jsPDF drawing (small file, government-form fidelity)
-// ============================================================
 // Letter = 612x792 pt; we use 18pt (0.25") margins matching @page setting.
 // Output PDFs are 80-150 KB vs 1.6 MB for the raster path.
 // Signature is the only raster element (small embedded PNG).
@@ -6963,9 +6901,7 @@ function wrapHeaderText(s,maxLen){
   return lines;
 }
 
-// ============================================================
 //  RASTER FALLBACK — html2canvas → JPEG (kept for emergency rollback)
-// ============================================================
 async function captureInvoicePDFRaster(){
   var jsPDF=window.jspdf.jsPDF;
   var pdf=new jsPDF('p','mm','letter');
@@ -7024,14 +6960,12 @@ async function captureInvoicePDF(){
 }
 
 // ── Graph API Email with PDF Attachments ──────────────────────
-// ──────────────────────────────────────────────────────────────────
 //  Graph email send — auto picks fast path or upload-session path
 //  based on total attachment size:
 //   - Total ≤ 3.5 MB: single POST /me/sendMail (fast, ~1 sec)
 //   - Total > 3.5 MB: createDraft → uploadSession per attachment → send
 //                      (handles up to ~150 MB; ~3-10 sec for 30 PDFs)
 //  attachments: [{name, base64}], onProgress?: (done,total,label) => void
-// ──────────────────────────────────────────────────────────────────
 async function sendMailWithPDF(toEmail,subject,bodyHtml,attachments,onProgress,ccEmails){
   if(!spToken)return {ok:false,err:'Not signed in'};
   // Calculate total attachment size in bytes (base64 inflates ~33%, so actual=base64Length*0.75)
@@ -7169,12 +7103,10 @@ async function loadInvoiceForCapture(clientName,inv,period){
 }
 
 // ── Mark invoice submitted (local + DB) ───────────────────────
-// ──────────────────────────────────────────────────────────────────
 //  EMAIL AUDIT LOG — HIPAA "accounting of disclosures"
 //  Each PHI-bearing email send writes one log entry. Stored in
 //  localStorage and mirrored to App Insights. Downloadable as CSV
 //  from Settings > Email Audit Log.
-// ──────────────────────────────────────────────────────────────────
 function getEmailAuditLog(){try{return JSON.parse(localStorage.getItem('lhca_email_audit')||'[]');}catch(e){return[];}}
 function saveEmailAuditLog(arr){
   // Cap at 1000 entries to avoid unbounded growth
@@ -7590,9 +7522,7 @@ function copyMonth(){
   rebuild(daysIn(String(m).padStart(2,'0'),String(y)));applyStates(states);resetSigArea(1);resetSigArea(2);
 }
 
-// ============================================================
 //  SIGNATURE (multi-sig from Settings)
-// ============================================================
 function initSigCanvas(){
   sigCanvas=document.getElementById('sigCanvas');sigCtx=sigCanvas.getContext('2d');sigCtx.strokeStyle='#000';sigCtx.lineWidth=2;sigCtx.lineCap='round';sigCtx.lineJoin='round';
   function gp(e){var r=sigCanvas.getBoundingClientRect(),src=e.touches?e.touches[0]:e;return{x:src.clientX-r.left,y:src.clientY-r.top};}
@@ -7857,9 +7787,7 @@ function confirmTypedSig(){
   if(document.getElementById('page-settings').classList.contains('active'))renderSigSettings();
 }
 
-// ============================================================
 //  PRINT GUARDS — fix page 3, page 2 only if filled
-// ============================================================
 window.addEventListener('beforeprint',function(){
   // Hide complex section if no complex tasks filled in
   var cplxRows=document.getElementById('cplxBody').querySelectorAll('td.mc.on');
@@ -7901,9 +7829,7 @@ window.addEventListener('afterprint',function(){
   });
 });
 
-// ============================================================
 //  AUTH & API (Azure Functions replaces SharePoint for data)
-// ============================================================
 function initMSAL() {
   var cfg = {
     auth: {
@@ -9004,9 +8930,7 @@ function deleteTaskAPI(dbId) {
   doDel();
 }
 
-// ============================================================
 //  CASEWORKERS
-// ============================================================
 // Caseworkers: source of truth is Azure SQL via /api/caseworkers.
 // localStorage only used as a UI cache (refilled by loadCaseworkersAPI on sign-in).
 function getCaseworkers(){try{return JSON.parse(localStorage.getItem('lhca_caseworkers')||'[]');}catch(e){return[];}}
@@ -9077,10 +9001,8 @@ function deleteCaseworkerAPI(id){
 }
 function cwId(){return 'cw_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);}
 
-// ============================================================
 //  SUPERVISORS — managed inline via caseworker form dropdown
 //  (no dedicated page; CC'd on monthly invoice emails when assigned)
-// ============================================================
 function getSupervisors(){try{return JSON.parse(localStorage.getItem('lhca_supervisors')||'{}');}catch(e){return{};}}
 function saveSupervisorsLS(map){localStorage.setItem('lhca_supervisors',JSON.stringify(map));}
 function supId(){return 'sup_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);}
@@ -9875,9 +9797,7 @@ function bulkDeleteCaseworkers(){
   );
 }
 
-// ============================================================
 //  CASEWORKER DETAIL VIEW
-// ============================================================
 var activeCwId=null;
 function openCwDetail(id){
   var cw=getCaseworkers().find(function(c){return c.id===id;});
@@ -10186,9 +10106,7 @@ function renderCwAuditPane(){
   }
 }
 
-// ============================================================
 //  KEYBOARD SHORTCUTS & NAVIGATION GUARD
-// ============================================================
 document.addEventListener('keydown',function(e){
   // a11y: Escape dismisses the topmost open modal (keyboard users had no way to close one).
   if(e.key==='Escape'){
@@ -10225,9 +10143,7 @@ window.addEventListener('pagehide',function(e){
   try{clearPHIFromStorage();}catch(_){}
 });
 
-// ============================================================
 //  AUTO SESSION TIMEOUT (HIPAA — 45 min inactivity)
-// ============================================================
 var SESSION_TIMEOUT_MS  = 45 * 60 * 1000; // sign out after 45 min idle
 var SESSION_WARN_MS     = 43 * 60 * 1000; // warn at 43 min
 var _sessionTimer, _sessionWarnTimer;
@@ -10258,9 +10174,7 @@ function resetSessionTimer(){
   document.addEventListener(ev, resetSessionTimer, {passive:true});
 });
 
-// ============================================================
 //  INIT
-// ============================================================
 var T=today();
 document.getElementById('dateSubmitted').value=T;document.getElementById('sigDate1').value=T;document.getElementById('sigDate2').value=T;
 rebuild(31);
@@ -10275,9 +10189,7 @@ updateTaskBadge();
 // If the URL has a hash route (e.g. #/client/Adnan), navigate there; else default to home.
 if(window.location.hash){routeFromHash();}else{navHome();}
 
-// ============================================================
 //  SESSION 2 — FORMS TAB
-// ============================================================
 var activeFormType='';
 var activeFormClientName='';
 
@@ -10965,9 +10877,7 @@ function _dataUrlToUint8(dataUrl){
   try{var bin=atob(b64);var arr=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);return arr;}catch(e){return null;}
 }
 
-// ============================================================
 //  SESSION 3 — MONTHLY INVOICE EMAILS
-// ============================================================
 function openMonthlyInvModal(){
   if(!isInvoiceAdmin()){showAlert('Only the account owner can send monthly emails.');return;}
   var modal=document.getElementById('monthlyInvModal');if(!modal)return;
@@ -11225,13 +11135,11 @@ function _previewMonthlyInvoicesRender(period){
   });
   document.getElementById('monthlyInvResults').innerHTML=html;
 }
-// ──────────────────────────────────────────────────────────────────
 //  AUTO-GENERATE NEXT MONTH INVOICE
 //  Copies a previous invoice into a new period, shifting day patterns
 //  for sub-daily columns (Laundry, Shopping, etc.) so the new invoice
 //  doesn't look like an exact carbon-copy. Hospital column always
 //  starts empty since it's by-exception, not recurring.
-// ──────────────────────────────────────────────────────────────────
 // Monthly Emails period input — accept shorthand (0526, 052026, 5/26, etc.)
 function onMonthlyPeriodInput(el){
   // Allow auto-format as user types digits
@@ -12242,12 +12150,10 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
 // ✨ ASSISTANT — one global AI chat that can look up clients, run roster reports, and
 // assemble emails/forms for the owner to review + send. The model (backend /ai-chat) decides
 // which TOOL to call; the tools run here in the browser because they read localStorage and use the
 // user's Microsoft token. Nothing is ever sent without the owner reviewing it in the compose modal.
-// ═══════════════════════════════════════════════════════════════════════════════
 var _asstMessages=[], _asstBusy=false, _asstOpen=false;
 // One assistant confirmation at a time — see update_client for why.
 var _asstConfirmPending=false;
