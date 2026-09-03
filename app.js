@@ -4341,13 +4341,28 @@ function _revealCgSsnField(inp,id){
     .catch(function(){})
     .then(function(){ inp.dataset.fetching=''; });
 }
+// True when `id` is still the caregiver whose form is on screen. The MI Login password field is a
+// STATIC element in index.html, reused for every caregiver and merely cleared between them — so a
+// fetch started for caregiver A that lands after the owner has opened caregiver B writes A's
+// password into B's visible field, and saveCaregiver reads that field. A stored credential would be
+// copied onto the wrong person's record. Same shape as the document-list bug (#159), with a secret.
+function _miloginStillCurrent(id){
+  try{
+    var el=document.getElementById('cg-editing-id');
+    var current=(el&&el.value)||activeCgId||'';
+    return String(current)===String(id);
+  }catch(e){ return false; }
+}
 function _revealMiloginField(inp,id){
   if(!inp)return;
   _revealSecret(inp);
   if(inp.value||!id)return;                 // already fetched / user typed one / new caregiver
   fetch(API_BASE+'/caregivers/'+encodeURIComponent(id)+'/milogin',{headers:apiHeaders()})
     .then(function(r){return r.ok?r.json():null;})
-    .then(function(d){ if(d&&typeof d.milogin_password==='string'&&!inp.value)inp.value=d.milogin_password; })
+    .then(function(d){
+      if(!_miloginStillCurrent(id))return;   // the owner moved to another caregiver mid-fetch
+      if(d&&typeof d.milogin_password==='string'&&!inp.value)inp.value=d.milogin_password;
+    })
     .catch(function(){});
 }
 // Copy a field's value to the clipboard for quick paste into state portals/forms, with a brief
@@ -4382,8 +4397,9 @@ function revealMilogin(inputId,btn,cgIdArg){
   fetch(API_BASE+'/caregivers/'+encodeURIComponent(id)+'/milogin',{headers:apiHeaders()})
     .then(function(r){return r.ok?r.json():null;})
     .then(function(d){
-      if(d&&typeof d.milogin_password==='string')inp.value=d.milogin_password;
       if(btn)btn.textContent=orig||'Show';
+      if(!_miloginStillCurrent(id))return;   // do not write A's password into B's form
+      if(d&&typeof d.milogin_password==='string')inp.value=d.milogin_password;
       toggleMask(inputId,btn);
     })
     .catch(function(){if(btn)btn.textContent=orig||'Show';});
