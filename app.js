@@ -4405,8 +4405,15 @@ function doDeleteSig(idOrIdx){
   // idOrIdx may be a string ID or a legacy numeric index
   var sigId_=typeof idOrIdx==='number'?null:(idOrIdx||null);
   if(sigId_){
-    fetch(API_BASE+'/signatures/'+encodeURIComponent(sigId_),{method:'DELETE',headers:apiHeaders()})
-      .catch(function(e){console.error('Sig delete error:',e);});
+    // D10, same as caregivers/caseworkers/tasks: a delete the server refused must be VISIBLE with a
+    // retry. This one only logged to the console, and loadSignaturesAPI refills the list from the
+    // server — so a failed delete brought the signature back on the next sync with no explanation,
+    // after a dialog that said "This cannot be undone."
+    var doDel=function(){return surfaceSaveFailure(
+      fetch(API_BASE+'/signatures/'+encodeURIComponent(sigId_),{method:'DELETE',headers:apiHeaders()})
+        .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r;}),
+      'Delete signature',doDel);};
+    doDel();
     saveSigsLS(sigs.filter(function(s){return s.id!==sigId_;}));
   } else {
     sigs.splice(idOrIdx,1);saveSigsLS(sigs);
