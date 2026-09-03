@@ -35,3 +35,32 @@ test('no document subject interpolates the client name any more', () => {
   subjects.forEach(s => assert.ok(!/clientName/.test(s),
     'a subject still carries the client name: ' + s));
 });
+
+// ── Two ways the "name the FORM only" rule was still escapable (found 2026-09-03) ──
+test('a TYPED category cannot reach the subject line', () => {
+  // Categories are free text; people name things after the client.
+  ['Delanor SSN card', 'Jane Doe authorization', 'Bob - medicaid'].forEach((c) => {
+    const s = w._docEmailSubject({ category: c }, false, false);
+    assert.strictEqual(s, 'Document', 'typed text reached the subject: ' + s);
+  });
+});
+
+test('the app\'s own categories still name the form', () => {
+  assert.strictEqual(w._docEmailSubject({ category: 'SSN_Card' }, false, false), 'SSN Card');
+  assert.strictEqual(w._docEmailSubject({ category: 'Authorization' }, false, false), 'Authorization');
+  assert.strictEqual(w._docEmailSubject({ category: 'Certification' }, false, true), 'Signed Certification');
+});
+
+test('a filename that merely contains 4676 is not the MSA-4676', () => {
+  ['IMG_4676.jpg', 'scan 4676.pdf', 'DSC-04676.png'].forEach((n) => {
+    assert.strictEqual(w._isMsa4676({ category: 'Other' }, n), false,
+      n + ' was treated as the signed Home Help agreement');
+  });
+});
+
+test('the real MSA-4676 is still recognised, by name or category', () => {
+  ['MSA-4676.pdf', 'Delanor MSA 4676 signed.pdf', 'msa_4676_final.pdf'].forEach((n) => {
+    assert.strictEqual(w._isMsa4676({ category: 'Other' }, n), true, n + ' should be the 4676');
+  });
+  assert.strictEqual(w._isMsa4676({ category: 'MSA-4676' }, 'scan001.pdf'), true);
+});

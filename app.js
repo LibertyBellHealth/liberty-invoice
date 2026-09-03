@@ -2576,9 +2576,25 @@ function _fmtDocSize(n){if(!n)return '';return n<1048576?Math.round(n/1024)+' KB
 // client's name, which is what both of these subjects used to do. A subject sits unencrypted in
 // server logs, backups and phone notification previews, so it names the FORM only; the body
 // already identifies the client, which is where the reader looks anyway.
+// A camera or scanner filename like IMG_4676.jpg is not the Home Help agreement. Matching a bare
+// "4676" anywhere made the draft claim "Attached is the signed MSA-4676 ... authorizing [agency] as
+// their Home Help provider" over an unrelated photo — a false authorisation statement to MDHHS.
+// Require the form's actual name, or a category that says so.
+function _isMsa4676(d, display){
+  var name=String(display||'');
+  if(/\bMSA[\s._-]*4676(?![0-9])/i.test(name))return true;
+  var cat=_docCatLabel(_catKey(d&&d.category));
+  return /\bMSA[\s._-]*4676(?![0-9])/i.test(String(cat||''));
+}
 function _docEmailSubject(d, is4676, signed){
   if(is4676)return (signed?'Signed ':'')+'MSA-4676 Home Help Services Agreement';
-  var label=_docCatLabel(_catKey(d&&d.category));
+  // Categories are FREE TEXT — the chips insert a label but the owner can type anything, and people
+  // name things after the client ("Delanor SSN card"). Only a category the app itself defines may
+  // reach a subject line; anything typed falls back to a neutral word. Without this the leak that
+  // #143/#146 removed from the invoice and filename subjects came straight back through this one.
+  var key=_catKey(d&&d.category);
+  var known=DOC_CATS.some(function(c){return c[0]===key;});
+  var label=known?_docCatLabel(key):'';
   if(!label||/^other$/i.test(label))label='Document';
   return (signed?'Signed ':'')+label;
 }
@@ -2673,7 +2689,7 @@ function emailDocToCaregiver(index){
   var cgFirst=cg?((cg.firstName||(cg.name||'').split(' ')[0])||''):'';
   var ag=getAgencyInfo()||{}; var agName=ag.agency_name||ag.agency_provider_name||'our agency'; var agPhone=ag.agency_phone||'';
   var display=d.displayName||d.name||'the document';
-  var is4676=/4676/i.test(display)||/4676/i.test(_docCatLabel(d.category));
+  var is4676=_isMsa4676(d, display);
   var greet='Hello'+(cgFirst?(' '+cgFirst):'')+',';
   var subject, body;
   if(is4676){
@@ -2710,7 +2726,7 @@ function emailDocToCaseworker(index){
   var cwFirst=cw?((cw.first_name||(cw.name||'').split(' ')[0])||''):'';
   var ag=getAgencyInfo()||{}; var agName=ag.agency_name||ag.agency_provider_name||'our agency'; var agPhone=ag.agency_phone||'';
   var display=d.displayName||d.name||'the document';
-  var is4676=/4676/i.test(display)||/4676/i.test(_docCatLabel(d.category));
+  var is4676=_isMsa4676(d, display);
   var greet='Hello'+(cwFirst?(' '+cwFirst):'')+',';
   var subject, body;
   if(is4676){
