@@ -4805,10 +4805,16 @@ function deleteTodo(id){
   if(followUps.length)msg='Remove this task AND its '+followUps.length+' follow-up'+(followUps.length>1?'s':'')+'?';
   showConfirm(msg,function(){
     var idsToRemove={};idsToRemove[String(id)]=true;followUps.forEach(function(t){idsToRemove[String(t.id)]=true;});
-    var remaining=getTodos().filter(function(x){return !idsToRemove[String(x.id)];});
+    // Re-read the CURRENT rows before deleting. The local removal below already re-read, but the
+    // dbIds came from the snapshot taken before this dialog opened — and a task created moments
+    // earlier gets its dbId written back when its POST resolves, which can happen WHILE the dialog
+    // is open. Deleting on the stale copy sent no DELETE at all, so the row survived on the server
+    // and the next background load brought the task straight back.
+    var _now=getTodos();
+    var _live=_now.filter(function(x){return idsToRemove[String(x.id)];});
+    var remaining=_now.filter(function(x){return !idsToRemove[String(x.id)];});
     saveTodos(remaining);
-    if(toDelete.dbId)deleteTaskAPI(toDelete.dbId);
-    followUps.forEach(function(t){if(t.dbId)deleteTaskAPI(t.dbId);});
+    _live.forEach(function(t){ if(t.dbId)deleteTaskAPI(t.dbId); });
     renderTodos();updateTaskBadge();
   },{title:'Remove Task',okText:'Remove'});
 }
@@ -8891,6 +8897,20 @@ function loadTasksAPI() {
     }).catch(function (e) { console.error('Load tasks error:', e); showDbError('tasks'); });
 }
 function saveTaskAPI(todo) {
+  // If this task has no server row yet and a create is already in flight for it, wait for that one
+  // to assign the id and then save AGAINST it — instead of racing it into a second INSERT.
+  if (todo && !todo.dbId && _taskCreateInFlight[todo.id]) {
+    return _taskCreateInFlight[todo.id].then(function () { return saveTaskAPI(todo); });
+  }
+  var _isCreate = !!(todo && !todo.dbId);
+  var _p = _saveTaskAPIInner(todo);
+  if (_isCreate && todo && todo.id != null) {
+    _taskCreateInFlight[todo.id] = Promise.resolve(_p).catch(function () {})
+      .then(function () { delete _taskCreateInFlight[todo.id]; });
+  }
+  return _p;
+}
+function _saveTaskAPIInner(todo) {
   // Join the in-flight counter the loaders gate on (rosters already do this via _trackRosterSave).
   // _rosterSaveMarked adds the durable dirty flag every other entity already had: without it a
   // failed edit to an ALREADY-SYNCED task was reverted by the next background load, silently.
@@ -8900,7 +8920,7 @@ function saveTaskAPI(todo) {
       body: JSON.stringify({
         id: todo.dbId || undefined, text: todo.text, done: todo.done ? 1 : 0,
         due: todo.due || null, client: todo.client || '', priority: todo.priority || 'normal', source: 'homecare',
-        parent_id: todo.parentId || null, note: todo.note || null, done_at: todo.doneAt || null,
+        parent_id: _taskParentDbId(todo), note: todo.note || null, done_at: todo.doneAt || null,
       }),
     }).then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -8918,6 +8938,26 @@ function saveTaskAPI(todo) {
     });
   })));
 }
+// A follow-up stores its parent's LOCAL id (td_...), which is meaningless to the server. It was
+// shipped verbatim, and on the next load every task's id becomes its numeric DB id — so the child
+// pointed at an id that no longer existed, renderTodos found no parent, and multi-step workflows
+// silently flattened into loose top-level tasks, permanently. Send the parent's DB id instead.
+// If the parent has not been created yet, send null rather than a value the server cannot resolve;
+// the link is restored the next time the child is saved.
+function _taskParentDbId(todo){
+  var pid=todo&&todo.parentId; if(!pid)return null;
+  try{
+    var parent=getTodos().find(function(x){return x&&String(x.id)===String(pid);});
+    if(parent&&parent.dbId)return parent.dbId;
+    if(/^\d+$/.test(String(pid)))return pid;   // already a DB id (a task loaded from the server)
+  }catch(e){}
+  return null;
+}
+// One create in flight per task. saveTaskAPI sends `id: todo.dbId || undefined`, and dbId only
+// exists once the first POST resolves — so a task saved twice in quick succession (add, then
+// immediately edit or tick it) INSERTed twice and came back duplicated on the next sync, one copy
+// carrying the pre-edit text and unreachable from the original row.
+var _taskCreateInFlight = Object.create(null);
 function deleteTaskAPI(dbId) {
   if (!dbId) return;
   // D10: surface a failure/retry so a "deleted" task can't reappear on next sync.
