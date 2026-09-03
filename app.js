@@ -1398,10 +1398,17 @@ function saveAuthPane(){
   if(typeof showToast==='function')showToast('✓ Authorization saved');
 }
 function _clearAuth(){
-  showConfirm('Remove the DHS-1210 authorization from this client? The filed PDF stays in Documents.',function(){
-    var p=getProfiles(); var rec=p[activeProfileName]; if(!rec)return;
-    rec.authorization=null; saveProfilesLS(p); saveProfileSP(activeProfileName,rec);
-    renderAuthPane(false);
+  // Capture the client NOW. The dialog says "this client", and the callback read
+  // activeProfileName — so navigating to someone else before confirming removed THEIR
+  // authorization instead, silently, and an authorization is what makes a client billable.
+  var forClient=activeProfileName;
+  if(!forClient)return;
+  showConfirm('Remove the DHS-1210 authorization from '+forClient+'? The filed PDF stays in Documents.',function(){
+    var p=getProfiles(); var rec=p[forClient];
+    if(!rec){ if(typeof showAlert==='function')showAlert('“'+forClient+'” is no longer available — nothing was removed.'); return; }
+    rec.authorization=null; saveProfilesLS(p); saveProfileSP(forClient,rec);
+    if(typeof addAuditEntry==='function')addAuditEntry(forClient,'Authorization removed');
+    if(forClient===activeProfileName)renderAuthPane(false);
   },{title:'Remove Authorization',okText:'Remove'});
 }
 // Keep a single "reassessment due" task per client in sync with the authorization date.
@@ -4405,8 +4412,16 @@ function doDeleteSig(idOrIdx){
   // idOrIdx may be a string ID or a legacy numeric index
   var sigId_=typeof idOrIdx==='number'?null:(idOrIdx||null);
   if(sigId_){
-    fetch(API_BASE+'/signatures/'+encodeURIComponent(sigId_),{method:'DELETE',headers:apiHeaders()})
-      .catch(function(e){console.error('Sig delete error:',e);});
+    // D10, same as caregivers/caseworkers/tasks/invoices: a delete the server REFUSED must be
+    // visible, with a retry. This one only logged to the console, and loadSignaturesAPI refills the
+    // list from the server — so a failed delete brought the signature back on the next sync with no
+    // explanation, after a dialog that said "This cannot be undone." A signature is what certifies
+    // an invoice, so one reappearing (or not going away) is not a cosmetic problem.
+    var doDel=function(){return surfaceSaveFailure(
+      fetch(API_BASE+'/signatures/'+encodeURIComponent(sigId_),{method:'DELETE',headers:apiHeaders()})
+        .then(function(r){if(!r.ok && r.status!==404)throw new Error('HTTP '+r.status);return r;}),
+      'Delete signature',doDel);};
+    doDel();
     saveSigsLS(sigs.filter(function(s){return s.id!==sigId_;}));
   } else {
     sigs.splice(idOrIdx,1);saveSigsLS(sigs);
