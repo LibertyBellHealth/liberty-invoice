@@ -993,7 +993,9 @@ function renderOverviewPane(){
   '</div>';
 }
 
+var _allInvFilter=null;
 function openAllInvoicesModal(filter){
+  _allInvFilter=filter;
   var p=getProfiles(),rows=[];
   Object.keys(p).forEach(function(name){
     (p[name].invoices||[]).forEach(function(inv,idx){
@@ -1019,13 +1021,30 @@ function openAllInvoicesModal(filter){
         '<div class="inv-file-meta">'+esc(r.inv.savedAt)+(r.inv.invoiceNote?' · '+esc(r.inv.invoiceNote):'')+'</div>'+
       '</div>'+
       '<div class="inv-file-actions">'+
-        '<span class="status-select st-'+st+'" style="cursor:default;">'+st.charAt(0).toUpperCase()+st.slice(1)+'</span>'+
+        // Editable here: this list is reached from "follow up on payment", so marking one Paid is
+        // the whole point of arriving. Keyed by client + period, never an array index.
+        '<select class="status-select st-'+st+'" onclick="event.stopPropagation();" '+
+          'onchange="changeInvStatusFromList(this)" '+
+          'data-client="'+esc(r.client)+'" data-period="'+esc(r.inv.billingPeriod)+'">'+
+          ['draft','submitted','paid'].map(function(o2){
+            return '<option value="'+o2+'"'+(o2===st?' selected':'')+'>'+o2.charAt(0).toUpperCase()+o2.slice(1)+'</option>';
+          }).join('')+
+        '</select>'+
         '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();navDetail(\''+escJsAttr(r.client)+'\')">Profile</button>'+
         '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();openInvFromModal(\''+escJsAttr(r.client)+'\','+r.idx+')">Open Invoice →</button>'+
       '</div>';
     list.appendChild(row);
   });
   document.getElementById('allInvoicesModal').classList.add('open');
+}
+// Status change from the all-invoices list. Re-renders the list afterwards so an invoice that no
+// longer belongs in an "outstanding" view disappears from it.
+function changeInvStatusFromList(sel){
+  var client=sel.getAttribute('data-client'), period=sel.getAttribute('data-period');
+  if(!client||!period)return;
+  setInvoiceStatus(client, period, sel.value, sel, function(){
+    if(typeof openAllInvoicesModal==='function')openAllInvoicesModal(_allInvFilter);
+  });
 }
 function openInvFromModal(clientName,idx){
   document.getElementById('allInvoicesModal').classList.remove('open');
@@ -1554,8 +1573,17 @@ function renderInvHistory(){
 function changeInvStatus(sel){
   var idx=parseInt(sel.dataset.idx),next=sel.value;
   var p=getProfiles();if(!p[activeProfileName]||!p[activeProfileName].invoices[idx])return;
-  var inv=p[activeProfileName].invoices[idx];
-  var period=inv.billingPeriod;
+  setInvoiceStatus(activeProfileName, p[activeProfileName].invoices[idx].billingPeriod, next, sel);
+}
+// Change one invoice's status, from ANY surface. Keyed by client + billing period rather than an
+// array index, and both are captured before the confirmation so neither a background sync nor the
+// owner navigating elsewhere can move the change onto a different record.
+// `sel` is optional — the element to restyle/revert; `onDone` runs after a successful change.
+function setInvoiceStatus(forClient, period, next, sel, onDone){
+  var p=getProfiles();
+  var rec=p[forClient]; if(!rec||!rec.invoices)return;
+  var inv=rec.invoices.find(function(i){return i&&i.billingPeriod===period;});
+  if(!inv)return;
   var prev=inv.status||'draft';
   if(prev===next)return;
   // Risky transitions need confirmation
@@ -1584,23 +1612,24 @@ function changeInvStatus(sel){
   // client on screen can move underneath it — a background load replaces the invoices array
   // (re-sorted and de-duplicated) and the owner can navigate to another client. Applying to
   // invoices[idx] of whoever is active THEN marked the wrong invoice, or the wrong client's.
-  var forClient=activeProfileName;
   function applyChange(){
-    sel.className='status-select st-'+next;
+    if(sel)sel.className='status-select st-'+next;
     var p2=getProfiles();
-    var rec=p2[forClient]; if(!rec||!rec.invoices)return;
-    var inv2=rec.invoices.find(function(i){return i&&i.billingPeriod===period;});
+    var rec2=p2[forClient]; if(!rec2||!rec2.invoices)return;
+    var inv2=rec2.invoices.find(function(i){return i&&i.billingPeriod===period;});
     if(!inv2)return;
     inv2.status=next;
     // saveProfileSP already persists status via the invoice upsert; a separate status
     // PATCH here would write the same row twice and (with optimistic concurrency) make
     // the save conflict with itself, so it was removed.
-    saveProfilesLS(p2);saveProfileSP(forClient,rec);
+    saveProfilesLS(p2);saveProfileSP(forClient,rec2);
     logActivity('status','Invoice '+period+' for '+forClient+' marked '+next);
-    updateStats();renderOverviewPane();
+    updateStats();
+    if(typeof renderOverviewPane==='function')renderOverviewPane();
+    if(typeof onDone==='function')onDone();
   }
   if(needsConfirm){
-    showConfirm(needsConfirm.message,applyChange,{title:needsConfirm.title,okText:needsConfirm.okText,danger:!!needsConfirm.danger,onCancel:function(){sel.value=prev;}});
+    showConfirm(needsConfirm.message,applyChange,{title:needsConfirm.title,okText:needsConfirm.okText,danger:!!needsConfirm.danger,onCancel:function(){if(sel)sel.value=prev;}});
   } else {
     applyChange();
   }
