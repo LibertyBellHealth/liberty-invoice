@@ -2543,11 +2543,25 @@ function _renderDocLoadError(listId, retryExpr, err){
     (is401?'Your sign-in expired — <b>sign in again</b>, then ':'Couldn’t load documents (connection issue) — ')+
     'your files are safe on the server. <a href="#" style="color:#185FA5;font-weight:600;" onclick="'+retryExpr+';return false;">Retry</a></div>';
 }
+// A documents response only belongs on screen if the pane it was fetched for is STILL the one open.
+// A client with many documents lists far slower than one with few (the backend signs each blob URL
+// serially), so opening client A, switching to B, then opening B's Documents let A's later response
+// repaint B's pane — and _docEditCtx then carried A's ids. The 🔍 extract wrote A's card details
+// onto B, the ✉ button emailed A's document to B's caregiver, and ✕ deleted A's file while the
+// owner believed they were deleting B's. The DHS-1210 filing at ~2227 already guards this way.
+function _docListStillCurrent(kind, id){
+  try{
+    if(kind==='homecare')  return String(getHcClientId()||'')===String(id);
+    if(kind==='caregiver') return String(activeCgId||'')===String(id);
+    if(kind==='caseworker')return String(activeCwId||'')===String(id);
+  }catch(e){}
+  return true;
+}
 function loadHcDocs(clientId){
   fetch(API_BASE+'/documents?clientType=homecare&clientId='+clientId,{headers:apiHeaders()})
   .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); return r.json(); })
-  .then(function(docs){ renderHcDocList(clientId, Array.isArray(docs)?docs:[]); })
-  .catch(function(err){ _renderDocLoadError('hcDocList', "loadHcDocs('"+clientId+"')", err); });
+  .then(function(docs){ if(!_docListStillCurrent('homecare',clientId))return; renderHcDocList(clientId, Array.isArray(docs)?docs:[]); })
+  .catch(function(err){ if(!_docListStillCurrent('homecare',clientId))return; _renderDocLoadError('hcDocList', "loadHcDocs('"+clientId+"')", err); });
 }
 // ── Shared modern document grid (client / caregiver / caseworker) ──
 var DOC_CATS=[['Other','Other'],['SSN_Card','SSN Card'],['Drivers_License',"Driver's License"],['Insurance_Card','Insurance Card'],['Medicare_Card','Medicare Card'],['Medicaid_Card','Medicaid Card'],['Authorization','Authorization'],['Certification','Certification'],['Background_Check','Background Check'],['I9_W4','I-9 / W-4']];
@@ -4055,8 +4069,8 @@ function renderCgDocsPane(){
 function loadCgDocsAzure(cgId){
   fetch(API_BASE+'/documents?clientType=caregiver&clientId='+cgId,{headers:apiHeaders()})
   .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); return r.json(); })
-  .then(function(docs){ renderCgDocListAzure(cgId, Array.isArray(docs)?docs:[]); })
-  .catch(function(err){ _renderDocLoadError('cgDocListAzure', "loadCgDocsAzure('"+cgId+"')", err); });
+  .then(function(docs){ if(!_docListStillCurrent('caregiver',cgId))return; renderCgDocListAzure(cgId, Array.isArray(docs)?docs:[]); })
+  .catch(function(err){ if(!_docListStillCurrent('caregiver',cgId))return; _renderDocLoadError('cgDocListAzure', "loadCgDocsAzure('"+cgId+"')", err); });
 }
 function renderCgDocListAzure(cgId,docs){
   renderDocGrid(document.getElementById('cgDocListAzure'),docs,{clientType:'caregiver',clientId:cgId,refresh:function(){loadCgDocsAzure(cgId);}});
@@ -10020,14 +10034,15 @@ function renderCwNotesPane(){
 }
 function renderCwDocsPane(){
   if(!activeCwId)return;
+  var _cwDocsFor=activeCwId;   // captured now; activeCwId may have moved on by the time this resolves
   var cw=getCaseworkers().find(function(c){return c.id===activeCwId;});
   var c=document.getElementById('cwDocsContent');
   if(!c||!cw)return;
   c.innerHTML=docUploaderHtml({title:'Documents for '+esc(cw.name||'Caseworker'),subtitle:'Letters, authorization docs, etc.',hasCategory:true,catId:'cwDocCategory',fileId:'cwDocFileInput',scanId:'cwDocScanInput',scanFn:'handleCwDocScan(this)',uploadFn:'uploadCwDoc()',statusId:'cwDocUploadStatus',listId:'cwDocListAzure'});
   fetch(API_BASE+'/documents?clientType=caseworker&clientId='+activeCwId,{headers:apiHeaders()})
     .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); return r.json(); })
-    .then(function(docs){ renderCwDocListAzure(activeCwId, Array.isArray(docs)?docs:[]); })
-    .catch(function(err){ _renderDocLoadError('cwDocListAzure', 'renderCwDocsPane()', err); });
+    .then(function(docs){ if(!_docListStillCurrent('caseworker',_cwDocsFor))return; renderCwDocListAzure(_cwDocsFor, Array.isArray(docs)?docs:[]); })
+    .catch(function(err){ if(!_docListStillCurrent('caseworker',_cwDocsFor))return; _renderDocLoadError('cwDocListAzure', 'renderCwDocsPane()', err); });
 }
 function renderCwDocListAzure(cwId,docs){
   renderDocGrid(document.getElementById('cwDocListAzure'),docs,{clientType:'caseworker',clientId:cwId,refresh:function(){renderCwDocsPane();}});
