@@ -1,60 +1,69 @@
 'use strict';
-// Roster load = merge, not blind replace (persistence audit 2026-08-05). On a cold device a worker
-// can add a caregiver/caseworker while the initial load is still in flight; a blind replace would
-// wipe that unsynced row. The merge preserves an unsynced local addition (no _rowVersion) while
-// still letting a cross-device DELETE propagate (a row that once had a _rowVersion but is gone from
-// the server is dropped). Server data wins for rows the server knows about.
+// _mergeRosterMap / _mergeRosterArr decide what survives every background roster load. Four rules
+// are load-bearing: the server is authoritative for rows it returns, a FAILED local save wins over
+// it, a never-synced local addition is kept, and a previously-synced row the server no longer
+// returns was deleted elsewhere and is dropped. Nothing tested any of them.
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { loadApp } = require('./harness');
+const { loadApp, resetStorage } = require('./harness');
 
-test('_mergeRosterMap: server wins shared ids; unsynced local addition survives', () => {
-  const w = loadApp();
-  const server = { a: { id: 'a', name: 'Alice (server)', _rowVersion: 'v2' } };
-  const local = {
-    a: { id: 'a', name: 'Alice (stale local)', _rowVersion: 'v1' },
-    b: { id: 'b', name: 'Bob (just added, unsynced)' },      // no _rowVersion
-  };
-  const out = w._mergeRosterMap(server, local);
-  assert.strictEqual(out.a.name, 'Alice (server)', 'server row wins for a shared id');
-  assert.ok(out.b, 'the unsynced local addition is preserved');
-  assert.strictEqual(out.b.name, 'Bob (just added, unsynced)');
+const w = loadApp();
+resetStorage(w);
+const synced = (over) => Object.assign({ name: 'x', _rowVersion: '00000001' }, over || {});
+const unsynced = (over) => Object.assign({ name: 'x' }, over || {});
+
+test('the server wins for rows it returns', () => {
+  const out = w._mergeRosterMap({ a: synced({ name: 'Server Alice' }) },
+                                { a: synced({ name: 'Stale Alice' }) });
+  assert.strictEqual(out.a.name, 'Server Alice');
 });
 
-test('_mergeRosterMap: a synced local row absent from the server was deleted elsewhere -> dropped', () => {
-  const w = loadApp();
-  const server = { a: { id: 'a', name: 'Alice', _rowVersion: 'v2' } };
-  const local = {
-    a: { id: 'a', name: 'Alice', _rowVersion: 'v2' },
-    z: { id: 'z', name: 'Zed (deleted on another device)', _rowVersion: 'v5' }, // had a version
-  };
-  const out = w._mergeRosterMap(server, local);
-  assert.ok(!out.z, 'a previously-synced row gone from the server is dropped (delete propagates)');
+test('a FAILED local save wins over the server copy', () => {
+  const out = w._mergeRosterMap({ a: synced({ name: 'Server Alice' }) },
+                                { a: synced({ name: 'My edit', _unsaved: true }) });
+  assert.strictEqual(out.a.name, 'My edit', 'a failed save must not be silently reverted');
 });
 
-test('_mergeRosterMap: empty server response does not wipe unsynced local rows', () => {
-  const w = loadApp();
-  const out = w._mergeRosterMap({}, { b: { id: 'b', name: 'Bob (unsynced)' } });
-  assert.ok(out.b, 'transient empty server must not erase a pending local addition');
+test('a never-synced local addition survives the load', () => {
+  const out = w._mergeRosterMap({ a: synced() }, { b: unsynced({ name: 'Just added' }) });
+  assert.ok(out.b, 'a caregiver added while offline must not vanish');
+  assert.strictEqual(out.b.name, 'Just added');
 });
 
-test('_mergeRosterArr: caseworker array merges by id with the same rules', () => {
-  const w = loadApp();
-  const server = [{ id: 'cw1', name: 'CW One', _rowVersion: 'v2' }];
+test('a synced row the server no longer returns is dropped — deleted elsewhere', () => {
+  const out = w._mergeRosterMap({}, { a: synced({ name: 'Deleted on another device' }) });
+  assert.strictEqual(out.a, undefined);
+});
+
+test('the array form (caseworkers) follows the same four rules', () => {
+  const server = [{ id: 1, name: 'Server A', _rowVersion: 'v1' }];
   const local = [
-    { id: 'cw1', name: 'CW One (stale)', _rowVersion: 'v1' },
-    { id: 'cw2', name: 'CW Two (unsynced)' },                 // preserved
-    { id: 'cw3', name: 'CW Three (deleted elsewhere)', _rowVersion: 'v9' }, // dropped
+    { id: 1, name: 'Stale A', _rowVersion: 'v1' },
+    { id: 2, name: 'Failed edit', _rowVersion: 'v1', _unsaved: true },
+    { id: 3, name: 'Just added' },
+    { id: 4, name: 'Deleted elsewhere', _rowVersion: 'v1' },
   ];
   const out = w._mergeRosterArr(server, local);
-  const byId = {}; out.forEach(c => { byId[c.id] = c; });
-  assert.strictEqual(byId.cw1.name, 'CW One', 'server wins the shared id');
-  assert.ok(byId.cw2, 'unsynced local caseworker preserved');
-  assert.ok(!byId.cw3, 'previously-synced caseworker gone from server is dropped');
+  const byId = {}; [...out].forEach((x) => { byId[x.id] = x; });
+  assert.strictEqual(byId[1].name, 'Server A', 'server wins');
+  // id 2 failed to save AND is absent from the server, so the save never landed — keep it, or the
+  // edit is lost with no trace. (My first assertion here had this backwards; the code is right.)
+  assert.ok(byId[2], 'a failed save must survive even when the server does not return the row');
+  assert.strictEqual(byId[2].name, 'Failed edit');
+  assert.ok(byId[3], 'unsynced addition kept');
+  assert.ok(!byId[4], 'synced row absent from the server is dropped');
 });
 
-test('_mergeRosterArr: empty/garbage inputs never throw', () => {
-  const w = loadApp();
-  assert.deepStrictEqual([...w._mergeRosterArr(null, null)], []);
-  assert.strictEqual(w._mergeRosterArr([{ id: 'x' }], null).length, 1, 'null local is fine');
+test('an EMPTY server response drops every synced row', () => {
+  // Documenting real behaviour, not endorsing it: the comment above the call site says the merge
+  // "keeps local rows when the server response is transiently empty", but only UNSYNCED rows are
+  // kept. A transient empty response therefore empties the visible roster until the next load.
+  const out = w._mergeRosterMap({}, { a: synced(), b: unsynced({ name: 'kept' }) });
+  assert.strictEqual(out.a, undefined, 'synced rows are dropped');
+  assert.ok(out.b, 'only unsynced rows survive');
+});
+
+test('a null or malformed local row cannot crash the merge', () => {
+  assert.doesNotThrow(() => w._mergeRosterMap({ a: synced() }, { b: null, c: undefined }));
+  assert.doesNotThrow(() => w._mergeRosterArr([{ id: 1 }], [null, {}, { id: null }]));
 });

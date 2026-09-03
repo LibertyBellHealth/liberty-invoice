@@ -8832,8 +8832,10 @@ function loadCaregiversAPI() {
       // A save may have started DURING this fetch — its writes aren't in this response, so merging
       // now would show pre-save data (mirrors the guard in loadProfilesAPI).
       if (_savesInFlight > 0) { syncEnd(); return; }
-      // Merge (not replace) so an unsynced local addition isn't wiped by the load; the merge also
-      // keeps local rows when the server response is transiently empty.
+      // Merge (not replace) so an unsynced local addition isn't wiped by the load. NOTE: only
+      // UNSYNCED rows survive an empty response — a previously-synced row the server no longer
+      // returns is treated as deleted elsewhere and dropped, which is correct for a real deletion
+      // but means a transient empty response empties the visible roster until the next load.
       saveCaregiversLS(_mergeRosterMap(obj, getCaregivers()));
       // Repaint the grid now that fresh data is in — matches loadProfilesAPI/loadCaseworkersAPI.
       // Without this, a cold cache (new device/URL, or after the idle-timeout clears storage)
