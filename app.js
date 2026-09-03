@@ -2598,12 +2598,10 @@ function _renderDocLoadError(listId, retryExpr, err){
 // onto B, the ✉ button emailed A's document to B's caregiver, and ✕ deleted A's file while the
 // owner believed they were deleting B's. The DHS-1210 filing at ~2227 already guards this way.
 function _docListStillCurrent(kind, id){
-  try{
-    if(kind==='homecare')  return String(getHcClientId()||'')===String(id);
-    if(kind==='caregiver') return String(activeCgId||'')===String(id);
-    if(kind==='caseworker')return String(activeCwId||'')===String(id);
-  }catch(e){}
-  return true;
+  // Documents key on the client's DATABASE id, not the profile name, so 'homecare' is checked
+  // against getHcClientId(); the others share the general definition.
+  try{ if(kind==='homecare') return String(getHcClientId()||'')===String(id); }catch(e){ return true; }
+  return stillOn(kind, id);
 }
 function loadHcDocs(clientId){
   fetch(API_BASE+'/documents?clientType=homecare&clientId='+clientId,{headers:apiHeaders()})
@@ -4341,18 +4339,41 @@ function _revealCgSsnField(inp,id){
     .catch(function(){})
     .then(function(){ inp.dataset.fetching=''; });
 }
+// ── "Is this still the record on screen?" ──────────────────────────────────────────────────────
+// The app names the record being worked on in a global (activeProfileName / activeCgId / activeCwId).
+// That is safe to read synchronously, and NOT safe to read after an async gap — a fetch, or a
+// dialog waiting on a click — because the owner can navigate away in between. Reading it late wrote
+// one person's data onto another: documents under the wrong client (#159), a MI Login password onto
+// the wrong caregiver (#179), an invoice marked Paid on the wrong client (#167).
+//
+// Use these instead of re-deriving the check each time. Capture the id BEFORE the gap, then:
+//     var id = activeCgId;
+//     fetch(...).then(function(d){ whenStillOn('caregiver', id, function(){ ...write... }); });
+// A single definition also stops the checks drifting apart, which is its own bug source here.
+function stillOn(kind, id){
+  try{
+    var current='';
+    if(kind==='client')          current=activeProfileName||'';
+    else if(kind==='caregiver'){ var el=document.getElementById('cg-editing-id');
+                                 current=(el&&el.value)||activeCgId||''; }
+    else if(kind==='caseworker') current=activeCwId||'';
+    else return false;
+    return String(current)===String(id);
+  }catch(e){ return false; }
+}
+// Runs fn only if `id` is still the record on screen. Returns whether it ran, so a caller can
+// report a skip rather than assume success.
+function whenStillOn(kind, id, fn){
+  if(!stillOn(kind, id))return false;
+  fn();
+  return true;
+}
 // True when `id` is still the caregiver whose form is on screen. The MI Login password field is a
 // STATIC element in index.html, reused for every caregiver and merely cleared between them — so a
 // fetch started for caregiver A that lands after the owner has opened caregiver B writes A's
 // password into B's visible field, and saveCaregiver reads that field. A stored credential would be
 // copied onto the wrong person's record. Same shape as the document-list bug (#159), with a secret.
-function _miloginStillCurrent(id){
-  try{
-    var el=document.getElementById('cg-editing-id');
-    var current=(el&&el.value)||activeCgId||'';
-    return String(current)===String(id);
-  }catch(e){ return false; }
-}
+function _miloginStillCurrent(id){ return stillOn('caregiver', id); }
 function _revealMiloginField(inp,id){
   if(!inp)return;
   _revealSecret(inp);
