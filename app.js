@@ -11447,8 +11447,16 @@ function _autoGenBatchStatus(batch){
 }
 function _quickInvoiceHash(data){
   if(!data)return '';
-  // Lightweight hash of fields most likely to change with edits
+  // Every field that can be EDITED on the invoice, not just the ones "most likely to change".
+  // The old list covered service and complex hours plus the day grid, so an invoice whose grand
+  // total, previous-page total, rate or submission date the owner had corrected hashed IDENTICALLY
+  // to an untouched one — the undo banner reported it pristine and deleted the corrections with it.
+  // Undo is destructive and irreversible, so anything the owner can change has to count as a change.
   var s=[data.svcHH||'',data.svcMM||'',data.cplxHH||'',data.cplxMM||'',
+         data.p1HH||'',data.p1MM||'',data.grandHH||'',data.grandMM||'',
+         data.hourlyRate||'',data.dateSubmitted||'',data.sigDate1||'',data.sigDate2||'',
+         data.billTo||'',data.worker||'',data.medicaidId||'',data.clientName||'',
+         data.hasComplex?'1':'0',data.sigId||'',
          JSON.stringify((data.tasks&&data.tasks.svc)||[]),
          JSON.stringify((data.tasks&&data.tasks.cplx)||[])].join('|');
   // Fast 32-bit hash
