@@ -3358,8 +3358,12 @@ function bulkDeleteCaregivers(){
     'Delete '+ids.length+' caregiver'+(ids.length>1?'s':'')+'?\n\n'+preview+'\n\nThis cannot be undone.',
     function(){
       var deleted=0;
-      ids.forEach(function(id){if(cgs[id]){var _nm=cgs[id].name||'';delete cgs[id];try{deleteCaregiverAPI(id);}catch(e){}_detachDeletedRoster('caregiver',id,_nm);deleted++;}});
-      saveCaregiversLS(cgs);
+      // Writing back the pre-dialog map erased any caregiver added or edited while the dialog was
+      // open — a background roster load or another device is enough. Apply the deletions to the
+      // roster as it stands NOW.
+      var cgsNow=getCaregivers();
+      ids.forEach(function(id){if(cgsNow[id]){var _nm=cgsNow[id].name||'';delete cgsNow[id];try{deleteCaregiverAPI(id);}catch(e){}_detachDeletedRoster('caregiver',id,_nm);deleted++;}});
+      saveCaregiversLS(cgsNow);
       logActivity('delete','Bulk caregiver delete: '+deleted+' removed');
       clearCgBulkSelect();updateStats();
       showAlert(deleted+' caregiver'+(deleted!==1?'s':'')+' deleted.');
@@ -9240,8 +9244,10 @@ function _deleteSupervisorFromModal(id){
   showConfirm(
     'Delete '+name+'?'+warn+'\n\nThis cannot be undone.',
     function(){
-      delete sups[id];
-      saveSupervisorsLS(sups);
+      // Re-read: the snapshot taken to build this dialog is stale by the time it is answered.
+      var supsNow=getSupervisors();
+      delete supsNow[id];
+      saveSupervisorsLS(supsNow);
       deleteSupervisorAPI(id);
       // Unassign locally on any caseworkers that had this supervisor (server is already stateless about it)
       var arr=getCaseworkers();
@@ -9431,13 +9437,15 @@ function bulkDeleteSupervisors(){
   showConfirm(
     'Delete '+ids.length+' supervisor'+(ids.length>1?'s':'')+'?\n\n'+preview+warn+'\n\nThis cannot be undone.',
     function(){
+      // Re-read: the snapshot taken to build this dialog is stale by the time it is answered.
+      var supsNow=getSupervisors(), cwsNow=getCaseworkers();
       ids.forEach(function(id){
-        delete sups[id];
+        delete supsNow[id];
         try{deleteSupervisorAPI(id);}catch(e){}
       });
-      saveSupervisorsLS(sups);
-      cws.forEach(function(c){if(ids.indexOf(c.supervisor_id)>=0){c.supervisor_id='';saveCaseworkerAPI(c);}});
-      saveCaseworkersLS(cws);
+      saveSupervisorsLS(supsNow);
+      cwsNow.forEach(function(c){if(ids.indexOf(c.supervisor_id)>=0){c.supervisor_id='';saveCaseworkerAPI(c);}});
+      saveCaseworkersLS(cwsNow);
       logActivity('delete','Bulk supervisor delete: '+ids.length+' removed');
       clearSupBulkSelect();
       showAlert(ids.length+' supervisor'+(ids.length!==1?'s':'')+' deleted.');
@@ -9736,10 +9744,12 @@ function bulkDeleteCaseworkers(){
   showConfirm(
     'Delete '+ids.length+' caseworker'+(ids.length>1?'s':'')+'?\n\n'+preview+'\n\nClients assigned to these caseworkers will be left without a caseworker. This cannot be undone.',
     function(){
-      var keep=cws.filter(function(c){return ids.indexOf(c.id)===-1;});
+      // Filtering the pre-dialog list drops anyone added since it was taken.
+      var cwsNow=getCaseworkers();
+      var keep=cwsNow.filter(function(c){return ids.indexOf(c.id)===-1;});
       saveCaseworkersLS(keep);
       ids.forEach(function(id){
-        var _cwNm=(cws.find(function(c){return c&&c.id===id;})||{}).name||'';
+        var _cwNm=(cwsNow.find(function(c){return c&&c.id===id;})||{}).name||'';
         try{deleteCaseworkerAPI(id);}catch(e){}
         _detachDeletedRoster('caseworker', id, _cwNm);
       });
