@@ -5205,6 +5205,15 @@ function updateMissingReport(useCustom){
       '</div>';
     }).join('');
 }
+// HIPAA §164.528 — a bulk extract of client data is a disclosure and needs a record. The JSON
+// export has logged one since it was written; these three did not, so the largest extracts the app
+// offers left no trace at all.
+function _logBulkExport(what, count, noun){
+  noun=noun||'client';
+  try{
+    logActivity('export', what+' downloaded ('+count+' '+noun+(count===1?'':'s')+') by '+currentUserEmail());
+  }catch(e){ console.error('export audit failed', e); }
+}
 function exportReportExcel(){
   var profiles=getProfiles(),rows=[['Client','Medicaid ID','Billing Period','Status','Saved At','Note']];
   Object.keys(profiles).forEach(function(name){
@@ -5215,6 +5224,7 @@ function exportReportExcel(){
   var ws=XLSX.utils.aoa_to_sheet(rows);
   var wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'Invoices');
+  _logBulkExport('Invoice report spreadsheet', Math.max(0,((rows&&rows.length)||0)-1), 'invoice');
   XLSX.writeFile(wb,'liberty_invoices_'+_localYmd()+'.xlsx');
 }
 
@@ -5725,8 +5735,15 @@ function exportClientsXLSX(){
         'Billing Period':inv.billingPeriod||'',
         'Status':inv.status||'draft',
         'Saved At':inv.savedAt||'',
-        'Hours (HH.MM)':((inv.data&&inv.data.svcHH)||'')+'.'+_padMin((inv.data&&inv.data.svcMM)||''),
-        'Hourly Rate':(inv.data&&inv.data.hourlyRate)||'27.00',
+        // The GRAND total when the invoice carries one: svcHH alone omits complex care, so a
+        // complex-care invoice exported fewer hours than it billed.
+        'Hours (HH.MM)':(function(d){
+          var hh=(d&&d.grandHH)||(d&&d.svcHH)||'', mm=(d&&d.grandHH)?(d.grandMM||''):((d&&d.svcMM)||'');
+          return hh===''?'':(hh+'.'+_padMin(mm));
+        })(inv.data),
+        // The configured rate, not a hardcoded one — every reprint path falls back to stateRate().
+        // Hardcoding 27.00 meant that after a rate change the spreadsheet and the PDF disagreed.
+        'Hourly Rate':(inv.data&&inv.data.hourlyRate)||stateRate(),
         'Caseworker':p.worker||'',
         'Note':inv.invoiceNote||''
       });
@@ -5747,6 +5764,7 @@ function exportClientsXLSX(){
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(invoicesRows),'Invoices');
   if(caregiversRows.length)XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(caregiversRows),'Caregivers');
   if(caseworkersRows.length)XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(caseworkersRows),'Caseworkers');
+  _logBulkExport('Roster spreadsheet (clients, invoices, caregivers, caseworkers)', clientsRows.length);
   var fname='liberty_clients_'+_localYmd()+'.xlsx';
   XLSX.writeFile(wb,fname);
 }
@@ -5804,6 +5822,7 @@ async function _doExportClientsAsPDFFolders(clientsWithInvoices,profiles){
     if(btn)btn.textContent='Building ZIP…';
     var zipBlob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
     var url=URL.createObjectURL(zipBlob);
+    _logBulkExport('Per-client invoice PDF folders (ZIP)', (clientsWithInvoices&&clientsWithInvoices.length)||0);
     var a=document.createElement('a');a.href=url;a.download='liberty_invoices_'+_localYmd()+'.zip';
     document.body.appendChild(a);a.click();document.body.removeChild(a);
     setTimeout(function(){URL.revokeObjectURL(url);},2000);
