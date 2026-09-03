@@ -1580,15 +1580,23 @@ function changeInvStatus(sel){
       danger:true
     };
   }
+  // Captured now: the dialog below can sit open for minutes, and both the array index and the
+  // client on screen can move underneath it — a background load replaces the invoices array
+  // (re-sorted and de-duplicated) and the owner can navigate to another client. Applying to
+  // invoices[idx] of whoever is active THEN marked the wrong invoice, or the wrong client's.
+  var forClient=activeProfileName;
   function applyChange(){
     sel.className='status-select st-'+next;
-    var p2=getProfiles();var inv2=p2[activeProfileName].invoices[idx];if(!inv2)return;
+    var p2=getProfiles();
+    var rec=p2[forClient]; if(!rec||!rec.invoices)return;
+    var inv2=rec.invoices.find(function(i){return i&&i.billingPeriod===period;});
+    if(!inv2)return;
     inv2.status=next;
     // saveProfileSP already persists status via the invoice upsert; a separate status
     // PATCH here would write the same row twice and (with optimistic concurrency) make
     // the save conflict with itself, so it was removed.
-    saveProfilesLS(p2);saveProfileSP(activeProfileName,p2[activeProfileName]);
-    logActivity('status','Invoice '+period+' for '+activeProfileName+' marked '+next);
+    saveProfilesLS(p2);saveProfileSP(forClient,rec);
+    logActivity('status','Invoice '+period+' for '+forClient+' marked '+next);
     updateStats();renderOverviewPane();
   }
   if(needsConfirm){
