@@ -8769,7 +8769,14 @@ function deleteInvoiceAPI(dbId, clientName, billingPeriod, onDeleted) {
   // alive on the server, where the next load would resurrect it).
   var doDel=function(){return surfaceSaveFailure(
     fetch(API_BASE + '/invoices/' + dbId, { method: 'DELETE', headers: apiHeaders() })
-      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status); if(onDeleted) onDeleted(); return r;}),
+      .then(function(r){
+        // 404 means the row is already gone — deleted on another device, or a double click. That is
+        // the state this call is trying to reach, so treat it as done. Failing it left the invoice
+        // stuck locally with a retry that could never succeed.
+        if(!r.ok && r.status!==404)throw new Error('HTTP '+r.status);
+        if(onDeleted) onDeleted();
+        return r;
+      }),
     'Delete invoice',doDel);};
   doDel();
 }
