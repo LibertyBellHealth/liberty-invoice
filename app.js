@@ -23,12 +23,9 @@ var _IS_STAGING = (location.hostname === 'zealous-forest-01e406a10-2.centralus.7
 var API_BASE    = (_IS_LOCAL || _IS_STAGING)
   ? 'https://liberty-crm-api-dev.azurewebsites.net/api'
   : 'https://liberty-crm-api-cyb3dkhnd2e7a3cy.centralus-01.azurewebsites.net/api';
-// Backups from every environment land in the SAME OneDrive folder, and the automatic ones are
-// named by date alone — so a staging or localhost session took production's slot for that day and
-// its demo data replaced the real backup. It has already happened: the automatic file for
-// 2026-09-01 holds "Demo Patient One" and "ZZ Carrier Test", so there is no automatic backup of the
-// real clients for that day. Non-production backups are tagged so they cannot collide, and the
-// pruner keeps each environment's history separately instead of letting one evict the other.
+// Every environment writes to the same OneDrive folder and the automatic backup is named by date
+// alone, so a staging session took production's slot. Tag non-production backups and prune each
+// environment separately. see DECISIONS.md#backup-and-restore
 var _BACKUP_ENV_TAG = (_IS_LOCAL ? '_local' : (_IS_STAGING ? '_staging' : ''));
 var API_APP_ID  = '0c1627c1-c186-4e46-b919-e4a12f2f3952'; // Easy Auth app registration
 var _apiToken   = null; // cached Bearer token, refreshed automatically
@@ -546,18 +543,11 @@ function clientWasActiveInPeriod(prof,period){
   var startD=new Date(prof.startDate);
   return periodEnd>=startD;
 }
-// A client should only be flagged as "missing an invoice" for a period if they have a service
-// start date on/before that period. No start date -> we can't say they were active, so don't nag
-// (bug #10: clients with no start date, or a start date after the period, were being flagged).
-// Managed-care (carrier) clients are billed through the carrier's own software — they never get a
-// CRM invoice, so they're excluded from every invoicing/"missing invoice" surface.
+// Carrier clients bill through the carrier's own software — never a CRM invoice.
+// see DECISIONS.md#carrier-clients
 function isCarrierClient(prof){ return !!prof && prof.program==='carrier'; }
-// Owner decision (2026-08-21): only an ACTIVE client is invoiced. "In Progress" (stored as
-// 'inactive'), Lost and Terminated clients are excluded from every invoicing surface — generation,
-// the missing-invoice report, the monthly preview and the batch send. This lives here, in the single
-// predicate, because the four surfaces each carried their own inline status test and had drifted:
-// updateMissingReport relied on clientDueForInvoice, which never checked status at all, so it nagged
-// about clients who were not being served yet.
+// Only an ACTIVE client is invoiced. ONE predicate on purpose — four surfaces had their own inline
+// status tests and drifted. see DECISIONS.md#invoiceable-status
 function isInvoiceableStatus(prof){ return ((prof&&prof.clientStatus)||'active')==='active'; }
 function clientDueForInvoice(prof, period){
   return !!(prof && prof.startDate) && !isCarrierClient(prof) && isInvoiceableStatus(prof) &&
@@ -569,10 +559,8 @@ function hasAuthorization(prof){
   var a=prof&&prof.authorization; if(!a)return false;
   return a.hours!=null || (a.tasks && a.tasks.length>0) || !!a.effectiveDate;
 }
-// Stricter: the authorization actually carries APPROVED HOURS, so an invoice built from it has a
-// real Total Time. hasAuthorization() passes on an effective date alone (a partial OCR read), and
-// generating from that produced a blank-total invoice which then SATISFIED the "already has an
-// invoice for this period" check — so the client silently stopped showing as missing one.
+// Stricter than hasAuthorization: requires approved HOURS, so the invoice has a real Total Time.
+// see DECISIONS.md#authorization-gates
 function hasBillableAuthorization(prof){
   var a=prof&&prof.authorization; if(!a)return false;
   var h=a.hours; if(h==null||String(h).trim()==='')return false;
@@ -1787,13 +1775,8 @@ async function _dhsPageLines(page){
   }).filter(Boolean);
 }
 
-// The "Number of Days" column, as MDHHS actually writes it. ONE definition, used by both the
-// single-line row pattern and the OCR cell pass, and kept in step with what _dhsFreqToDays can
-// convert into service days. They had drifted: the reader accepted only "N days per week/month"
-// and "Once per week/month", so a real row reading "Twice per month" was DROPPED — the task
-// vanished from the authorization, the caregiver task sheet and the invoice day grid, while
-// _dhsFreqToDays had understood that wording all along. The form's own printed totals caught it
-// (both reconciliation checks failed by exactly the missing row), which is what they are for.
+// The "Number of Days" column as MDHHS writes it. ONE definition for the row pattern, the OCR cell
+// pass and _dhsFreqToDays — they drifted once and a "Twice per month" row was silently dropped.
 // "per week" and "a week" both appear on real paperwork, so accept either.
 var _DHS_FREQ_SRC='(?:\\d+\\s*(?:days?|times?)\\s*(?:per|a)\\s*(?:week|month)'+
   '|(?:once|twice|thrice|three\\s*times|four\\s*times|five\\s*times|six\\s*times)\\s*(?:per|a)\\s*(?:week|month)'+
@@ -2591,12 +2574,9 @@ function _renderDocLoadError(listId, retryExpr, err){
     (is401?'Your sign-in expired — <b>sign in again</b>, then ':'Couldn’t load documents (connection issue) — ')+
     'your files are safe on the server. <a href="#" style="color:#185FA5;font-weight:600;" onclick="'+retryExpr+';return false;">Retry</a></div>';
 }
-// A documents response only belongs on screen if the pane it was fetched for is STILL the one open.
-// A client with many documents lists far slower than one with few (the backend signs each blob URL
-// serially), so opening client A, switching to B, then opening B's Documents let A's later response
-// repaint B's pane — and _docEditCtx then carried A's ids. The 🔍 extract wrote A's card details
-// onto B, the ✉ button emailed A's document to B's caregiver, and ✕ deleted A's file while the
-// owner believed they were deleting B's. The DHS-1210 filing at ~2227 already guards this way.
+// A documents response only belongs on screen if that pane is STILL open — a slow list for one
+// client otherwise repaints another's, and _docEditCtx then carries the wrong ids.
+// see DECISIONS.md#current-record-across-async
 function _docListStillCurrent(kind, id){
   // Documents key on the client's DATABASE id, not the profile name, so 'homecare' is checked
   // against getHcClientId(); the others share the general definition.
@@ -2617,15 +2597,8 @@ function _docCatLabel(c){for(var i=0;i<DOC_CATS.length;i++){if(DOC_CATS[i][0]===
 // (_idCat, _CARD_TYPE) matches no matter how the document was tagged. Unknown values pass through.
 function _catKey(c){for(var i=0;i<DOC_CATS.length;i++){if(DOC_CATS[i][0]===c||DOC_CATS[i][1]===c)return DOC_CATS[i][0];}return c;}
 function _fmtDocSize(n){if(!n)return '';return n<1048576?Math.round(n/1024)+' KB':(n/1048576).toFixed(1)+' MB';}
-// Subject line for a document email. The document's own filename is NOT safe to use — files are
-// routinely named after the client ("Delanor Simpson 4676.pdf") — and neither is appending the
-// client's name, which is what both of these subjects used to do. A subject sits unencrypted in
-// server logs, backups and phone notification previews, so it names the FORM only; the body
-// already identifies the client, which is where the reader looks anyway.
-// A camera or scanner filename like IMG_4676.jpg is not the Home Help agreement. Matching a bare
-// "4676" anywhere made the draft claim "Attached is the signed MSA-4676 ... authorizing [agency] as
-// their Home Help provider" over an unrelated photo — a false authorisation statement to MDHHS.
-// Require the form's actual name, or a category that says so.
+// Names the FORM only — never the filename (routinely the client's name), never a typed category.
+// see DECISIONS.md#email-subjects
 function _isMsa4676(d, display){
   var name=String(display||'');
   if(/\bMSA[\s._-]*4676(?![0-9])/i.test(name))return true;
@@ -3469,14 +3442,7 @@ function showNewCaregiverForm(){
   var cgDocSec=document.getElementById('cgDocsSection');if(cgDocSec)cgDocSec.style.display='none';
   document.getElementById('cgFormWrap').scrollIntoView({behavior:'smooth'});
 }
-// (Removed) editCaregiver() populated the OLD inline caregiver form for an existing
-// caregiver, but caregiver editing moved to the detail view (openCgDetail via the
-// #/caregiver/<id> route + saveCgInfoPane). It had zero callers (not even a dynamic
-// onclick). The inline form now only serves "New Caregiver".
-// Build a caregiver's display name from its parts. BOTH save paths must agree: they used to differ
-// (this one dropped the middle name, the detail pane included it), so the first save from the detail
-// pane silently renamed the record — and AuditLog rows are keyed on the exact name string, so every
-// entry written under the old name became unreachable from that caregiver's Audit tab.
+// (Removed) editCaregiver() populated the old inline form, replaced by the detail pane.
 function _cgDisplayName(first,middle,last){
   return ((first||'')+((middle||'')?(' '+middle):'')+' '+(last||'')).trim();
 }
@@ -3736,10 +3702,8 @@ async function resendSigningRequest(id){
     var _mail=buildSigningEmail({name:data.recipientName||cg.name,docName:data.templateName||data.documentName||'',signUrl:data.signUrl,expiresAt:data.expiresAt,isReminder:true});
     var subject=_mail.subject;
     var body=_mail.html;
-    // The address recorded ON THE REQUEST, not the caregiver's current local record. Editing a
-    // caregiver's email after a signature request went out would otherwise silently redirect the
-    // resent link to the new address — a document sent for signature must keep going where it was
-    // originally sent, and the server's copy is the source of truth for that.
+    // The address recorded ON THE REQUEST, not the caregiver's current record: a signature request
+    // must keep going where it was originally sent.
     var emailResp=await sendMailWithPDF(data.recipientEmail,subject,body,[]);
     if(!emailResp.ok){showAlert('Created the new link but email send failed: '+(emailResp.err||emailResp.status||'unknown')+'\n\nManual link:\n'+data.signUrl);loadCgSigningRequests();return;}
     showToast('✓ New link emailed',4000);
@@ -4340,16 +4304,11 @@ function _revealCgSsnField(inp,id){
     .then(function(){ inp.dataset.fetching=''; });
 }
 // ── "Is this still the record on screen?" ──────────────────────────────────────────────────────
-// The app names the record being worked on in a global (activeProfileName / activeCgId / activeCwId).
-// That is safe to read synchronously, and NOT safe to read after an async gap — a fetch, or a
-// dialog waiting on a click — because the owner can navigate away in between. Reading it late wrote
-// one person's data onto another: documents under the wrong client (#159), a MI Login password onto
-// the wrong caregiver (#179), an invoice marked Paid on the wrong client (#167).
-//
-// Use these instead of re-deriving the check each time. Capture the id BEFORE the gap, then:
+// Capture the id BEFORE any async gap, then write through whenStillOn:
 //     var id = activeCgId;
 //     fetch(...).then(function(d){ whenStillOn('caregiver', id, function(){ ...write... }); });
-// A single definition also stops the checks drifting apart, which is its own bug source here.
+// Reading a current-record global after a gap writes one person's data onto another.
+// see DECISIONS.md#current-record-across-async
 function stillOn(kind, id){
   try{
     var current='';
@@ -5952,39 +5911,21 @@ function mergeInvoiceLists(existingInvs, importedInvs){
   existingInvs.forEach(function(inv){ if(!seen[keyOf(inv)]) out.push(inv); });
   return out;
 }
-// A restored record carries the sync baselines it had at export time: `_clientSynced` on the client and
-// `_synced` on each invoice. syncNewInvoices SKIPS any invoice whose baseline still matches its content
-// (app.js syncNewInvoices), so a restored invoice was never written back to the DB — and
-// _profileHasUnsyncedChanges then read the client as clean and let the next background load revert it.
-// Restoring a backup to undo bad invoice edits silently undid itself. Clearing the baselines forces the
-// restored data to be re-sent. dbId is deliberately KEPT so the server row is updated, not duplicated.
-// `names` limits the wipe to the clients actually being restored. Applied to the whole store it
-// marked every OTHER client permanently dirty (_profileHasUnsyncedChanges is true for any client
-// with an invoice once _synced is gone), so the local copy won a background load forever and a
-// colleague's edits on another device stopped arriving.
+// A restored record's sync baselines claim it matches the server — exactly what a restore makes
+// untrue, and nothing would ever be pushed. Cleared for the imported clients ONLY.
 function _clearSyncBaselines(store, names){
   (names || Object.keys(store||{})).forEach(function(nm){
     var p=store[nm]; if(!p||typeof p!=='object')return;
     (p.invoices||[]).forEach(function(iv){ if(iv){ delete iv._synced; delete iv.rowVersion; } });
     delete p._clientSynced;
-    // Drop the concurrency token the backup was taken with. `expected_version` means "the row I
-    // last read" — a restore has read nothing; it is a deliberate overwrite. Replaying the backup's
-    // token made every record that STILL EXISTS on the server 409, so a restore over live rows wrote
-    // nothing, said "NOT FULLY RESTORED — check your connection", and could never succeed on a
-    // retry. Worse, the stale token was persisted locally and _mergeProfilesLoad keeps the pending
-    // local copy, so the client stayed unsaveable through reloads. Restoring onto DELETED rows
-    // always worked (the 404 re-create path), which is why this hid.
+    // Drop the backup's concurrency token: a restore has read nothing, it is a deliberate
+    // overwrite. see DECISIONS.md#backup-and-restore
     delete p._rowVersion;
   });
   return store;
 }
-// Two different files can be imported, and they are NOT the same shape:
-//   • the JSON export  → { "<client name>": {...}, ... }
-//   • the OneDrive backup → { _exportedAt, _exportedBy, _appVersion, clients:{...}, caregivers:{...},
-//                             caseworkers:[...], signatures:[...] }
-// The importer used to treat every top-level key as a client name, so importing a BACKUP restored no
-// clients at all and instead created junk records called "_exportedAt", "clients", "caregivers"… —
-// i.e. the backup was not restorable by the app that wrote it, and importing one polluted the roster.
+// Two shapes are importable: the JSON export ({name:{...}}) and the OneDrive backup
+// ({clients:{...}, caregivers:{...}, ...}). Treating every top-level key as a client restored none.
 function _parseBackupFile(raw){
   var imp=JSON.parse(raw);
   if(!imp||typeof imp!=='object')throw new Error('not an object');
@@ -6209,13 +6150,9 @@ function applyFullInvoice(data){
   // path read it straight from there — so a later month could go out CERTIFIED with a signature the
   // user never placed for it.
   resetSigArea(1); resetSigArea(2);
-  // ...then put back the one this invoice was actually certified with. Resetting alone (added so a
-  // previous month's stamp could not carry over) left a REOPENED certified invoice unsigned: the
-  // PDF and email paths read the signature straight off the DOM, so Print/Email produced a form
-  // with a blank line under "I certify that...", and captureFullInvoice() read data-sig-id as ''
-  // and wrote that blank back over the stored record — after which a reprint falls back to the
-  // FIRST signature in the library, re-certifying a sent invoice under a different person.
-  // Only an explicitly stored sigId is replayed: an invoice that was never signed stays unsigned.
+  // ...then replay the signature this invoice was certified with. Reset alone left a reopened
+  // invoice unsigned, and the blank was written back over the record.
+  // Only an explicitly stored sigId is replayed. see DECISIONS.md#invoice-immutability
   try{
     if(data&&data.sigId&&typeof getSigs==='function'){
       var _sigs=getSigs()||[];
@@ -6274,14 +6211,8 @@ function saveInvoiceToClient(){
   }
   _doSaveInvoiceToClient(bp);
 }
-// Writes the on-screen invoice to the client under `bp`. The row is located by billing period HERE,
-// not by an index captured earlier: a background loadProfilesAPI replaces the whole invoices array,
-// re-sorted by saved_at and de-duplicated, and it can land while the overwrite dialog is open. The
-// old code held the pre-dialog index and status, so a sync arriving mid-dialog meant Save wrote the
-// on-screen invoice over a DIFFERENT month's row — taking that row's dbId with it, so the next sync
-// pushed this month's figures onto that month's server record and reset it to Draft. A submitted
-// invoice could be silently replaced and un-submitted, and the "already submitted" warning did not
-// fire because the status was stale too.
+// Writes the on-screen invoice under `bp`. Located by billing period HERE, not by an index taken
+// before the dialog — a sync can replace the array meanwhile. see DECISIONS.md#current-record-across-async
 function _doSaveInvoiceToClient(bp){
   aiTrack('InvoiceSaved',{client:activeProfileName,period:bp});
   var p=getProfiles();if(!p[activeProfileName])return;if(!p[activeProfileName].invoices)p[activeProfileName].invoices=[];
@@ -7394,16 +7325,9 @@ function markInvoiceSubmitted(clientName,period){
   if(!inv||inv.status==='paid')return;
   inv.status='submitted';
   saveProfilesLS(p);
-  // saveProfileSP persists the status via the invoice upsert (the changed invoice is now
-  // dirty and gets sent). The separate /status PATCH that used to run here double-wrote the
-  // row AND discarded the fresh row_version it returned — leaving a stale token that could
-  // spuriously 409 the invoice's next save — so it was removed.
-  //
-  // The result of that write was thrown away. It runs immediately after an invoice has actually
-  // been EMAILED, so a failure here leaves the invoice Submitted on this device and still Draft on
-  // the server: another device, or this one after it reloads from the server, offers it as unsent
-  // and it goes to MDHHS twice. Surface the failure with a retry, the way the invoice-note save
-  // does — the email cannot be recalled, so the owner has to know the status did not stick.
+  // saveProfileSP persists the status via the invoice upsert; no separate PATCH (it double-wrote the
+  // row and discarded the fresh row_version). This runs just after the invoice was EMAILED, so a
+  // failed write must be visible — otherwise it stays Draft on the server and goes out twice.
   var _persist=function(){
     return surfaceSaveFailure(
       Promise.resolve(saveProfileSP(clientName,p[clientName])),
@@ -8052,13 +7976,8 @@ function clearPHIFromStorage() {
   // F4: before wiping, fire any pending note save (it reads the note from LS synchronously),
   // so a note typed just before an idle-wipe / sign-out / tab-close still reaches the backend.
   try{ if(typeof _flushPendingNoteSaves==='function') _flushPendingNoteSaves(); }catch(_){}
-  // Remove ALL PHI/PII from localStorage (HIPAA idle-wipe / sign-out). Wipe every lhca_*
-  // key EXCEPT an explicit whitelist of non-PHI *settings*, so a PHI key added later is
-  // covered automatically instead of silently surviving. (The old fixed list missed
-  // lhca_email_audit, lhca_supervisors, and lhca_autogen_undo — all client-identifying.)
-  // KEEP = column widths, page sizes, the state billing rate, PDF-mode preference, and the
-  // weekly-backup timestamp (a plain date, not PHI — wiping it made the "weekly" OneDrive
-  // backup re-fire on every session, since the wipe erased its memory of the last run).
+  // Remove ALL PHI/PII from localStorage (HIPAA idle-wipe / sign-out). Pending note saves are
+  // flushed FIRST so a note typed just before the wipe still reaches the backend.
   var KEEP = /(_col_widths|_page_size)$|^lhca_state_rate$|^lhca_pdf_mode$|^lhca_last_onedrive_backup$|^lhca_agency$/;
   Object.keys(localStorage)
     .filter(function(k){ return k.indexOf('lhca_') === 0 && !KEEP.test(k); })
@@ -8515,17 +8434,8 @@ function _clientSig(d) {
     d.authorization?JSON.stringify(d.authorization):'',
   ]);
 }
-// Does a locally-cached client profile hold changes not yet confirmed by the server? True if its
-// own fields differ from the last-synced baseline, or ANY invoice is new (no dbId) or edited since
-// its baseline. Used to protect a pending/failed save from being reverted by a background load's
-// store refresh. Errs toward TRUE (keep local) on any uncertainty — the safe direction is to never
-// discard local work.
-// A DURABLE "this client has an edit the server never accepted" flag. It carries no PHI, so unlike
-// _clientSynced (whose signature embeds the SSN, and which is therefore memory-only) it can be
-// written to disk — which is the whole point: _clientSynced is absent after a cold load, so the
-// dirty check below was a no-op and a failed client-field edit read as CLEAN and got reverted by
-// the next background load. Mirrors _rosterMarkUnsaved, including the lesson from the 409 deadlock:
-// a CONFLICT means the server is newer, so it must NOT set the flag.
+// True when the local copy holds changes the server has not confirmed. Drives whether a background
+// load may replace it — keeping a dirty copy is what stops a sync reverting unsaved work.
 function _markClientUnsaved(name, failed){
   try{
     var p=getProfiles(); if(!p[name])return;
@@ -8594,17 +8504,8 @@ function _parseAuth(v){
   if(typeof v==='object')return v;
   try{return JSON.parse(v);}catch(e){return null;}
 }
-// Persist a client's invoices to SQL. New invoices (no dbId) INSERT; existing ones (with
-// dbId) send their id so the backend UPDATE branch fires — this is what makes EDITS to a
-// saved invoice (amount/status/note) actually reach the DB. Resolves only when EVERY write
-// succeeds and REJECTS otherwise, so saveProfileSP reports a real "Save failed" instead of a
-// false "Saved ✓". Existing invoices send the row_version last seen; the backend rejects a
-// stale write with 409 (optimistic concurrency). Fresh row_versions + new dbIds are written
-// back to LS in one pass. Every save path routes through here via saveProfileSP.
-// Write the outcome of a 409 to BOTH the in-memory invoice and the stored copy. `conflicted`
-// true means the server holds different content under this id: keep the local work, record the
-// server's version so an explicit overwrite is still possible, and leave rowVersion unset so
-// nothing can be written under a token this content was never derived from.
+// Persist a client's invoices to SQL. New invoices INSERT; existing ones UPDATE with their
+// row_version so a concurrent edit 409s instead of silently overwriting.
 function _adoptInvoiceConflict(name, period, savedAt, inv, dbId, rowVersion, syncedSig, conflicted, serverVer) {
   var apply = function (t) {
     if (!t) return;
@@ -8695,23 +8596,9 @@ function syncNewInvoices(name, data) {
       method: 'POST', headers: apiHeaders(), body: JSON.stringify(payload),
     }).then(function (r) {
       if (r.status === 409) {
-        // The server already holds a row for this client+period (created on another device, or a
-        // save whose response we lost). Adopt its ID: without one this invoice stays dbId-less
-        // forever, _profileHasUnsyncedChanges pins the local copy, every save is another no-id
-        // POST, and the client can never be saved again.
-        //
-        // Do NOT adopt its row_version onto this local content. `expected_version` means "the
-        // version whose content I edited". Pinning the SERVER's CURRENT version to a local copy
-        // that was never derived from it makes the backend's `AND row_version = @expectedVersion`
-        // guard compare the server against itself — so the guard passes and the write lands. And
-        // the next write is automatic, not a deliberate retry: the 409 leaves _synced unset, so
-        // the invoice is still dirty and the very next save of this client (a note, a phone
-        // number, anything) re-sent it. Optimistic concurrency silently failed at the one moment
-        // it existed for, overwriting the other device's invoice with this stale one.
-        //
-        // Instead, read what the server actually holds. Byte-identical means this was a lost
-        // response, not a conflict — adopt the token and mark it synced. Different means a real
-        // conflict: flag it, stop sending it, and make someone choose (resolveInvoiceConflict).
+        // The server already holds a row for this client+period, so this INSERT would duplicate it. Adopt
+        // the server's id and retry as an update rather than creating a second row.
+        // see DECISIONS.md#invoice-immutability
         return r.json().catch(function(){ return null; }).then(function (bodyJson) {
           if (!(bodyJson && bodyJson.id)) { conflicts.push(period || '(no period)'); return null; }
           var serverId = bodyJson.id, serverVer = bodyJson.row_version || null;
@@ -10154,13 +10041,8 @@ function saveCwInfoPane(){
   cw.first_name=first;cw.middle_name=document.getElementById('cwi-middle').value;cw.last_name=last;
   cw.name=(first+(document.getElementById('cwi-middle').value?' '+document.getElementById('cwi-middle').value:'')+' '+last).trim();
   var _cwiOrg=document.getElementById('cwi-org');if(_cwiOrg)cw.org=_cwiOrg.value;
-  // Take the agency from the form ONLY when that input is actually shown (org === 'MDHHS').
-  // This used to read the hidden input and then blank the value for any other org — which
-  // DESTROYED the Bill To on every caseworker whose org is unset (''), i.e. every one created
-  // before the org field existed. It fired on ANY save, including one that only changed the
-  // email, the field is hidden so it could not be seen or typed back, and the first symptom was
-  // invoices refusing to send with "Caseworker has no Agency set". Never silently discard it:
-  // a stale agency is visible on the invoice and fixable, a destroyed one is neither.
+  // Take the agency from the form ONLY when that input is really on screen — otherwise a hidden or
+  // absent field reads as blank and wipes the stored value.
   if((cw.org||'')==='MDHHS'){
     var _ag=document.getElementById('cwi-agency'); if(_ag)cw.agency=_ag.value;
   }
@@ -11510,11 +11392,8 @@ function _autoGenBatchStatus(batch){
 }
 function _quickInvoiceHash(data){
   if(!data)return '';
-  // Every field that can be EDITED on the invoice, not just the ones "most likely to change".
-  // The old list covered service and complex hours plus the day grid, so an invoice whose grand
-  // total, previous-page total, rate or submission date the owner had corrected hashed IDENTICALLY
-  // to an untouched one — the undo banner reported it pristine and deleted the corrections with it.
-  // Undo is destructive and irreversible, so anything the owner can change has to count as a change.
+  // EVERY editable field, not just the likely ones: undo is irreversible, so anything the owner can
+  // change must count as a change or undo deletes their corrections.
   var s=[data.svcHH||'',data.svcMM||'',data.cplxHH||'',data.cplxMM||'',
          data.p1HH||'',data.p1MM||'',data.grandHH||'',data.grandMM||'',
          data.hourlyRate||'',data.dateSubmitted||'',data.sigDate1||'',data.sigDate2||'',
@@ -11820,12 +11699,8 @@ function _dhsBuildFirstInvoice(res, prof, period){
   });
   var hours=res.hours!=null?String(res.hours):'', mins=res.minutes!=null?_padMin(res.minutes):'';
   var rate=stateRate();  // invoices always bill the flat state rate ($27), not the form's printed rate
-  // Freeze Bill To onto the invoice, the same way the rate and the caseworker NAME are frozen.
-  // Generated invoices carried none, so every reprint fell through to the live caseworker's CURRENT
-  // agency: reassign the client, or move a caseworker between organisations, and a SUBMITTED
-  // invoice reprinted with a different Bill To than the one MDHHS received — while the caseworker
-  // name stored on it stayed the old one, so the reprint contradicted itself. An invoice is a
-  // certified statement of who was billed; it is not recomputed later.
+  // Freeze Bill To, like the rate and the caseworker name: an invoice states who was billed, it is
+  // not recomputed later. see DECISIONS.md#invoice-immutability
   var _cwBill=(typeof getCaseworkers==='function'?getCaseworkers():[]).find(function(c){
     return c&&(c.id===(prof&&prof.caseworkerId)||c.name===(prof&&prof.worker));
   })||{};
@@ -11923,13 +11798,8 @@ function _startsInsidePeriod(prof,period){
     var sd=String((prof&&prof.startDate)||'').trim(); if(!sd)return false;
     var pp=String(period||'').split('/'); if(pp.length!==2)return false;
     var pm=parseInt(pp[0],10), py=parseInt(pp[1],10); if(!pm||!py)return false;
-    // _ymd, not new Date(): 'YYYY-MM-DD' is parsed by Date as UTC MIDNIGHT, and getMonth()/
-    // getDate() then read it back in local time. In Michigan (UTC-4/-5) that shifts every date
-    // back one day, so a service start on the 2nd reported day 1 — "not a partial month" — and
-    // the client fell through to auto-generation at the FULL authorized hours for a month that
-    // began on the 2nd. The day grid (_dhsBuildFirstInvoice) already used _ymd and correctly
-    // started marking on the 2nd, so the certified form carried full-month hours over a grid
-    // that showed one fewer day. Calendar dates are components, never instants.
+    // _ymd, not new Date(): 'YYYY-MM-DD' parses as UTC midnight — the PREVIOUS day in any timezone
+    // behind UTC, which once shifted a service start date back a day.
     var d=_ymd(sd); if(!d)return false;
     return (d.y===py) && (d.m===pm) && (d.d>1);
   }catch(e){ return false; }
@@ -12584,17 +12454,8 @@ function _asstOpenEmail(args){
   var cgs=getCaregivers(), cws=getCaseworkers();
   var recipient=(args.recipient||'').trim(), toEmail='', recipLabel='';
   var _is4676=/4676/i.test(args.attach_form||'');
-  // MSA-4676 routing follows the actual two-step workflow:
-  //   1. the form is generated UNSIGNED and goes to the CAREGIVER, who signs it;
-  //   2. the signed copy is filed in Documents and sent from there to the CASEWORKER
-  //      (the ✉ caseworker action on the document card).
-  // This tool only ever attaches a freshly GENERATED (unsigned) form, so with no recipient named it
-  // is step 1 — the caregiver. 'caseworker' still works when the user asks for it explicitly.
-  // The model is TOLD the opposite of this by its own tool description (the backend said an empty
-  // recipient on a 4676 routes to the caseworker and 'caregiver' is refused). So the model could omit
-  // recipient believing it goes to the caseworker, the code would address it to the CAREGIVER, and
-  // the model would then report to the owner that it went to the caseworker. Rather than pick a
-  // default and hope the description gets fixed, REFUSE to guess on a PHI-bearing form.
+  // MSA-4676 is caregiver-signs-first, then on to the caseworker — the unsigned form goes to the
+  // caregiver, the signed one is filed and forwarded.
   if(_is4676 && !recipient)
     return Promise.resolve({error:'Say who the MSA-4676 goes to: "caregiver" (step 1 — they sign the blank form) or "caseworker" (step 2 — send the SIGNED copy from the client\u2019s Documents instead). I will not guess on a form that carries PHI.'});
   if(/@/.test(recipient)){
@@ -12833,12 +12694,8 @@ function _asstTriggerDownload(blob, fname){
   var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download=fname;
   document.body.appendChild(a); a.click(); setTimeout(function(){if(a.parentNode)a.parentNode.removeChild(a); URL.revokeObjectURL(url);}, 2000);
 }
-// Today's date as YYYY-MM-DD in LOCAL time. toISOString() is UTC, so anything exported after 8pm
-// Michigan time was filed under TOMORROW's date — and for the dated auto-backup that meant the
-// evening run wrote to the next day's name and the following morning's genuine backup overwrote
-// it, silently dropping a day from the retention window.
-// Local YYYY-MM-DD for a Date. Workflow steps set REAL due dates; toISOString() is UTC, so a
-// workflow started after 8pm Michigan time dated every step a day late.
+// Today's date in LOCAL time. toISOString() is UTC, so an evening export filed under tomorrow.
+// see DECISIONS.md#backup-and-restore
 function _ymdOf(d){
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
