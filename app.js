@@ -5018,7 +5018,7 @@ function loadWfTemplate(){
   };
   wfSteps=(templates[tpl]||[]).map(function(s,i){
     var d=new Date();d.setDate(d.getDate()+s.daysFromNow);
-    return {text:s.text,due:d.toISOString().slice(0,10),id:'wf_'+i};
+    return {text:s.text,due:_ymdOf(d),id:'wf_'+i};
   });
   renderWfSteps();
 }
@@ -5036,7 +5036,7 @@ function renderWfSteps(){
 }
 function addWfStep(){
   var d=new Date();d.setDate(d.getDate()+1);
-  wfSteps.push({text:'',due:d.toISOString().slice(0,10),id:'wf_'+Date.now()});
+  wfSteps.push({text:'',due:_ymdOf(d),id:'wf_'+Date.now()});
   renderWfSteps();
 }
 function saveWorkflow(){
@@ -5215,7 +5215,7 @@ function exportReportExcel(){
   var ws=XLSX.utils.aoa_to_sheet(rows);
   var wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'Invoices');
-  XLSX.writeFile(wb,'liberty_invoices_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  XLSX.writeFile(wb,'liberty_invoices_'+_localYmd()+'.xlsx');
 }
 
 // ============================================================
@@ -5667,7 +5667,7 @@ function doExportProfiles(includeFullSSN){
     if(includeFullSSN&&typeof addAuditEntry==='function')
       Object.keys(copy).forEach(function(nm){ addAuditEntry(nm,'Included in a FULL-SSN roster export'); });
   }catch(e){ console.error('export audit failed',e); }
-  var fname='liberty_clients_'+new Date().toISOString().slice(0,10)+_BACKUP_ENV_TAG+(includeFullSSN?'_FULL':'_masked')+'.json';
+  var fname='liberty_clients_'+_localYmd()+_BACKUP_ENV_TAG+(includeFullSSN?'_FULL':'_masked')+'.json';
   var b=new Blob([JSON.stringify(copy,null,2)],{type:'application/json'}),u=URL.createObjectURL(b);
   var a=document.createElement('a');a.href=u;a.download=fname;a.click();URL.revokeObjectURL(u);
   if(includeFullSSN){
@@ -5747,7 +5747,7 @@ function exportClientsXLSX(){
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(invoicesRows),'Invoices');
   if(caregiversRows.length)XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(caregiversRows),'Caregivers');
   if(caseworkersRows.length)XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(caseworkersRows),'Caseworkers');
-  var fname='liberty_clients_'+new Date().toISOString().slice(0,10)+'.xlsx';
+  var fname='liberty_clients_'+_localYmd()+'.xlsx';
   XLSX.writeFile(wb,fname);
 }
 
@@ -5804,7 +5804,7 @@ async function _doExportClientsAsPDFFolders(clientsWithInvoices,profiles){
     if(btn)btn.textContent='Building ZIP…';
     var zipBlob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
     var url=URL.createObjectURL(zipBlob);
-    var a=document.createElement('a');a.href=url;a.download='liberty_invoices_'+new Date().toISOString().slice(0,10)+'.zip';
+    var a=document.createElement('a');a.href=url;a.download='liberty_invoices_'+_localYmd()+'.zip';
     document.body.appendChild(a);a.click();document.body.removeChild(a);
     setTimeout(function(){URL.revokeObjectURL(url);},2000);
   }catch(e){showAlert('Export failed: '+e.message);console.error(e);}
@@ -7215,7 +7215,7 @@ function _doEmailAuditCSVDownload(arr){
   var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
   var url=URL.createObjectURL(blob);
   var a=document.createElement('a');a.href=url;
-  a.download='email_audit_log_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.download='email_audit_log_'+_localYmd()+'.csv';
   document.body.appendChild(a);a.click();document.body.removeChild(a);
   setTimeout(function(){URL.revokeObjectURL(url);},2000);
 }
@@ -12281,7 +12281,9 @@ function _asstFindClient(args){
     var cw=null;
     if(p.caseworkerId)cw=cws.find(function(c){return c.id===p.caseworkerId;});
     if(!cw&&p.worker)cw=cws.find(function(c){return (c.name||'').toLowerCase()===(p.worker||'').toLowerCase();});
-    out.push({ client_name:key, status:(p.clientStatus||'active'),
+    // clientStatusLabel, not the raw value: 'inactive' is DISPLAYED as "In Progress", so the raw
+    // string told the owner five mid-onboarding clients had been dropped.
+    out.push({ client_name:key, status:clientStatusLabel(p.clientStatus||'active'),
       county:p.county||'', address:p.street||p.address||'', city:p.city||'', state:p.state||'', zip:p.zip||'',
       phone:p.phone||'', email:p.clientEmail||p.cemail||'', dob:p.dob||'', medicaid_id:p.medicaidId||'',
       caregiver: cg?{name:cg.name||'',email:cg.email||'',phone:cg.phone||''}:null,
@@ -12298,7 +12300,7 @@ function _asstClientFields(p, cgs, cws){
   var cwRec=p.caseworkerId?cws.find(function(c){return c.id===p.caseworkerId;}):null;
   var cwn=cwRec?cwRec.name:(p.worker||'');
   return {
-    status:(p.clientStatus||'active'), county:(p.county||''), city:(p.city||''), state:(p.state||''),
+    status:clientStatusLabel(p.clientStatus||'active'), county:(p.county||''), city:(p.city||''), state:(p.state||''),
     zip:(p.zip||''), address:(p.street||p.address||''), caregiver:(cg?cg.name:''), caseworker:(cwn||''),
     caregiver_email:(cg?(cg.email||''):''), caseworker_email:(cwRec?(cwRec.email||''):''),
     medicaid_id:(p.medicaidId||''), medicare:(p.medicare||''), dob:(p.dob||''),
@@ -12511,7 +12513,7 @@ function _asstFindCaregiver(args){
     if(toks.length && !toks.every(function(t){return nm.toLowerCase().indexOf(t)>=0;})) return;
     var clients=Object.keys(profs).filter(function(k){return profs[k].caregiverId===id;}).map(function(k){
       var p=profs[k];
-      return { name:k, live_in:(p.liveIn?'yes':'no'), status:(p.clientStatus||'active'),
+      return { name:k, live_in:(p.liveIn?'yes':'no'), status:clientStatusLabel(p.clientStatus||'active'),
         program:(p.program==='carrier'?'carrier':'champs') };
     });
     out.push({ caregiver_name:nm, email:cg.email||'', phone:cg.phone||'', champs_id:cg.champsId||cg.champs_id||'',
@@ -12690,8 +12692,26 @@ function _asstTriggerDownload(blob, fname){
   var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download=fname;
   document.body.appendChild(a); a.click(); setTimeout(function(){if(a.parentNode)a.parentNode.removeChild(a); URL.revokeObjectURL(url);}, 2000);
 }
+// Today's date as YYYY-MM-DD in LOCAL time. toISOString() is UTC, so anything exported after 8pm
+// Michigan time was filed under TOMORROW's date — and for the dated auto-backup that meant the
+// evening run wrote to the next day's name and the following morning's genuine backup overwrote
+// it, silently dropping a day from the retention window.
+// Local YYYY-MM-DD for a Date. Workflow steps set REAL due dates; toISOString() is UTC, so a
+// workflow started after 8pm Michigan time dated every step a day late.
+function _ymdOf(d){
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function _localYmd(){
+  var d=new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
 function _asstDownloadCsv(cols, rows, fname){
-  var q=function(v){ v=(v==null?'':String(v)); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+  // A cell starting = + - @ is executed as a formula by Excel/Sheets. Client names and notes come
+  // from OCR'd state forms, so this is untrusted text. The repo already solves it in the email-audit
+  // export (csvEscape); this one quoted only for commas and quotes, so `=HYPERLINK(...)` ran.
+  var q=function(v){ var t=String(v==null?'':v);
+    if(/^[=+\-@\t\r]/.test(t))t="'"+t;
+    return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
   var lines=[cols.map(q).join(',')].concat(rows.map(function(r){return r.map(q).join(',');}));
   _asstTriggerDownload(new Blob([lines.join('\r\n')],{type:'text/csv'}), fname);
 }
