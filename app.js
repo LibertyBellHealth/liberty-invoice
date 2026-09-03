@@ -3800,6 +3800,14 @@ async function doSendForSignature(){
   var dob=(document.getElementById('sendSigDob').value||'').trim();
   if(!tplId){errEl.textContent='Pick a document template.';errEl.style.display='block';return;}
   if(!/^\d{4}-\d{2}-\d{2}$/.test(dob)){errEl.textContent='Enter the recipient\'s date of birth (used for identity verification).';errEl.style.display='block';return;}
+  // Refuse BEFORE creating anything. Without this the backend created a real signing request —
+  // token, expiry, audit row — and only then failed to email it, leaving a dangling request and an
+  // error that read as though the document had been sent. Mirrors the document-email paths, which
+  // check for an address up front.
+  if(!cg||!(cg.email||'').trim()){
+    errEl.textContent='No email address on file for '+((cg&&cg.name)||'this caregiver')+'. Add one on their profile, then send the link.';
+    errEl.style.display='block';return;
+  }
   btn.disabled=true;btn.textContent='Creating link…';
   try{
     // 1. Backend creates the request and returns the sign URL
