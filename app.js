@@ -592,7 +592,7 @@ function renderAttentionPanel(){
   }
   var stale=[];Object.keys(p).forEach(function(k){(p[k].invoices||[]).forEach(function(inv){if(inv.status==='submitted'){var age=(new Date()-new Date(inv.savedAt))/(1000*60*60*24);if(age>30)stale.push(1);}});});
   if(stale.length)items.push({cls:'attn-danger',count:stale.length,label:stale.length+' submitted invoice'+(stale.length>1?'s':'')+' pending 30+ days — follow up on payment',fn:'openAllInvoicesModal("outstanding")'});
-  var overdueTasks=getTodos().filter(function(t){return !t.done&&t.due&&new Date(t.due)<new Date();});
+  var overdueTasks=getTodos().filter(function(t){return !t.done&&t.due&&_isOverdueYmd(t.due);});
   if(overdueTasks.length)items.push({cls:'attn-warn',count:overdueTasks.length,label:overdueTasks.length+' overdue task'+(overdueTasks.length>1?'s':''),fn:'navTasks()'});
   if(!items.length)items.push({cls:'attn-ok',count:'',label:'No items require attention today',fn:null});
   panel.innerHTML=items.map(function(it){
@@ -917,7 +917,7 @@ function renderOverviewPane(){
   var tasksHtml='';
   if(clientTasks.length){
     tasksHtml=clientTasks.slice(0,4).map(function(t){
-      var overdue=t.due&&new Date(t.due)<new Date();
+      var overdue=t.due&&_isOverdueYmd(t.due);
       return '<div class="ov-inv-row" style="cursor:pointer;" onclick="navTasks()" title="Go to Tasks">'+
         '<span style="font-size:11px;'+(overdue?'color:#b03030;font-weight:600;':'color:#1a2b45;')+'">'+esc(t.text)+'</span>'+
         (t.due?'<span style="font-size:10px;color:'+(overdue?'#b03030':'#5c7590')+';">'+t.due+'</span>':'')+
@@ -4784,6 +4784,18 @@ function toggleTodo(id){
   if(t){t.done=!t.done;t.doneAt=t.done?new Date().toLocaleString():null;}
   saveTodos(todos);if(t) saveTaskAPI(t);renderTodos();updateTaskBadge();
 }
+// A due date is a calendar DAY, not an instant. `new Date('2026-09-04') < new Date()` parses the
+// due date as UTC midnight — 8pm the PREVIOUS EVENING in Michigan — so a task due today read as
+// overdue all day, and tomorrow's task turned red at 8pm tonight. Compare calendar dates as text.
+// The codebase already avoids `new Date(...)` on stored dates elsewhere; see _ymd.
+function _todayYmd(){
+  var d=new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function _isOverdueYmd(due){
+  due=String(due||'').slice(0,10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(due) ? (due < _todayYmd()) : false;
+}
 function deleteTodo(id){
   // Use string-coerced comparison so legacy DB tasks (numeric IDs) match too
   var toDelete=getTodos().find(function(x){return String(x.id)===String(id);});
@@ -4865,7 +4877,7 @@ function renderTodos(filterClient){
 
       function renderTaskRow(t,opts){
         opts=opts||{};
-        var overdue=t.due&&new Date(t.due)<now;
+        var overdue=t.due&&_isOverdueYmd(t.due);
         var isFollowUp=!!opts.followUp;
         var item=document.createElement('div');item.className='todo-item';
         var indentStyle=isFollowUp?'margin-left:32px;':'';
@@ -4939,7 +4951,7 @@ function renderTodos(filterClient){
 }
 function updateTaskBadge(){
   var overdue=getTodos().filter(function(t){
-    return !t.done&&t.due&&new Date(t.due)<new Date();
+    return !t.done&&t.due&&_isOverdueYmd(t.due);
   }).length;
   var badge=document.getElementById('taskBadge');
   if(badge){badge.style.display=overdue?'inline':'none';badge.textContent=overdue;}
