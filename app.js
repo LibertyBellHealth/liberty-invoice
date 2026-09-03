@@ -3738,7 +3738,11 @@ async function resendSigningRequest(id){
     var _mail=buildSigningEmail({name:data.recipientName||cg.name,docName:data.templateName||data.documentName||'',signUrl:data.signUrl,expiresAt:data.expiresAt,isReminder:true});
     var subject=_mail.subject;
     var body=_mail.html;
-    var emailResp=await sendMailWithPDF(cg.email,subject,body,[]);
+    // The address recorded ON THE REQUEST, not the caregiver's current local record. Editing a
+    // caregiver's email after a signature request went out would otherwise silently redirect the
+    // resent link to the new address — a document sent for signature must keep going where it was
+    // originally sent, and the server's copy is the source of truth for that.
+    var emailResp=await sendMailWithPDF(data.recipientEmail,subject,body,[]);
     if(!emailResp.ok){showAlert('Created the new link but email send failed: '+(emailResp.err||emailResp.status||'unknown')+'\n\nManual link:\n'+data.signUrl);loadCgSigningRequests();return;}
     showToast('✓ New link emailed',4000);
     logActivity('signing','Resent signing request to '+data.recipientName);
