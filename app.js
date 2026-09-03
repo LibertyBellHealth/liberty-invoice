@@ -2305,10 +2305,14 @@ function exportCaregiverTaskSheet(){
   var reassess=a.reassessDate||'';
   var totalHours=(a.hours!=null)? a.hours+'h '+(a.minutes||0)+'m' : '';
 
+  // The padded schedule — the same rows the Authorization tab shows. This was read from an
+  // undeclared global, so the whole export threw a ReferenceError before opening anything and the
+  // button did nothing at all, silently. The declaration lived in renderAuthPane.
+  var _sheetTasks=_taskSheetPaddedTasks(a.tasks, (a.hours!=null)?(a.hours*60+(a.minutes||0)):0);
   // Build rows: task · time per day · number of days · time per month
   // Intentionally omits Amount and any $/hr — the caregiver never needs to
   // see the rate, and Row asked for this specifically.
-  var rows=(a.tasks||[]).map(function(t){
+  var rows=_sheetTasks.map(function(t){
     return '<tr>'+
       '<td>'+_escHtml(t.task||'')+'</td>'+
       '<td class="c">'+_escHtml(t.perDay||'—')+'</td>'+
@@ -2427,7 +2431,11 @@ async function shareCaregiverTaskImage(){
   var clientName=_caregiverClientLabel(prof, activeProfileName), esc=_escHtml;  // first name + last initial (PHI-minimized)
   var totalHours=(a.hours!=null)?(a.hours+'h '+(a.minutes||0)+'m'):'';
   var td='padding:7px 9px;border-bottom:1px solid #edf1f6;', tdc=td+'text-align:center;color:#334a68;';
-  var rows=(a.tasks||[]).map(function(t){
+  // Pad here too. The image is what actually reaches the caregiver's phone; built from the raw
+  // authorization it showed LESS time than the sheet and the Authorization tab, so the caregiver
+  // worked a schedule that under-delivers — the very thing the padding exists to prevent.
+  var _imgTasks=_taskSheetPaddedTasks(a.tasks, (a.hours!=null)?(a.hours*60+(a.minutes||0)):0);
+  var rows=_imgTasks.map(function(t){
     return '<tr><td style="'+td+'">'+esc(t.task||'')+'</td>'+
       '<td style="'+tdc+'">'+esc(t.perDay||'—')+'</td>'+
       '<td style="'+tdc+'">'+esc(t.freq||'')+'</td>'+
