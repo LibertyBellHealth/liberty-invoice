@@ -2715,6 +2715,10 @@ function _openDocEmailModal(d, to, subject, body, opts){
   var ov=document.createElement('div');ov.className='modal-overlay open';
   ov.innerHTML='<div class="modal-box" style="max-width:520px;">'+
     '<h3>'+(d?'Email document':'Compose email')+'</h3>'+
+    // A warning about the RECIPIENT has to reach the person clicking Send. The assistant's
+    // off-roster check produced one but only returned it to the model, so whether the owner ever
+    // saw it depended on the model choosing to repeat it.
+    (opts.warn?('<div style="background:#fff3cd;border:1px solid #ffeaa7;color:#856404;font-size:12px;padding:8px 10px;border-radius:6px;margin:6px 0;">'+esc(opts.warn)+'</div>'):'')+
     '<p style="font-size:12px;color:#5c7590;margin-top:-4px;">'+(d?('Sends “'+esc(_lbl)+'” as an attachment from your Microsoft account. '):'Sends from your Microsoft account. ')+'Edit anything below before sending.</p>'+
     '<label class="qc-l" for="dem-to">To</label><input id="dem-to" class="qc-i" value="'+esc(to)+'" placeholder="caregiver@email.com">'+
     '<label class="qc-l" for="dem-subj">Subject</label><input id="dem-subj" class="qc-i" value="'+esc(subject)+'">'+
@@ -12143,6 +12147,8 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
 // user's Microsoft token. Nothing is ever sent without the owner reviewing it in the compose modal.
 // ═══════════════════════════════════════════════════════════════════════════════
 var _asstMessages=[], _asstBusy=false, _asstOpen=false;
+// One assistant confirmation at a time — see update_client for why.
+var _asstConfirmPending=false;
 
 // The non-PHI facts the model needs to sign emails + greet by time of day. Sent each turn.
 function _asstContext(){
@@ -12382,7 +12388,9 @@ function _asstOpenEmail(args){
   }
   var subject=(args.subject||'').trim(), body=(args.body||'').trim();
   var attach=(args.attach_form||'none');
-  var openIt=function(d){ _openDocEmailModal(d,toEmail,subject,body,{auditClient:key});
+  var _recipWarn=/^\u26a0/.test(recipLabel)
+    ? (recipLabel+'. Check this address before sending — it is not on this client\u2019s record.') : '';
+  var openIt=function(d){ _openDocEmailModal(d,toEmail,subject,body,{auditClient:key,warn:_recipWarn});
     var out={opened:true, to:toEmail, recipient:recipLabel, attached:(d?(d.displayName||d.name):'nothing')};
     // Tell the model what happens next so it can say it, rather than inventing a next step.
     if(_is4676&&/^caregiver/.test(recipLabel))
@@ -12564,12 +12572,26 @@ function _asstUpdateClient(args){
   if(prop==='program'){ value=(/carrier|managed/i.test(value))?'carrier':'champs'; }
   var label=(args.field||prop);
   if(typeof showConfirm!=='function')return {error:'Confirm UI unavailable.'};
+  // showConfirm is ONE modal and clones away the previous handler every time it is called. The chat
+  // loop runs a turn's tool calls back to back, so a second update_client silently replaced the
+  // first's dialog: the owner saw only the last one while the model was told both had been put to
+  // them — and the visible text could swap between reading it and clicking, approving a change they
+  // never read. Allow one at a time.
+  if(_asstConfirmPending)
+    return {error:'A confirmation is already open. Ask the user to answer it, then request the next change — they can only be reviewed one at a time.'};
+  _asstConfirmPending=true;
   showConfirm('Set '+key+'’s '+label+' to “'+(value||'(blank)')+'”?', function(){
-    p[prop]=value; saveProfilesLS(profs); if(typeof saveProfileSP==='function')saveProfileSP(key,p);
+    _asstConfirmPending=false;
+    // Re-read: `profs` was captured before this dialog, and writing it back reverted anything
+    // changed while it sat open — another tab, or a background load.
+    var profsNow=(typeof getProfiles==='function')?getProfiles():profs;
+    var pNow=profsNow[key];
+    if(!pNow){ if(typeof showAlert==='function')showAlert('“'+key+'” is no longer available, so the change was NOT applied.'); return; }
+    pNow[prop]=value; saveProfilesLS(profsNow); if(typeof saveProfileSP==='function')saveProfileSP(key,pNow);
     if(typeof addAuditEntry==='function')addAuditEntry(key,'Updated '+label+' via Assistant');
     if(typeof showToast==='function')showToast('✓ Updated '+key+'’s '+label,3000);
     if(activeProfileName===key && typeof renderInfoPane==='function'){try{renderInfoPane();}catch(e){}}
-  },{title:'Update Client',okText:'Update'});
+  },{title:'Update Client',okText:'Update',onCancel:function(){_asstConfirmPending=false;}});
   return { opened:true, note:'Asked the user to confirm the change (not applied until they click Update).' };
 }
 // ── Export helpers ── build + download a file from a list of rows.
