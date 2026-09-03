@@ -9,12 +9,55 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Allura&family=Caveat:wght@500&family=Cedarville+Cursive&family=Dancing+Script:wght@600&family=Great+Vibes&family=Indie+Flower&family=Italianno&family=Marck+Script&family=Mr+Dafoe&family=Patrick+Hand&family=Sacramento&display=swap" rel="stylesheet">
 <!-- ── Azure Application Insights — server-side audit logging ── -->
+<script src="https://js.monitor.azure.com/scripts/b/ai.3.gbl.min.js" crossorigin="anonymous"></script>
 <script type="text/javascript">
-!function(T,l,y){var S=T.location,k="script",D="instrumentationKey",C="ingestionendpoint",I="disableExceptionTracking",E="ai.device.",b="toLowerCase",w="crossOriginFailed",N="hi.device.",O="name",L="path",P="user",q="id",H="url",B="ingestionendpoint",F=function(e){var a=e.getAttribute;return a?a.call(e,"type"):""},j=function(){var e=document.getElementsByTagName(k);return e.length>0?e[e.length-1]:null},R=function(e){var a,t=e&&e.getAttribute;if(t&&(a=t.call(e,"data-website-id"))){return a}return null},A=function(e){return"function"==typeof e},s=function(e,a){return e[a]||{}},f=function(){return T[y.dle||"appInsights"]||{trackException:function(){},trackEvent:function(){},trackPageView:function(){},setAuthenticatedUserContext:function(){},clearAuthenticatedUserContext:function(){}}},G=function(){return T[y.dle||"appInsights"]},V=function(){},U=T,r=[];function g(e,a){r.push(arguments)}U[y.dle||"appInsights"]={queue:r,version:2,config:y.cfg};var h=document,m=h.createElement(k);m.src=y.src;m.crossOrigin="anonymous";var p=j();p?p.parentNode.insertBefore(m,p):h.getElementsByTagName("head")[0].appendChild(m);T[y.dle||"appInsights"]=function(e,a){for(var t=0;t<r.length;t++)r[t].apply(null,arguments);r=[]};}(window,document,{
-  src:"https://js.monitor.azure.com/scripts/b/ai.3.gbl.min.js",
-  crossOrigin:"anonymous",
-  cfg:{connectionString:"InstrumentationKey=5521b7a7-3097-4437-9d50-9b48d102ba6f;IngestionEndpoint=https://centralus-2.in.applicationinsights.azure.com/;LiveEndpoint=https://centralus.livediagnostics.monitor.azure.com/;ApplicationId=092534a1-fc51-4e3e-92ba-b02cd6e4a49f"}
-});
+/* Application Insights, initialised explicitly instead of through the loader snippet.
+
+   The snippet that used to be here was CORRUPTED. It built the object the SDK reads its
+   configuration from —
+
+       window.appInsights = {queue: r, version: 2, config: y.cfg};
+
+   — appended the SDK script element, and then, on its very last statement, overwrote it with a
+   queue-flushing FUNCTION before that script had loaded. The SDK therefore started with no config
+   at all, saw a function where it expected its own instance, and bailed out down the
+   "V1 API compatibility is no longer supported" path — leaving window.appInsights as that
+   function: no trackEvent, no core, never initialised.
+
+   aiTrack() below returns early on `!ai.trackEvent`, so EVERY telemetry event this app has ever
+   raised was silently dropped, and the URL-scrubbing initializer never attached either. The
+   connection string was never the problem — Liberty Bell Health's CRM carried the same corrupted
+   snippet and failed the same way with an instrumentation key. Verified in the live browser
+   before changing anything.
+
+   Initialising directly is a few auditable lines instead of minified third-party glue, and it
+   fails safe: if anything here throws, window.appInsights stays undefined and aiTrack no-ops
+   exactly as it does today. */
+(function(){
+  try{
+    var AI = window.Microsoft && window.Microsoft.ApplicationInsights;
+    if(!AI || !AI.ApplicationInsights){ console.warn('App Insights SDK did not load — telemetry is off.'); return; }
+    var ai = new AI.ApplicationInsights({ config: {
+      // LiveEndpoint is deliberately omitted: live metrics are not used and that host is not in
+      // our CSP's connect-src.
+      connectionString: "InstrumentationKey=5521b7a7-3097-4437-9d50-9b48d102ba6f;IngestionEndpoint=https://centralus-2.in.applicationinsights.azure.com/"
+    }});
+    // Strip query strings and URL fragments from the SDK's AUTO-captured telemetry (fetch/XHR
+    // dependency URLs and the page-view uri) before it leaves the browser — those URLs can carry
+    // a patient name (e.g. /audit?client=<name>, #/client/<name>). Attached BEFORE
+    // loadAppInsights() so nothing sent during start-up escapes unscrubbed; the retry loop this
+    // replaces could only attach once the SDK was already running.
+    ai.addTelemetryInitializer(function(env){
+      try{
+        var strip=function(u){ return typeof u==='string' ? u.split('#')[0].split('?')[0] : u; };
+        var b=env&&env.baseData;
+        if(b){ ['uri','name','data','target'].forEach(function(f){ if(b[f]) b[f]=strip(b[f]); }); }
+      }catch(e){}
+    });
+    ai.loadAppInsights();
+    window.appInsights = ai;
+  }catch(e){ console.warn('App Insights init failed — telemetry is off.', e); }
+})();
 // Helper: track HIPAA-relevant events with signed-in user context.
 // Uses AppInsights SDK v3 API (single-arg event with properties merged in).
 // HIPAA minimum-necessary: NEVER send patient/staff identifiers to telemetry. _aiScrub
@@ -37,24 +80,6 @@ function aiTrack(name, props){
     ai.trackEvent({name:String(name),properties:properties});
   }catch(e){}
 }
-// Strip query strings + URL fragments from the SDK's AUTO-captured telemetry (fetch/XHR
-// dependency URLs and the page-view uri) before it leaves the browser — those URLs can carry
-// a patient name (e.g. /audit?client=<name>, #/client/<name>). Registered once the real SDK
-// has loaded (the inline snippet above only stubs trackEvent et al.).
-(function attachAIScrubInitializer(tries){
-  var ai=window.appInsights;
-  if(ai&&typeof ai.addTelemetryInitializer==='function'){
-    ai.addTelemetryInitializer(function(env){
-      try{
-        var strip=function(u){ return typeof u==='string' ? u.split('#')[0].split('?')[0] : u; };
-        var b=env&&env.baseData;
-        if(b){ ['uri','name','data','target'].forEach(function(f){ if(b[f]) b[f]=strip(b[f]); }); }
-      }catch(e){}
-    });
-    return;
-  }
-  if(tries>0) setTimeout(function(){ attachAIScrubInitializer(tries-1); },300);
-})(20);
 </script>
 <link rel="stylesheet" href="styles.css?v=20260707r">
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js" integrity="sha384-yXVL3cgcbuPa1TOmTYdr5MVOeFWnnXoYXcSIPBJ4lrnGHn8EZrbyurhG/xZMygBB" crossorigin="anonymous"></script>
