@@ -1701,8 +1701,10 @@ function renderNotesPane(){
       // after the first attempt, from a different client's pane. Computed once, a retry that
       // succeeds ticks "Saved ✓" under whoever is on screen then.
       var doSave=function(){
+        var pAt=getProfiles();
+        if(!pAt[clientName])return Promise.resolve();
         var flash=stillOn('client',clientName)?'notesSavedFlash':null;
-        return flashQuietSave(saveProfileSP(clientName,p2[clientName],true),flash,'Client note ('+clientName+')',doSave);
+        return flashQuietSave(saveProfileSP(clientName,pAt[clientName],true),flash,'Client note ('+clientName+')',doSave);
       };
       doSave();
     });
@@ -3780,7 +3782,14 @@ async function viewSigningAudit(id){
 // Graph (existing spToken) to email the recipient the secure link.
 async function openSendForSignatureModal(){
   if(!activeCgId){showAlert('Open a caregiver first.');return;}
-  var cg=getCaregivers()[activeCgId];if(!cg){showAlert('Caregiver not found.');return;}
+  // Capture the caregiver AND their id together, BEFORE the templates fetch below. The modal body
+  // is built from `cg`, so if the id is re-read from the global afterwards the two describe
+  // different people: the dialog names one caregiver while its stamp names whoever the operator
+  // clicked during the fetch. The Send guard then compares that stamp against the same drifted
+  // global, agrees with itself, and emails the link to the wrong person — a guard that validates
+  // the wrong thing is worse than none, because it reads as protection.
+  var sigCgIdAtOpen=activeCgId;
+  var cg=getCaregivers()[sigCgIdAtOpen];if(!cg){showAlert('Caregiver not found.');return;}
   if(!cg.email){showAlert('This caregiver has no email on file. Add one in their Profile tab first.',{title:'Email Required'});return;}
 
   var templates=[];
@@ -3796,7 +3805,7 @@ async function openSendForSignatureModal(){
   // The modal IS the captured context: it names this caregiver and their email address in its own
   // body, and it stays on screen until dismissed. Stamp the id so the Send handler acts on who the
   // modal says, rather than re-reading the global at click time.
-  ov.dataset.cgId=activeCgId;
+  ov.dataset.cgId=sigCgIdAtOpen;
   var tplOptions=templates.length
     ? templates.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+(t.version?' ('+esc(t.version)+')':'')+'</option>';}).join('')
     : '<option value="">No templates yet — use Settings → Signing Templates to upload one</option>';
@@ -3990,17 +3999,16 @@ function renderCgNotesPane(){
     // Debounce the backend save, but register it so a tab-close can flush it (F4). Keying by
     // caregiver also cancels this caregiver's own pending save across re-renders of the pane.
     _scheduleNoteSave('caregiver:'+cgId, function(){
-      var cgs2=getCaregivers(); if(!cgs2[cgId])return;
-      // D8: only claim "Saved ✓" after the API resolves; surface failure otherwise. The flash
-      // element belongs to whoever is on screen NOW, so tick it only if that is still this
-      // caregiver — but never suppress the failure report, which names the caregiver: the note is
-      // lost whether or not you navigated away.
-      var label='Caregiver note ('+((cgs2[cgId]&&cgs2[cgId].name)||cgId)+')';
-      // Recomputed per attempt — doSave is the retry handler too, and a retry can fire from a
-      // different caregiver's pane long after the first attempt failed.
+      if(!getCaregivers()[cgId])return;
+      // doSave is also the retry handler and can fire much later, so read the record and the flash
+      // target at each attempt. Holding either sent stale notes over newer ones, or ticked
+      // "Saved ✓" under whoever was on screen by then.
       var doSave=function(){
+        var cgsAt=getCaregivers(),rec=cgsAt[cgId];
+        if(!rec)return Promise.resolve();
         var flash=stillOn('caregiver',cgId)?'cgNotesSavedFlash':null;
-        return flashQuietSave(saveCaregiverAPI(cgId,cgs2[cgId],true),flash,label,doSave);
+        return flashQuietSave(saveCaregiverAPI(cgId,rec,true),flash,
+          'Caregiver note ('+(rec.name||cgId)+')',doSave);
       };
       doSave();
     });
@@ -7401,6 +7409,9 @@ function _emailSig(){return '<p>'+_emailClose()+'<br><b>Thomas Jaboro</b><br>Lib
 // ── Send single invoice email ─────────────────────────────────
 async function sendEmail(){
   var cn=document.getElementById('clientName').value.trim();
+  // cn is what prints on the PDF; forClient is whose record this invoice belongs to. They are not
+  // the same thing — the name on the form is editable — so capture the record before any gap.
+  var forClient=activeProfileName;
   // In Progress (stored 'inactive'), Lost and Terminated clients are never invoiced. Every BULK
   // surface enforces that; these three per-client entry points checked only for a carrier client,
   // so an invoice for a terminated client could be created and emailed one at a time.
@@ -7441,14 +7452,16 @@ async function sendEmail(){
   // so a drift filed this invoice under a different client while emailing the first client's PDF.
   //
   // When they disagree we do not get to pick one. This path sends a document out of the building.
-  if(cn&&!stillOn('client',cn)){
-    showAlert('This invoice is for “'+cn+'”, but a different client is open now. Nothing has been sent.\n\nReopen '+cn+' and send again if that is who you meant.',
-      {title:'Wrong client open'});
+  // The dialog above is a real gap: hashchange reassigns activeProfileName on Back/Forward with no
+  // click on the page. Sending a document out of the building is not something to do on a guess.
+  if(forClient&&!stillOn('client',forClient)){
+    showAlert('The open client changed while this invoice was being prepared. Nothing has been sent.\n\nReopen “'+forClient+'” and send again.',
+      {title:'Client changed'});
     return;
   }
   // If no email cached, try to look up from caseworker record
-  if(!ae&&cn){
-    var prof2=getProfiles()[cn]||{};
+  if(!ae&&forClient){
+    var prof2=getProfiles()[forClient]||{};
     var cwRec2=getCaseworkers().find(function(c){return c.id===prof2.caseworkerId||c.name===prof2.worker;})||{};
     ae=cwRec2.email||'';
     if(ae){var ef=document.getElementById('activeAgentEmail');if(ef)ef.value=ae;}
@@ -7464,21 +7477,21 @@ async function sendEmail(){
     // Persist whatever's currently in the form BEFORE sending — so the saved record matches
     // what the caseworker received. Otherwise the PDF can be emailed with values the user
     // typed but never clicked Save on, and the stored invoice ends up out of sync.
-    if(cn&&bp){
+    if(forClient&&bp){
       var pSE=getProfiles();
-      if(pSE[cn]){
-        if(!pSE[cn].invoices)pSE[cn].invoices=[];
-        var idxSE=pSE[cn].invoices.findIndex(function(i){return i.billingPeriod===bp;});
+      if(pSE[forClient]){
+        if(!pSE[forClient].invoices)pSE[forClient].invoices=[];
+        var idxSE=pSE[forClient].invoices.findIndex(function(i){return i.billingPeriod===bp;});
         var snapshot=captureFullInvoice();
         if(idxSE>=0){
-          var existing=pSE[cn].invoices[idxSE];
+          var existing=pSE[forClient].invoices[idxSE];
           if(existing.status!=='paid'){
-            pSE[cn].invoices[idxSE]=Object.assign({},existing,{savedAt:new Date().toLocaleString(),data:snapshot});
+            pSE[forClient].invoices[idxSE]=Object.assign({},existing,{savedAt:new Date().toLocaleString(),data:snapshot});
           }
         } else {
-          pSE[cn].invoices.unshift({billingPeriod:bp,savedAt:new Date().toLocaleString(),status:'draft',invoiceNote:'',data:snapshot});
+          pSE[forClient].invoices.unshift({billingPeriod:bp,savedAt:new Date().toLocaleString(),status:'draft',invoiceNote:'',data:snapshot});
         }
-        saveProfilesLS(pSE);saveProfileSP(cn,pSE[cn]);
+        saveProfilesLS(pSE);saveProfileSP(forClient,pSE[forClient]);
       }
     }
     var base64=await captureInvoicePDF();
@@ -8926,6 +8939,7 @@ function saveCaregiverAPI(id, cg, quiet) {
     return fetch(API_BASE + '/caregivers', {
       method: 'POST', headers: apiHeaders(),
       body: JSON.stringify(body),
+      keepalive: true,   // survives tab close, so the pagehide note flush can actually deliver
     }).then(function(r){
       if (r.status === 409) {
         var ce = new Error("This caregiver's info was changed by someone else. Reload to get the latest, then re-apply your edit.");
@@ -9095,6 +9109,7 @@ function saveCaseworkerAPI(cw, quiet){
     delete body._unsaved;      // internal failed-save marker, not a DB column
     return fetch(API_BASE + '/caseworkers', {
       method: 'POST', headers: apiHeaders(), body: JSON.stringify(body),
+      keepalive: true,   // as above
     }).then(function(r){
       if (r.status === 409) {
         var ce = new Error("This caseworker's info was changed by someone else. Reload to get the latest, then re-apply your edit.");
@@ -10156,15 +10171,14 @@ function renderCwNotesPane(){
     if(recNow){ recNow.notes=val; saveCaseworkersLS(arrNow); }
     // Debounce the backend save, but register it so a tab-close can flush it (F4).
     _scheduleNoteSave('caseworker:'+cwId, function(){
-      var arr2=getCaseworkers();
-      var rec2=arr2.find(function(x){return x.id===cwId;});
-      if(!rec2)return;
-      // D8: only claim "Saved ✓" after the API resolves; surface failure otherwise. Tick the flash
-      // only if this caseworker is still on screen — but never suppress the failure report.
-      var label='Caseworker note ('+(rec2.name||cwId)+')';
+      var findCw=function(){return getCaseworkers().find(function(x){return x.id===cwId;});};
+      if(!findCw())return;
       var doSave=function(){
+        var rec=findCw();
+        if(!rec)return Promise.resolve();
         var flash=stillOn('caseworker',cwId)?'cwNotesSavedFlash':null;
-        return flashQuietSave(saveCaseworkerAPI(rec2,true),flash,label,doSave);
+        return flashQuietSave(saveCaseworkerAPI(rec,true),flash,
+          'Caseworker note ('+(rec.name||cwId)+')',doSave);
       };
       doSave();
     });

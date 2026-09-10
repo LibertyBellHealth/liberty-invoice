@@ -144,3 +144,31 @@ test('opening the dialog stamps the caregiver it was built for onto the modal', 
     'without the stamp the Send handler has nothing to act on but the global');
   mdl.remove();   // leave the document as the hand-built scaffold found it
 });
+
+// openSendForSignatureModal awaits a templates fetch BEFORE it builds the modal, and no overlay is
+// on screen during that fetch — the whole page is clickable. The body was built from a caregiver
+// captured before the await while the stamp was re-read from the global after it, so the dialog
+// named one person and its stamp named another. The Send guard then compared that stamp against
+// the same drifted global, agreed with itself, and sent to the wrong caregiver.
+test('a caregiver clicked while the templates load does not hijack the dialog', async () => {
+  const w = app({ email: 'sam@example.com' });
+  w.saveCaregiversLS({
+    cg1: { name: 'Sam Carer', email: 'sam@example.com' },
+    cg2: { name: 'Dana Other', email: 'dana@example.com' },
+  });
+  w.activeCgId = 'cg1';
+  let release;
+  w.fetch = () => new Promise((res) => { release = () => res({ ok: true, status: 200,
+    json: () => Promise.resolve([{ id: 7, name: 'MSA-4676', is_active: true }]) }); });
+
+  const opening = w.openSendForSignatureModal();
+  w.activeCgId = 'cg2';          // operator clicks another caregiver while templates are loading
+  release();
+  await opening;
+
+  const mdl = w.document.getElementById('sendSigModal');
+  assert.ok(/Sam Carer/.test(mdl.textContent), 'the body is built from the pre-await caregiver');
+  assert.strictEqual(mdl.dataset.cgId, 'cg1',
+    'the stamp must name the same caregiver the dialog names, not whoever was clicked mid-fetch');
+  mdl.remove();
+});
