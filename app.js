@@ -2299,6 +2299,37 @@ function _taskSheetPaddedTasks(tasks, authMin){
   });
   return list;
 }
+// "126" -> "2h 6m", matching how the sheet already prints the approved monthly total.
+function _hmText(min){
+  if(!(min>0))return '';
+  var h=Math.floor(min/60), m=min%60;
+  return h ? (h+'h '+m+'m') : (m+'m');   // a sub-hour group reads "15m", not "0h 15m"
+}
+// The average above answers "roughly how much a day"; it cannot answer "how long is TODAY",
+// because a 7-day task and a 1-day-per-week task never fall on the same visit twice. Group the
+// rows by how often they run and total each group: the caregiver adds up whichever lines apply.
+// Frequencies come from _dhsFreqSpec — the same reading the invoice day grid uses, deliberately
+// not a second parser, because two parsers of the same column is how "Twice per month" got
+// dropped once already. Group totals round UP to the next 5 minutes: never under.
+// see DECISIONS.md#billing-rounding
+function _taskSheetFreqGroups(tasks){
+  var order=[], by={};
+  (tasks||[]).forEach(function(t){
+    var spec=_dhsFreqSpec(t.freq);
+    var key, label, rank;
+    if(!spec){ key='raw:'+(t.freq||''); label=t.freq||'As scheduled'; rank=-1; }
+    else if(spec.per==='day'){ key='day'; label='Every day'; rank=1000; }
+    else if(spec.per==='week'){ key='w'+spec.n; label=spec.n+(spec.n===1?' day':' days')+' a week'; rank=100+spec.n; }
+    else { key='m'+spec.n; label=spec.n+(spec.n===1?' day':' days')+' a month'; rank=spec.n; }
+    if(!by[key]){ by[key]={label:label,rank:rank,min:0,tasks:[]}; order.push(key); }
+    by[key].min+=_dhsHmToMin(t.perDay);
+    by[key].tasks.push(t.task||'');
+  });
+  return order.map(function(k){return by[k];})
+    .filter(function(g){return g.min>0;})
+    .sort(function(a,b){return b.rank-a.rank;})
+    .map(function(g){ g.min=Math.ceil(g.min/5)*5; g.text=_hmText(g.min); return g; });
+}
 function exportCaregiverTaskSheet(){
   if(!activeProfileName){showAlert('Open a client first.');return;}
   var prof=getProfiles()[activeProfileName]||{};
@@ -2314,6 +2345,17 @@ function exportCaregiverTaskSheet(){
   // undeclared global, so the whole export threw a ReferenceError before opening anything and the
   // button did nothing at all, silently. The declaration lived in renderAuthPane.
   var _sheetTasks=_taskSheetPaddedTasks(a.tasks, (a.hours!=null)?(a.hours*60+(a.minutes||0)):0);
+  // What the caregiver actually clocks to, grouped by how often each task runs.
+  var _groups=_taskSheetFreqGroups(_sheetTasks);
+  var visitBlock=_groups.length
+    ? '<div class="visit"><div class="vh">Time per visit</div>'+
+      _groups.map(function(g){
+        return '<div class="vr"><span class="vl">'+_escHtml(g.label)+'</span>'+
+               '<span class="vt">'+_escHtml(g.text)+'</span>'+
+               '<span class="vn">'+_escHtml(g.tasks.join(', '))+'</span></div>';
+      }).join('')+
+      '<div class="vf">On a day when more than one line applies, add them together.</div></div>'
+    : '';
   // Build rows: task · time per day · number of days · time per month
   // Intentionally omits Amount and any $/hr — the caregiver never needs to
   // see the rate, and Row asked for this specifically.
@@ -2342,6 +2384,13 @@ function exportCaregiverTaskSheet(){
   if(reassess)   _emailLines.push('Reassessment due: '+reassess);
   if(totalHours) _emailLines.push('Approved per month: '+totalHours);
   if(a.aswName)  _emailLines.push('Caseworker (ASW): '+a.aswName+(a.aswPhone?' — '+a.aswPhone:''));
+  if(_groups.length){
+    _emailLines.push('', 'TIME PER VISIT');
+    _groups.forEach(function(g){
+      _emailLines.push('  '+g.label+' — '+g.text+'  ('+g.tasks.join(', ')+')');
+    });
+    _emailLines.push('  On a day when more than one line applies, add them together.');
+  }
   _emailLines.push('', 'Authorized tasks (perform during each scheduled visit):');
   _sheetTasks.forEach(function(t){
     _emailLines.push('• '+(t.task||'')+' — '+(t.perDay||'—')+'/day · '+(t.freq||'')+(t.perMonth?(' · '+t.perMonth+'/month'):''));
@@ -2371,6 +2420,15 @@ function exportCaregiverTaskSheet(){
       'td{padding:9px 10px;border-bottom:1px solid #edf1f6;vertical-align:top}'+
       'td.c{text-align:center;color:#334a68}'+
       'tr:last-child td{border-bottom:1px solid #edf1f6}'+
+      '.visit{margin:0 0 18px;padding:12px 14px;background:#f4f9ff;border:1px solid #d5e4f3;border-radius:8px}'+
+      '.visit .vh{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#5c7590;margin-bottom:6px}'+
+      '.visit .vr{display:grid;grid-template-columns:140px 84px 1fr;gap:10px;align-items:baseline;'+
+        'padding:5px 0;border-bottom:1px solid #e3edf8}'+
+      '.visit .vr:last-of-type{border-bottom:0}'+
+      '.visit .vl{font-weight:600;font-size:13px}'+
+      '.visit .vt{font-weight:700;font-size:15px;color:#1a3a5c}'+
+      '.visit .vn{font-size:11px;color:#5c7590}'+
+      '.visit .vf{margin-top:7px;font-size:11px;color:#5c7590}'+
       '.notes{margin-top:16px;padding:10px 12px;background:#fff9e6;'+
         'border:1px solid #f0e0a0;border-radius:6px;font-size:12px;color:#5b4a1f}'+
       '.actions{position:fixed;bottom:14px;right:14px;display:flex;gap:8px}'+
@@ -2394,6 +2452,7 @@ function exportCaregiverTaskSheet(){
       '<div><span class="l">Agency Manager:</span> <span class="v">Thomas Jaboro · 248-291-4106</span></div>'+
       '<div><span class="l">Prepared:</span> <span class="v">'+_escHtml(todayStr)+'</span></div>'+
     '</div>'+
+    visitBlock+
     '<table><thead><tr>'+
       '<th>Authorized Task</th>'+
       '<th style="text-align:center;">Time / Day</th>'+
@@ -2402,7 +2461,8 @@ function exportCaregiverTaskSheet(){
     '</tr></thead><tbody>'+rows+'</tbody></table>'+
     '<div class="notes"><b>Caregiver note:</b> Complete each authorized task during each scheduled visit. '+
       'If a task cannot be performed on a given day, note the reason in your visit log. '+
-      'Do not perform tasks outside this authorization list without checking with the office first.</div>'+
+      'Do not perform tasks outside this authorization list without checking with the office first.'+
+      '</div>'+
     // Clean text used by Copy / Email / Text (hidden; escaped so quotes/brackets can't break markup).
     '<pre id="plainBody" style="display:none;white-space:pre-wrap;">'+_escHtml(_plainBody)+'</pre>'+
     '<div class="actions">'+
@@ -2440,6 +2500,7 @@ async function shareCaregiverTaskImage(){
   // authorization it showed LESS time than the sheet and the Authorization tab, so the caregiver
   // worked a schedule that under-delivers — the very thing the padding exists to prevent.
   var _imgTasks=_taskSheetPaddedTasks(a.tasks, (a.hours!=null)?(a.hours*60+(a.minutes||0)):0);
+  var _imgGroups=_taskSheetFreqGroups(_imgTasks);
   var rows=_imgTasks.map(function(t){
     return '<tr><td style="'+td+'">'+esc(t.task||'')+'</td>'+
       '<td style="'+tdc+'">'+esc(t.perDay||'—')+'</td>'+
@@ -2453,12 +2514,13 @@ async function shareCaregiverTaskImage(){
   if(a.aswName) metaLines.push('Adult Services Worker: '+esc(a.aswName)+(a.aswPhone?' · '+esc(a.aswPhone):''));
   metaLines.push('Agency Manager: Thomas Jaboro · 248-291-4106');
   var metaBits=metaLines.join('<br>');
-  var approvedBox=totalHours
-    ? '<div style="background:#eef4fb;border:1px solid #d5e4f3;border-radius:7px;padding:4px 11px;text-align:center;white-space:nowrap;">'+
-        '<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#5c7590;">Approved / month</div>'+
-        '<div style="font-size:15px;font-weight:700;color:#1a3a5c;line-height:1.1;">'+esc(totalHours)+'</div>'+
-      '</div>'
-    : '';
+  // Two stat boxes, side by side: the month is the limit, the day is what the caregiver clocks to.
+  var _statBox=function(label,val){
+    return '<div style="background:#eef4fb;border:1px solid #d5e4f3;border-radius:7px;padding:4px 11px;text-align:center;white-space:nowrap;">'+
+      '<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#5c7590;">'+label+'</div>'+
+      '<div style="font-size:15px;font-weight:700;color:#1a3a5c;line-height:1.1;">'+esc(val)+'</div></div>';
+  };
+  var approvedBox=totalHours?_statBox('Approved / month',totalHours):'';
   var host=document.createElement('div');
   host.style.cssText='position:fixed;left:-99999px;top:0;width:680px;background:#fff;color:#1a2b45;'+
     'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;padding:26px 30px;line-height:1.4;';
@@ -2471,6 +2533,18 @@ async function shareCaregiverTaskImage(){
       approvedBox+
     '</div>'+
     (metaBits?'<div style="font-size:12px;color:#5c7590;margin:3px 0 14px;line-height:1.55;">'+metaBits+'</div>':'<div style="height:12px;"></div>')+
+    (_imgGroups.length
+      ? '<div style="background:#f4f9ff;border:1px solid #d5e4f3;border-radius:8px;padding:10px 12px;margin-bottom:14px;">'+
+          '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#5c7590;margin-bottom:5px;">Time per visit</div>'+
+          _imgGroups.map(function(g){
+            return '<div style="display:flex;align-items:baseline;gap:10px;padding:3px 0;">'+
+              '<span style="width:120px;font-weight:600;font-size:12px;">'+esc(g.label)+'</span>'+
+              '<span style="width:74px;font-weight:700;font-size:14px;color:#1a3a5c;">'+esc(g.text)+'</span>'+
+              '<span style="flex:1;font-size:10px;color:#5c7590;">'+esc(g.tasks.join(', '))+'</span></div>';
+          }).join('')+
+          '<div style="margin-top:5px;font-size:10px;color:#5c7590;">On a day when more than one line applies, add them together.</div>'+
+        '</div>'
+      : '')+
     '<table style="width:100%;border-collapse:collapse;font-size:13px;">'+
       '<thead><tr style="background:#eef4fb;color:#2b4a6b;">'+
         '<th style="text-align:left;padding:7px 9px;border-bottom:2px solid #d5e4f3;">Authorized Task</th>'+
@@ -2478,7 +2552,8 @@ async function shareCaregiverTaskImage(){
         '<th style="padding:7px 9px;border-bottom:2px solid #d5e4f3;">Frequency</th>'+
         '<th style="padding:7px 9px;border-bottom:2px solid #d5e4f3;">Time/Month</th>'+
       '</tr></thead><tbody>'+rows+'</tbody></table>'+
-    '<div style="margin-top:12px;font-size:11px;color:#5c7590;">Perform each authorized task during each scheduled visit. Do not perform tasks outside this list without checking with the office first.</div>';
+    '<div style="margin-top:12px;font-size:11px;color:#5c7590;">Perform each authorized task during each scheduled visit. Do not perform tasks outside this list without checking with the office first.'+
+    '</div>';
   document.body.appendChild(host);
   try{
     var canvas=await html2canvas(host,{scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false});

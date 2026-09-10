@@ -97,6 +97,29 @@ Two documents round in **opposite directions**, deliberately (owner, 2026-09-01)
 
 A test pins the invoice as unpadded. Do not "fix" them into agreement.
 
+### Per-visit totals on the task sheet (2026-09-10)
+
+Caregivers had no number to clock against. The sheet groups the rows by how often each task runs —
+every day / N days a week / N days a month — totals each group, and tells the caregiver to add up
+whichever lines apply to the day in front of them.
+
+A single flat average (the padded month divided by 28) was built first and then **removed**. The
+"average day" does not exist: with everyday tasks at 55m and a laundry day at 2h 35m, an average of
+2h 15m was wrong on all seven days, and sitting next to the everyday total it read as a
+contradiction. Dropping it also removed a real payroll cost — covering a whole month from one
+number meant dividing by 28 rather than 30, which at ~5 unbillable hours a month per client was the
+price of never being under. Group totals carry no such cost: they come from the authorized per-task
+times directly and round up only to the next 5 minutes.
+
+Owner, 2026-09-10: *"7 days a week should be this much time per day. Per 3 days. Per 2 days. Per 1
+day."* and *"Its okay if they go over but not under."*
+
+Frequencies come from `_dhsFreqSpec`, the same reading the invoice day grid uses — deliberately not
+a second parser, because two readings of that column is how "Twice per month" was dropped once
+already. An unrecognised frequency is shown labelled as written rather than silently omitted.
+
+Do not round group totals down, and do not reintroduce a single blended daily figure.
+
 ## authorization-totals-disagree
 
 A DHS-1210-A packet can state the approved monthly total twice and the figures can differ. One real
