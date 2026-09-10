@@ -2299,6 +2299,20 @@ function _taskSheetPaddedTasks(tasks, authMin){
   });
   return list;
 }
+// Caregivers need one number to clock in against, and no task row answers it: rows run at
+// different frequencies, so a 7-day task and a 1-day-per-week task never sum to the same visit
+// length twice. This spreads the whole month's approved time evenly instead.
+// Divided by 30, NOT 28. A four-week divisor reads as the safer choice but a caregiver working it
+// every day of a 30-day month delivers ~4.5 hours the agency can never bill — MDHHS is invoiced
+// the authorization exactly, so the overrun is payroll the agency eats. Uses the PADDED total so
+// the figure sits slightly over authorization once, not once per day.
+// see DECISIONS.md#billing-rounding
+function _taskSheetPerDayMin(authMin){
+  var target=_taskSheetTargetMin(authMin);
+  return target ? Math.round(target/30) : 0;
+}
+// "126" -> "2h 6m", matching how the sheet already prints the approved monthly total.
+function _hmText(min){ return (min>0) ? (Math.floor(min/60)+'h '+(min%60)+'m') : ''; }
 function exportCaregiverTaskSheet(){
   if(!activeProfileName){showAlert('Open a client first.');return;}
   var prof=getProfiles()[activeProfileName]||{};
@@ -2309,6 +2323,7 @@ function exportCaregiverTaskSheet(){
   var effective=a.effectiveDate||'';
   var reassess=a.reassessDate||'';
   var totalHours=(a.hours!=null)? a.hours+'h '+(a.minutes||0)+'m' : '';
+  var perDayText=_hmText(_taskSheetPerDayMin((a.hours!=null)?(a.hours*60+(a.minutes||0)):0));
 
   // The padded schedule — the same rows the Authorization tab shows. This was read from an
   // undeclared global, so the whole export threw a ReferenceError before opening anything and the
@@ -2341,11 +2356,13 @@ function exportCaregiverTaskSheet(){
   if(effective)  _emailLines.push('Effective: '+effective);
   if(reassess)   _emailLines.push('Reassessment due: '+reassess);
   if(totalHours) _emailLines.push('Approved per month: '+totalHours);
+  if(perDayText) _emailLines.push('About per day (average): '+perDayText);
   if(a.aswName)  _emailLines.push('Caseworker (ASW): '+a.aswName+(a.aswPhone?' — '+a.aswPhone:''));
   _emailLines.push('', 'Authorized tasks (perform during each scheduled visit):');
   _sheetTasks.forEach(function(t){
     _emailLines.push('• '+(t.task||'')+' — '+(t.perDay||'—')+'/day · '+(t.freq||'')+(t.perMonth?(' · '+t.perMonth+'/month'):''));
   });
+  if(perDayText) _emailLines.push('', 'About per day is an average — a visit runs longer on days when weekly tasks such as laundry or shopping are due, and shorter otherwise. The approved monthly total is the limit.');
   _emailLines.push('', 'Note: Complete each authorized task during each scheduled visit. If a task cannot be performed on a given day, note the reason in your visit log. Do not perform tasks outside this authorization list without checking with the office first.');
   var _plainBody=_emailLines.join('\n');  // used by the "Copy text" button (clean, no page chrome)
 
@@ -2390,6 +2407,7 @@ function exportCaregiverTaskSheet(){
       (effective ? '<div><span class="l">Effective:</span> <span class="v">'+_escHtml(effective)+'</span></div>':'')+
       (reassess  ? '<div><span class="l">Reassessment due:</span> <span class="v">'+_escHtml(reassess)+'</span></div>':'')+
       (totalHours? '<div><span class="l">Approved per month:</span> <span class="v">'+_escHtml(totalHours)+'</span></div>':'')+
+      (perDayText? '<div><span class="l">About per day:</span> <span class="v">'+_escHtml(perDayText)+'</span> <span class="l">(average)</span></div>':'')+
       (a.aswName ? '<div><span class="l">Adult Services Worker:</span> <span class="v">'+_escHtml(a.aswName)+(a.aswPhone?' · '+_escHtml(a.aswPhone):'')+'</span></div>':'')+
       '<div><span class="l">Agency Manager:</span> <span class="v">Thomas Jaboro · 248-291-4106</span></div>'+
       '<div><span class="l">Prepared:</span> <span class="v">'+_escHtml(todayStr)+'</span></div>'+
@@ -2402,7 +2420,9 @@ function exportCaregiverTaskSheet(){
     '</tr></thead><tbody>'+rows+'</tbody></table>'+
     '<div class="notes"><b>Caregiver note:</b> Complete each authorized task during each scheduled visit. '+
       'If a task cannot be performed on a given day, note the reason in your visit log. '+
-      'Do not perform tasks outside this authorization list without checking with the office first.</div>'+
+      'Do not perform tasks outside this authorization list without checking with the office first.'+
+      (perDayText?' <b>About per day</b> is an average — a visit runs longer on days when weekly tasks such as laundry or shopping are due, and shorter otherwise. The approved monthly total is the limit.':'')+
+      '</div>'+
     // Clean text used by Copy / Email / Text (hidden; escaped so quotes/brackets can't break markup).
     '<pre id="plainBody" style="display:none;white-space:pre-wrap;">'+_escHtml(_plainBody)+'</pre>'+
     '<div class="actions">'+
@@ -2435,6 +2455,7 @@ async function shareCaregiverTaskImage(){
   if(typeof html2canvas!=='function'){showAlert('The image tool is still loading — give it a second and try again.');return;}
   var clientName=_caregiverClientLabel(prof, activeProfileName), esc=_escHtml;  // first name + last initial (PHI-minimized)
   var totalHours=(a.hours!=null)?(a.hours+'h '+(a.minutes||0)+'m'):'';
+  var perDayText=_hmText(_taskSheetPerDayMin((a.hours!=null)?(a.hours*60+(a.minutes||0)):0));
   var td='padding:7px 9px;border-bottom:1px solid #edf1f6;', tdc=td+'text-align:center;color:#334a68;';
   // Pad here too. The image is what actually reaches the caregiver's phone; built from the raw
   // authorization it showed LESS time than the sheet and the Authorization tab, so the caregiver
@@ -2453,10 +2474,16 @@ async function shareCaregiverTaskImage(){
   if(a.aswName) metaLines.push('Adult Services Worker: '+esc(a.aswName)+(a.aswPhone?' · '+esc(a.aswPhone):''));
   metaLines.push('Agency Manager: Thomas Jaboro · 248-291-4106');
   var metaBits=metaLines.join('<br>');
-  var approvedBox=totalHours
-    ? '<div style="background:#eef4fb;border:1px solid #d5e4f3;border-radius:7px;padding:4px 11px;text-align:center;white-space:nowrap;">'+
-        '<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#5c7590;">Approved / month</div>'+
-        '<div style="font-size:15px;font-weight:700;color:#1a3a5c;line-height:1.1;">'+esc(totalHours)+'</div>'+
+  // Two stat boxes, side by side: the month is the limit, the day is what the caregiver clocks to.
+  var _statBox=function(label,val){
+    return '<div style="background:#eef4fb;border:1px solid #d5e4f3;border-radius:7px;padding:4px 11px;text-align:center;white-space:nowrap;">'+
+      '<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#5c7590;">'+label+'</div>'+
+      '<div style="font-size:15px;font-weight:700;color:#1a3a5c;line-height:1.1;">'+esc(val)+'</div></div>';
+  };
+  var approvedBox=(totalHours||perDayText)
+    ? '<div style="display:flex;gap:8px;">'+
+        (totalHours?_statBox('Approved / month',totalHours):'')+
+        (perDayText?_statBox('About / day',perDayText):'')+
       '</div>'
     : '';
   var host=document.createElement('div');
@@ -2478,7 +2505,9 @@ async function shareCaregiverTaskImage(){
         '<th style="padding:7px 9px;border-bottom:2px solid #d5e4f3;">Frequency</th>'+
         '<th style="padding:7px 9px;border-bottom:2px solid #d5e4f3;">Time/Month</th>'+
       '</tr></thead><tbody>'+rows+'</tbody></table>'+
-    '<div style="margin-top:12px;font-size:11px;color:#5c7590;">Perform each authorized task during each scheduled visit. Do not perform tasks outside this list without checking with the office first.</div>';
+    '<div style="margin-top:12px;font-size:11px;color:#5c7590;">Perform each authorized task during each scheduled visit. Do not perform tasks outside this list without checking with the office first.'+
+      (perDayText?' <b>About / day</b> is an average — longer on days when weekly tasks are due, shorter otherwise; the monthly total is the limit.':'')+
+    '</div>';
   document.body.appendChild(host);
   try{
     var canvas=await html2canvas(host,{scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false});
