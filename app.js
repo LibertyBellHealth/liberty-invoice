@@ -1697,7 +1697,13 @@ function renderNotesPane(){
     _scheduleNoteSave('client:'+clientName, function(){
       var p2=getProfiles(); if(!p2[clientName])return;
       // D8: only claim "Saved ✓" after the API resolves; surface failure otherwise.
-      var doSave=function(){return flashQuietSave(saveProfileSP(clientName,p2[clientName],true),'notesSavedFlash','Client note',doSave);};
+      // Decide the flash target INSIDE doSave: it is also the retry handler, so it can run long
+      // after the first attempt, from a different client's pane. Computed once, a retry that
+      // succeeds ticks "Saved ✓" under whoever is on screen then.
+      var doSave=function(){
+        var flash=stillOn('client',clientName)?'notesSavedFlash':null;
+        return flashQuietSave(saveProfileSP(clientName,p2[clientName],true),flash,'Client note ('+clientName+')',doSave);
+      };
       doSave();
     });
   };
@@ -3989,9 +3995,13 @@ function renderCgNotesPane(){
       // element belongs to whoever is on screen NOW, so tick it only if that is still this
       // caregiver — but never suppress the failure report, which names the caregiver: the note is
       // lost whether or not you navigated away.
-      var flash=stillOn('caregiver',cgId)?'cgNotesSavedFlash':null;
       var label='Caregiver note ('+((cgs2[cgId]&&cgs2[cgId].name)||cgId)+')';
-      var doSave=function(){return flashQuietSave(saveCaregiverAPI(cgId,cgs2[cgId],true),flash,label,doSave);};
+      // Recomputed per attempt — doSave is the retry handler too, and a retry can fire from a
+      // different caregiver's pane long after the first attempt failed.
+      var doSave=function(){
+        var flash=stillOn('caregiver',cgId)?'cgNotesSavedFlash':null;
+        return flashQuietSave(saveCaregiverAPI(cgId,cgs2[cgId],true),flash,label,doSave);
+      };
       doSave();
     });
   });
@@ -10151,9 +10161,11 @@ function renderCwNotesPane(){
       if(!rec2)return;
       // D8: only claim "Saved ✓" after the API resolves; surface failure otherwise. Tick the flash
       // only if this caseworker is still on screen — but never suppress the failure report.
-      var flash=stillOn('caseworker',cwId)?'cwNotesSavedFlash':null;
       var label='Caseworker note ('+(rec2.name||cwId)+')';
-      var doSave=function(){return flashQuietSave(saveCaseworkerAPI(rec2,true),flash,label,doSave);};
+      var doSave=function(){
+        var flash=stillOn('caseworker',cwId)?'cwNotesSavedFlash':null;
+        return flashQuietSave(saveCaseworkerAPI(rec2,true),flash,label,doSave);
+      };
       doSave();
     });
   });

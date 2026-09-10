@@ -134,3 +134,53 @@ test('a caseworker note reaches localStorage synchronously', () => {
   typeInto(w, 'cwNotesArea', 'typed then F4');
   assert.strictEqual(w.getCaseworkers().find((c) => c.id === 'cw_A').notes, 'typed then F4');
 });
+
+// doSave is passed to flashQuietSave as the RETRY handler, so it can run long after the first
+// attempt failed — by which time the operator may be looking at someone else. Deciding the flash
+// target once, when the debounce fired, meant a successful retry ticked "Saved ✓" under whoever
+// was on screen at retry time. Same family as the write, in the report.
+function failingSave(w) {
+  const retries = [];
+  w.saveCaregiverAPI = () => Promise.reject(new Error('network error'));
+  w._showSaveStatus = (state, label, onRetry) => { if (onRetry) retries.push(onRetry); };
+  return retries;
+}
+
+test('a retry that succeeds does not tick "Saved ✓" under a different caregiver', async () => {
+  const w = app();
+  twoCaregivers(w);
+  w.activeCgId = 'cg_A';
+  w.renderCgNotesPane();
+  const retries = failingSave(w);
+  typeInto(w, 'cgNotesArea', 'A note');
+  w._flushPendingNoteSaves();
+  await settle();
+  assert.strictEqual(retries.length, 1, 'the failed save should offer a retry');
+
+  w.activeCgId = 'cg_B';
+  w.renderCgNotesPane();                     // B's pane, B's flash element
+  w.saveCaregiverAPI = () => Promise.resolve();
+  retries[0]();                              // operator clicks retry while looking at B
+  await settle();
+
+  assert.strictEqual(w.document.getElementById('cgNotesSavedFlash').style.display, 'none',
+    "A's retry ticked Saved on the caregiver now on screen");
+});
+
+test('a retry that succeeds while still on the same caregiver does tick', async () => {
+  const w = app();
+  twoCaregivers(w);
+  w.activeCgId = 'cg_A';
+  w.renderCgNotesPane();
+  const retries = failingSave(w);
+  typeInto(w, 'cgNotesArea', 'A note');
+  w._flushPendingNoteSaves();
+  await settle();
+
+  w.saveCaregiverAPI = () => Promise.resolve();
+  retries[0]();
+  await settle();
+
+  assert.strictEqual(w.document.getElementById('cgNotesSavedFlash').style.display, 'inline',
+    'the guard must not stop a legitimate retry from confirming');
+});
