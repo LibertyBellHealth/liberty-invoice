@@ -3787,6 +3787,10 @@ async function openSendForSignatureModal(){
   var existing=document.getElementById('sendSigModal');if(existing)existing.remove();
   var ov=document.createElement('div');
   ov.id='sendSigModal';ov.className='modal-overlay open';
+  // The modal IS the captured context: it names this caregiver and their email address in its own
+  // body, and it stays on screen until dismissed. Stamp the id so the Send handler acts on who the
+  // modal says, rather than re-reading the global at click time.
+  ov.dataset.cgId=activeCgId;
   var tplOptions=templates.length
     ? templates.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+(t.version?' ('+esc(t.version)+')':'')+'</option>';}).join('')
     : '<option value="">No templates yet — use Settings → Signing Templates to upload one</option>';
@@ -3813,7 +3817,22 @@ function closeSendSigModal(){var m=document.getElementById('sendSigModal');if(m)
 async function doSendForSignature(){
   var btn=document.getElementById('sendSigBtn');var errEl=document.getElementById('sendSigError');
   errEl.style.display='none';
-  var cg=getCaregivers()[activeCgId];
+  // Read the caregiver from the modal, not from the global. The gap here is the operator's own
+  // click, which no amount of guarding inside one function can see: openSendForSignatureModal built
+  // this dialog for one caregiver and doSendForSignature ran later, and activeCgId can change in
+  // between with no click on the page at all — the hash router reassigns it on Back/Forward and the
+  // overlay does not block it.
+  var mdl=document.getElementById('sendSigModal');
+  var sigCgId=(mdl&&mdl.dataset&&mdl.dataset.cgId)||'';
+  // Refuse rather than quietly doing the right thing. This emails a real DOB-gated signing link to
+  // a real person; if the operator's idea of who they are sending to has drifted from the app's,
+  // they need telling. Reopening from the right profile is two clicks.
+  if(!sigCgId||!stillOn('caregiver',sigCgId)){
+    var whoFor=(getCaregivers()[sigCgId]||{}).name||'that caregiver';
+    errEl.textContent='This link is for '+whoFor+', but a different caregiver is open now. Nothing has been sent — close this and reopen Send for Signature from their profile.';
+    errEl.style.display='block';return;
+  }
+  var cg=getCaregivers()[sigCgId];
   var tplId=parseInt(document.getElementById('sendSigTemplate').value,10);
   var dob=(document.getElementById('sendSigDob').value||'').trim();
   if(!tplId){errEl.textContent='Pick a document template.';errEl.style.display='block';return;}
@@ -3834,7 +3853,7 @@ async function doSendForSignature(){
       headers:apiHeaders(),
       body:JSON.stringify({
         templateId:tplId,
-        caregiverId:activeCgId,
+        caregiverId:sigCgId,
         recipientName:cg.name||'',
         recipientEmail:cg.email,
         recipientDob:dob,
@@ -7404,9 +7423,22 @@ async function sendEmail(){
       if(!proceed)return;
     }
   }
+  // Two independent sources say who this invoice is for, and only one of them is reliable here.
+  // `cn` comes from the invoice form, which is what captureInvoicePDF builds the document from —
+  // so it is the name the caseworker will actually read on the PDF. activeProfileName is a global
+  // that can drift across the dialog above: hashchange reassigns it on Back/Forward with no click
+  // on the page, and the overlay does not block the hash router. Everything below used the global,
+  // so a drift filed this invoice under a different client while emailing the first client's PDF.
+  //
+  // When they disagree we do not get to pick one. This path sends a document out of the building.
+  if(cn&&!stillOn('client',cn)){
+    showAlert('This invoice is for “'+cn+'”, but a different client is open now. Nothing has been sent.\n\nReopen '+cn+' and send again if that is who you meant.',
+      {title:'Wrong client open'});
+    return;
+  }
   // If no email cached, try to look up from caseworker record
-  if(!ae&&activeProfileName){
-    var prof2=getProfiles()[activeProfileName]||{};
+  if(!ae&&cn){
+    var prof2=getProfiles()[cn]||{};
     var cwRec2=getCaseworkers().find(function(c){return c.id===prof2.caseworkerId||c.name===prof2.worker;})||{};
     ae=cwRec2.email||'';
     if(ae){var ef=document.getElementById('activeAgentEmail');if(ef)ef.value=ae;}
@@ -7422,21 +7454,21 @@ async function sendEmail(){
     // Persist whatever's currently in the form BEFORE sending — so the saved record matches
     // what the caseworker received. Otherwise the PDF can be emailed with values the user
     // typed but never clicked Save on, and the stored invoice ends up out of sync.
-    if(activeProfileName&&bp){
+    if(cn&&bp){
       var pSE=getProfiles();
-      if(pSE[activeProfileName]){
-        if(!pSE[activeProfileName].invoices)pSE[activeProfileName].invoices=[];
-        var idxSE=pSE[activeProfileName].invoices.findIndex(function(i){return i.billingPeriod===bp;});
+      if(pSE[cn]){
+        if(!pSE[cn].invoices)pSE[cn].invoices=[];
+        var idxSE=pSE[cn].invoices.findIndex(function(i){return i.billingPeriod===bp;});
         var snapshot=captureFullInvoice();
         if(idxSE>=0){
-          var existing=pSE[activeProfileName].invoices[idxSE];
+          var existing=pSE[cn].invoices[idxSE];
           if(existing.status!=='paid'){
-            pSE[activeProfileName].invoices[idxSE]=Object.assign({},existing,{savedAt:new Date().toLocaleString(),data:snapshot});
+            pSE[cn].invoices[idxSE]=Object.assign({},existing,{savedAt:new Date().toLocaleString(),data:snapshot});
           }
         } else {
-          pSE[activeProfileName].invoices.unshift({billingPeriod:bp,savedAt:new Date().toLocaleString(),status:'draft',invoiceNote:'',data:snapshot});
+          pSE[cn].invoices.unshift({billingPeriod:bp,savedAt:new Date().toLocaleString(),status:'draft',invoiceNote:'',data:snapshot});
         }
-        saveProfilesLS(pSE);saveProfileSP(activeProfileName,pSE[activeProfileName]);
+        saveProfilesLS(pSE);saveProfileSP(cn,pSE[cn]);
       }
     }
     var base64=await captureInvoicePDF();
