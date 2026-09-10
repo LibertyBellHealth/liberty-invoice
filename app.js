@@ -3954,18 +3954,27 @@ function renderCgNotesPane(){
   c.innerHTML='<div style="margin-bottom:6px;font-size:11px;color:#5c7590;">Auto-saves as you type <span id="cgNotesSavedFlash" style="display:none;color:#1a7740;font-weight:600;">· Saved ✓</span></div>'+
     '<textarea id="cgNotesArea" style="width:100%;min-height:200px;padding:12px;border:1px solid #d0d8e4;border-radius:6px;font-size:13px;font-family:Arial,sans-serif;outline:none;resize:vertical;max-width:620px;">'+esc(cg.notes||'')+'</textarea>';
   var ta=document.getElementById('cgNotesArea');
-  var t=null;
   ta.addEventListener('input',function(){
-    clearTimeout(t);
-    t=setTimeout(function(){
-      var cgs=getCaregivers();
-      if(!cgs[activeCgId])return;
-      cgs[activeCgId].notes=ta.value;
-      saveCaregiversLS(cgs);
-      // D8: only claim "Saved ✓" after the API resolves; surface failure otherwise.
-      var doSave=function(){return flashQuietSave(saveCaregiverAPI(activeCgId,cgs[activeCgId],true),'cgNotesSavedFlash','Caregiver note',doSave);};
+    // Capture the caregiver NOW — activeCgId may change before the 600ms flush, and this pane's
+    // textarea outlives the switch. Write LS SYNCHRONOUSLY (not inside the timer) so closing the
+    // tab or switching caregivers within the debounce can't lose the note. Only the backend save
+    // is debounced. Mirrors renderNotesPane.
+    var cgId=activeCgId, val=ta.value;
+    var cgsNow=getCaregivers();
+    if(cgsNow[cgId]){ cgsNow[cgId].notes=val; saveCaregiversLS(cgsNow); }
+    // Debounce the backend save, but register it so a tab-close can flush it (F4). Keying by
+    // caregiver also cancels this caregiver's own pending save across re-renders of the pane.
+    _scheduleNoteSave('caregiver:'+cgId, function(){
+      var cgs2=getCaregivers(); if(!cgs2[cgId])return;
+      // D8: only claim "Saved ✓" after the API resolves; surface failure otherwise. The flash
+      // element belongs to whoever is on screen NOW, so tick it only if that is still this
+      // caregiver — but never suppress the failure report, which names the caregiver: the note is
+      // lost whether or not you navigated away.
+      var flash=stillOn('caregiver',cgId)?'cgNotesSavedFlash':null;
+      var label='Caregiver note ('+((cgs2[cgId]&&cgs2[cgId].name)||cgId)+')';
+      var doSave=function(){return flashQuietSave(saveCaregiverAPI(cgId,cgs2[cgId],true),flash,label,doSave);};
       doSave();
-    },600);
+    });
   });
 }
 function renderCgAuditPane(){
@@ -10095,19 +10104,26 @@ function renderCwNotesPane(){
   c.innerHTML='<div style="margin-bottom:6px;font-size:11px;color:#5c7590;">Auto-saves as you type <span id="cwNotesSavedFlash" style="display:none;color:#1a7740;font-weight:600;">· Saved ✓</span></div>'+
     '<textarea id="cwNotesArea" style="width:100%;min-height:200px;padding:12px;border:1px solid #d0d8e4;border-radius:6px;font-size:13px;font-family:Arial,sans-serif;outline:none;resize:vertical;max-width:620px;">'+esc(cw.notes||'')+'</textarea>';
   var ta=document.getElementById('cwNotesArea');
-  var t=null;
   ta.addEventListener('input',function(){
-    clearTimeout(t);
-    t=setTimeout(function(){
-      var arr=getCaseworkers();
-      var cwRec=arr.find(function(c){return c.id===activeCwId;});
-      if(!cwRec)return;
-      cwRec.notes=ta.value;
-      saveCaseworkersLS(arr);
-      // D8: only claim "Saved ✓" after the API resolves; surface failure otherwise.
-      var doSave=function(){return flashQuietSave(saveCaseworkerAPI(cwRec,true),'cwNotesSavedFlash','Caseworker note',doSave);};
+    // Capture the caseworker NOW — activeCwId may change before the 600ms flush. LS is written
+    // SYNCHRONOUSLY so a tab close or a switch within the debounce can't lose the note; only the
+    // backend save is debounced. Mirrors renderNotesPane.
+    var cwId=activeCwId, val=ta.value;
+    var arrNow=getCaseworkers();
+    var recNow=arrNow.find(function(x){return x.id===cwId;});
+    if(recNow){ recNow.notes=val; saveCaseworkersLS(arrNow); }
+    // Debounce the backend save, but register it so a tab-close can flush it (F4).
+    _scheduleNoteSave('caseworker:'+cwId, function(){
+      var arr2=getCaseworkers();
+      var rec2=arr2.find(function(x){return x.id===cwId;});
+      if(!rec2)return;
+      // D8: only claim "Saved ✓" after the API resolves; surface failure otherwise. Tick the flash
+      // only if this caseworker is still on screen — but never suppress the failure report.
+      var flash=stillOn('caseworker',cwId)?'cwNotesSavedFlash':null;
+      var label='Caseworker note ('+(rec2.name||cwId)+')';
+      var doSave=function(){return flashQuietSave(saveCaseworkerAPI(rec2,true),flash,label,doSave);};
       doSave();
-    },600);
+    });
   });
 }
 function renderCwDocsPane(){
