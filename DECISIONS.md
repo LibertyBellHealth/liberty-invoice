@@ -97,6 +97,28 @@ Two documents round in **opposite directions**, deliberately (owner, 2026-09-01)
 
 A test pins the invoice as unpadded. Do not "fix" them into agreement.
 
+### Per-day figures on the task sheet (2026-09-10)
+
+Caregivers had no number to clock against, so the sheet now states two things, both erring high:
+
+- **"About per day"** — the padded month divided by **28**, rounded **up**. A calendar-month
+  divisor (30) would cost the agency less: at 28 a caregiver working it every day of a 30-day month
+  delivers roughly five hours that cannot be billed, since MDHHS is invoiced the authorization
+  exactly and the overrun lands on payroll, not on a recoupment. The owner was shown that cost and
+  chose the higher figure: *"Its okay if they go over but not under."*
+- **"Time per visit"** — tasks grouped by frequency (every day / N days a week / N days a month),
+  each group's per-day times summed and rounded **up** to the next 5 minutes. The average alone
+  cannot answer "how long is today", because a 7-day task and a 1-day-per-week task never fall on
+  the same visit twice.
+
+Frequencies come from `_dhsFreqSpec`, the same reading the invoice day grid uses — deliberately not
+a second parser, because two readings of that column is how "Twice per month" was dropped once
+already (see [#authorization-totals-disagree](#authorization-totals-disagree)). An unrecognised
+frequency is shown labelled as written rather than silently omitted.
+
+Do not change `28` to `30`, or `Math.ceil` to `Math.round`. Being under is the failure this guards
+against, and tests enforce both.
+
 ## authorization-totals-disagree
 
 A DHS-1210-A packet can state the approved monthly total twice and the figures can differ. One real
