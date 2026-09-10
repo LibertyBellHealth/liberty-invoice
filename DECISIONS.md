@@ -97,27 +97,28 @@ Two documents round in **opposite directions**, deliberately (owner, 2026-09-01)
 
 A test pins the invoice as unpadded. Do not "fix" them into agreement.
 
-### Per-day figures on the task sheet (2026-09-10)
+### Per-visit totals on the task sheet (2026-09-10)
 
-Caregivers had no number to clock against, so the sheet now states two things, both erring high:
+Caregivers had no number to clock against. The sheet groups the rows by how often each task runs —
+every day / N days a week / N days a month — totals each group, and tells the caregiver to add up
+whichever lines apply to the day in front of them.
 
-- **"About per day"** — the padded month divided by **28**, rounded **up**. A calendar-month
-  divisor (30) would cost the agency less: at 28 a caregiver working it every day of a 30-day month
-  delivers roughly five hours that cannot be billed, since MDHHS is invoiced the authorization
-  exactly and the overrun lands on payroll, not on a recoupment. The owner was shown that cost and
-  chose the higher figure: *"Its okay if they go over but not under."*
-- **"Time per visit"** — tasks grouped by frequency (every day / N days a week / N days a month),
-  each group's per-day times summed and rounded **up** to the next 5 minutes. The average alone
-  cannot answer "how long is today", because a 7-day task and a 1-day-per-week task never fall on
-  the same visit twice.
+A single flat average (the padded month divided by 28) was built first and then **removed**. The
+"average day" does not exist: with everyday tasks at 55m and a laundry day at 2h 35m, an average of
+2h 15m was wrong on all seven days, and sitting next to the everyday total it read as a
+contradiction. Dropping it also removed a real payroll cost — covering a whole month from one
+number meant dividing by 28 rather than 30, which at ~5 unbillable hours a month per client was the
+price of never being under. Group totals carry no such cost: they come from the authorized per-task
+times directly and round up only to the next 5 minutes.
+
+Owner, 2026-09-10: *"7 days a week should be this much time per day. Per 3 days. Per 2 days. Per 1
+day."* and *"Its okay if they go over but not under."*
 
 Frequencies come from `_dhsFreqSpec`, the same reading the invoice day grid uses — deliberately not
 a second parser, because two readings of that column is how "Twice per month" was dropped once
-already (see [#authorization-totals-disagree](#authorization-totals-disagree)). An unrecognised
-frequency is shown labelled as written rather than silently omitted.
+already. An unrecognised frequency is shown labelled as written rather than silently omitted.
 
-Do not change `28` to `30`, or `Math.ceil` to `Math.round`. Being under is the failure this guards
-against, and tests enforce both.
+Do not round group totals down, and do not reintroduce a single blended daily figure.
 
 ## authorization-totals-disagree
 

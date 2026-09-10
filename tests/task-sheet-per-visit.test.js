@@ -1,14 +1,16 @@
 'use strict';
-// Caregivers had no way to tell how long to clock in for. The task rows each carry their own
-// time and frequency, so nothing on the sheet answered it: a 7-days-per-week task and a
-// 1-day-per-week task never add up to the same visit twice.
+// Caregivers had no way to tell how long to clock in for. The task rows each carry their own time
+// and frequency, so nothing on the sheet answered it: a 7-days-per-week task and a 1-day-per-week
+// task never add up to the same visit twice.
 //
-// The fix states the month's approved time spread evenly, over 28 days and rounded UP. That is
-// deliberately generous: a calendar-month divisor (30) would cost the agency less, because a
-// caregiver working the 28-day figure every day of a 30-day month delivers about five hours that
-// cannot be billed — MDHHS is invoiced the authorization exactly, so the overrun is payroll.
-// The owner was shown that cost and chose it (2026-09-10: "Its okay if they go over but not
-// under"). These tests hold that ruling in place: being UNDER is the failure mode.
+// A single flat average (the whole month over N days) was tried and removed — the "average day"
+// does not exist, so it was wrong on every actual day of the week, and it read as contradicting
+// the everyday total sitting next to it. What replaced it groups the rows by how often they run
+// and totals each group; the caregiver adds up whichever lines apply today. Owner, 2026-09-10:
+// "7 days a week should be this much time per day. Per 3 days. Per 2 days. Per 1 day."
+//
+// Group totals round UP to the next 5 minutes: being under the authorized time is the failure
+// this guards against ("Its okay if they go over but not under").
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { loadApp, resetStorage } = require('./harness');
@@ -34,79 +36,12 @@ function app(auth) {
   return w;
 }
 
-test('the sheet gives one per-day figure a caregiver can clock to', () => {
-  const w = app();
-  w.exportCaregiverTaskSheet();
-  // Match the VISIBLE row, not just the figure: the same string also sits in the hidden
-  // plain-text block, so a bare indexOf('1h 15m') passes even with the printed row deleted.
-  assert.ok(/About per day:<\/span>\s*<span class="v">1h 15m<\/span>/.test(w.captured),
-    'no per-day average printed on the sheet — the caregiver still has nothing to clock against');
-});
 
-test('the per-day figure is the padded month over 28, rounded up', () => {
-  const w = app();
-  w.exportCaregiverTaskSheet();
-  assert.ok(w.captured.indexOf('1h 10m') === -1,
-    'that is 2100/30 — a calendar-month divisor leaves the caregiver under time');
-  assert.strictEqual(w._taskSheetPerDayMin(AUTH_MIN), 75);
-});
 
-test('the figure is never under, on any length of month', () => {
-  const w = app();
-  const perDay = w._taskSheetPerDayMin(AUTH_MIN);
-  // Four weeks of this must already meet the padded authorization — that is the point of /28.
-  assert.ok(perDay * 28 >= w._taskSheetTargetMin(AUTH_MIN),
-    'four weeks at the stated daily rate must reach the padded month');
-  // And it must never fall short of the plain authorized daily share in a long month.
-  assert.ok(perDay > AUTH_MIN / 31,
-    'the daily figure must not dip under the authorized share of even a 31-day month');
-});
 
-test('rounding goes up, never to nearest', () => {
-  const w = app();
-  // 20:00 authorized -> padded 20:30 = 1230 min; 1230/28 = 43.9. Math.round would give 43 and
-  // leave the caregiver under; ceil gives 44.
-  assert.strictEqual(w._taskSheetPerDayMin(20 * 60), 44);
-});
 
-test('the emailed and copied text carries it too', () => {
-  const w = app();
-  w.exportCaregiverTaskSheet();
-  assert.ok(/About per day \(average\): 1h 15m/.test(w.captured),
-    'the plain-text body is what gets emailed/texted; it must carry the same figure');
-});
 
-test('the texted image carries it too', async () => {
-  const w = app();
-  // Capture the detached markup the image is rasterised from. Falling back to the sheet's HTML
-  // would make this pass no matter what the image actually contained.
-  let markup = '';
-  const realCreate = w.document.createElement.bind(w.document);
-  w.document.createElement = (tag) => {
-    const el = realCreate(tag);
-    if (String(tag).toLowerCase() === 'div') {
-      Object.defineProperty(el, 'innerHTML', {
-        configurable: true,
-        set(v) { markup += String(v); this.__h = v; },
-        get() { return this.__h || ''; },
-      });
-    }
-    return el;
-  };
-  w.html2canvas = () => Promise.reject(new Error('no canvas in jsdom'));
-  try { await w.shareCaregiverTaskImage(); } catch (e) { /* rasterising needs a canvas */ }
-  w.document.createElement = realCreate;
-  assert.ok(markup.length > 0, 'the image markup was never built — this test would prove nothing');
-  assert.ok(markup.indexOf('About / day') !== -1, 'the image is what reaches the phone');
-  assert.ok(markup.indexOf('1h 15m') !== -1, 'the image must show the same per-day figure');
-});
 
-test('an authorization with no approved total shows no per-day line', () => {
-  const w = app({ effectiveDate: '08/01/2026', tasks: AUTH.tasks });
-  w.exportCaregiverTaskSheet();
-  assert.ok(w.captured.indexOf('About per day') === -1,
-    'with nothing authorized there is no average to state');
-});
 
 // ── Per-visit totals, grouped by how often each task runs ──────────────────────────────────────
 // The flat average answers "roughly how much a day" but never "how long is TODAY": a 7-day task
