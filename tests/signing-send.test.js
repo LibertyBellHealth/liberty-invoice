@@ -24,11 +24,14 @@ function app(cg) {
   // loadApp reuses one jsdom document — build these ONCE, then reset them per test, or
   // getElementById keeps returning the first test's stale nodes.
   if (!w.document.getElementById('sendSigBtn')) {
+    // The modal element itself, because doSendForSignature now takes the caregiver from the dialog
+    // that names them rather than from the global. openSendForSignatureModal stamps it on creation.
     w.document.body.insertAdjacentHTML('beforeend',
-      '<button id="sendSigBtn"></button><div id="sendSigError"></div>' +
+      '<div id="sendSigModal"><button id="sendSigBtn"></button><div id="sendSigError"></div>' +
       '<select id="sendSigTemplate"><option value="7" selected>MSA-4676</option></select>' +
-      '<input id="sendSigDob">');
+      '<input id="sendSigDob"></div>');
   }
+  w.document.getElementById('sendSigModal').dataset.cgId = 'cg1';
   w.document.getElementById('sendSigDob').value = '1950-02-01';
   w.document.getElementById('sendSigError').textContent = '';
   w.document.getElementById('sendSigTemplate').value = '7';
@@ -93,4 +96,51 @@ test('a good signed-document download opens the returned URL', async () => {
   await w.downloadSignedDoc(7);
   assert.strictEqual(w.opened, 'https://blob/signed.pdf?sig=x');
   assert.strictEqual(w.alerts.length, 0);
+});
+
+
+// The gap here is the operator's own CLICK: openSendForSignatureModal builds the dialog for one
+// caregiver, doSendForSignature runs whenever Send is pressed, and activeCgId can change in between
+// with no click on the page — the hash router reassigns it on Back/Forward and the overlay does not
+// block it. Neither function alone can see that gap; the modal has to carry the identity.
+test('a link is not emailed to whoever is open when the dialog names someone else', async () => {
+  const w = app({ email: 'sam@example.com' });
+  w.saveCaregiversLS({
+    cg1: { name: 'Sam Carer', email: 'sam@example.com' },
+    cg2: { name: 'Dana Other', email: 'dana@example.com' },
+  });
+  w.activeCgId = 'cg2';               // operator reached another caregiver while the dialog was up
+
+  await w.doSendForSignature();
+
+  assert.strictEqual(w.calls.length, 0, 'no signing request may be created for a drifted record');
+  assert.match(err(w), /Sam Carer/, 'the refusal must name who the link was for: ' + err(w));
+  assert.match(err(w), /different caregiver is open/i);
+});
+
+test('the send still goes through for the caregiver the dialog was opened for', async () => {
+  const w = app({ email: 'sam@example.com' });
+  await w.doSendForSignature();
+  const send = w.calls.find((c) => /\/signing\/send$/.test(c.url));
+  assert.ok(send, 'the happy path must still reach the send endpoint: ' + JSON.stringify(w.calls.map((c) => c.url)));
+  assert.strictEqual(JSON.parse(send.opt.body).caregiverId, 'cg1',
+    'the request must name the caregiver the dialog was built for');
+});
+
+// The tests above stand the modal up by hand, so none of them would notice if the app stopped
+// stamping the caregiver onto it — and the stamp is the whole mechanism. Build it the real way.
+test('opening the dialog stamps the caregiver it was built for onto the modal', async () => {
+  const w = app({ email: 'sam@example.com' });
+  w.showAlert = (m) => w.alerts.push(String(m));
+  w.fetch = (url) => Promise.resolve({ ok: true, status: 200,
+    json: () => Promise.resolve([{ id: 7, name: 'MSA-4676', is_active: true }]) });
+  w.activeCgId = 'cg1';
+
+  await w.openSendForSignatureModal();
+
+  const mdl = w.document.getElementById('sendSigModal');
+  assert.ok(mdl, 'the modal was not created: ' + w.alerts.join(' | '));
+  assert.strictEqual(mdl.dataset.cgId, 'cg1',
+    'without the stamp the Send handler has nothing to act on but the global');
+  mdl.remove();   // leave the document as the hand-built scaffold found it
 });
