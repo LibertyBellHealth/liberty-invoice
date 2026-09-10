@@ -184,3 +184,35 @@ test('a retry that succeeds while still on the same caregiver does tick', async 
   assert.strictEqual(w.document.getElementById('cgNotesSavedFlash').style.display, 'inline',
     'the guard must not stop a legitimate retry from confirming');
 });
+
+// doSave is the retry handler, and it used to close over the record captured when the debounce
+// fired. A retry clicked after further typing re-sent the OLD note over the newer one, and the next
+// roster load pulled that back into localStorage — so the newer text was gone from both.
+test('a stale retry does not revert a newer note', async () => {
+  const w = app();
+  twoCaregivers(w);
+  w.activeCgId = 'cg_A';
+  w.renderCgNotesPane();
+  const sentNotes = [];
+  const retries = [];
+  w.saveCaregiverAPI = (id, cg) => { sentNotes.push(cg && cg.notes); return Promise.reject(new Error('network error')); };
+  w._showSaveStatus = (state, label, onRetry) => { if (onRetry) retries.push(onRetry); };
+
+  typeInto(w, 'cgNotesArea', 'hello');
+  w._flushPendingNoteSaves();
+  await settle();
+  assert.strictEqual(retries.length, 1, 'the failed save should offer a retry');
+
+  // The operator keeps typing; that save succeeds.
+  w.saveCaregiverAPI = (id, cg) => { sentNotes.push(cg && cg.notes); return Promise.resolve(); };
+  typeInto(w, 'cgNotesArea', 'hello world');
+  w._flushPendingNoteSaves();
+  await settle();
+
+  retries[0]();                 // then clicks the failure banner still on screen
+  await settle();
+
+  assert.strictEqual(sentNotes[sentNotes.length - 1], 'hello world',
+    'the retry re-sent the note as it was when the first attempt failed: ' + JSON.stringify(sentNotes));
+  assert.strictEqual(w.getCaregivers().cg_A.notes, 'hello world');
+});

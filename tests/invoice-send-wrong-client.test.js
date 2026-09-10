@@ -1,13 +1,11 @@
 'use strict';
-// sendEmail had TWO independent sources of truth for who the invoice is for. `cn` comes from the
-// invoice form, which is what captureInvoicePDF builds the document from — so it is the name the
-// caseworker reads on the PDF. activeProfileName is a global, read a dozen times AFTER the
-// "Invoice Has Issues" dialog, which is a real gap: the hash router reassigns the global on
-// Back/Forward with no click on the page, and the overlay does not block it.
+// sendEmail read activeProfileName a dozen times AFTER the "Invoice Has Issues" dialog. That is a
+// real gap — hashchange reassigns the global on Back/Forward with no click on the page — so the
+// invoice snapshot could be filed under one client while another client's PDF was emailed.
 //
-// So the invoice snapshot was persisted under one client while the first client's PDF was emailed.
-// When two sources disagree there is no right one to pick, and this path sends a document out of
-// the building — so it stops.
+// The record is captured before the dialog now. The name typed on the form is NOT the record's
+// identity: it is what prints on the PDF, and it is editable, so an invoice reopened for a renamed
+// client, or one given a middle initial for MDHHS, must still send.
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { loadApp, resetStorage } = require('./harness');
@@ -48,22 +46,25 @@ const bp = (w, v) => {
   el.value = v;
 };
 
-test('an invoice is not emailed when the open client is not the one on the form', async () => {
+test('the open client changing across the dialog stops the send', async () => {
   const w = app();
   bp(w, '08/2026');
-  w.activeProfileName = 'Bob';        // reached another client while the send was being set up
+  w.activeProfileName = 'Alice';
+  let pressOk;
+  w.validateInvoiceForSend = () => ['Something to confirm'];
+  w.showConfirm = (msg, ok) => { pressOk = ok; };
 
-  await w.sendEmail();
+  const sending = w.sendEmail();
+  w.activeProfileName = 'Bob';    // Back button reaches another client while the dialog is up
+  pressOk();
+  await sending;
 
-  assert.strictEqual(w.pdfs, 0, 'no PDF may be built when the two sources disagree');
-  assert.match(w.alerts.join(' '), /different client is open/i,
-    'expected the wrong-client refusal, not some other failure: ' + w.alerts.join(' | '));
-  assert.match(w.alerts.join(' '), /Alice/, 'the refusal must name the invoice’s client');
-  assert.ok(!w.getProfiles().Bob.invoices.length,
-    "Alice's invoice snapshot was filed under Bob");
+  assert.strictEqual(w.pdfs, 0, 'no PDF may be built once the open client has changed');
+  assert.match(w.alerts.join(' '), /open client changed/i, w.alerts.join(' | '));
+  assert.strictEqual(w.getProfiles().Bob.invoices.length, 0, "Alice's invoice was filed under Bob");
 });
 
-test('the send proceeds normally when they agree', async () => {
+test('the send proceeds normally when nothing changed', async () => {
   const w = app();
   bp(w, '08/2026');
   w.activeProfileName = 'Alice';
@@ -71,21 +72,20 @@ test('the send proceeds normally when they agree', async () => {
   await w.sendEmail();
 
   assert.strictEqual(w.pdfs, 1, 'the guard must not block a normal send');
-  assert.strictEqual(w.getProfiles().Alice.invoices.length, 1,
-    'the snapshot should be filed under the client on the invoice');
+  assert.strictEqual(w.getProfiles().Alice.invoices.length, 1);
 });
 
-// The refusal above only fires when the form HAS a client name. With a blank one the old code still
-// filed a snapshot under whoever happened to be open — an invoice nobody named, saved onto a real
-// client's record. Using the form as the source of truth means a nameless invoice files nowhere.
-test('an invoice with no client name on the form is not filed under the open client', async () => {
+// The name on the form is editable and the stored snapshot keeps whatever it was written with, so
+// requiring it to match the profile key made every historic invoice of a renamed client unsendable.
+test('an invoice whose form name differs from the record still sends', async () => {
   const w = app();
   bp(w, '08/2026');
-  w.document.getElementById('clientName').value = '';
-  w.activeProfileName = 'Bob';
+  w.activeProfileName = 'Alice';
+  w.document.getElementById('clientName').value = 'Alice M. Adams';   // middle initial for MDHHS
 
   await w.sendEmail();
 
-  assert.strictEqual(w.getProfiles().Bob.invoices.length, 0,
-    'a snapshot from a form naming nobody was written onto Bob');
+  assert.strictEqual(w.pdfs, 1, 'a differing form name is not a wrong client: ' + w.alerts.join(' | '));
+  assert.strictEqual(w.getProfiles().Alice.invoices.length, 1,
+    'the snapshot belongs to the open record regardless of what is typed on the form');
 });
