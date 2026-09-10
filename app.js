@@ -6271,39 +6271,40 @@ function saveInvoiceToClient(){
     // Deliberately NOT passing `ex`/`existingStatus`: they were read before this dialog opened and
     // the user may take minutes over it. _doSaveInvoiceToClient re-finds the invoice by its BILLING
     // PERIOD at the moment it writes.
-    showConfirm(msg,function(){_doSaveInvoiceToClient(bp);},{title:'Overwrite Invoice',okText:'Overwrite'});
+    var forClient=activeProfileName;
+    showConfirm(msg,function(){_doSaveInvoiceToClient(bp,forClient);},{title:'Overwrite Invoice',okText:'Overwrite'});
     return;
   }
-  _doSaveInvoiceToClient(bp);
+  _doSaveInvoiceToClient(bp,activeProfileName);
 }
 // Writes the on-screen invoice under `bp`. Located by billing period HERE, not by an index taken
 // before the dialog — a sync can replace the array meanwhile. see DECISIONS.md#current-record-across-async
-function _doSaveInvoiceToClient(bp){
-  aiTrack('InvoiceSaved',{client:activeProfileName,period:bp});
-  var p=getProfiles();if(!p[activeProfileName])return;if(!p[activeProfileName].invoices)p[activeProfileName].invoices=[];
-  var ex=p[activeProfileName].invoices.findIndex(function(i){return i&&i.billingPeriod===bp;});
-  var existingStatus=(ex>=0)?(p[activeProfileName].invoices[ex].status||'draft'):null;
+function _doSaveInvoiceToClient(bp,forClient){
+  aiTrack('InvoiceSaved',{client:forClient,period:bp});
+  var p=getProfiles();if(!p[forClient])return;if(!p[forClient].invoices)p[forClient].invoices=[];
+  var ex=p[forClient].invoices.findIndex(function(i){return i&&i.billingPeriod===bp;});
+  var existingStatus=(ex>=0)?(p[forClient].invoices[ex].status||'draft'):null;
   // Re-assert the lock too — the row may have been marked Paid since the dialog opened.
   if(ex>=0&&existingStatus==='paid'){
     showAlert('Invoice '+bp+' is marked Paid and cannot be overwritten. Change the status to Draft first if you need to edit it.',{title:'Invoice Locked'});
     return;
   }
   if(ex>=0){
-    var prevInv=p[activeProfileName].invoices[ex];
-    p[activeProfileName].invoices[ex]=Object.assign({},prevInv,{
+    var prevInv=p[forClient].invoices[ex];
+    p[forClient].invoices[ex]=Object.assign({},prevInv,{
       billingPeriod:bp,
       savedAt:new Date().toLocaleString(),
       status:existingStatus,
       data:captureFullInvoice()
     });
-    addAuditEntry(activeProfileName,'Invoice '+bp+' overwritten');
+    addAuditEntry(forClient,'Invoice '+bp+' overwritten');
   } else {
-    p[activeProfileName].invoices.unshift({billingPeriod:bp,savedAt:new Date().toLocaleString(),status:'draft',invoiceNote:'',data:captureFullInvoice()});
-    addAuditEntry(activeProfileName,'Invoice '+bp+' created');
+    p[forClient].invoices.unshift({billingPeriod:bp,savedAt:new Date().toLocaleString(),status:'draft',invoiceNote:'',data:captureFullInvoice()});
+    addAuditEntry(forClient,'Invoice '+bp+' created');
   }
-  saveProfilesLS(p);saveProfileSP(activeProfileName,p[activeProfileName]);
-  logActivity('invoice','Invoice '+bp+' saved for '+activeProfileName);
-  try{localStorage.removeItem('lhca_draft_'+activeProfileName);}catch(e){}
+  saveProfilesLS(p);saveProfileSP(forClient,p[forClient]);
+  logActivity('invoice','Invoice '+bp+' saved for '+forClient);
+  try{localStorage.removeItem('lhca_draft_'+forClient);}catch(e){}
   var btn=document.getElementById('saveInvoiceBtn');btn.textContent='Saved';setTimeout(function(){btn.textContent='Save Invoice';},1800);
   document.getElementById('dupWarning').style.display='none';
   updateStats();
