@@ -43,7 +43,7 @@ test('the write lands on the period it was for, even if the array moved meanwhil
   const store = w.getProfiles();
   store['Jane Doe'].invoices.unshift(inv('10/2026', 'draft', 'db_10'));
   w.saveProfilesLS(store);
-  w._doSaveInvoiceToClient('08/2026');          // what the confirm callback now does
+  w._doSaveInvoiceToClient('08/2026', 'Jane Doe');          // what the confirm callback now does
   const list = w.getProfiles()['Jane Doe'].invoices;
   const sept = list.find((i) => i.billingPeriod === '09/2026');
   assert.strictEqual(sept.status, 'submitted', 'September must not be un-submitted: ' + periods(w));
@@ -58,7 +58,7 @@ test('the invoice that was targeted is the one updated', () => {
     inv('09/2026', 'draft', 'db_09'), inv('08/2026', 'draft', 'db_08')] } });
   w.document.getElementById('billingPeriod').value = '08/2026';
   w.document.getElementById('svcHH').value = '62';
-  w._doSaveInvoiceToClient('08/2026');
+  w._doSaveInvoiceToClient('08/2026', 'Jane Doe');
   const list = w.getProfiles()['Jane Doe'].invoices;
   assert.strictEqual(list.find((i) => i.billingPeriod === '08/2026').data.svcHH, '62');
   assert.strictEqual(list.find((i) => i.billingPeriod === '09/2026').data.svcHH, '10',
@@ -69,7 +69,7 @@ test('a period that no longer exists is created rather than overwriting a neighb
   const w = app();
   w.saveProfilesLS({ 'Jane Doe': { clientName: 'Jane Doe', invoices: [inv('09/2026', 'submitted', 'db_09')] } });
   w.document.getElementById('billingPeriod').value = '08/2026';
-  w._doSaveInvoiceToClient('08/2026');
+  w._doSaveInvoiceToClient('08/2026', 'Jane Doe');
   const list = w.getProfiles()['Jane Doe'].invoices;
   assert.strictEqual(list.length, 2);
   assert.strictEqual(list.find((i) => i.billingPeriod === '09/2026').status, 'submitted');
@@ -82,7 +82,7 @@ test('a row marked Paid while the dialog was open is still refused', () => {
   w.saveProfilesLS({ 'Jane Doe': { clientName: 'Jane Doe', invoices: [inv('08/2026', 'paid', 'db_08')] } });
   w.document.getElementById('billingPeriod').value = '08/2026';
   w.document.getElementById('svcHH').value = '99';
-  w._doSaveInvoiceToClient('08/2026');
+  w._doSaveInvoiceToClient('08/2026', 'Jane Doe');
   assert.match(alerted, /Paid and cannot be overwritten/);
   assert.strictEqual(w.getProfiles()['Jane Doe'].invoices[0].data.svcHH, '10', 'a paid invoice must not change');
 });
@@ -91,6 +91,6 @@ test('an existing invoice keeps its status through an overwrite', () => {
   const w = app();
   w.saveProfilesLS({ 'Jane Doe': { clientName: 'Jane Doe', invoices: [inv('08/2026', 'submitted', 'db_08')] } });
   w.document.getElementById('billingPeriod').value = '08/2026';
-  w._doSaveInvoiceToClient('08/2026');
+  w._doSaveInvoiceToClient('08/2026', 'Jane Doe');
   assert.strictEqual(w.getProfiles()['Jane Doe'].invoices[0].status, 'submitted');
 });
