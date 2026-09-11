@@ -1692,7 +1692,9 @@ function renderNotesPane(){
     // debounce can't lose the note. Only the backend save is debounced.
     var clientName=activeProfileName, val=ta.value;
     var pNow=getProfiles();
-    if(pNow[clientName]){ pNow[clientName].clientNotes=val; saveProfilesLS(pNow); }
+    // Flag it newer than the server's: before a session's first load there is no baseline to compare
+    // against, so the merge lets the server win unless this is set. See renderCgNotesPane.
+    if(pNow[clientName]){ pNow[clientName].clientNotes=val; pNow[clientName]._unsaved=true; saveProfilesLS(pNow); }
     // Debounce the backend save, but register it so a tab-close can flush it (F4).
     _scheduleNoteSave('client:'+clientName, function(){
       var p2=getProfiles(); if(!p2[clientName])return;
@@ -3995,7 +3997,9 @@ function renderCgNotesPane(){
     // is debounced. Mirrors renderNotesPane.
     var cgId=activeCgId, val=ta.value;
     var cgsNow=getCaregivers();
-    if(cgsNow[cgId]){ cgsNow[cgId].notes=val; saveCaregiversLS(cgsNow); }
+    // _unsaved = "local copy is newer, keep it". The reload's merge honours it; without it a roster
+    // load landing inside the 600ms window put the old note back, and autosave re-sent that.
+    if(cgsNow[cgId]){ cgsNow[cgId].notes=val; cgsNow[cgId]._unsaved=true; saveCaregiversLS(cgsNow); }
     // Debounce the backend save, but register it so a tab-close can flush it (F4). Keying by
     // caregiver also cancels this caregiver's own pending save across re-renders of the pane.
     _scheduleNoteSave('caregiver:'+cgId, function(){
@@ -4006,9 +4010,15 @@ function renderCgNotesPane(){
       var doSave=function(){
         var cgsAt=getCaregivers(),rec=cgsAt[cgId];
         if(!rec)return Promise.resolve();
-        var flash=stillOn('caregiver',cgId)?'cgNotesSavedFlash':null;
-        return flashQuietSave(saveCaregiverAPI(cgId,rec,true),flash,
-          'Caregiver note ('+(rec.name||cgId)+')',doSave);
+        var flash=stillOn('caregiver',cgId)?'cgNotesSavedFlash':null, sent=rec.notes;
+        // saveCaregiverAPI clears _unsaved on success. If more was typed while it was in flight,
+        // the local copy is newer again — put the flag back or the next reload reverts it.
+        var pr=saveCaregiverAPI(cgId,rec,true).then(function(r){
+          var now=getCaregivers()[cgId];
+          if(now&&now.notes!==sent)_rosterMarkUnsaved('caregiver',cgId,true);
+          return r;
+        });
+        return flashQuietSave(pr,flash,'Caregiver note ('+(rec.name||cgId)+')',doSave);
       };
       doSave();
     });
@@ -8465,7 +8475,12 @@ function saveProfileSP(name, data, quiet) {
   // Durable dirty flag: set on a genuine failure so the edit survives a reload, cleared on success.
   // A 409 is excluded — the server holds the NEWER row there, so pinning the local copy would
   // recreate the roster deadlock this codebase already fixed once.
-  Promise.resolve(_p).then(function(){ _markClientUnsaved(name, false); },
+  Promise.resolve(_p).then(function(){
+                             // Only if nothing changed locally while this was in flight. Clearing it
+                             // anyway left newer edits unprotected, so the next load reverted them.
+                             var cur=getProfiles()[name];
+                             if(!cur || _clientSig(cur)===_clientSigNow) _markClientUnsaved(name, false);
+                           },
                            function(e){
                              // On a conflict, leave the flag EXACTLY as it is. Clearing it here
                              // discarded an edit that an earlier genuine failure had protected.
@@ -10169,7 +10184,7 @@ function renderCwNotesPane(){
     var cwId=activeCwId, val=ta.value;
     var arrNow=getCaseworkers();
     var recNow=arrNow.find(function(x){return x.id===cwId;});
-    if(recNow){ recNow.notes=val; saveCaseworkersLS(arrNow); }
+    if(recNow){ recNow.notes=val; recNow._unsaved=true; saveCaseworkersLS(arrNow); }   // see renderCgNotesPane
     // Debounce the backend save, but register it so a tab-close can flush it (F4).
     _scheduleNoteSave('caseworker:'+cwId, function(){
       var findCw=function(){return getCaseworkers().find(function(x){return x.id===cwId;});};
@@ -10177,9 +10192,13 @@ function renderCwNotesPane(){
       var doSave=function(){
         var rec=findCw();
         if(!rec)return Promise.resolve();
-        var flash=stillOn('caseworker',cwId)?'cwNotesSavedFlash':null;
-        return flashQuietSave(saveCaseworkerAPI(rec,true),flash,
-          'Caseworker note ('+(rec.name||cwId)+')',doSave);
+        var flash=stillOn('caseworker',cwId)?'cwNotesSavedFlash':null, sent=rec.notes;
+        var pr=saveCaseworkerAPI(rec,true).then(function(r){
+          var now=findCw();
+          if(now&&now.notes!==sent)_rosterMarkUnsaved('caseworker',cwId,true);
+          return r;
+        });
+        return flashQuietSave(pr,flash,'Caseworker note ('+(rec.name||cwId)+')',doSave);
       };
       doSave();
     });
