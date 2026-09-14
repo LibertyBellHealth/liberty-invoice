@@ -5,22 +5,16 @@ var pendingSigTarget=null,sigDrawing=false,sigCanvas=null,sigCtx=null;
 var unsavedChanges=false;
 
 //  AZURE FUNCTIONS API CONFIG
-// Dev sandbox: when served from localhost, talk to the DEV backend (liberty-crm-db-dev,
-// fake data) so local testing never touches production. Every DEPLOYED hostname (the SWA
-// prod site + PR previews) always uses the prod backend — this switch is localhost-only,
-// so it is safe to ship. Run locally on a FIXED port (4280) that is registered as an
-// Azure AD redirect URI, e.g.:  cd liberty-invoice-site && python3 -m http.server 4280
+// From localhost, use the DEV backend (fake data); every deployed host uses production. Run locally on
+// port 4280, the registered sign-in redirect: cd liberty-invoice-site && python3 -m http.server 4280
 var _IS_LOCAL   = (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
-// The FIXED staging URL is a throwaway sandbox on the DEV backend (fake data) so destructive testing
-// there can NEVER touch a real client record. localhost also uses dev. Every OTHER deployed host
-// (the prod site + random PR previews) uses prod. Prod's own hostname never matches this, so prod is
-// unaffected; its CSP stays tight (only the staging branch's CSP allows the dev backend host).
+// The fixed staging URL is a sandbox on the DEV backend, so destructive testing there never touches a
+// real client. Production's hostname never matches it.
 var _IS_STAGING = (location.hostname === 'zealous-forest-01e406a10-2.centralus.7.azurestaticapps.net');
 var API_BASE    = (_IS_LOCAL || _IS_STAGING)
   ? 'https://liberty-crm-api-dev.azurewebsites.net/api'
   : 'https://liberty-crm-api-cyb3dkhnd2e7a3cy.centralus-01.azurewebsites.net/api';
-// Every environment writes to the same OneDrive folder and the automatic backup is named by date
-// alone, so a staging session took production's slot. Tag non-production backups and prune each
+// All environments share one OneDrive backup folder, so tag non-production backups and prune each
 // environment separately. see DECISIONS.md#backup-and-restore
 var _BACKUP_ENV_TAG = (_IS_LOCAL ? '_local' : (_IS_STAGING ? '_staging' : ''));
 var API_APP_ID  = '0c1627c1-c186-4e46-b919-e4a12f2f3952'; // Easy Auth app registration
@@ -78,13 +72,8 @@ async function refreshApiToken() {
 }
 
 // ── Reactive auth-expiry handling ────────────────────────────────────────────
-// The proactive timer above refreshes ~10min before expiry, but it MISSES when a device sleeps
-// (laptop lid closed) and wakes with an already-expired token: setTimeout doesn't fire on a
-// sleeping tab, so the very next save/upload 401s silently while the UI still looks signed-in.
-// Unattended workers on their own devices hit exactly this. So we also react to any 401 from OUR
-// API: attempt a silent refresh (fixes the token for the next call) AND show a visible banner so a
-// worker never keeps typing into saves that are quietly failing. A later successful API call
-// clears the banner.
+// The proactive refresh misses when a device sleeps and wakes with an expired token, so also react to
+// any 401 from our API: try a silent refresh and show a banner, so nobody keeps typing into failing saves.
 var _authBannerShown = false, _authRecovering = false;
 function _showAuthExpiredBanner(){
   if(_authBannerShown) return; _authBannerShown = true;
@@ -106,9 +95,8 @@ function _reauthNow(){
   catch(e){ console.warn('reauth redirect failed:', e); }
   try{ location.reload(); }catch(e2){}
 }
-// Called when an API response returns 401. Shows the banner and kicks ONE silent refresh so the
-// next call can succeed; we never auto-redirect (that would yank a worker mid-edit) — the banner's
-// link does that on demand.
+// On a 401: show the banner and kick ONE silent refresh. Never auto-redirect (it would yank a worker
+// mid-edit); the banner's link does that on demand.
 function _onApiAuthFail(){
   _showAuthExpiredBanner();
   if(_authRecovering) return; _authRecovering = true;
@@ -208,11 +196,9 @@ function bc(crumbs){
 }
 function navHome(){showPage('home');bc([{l:'Clients'}]);document.getElementById('topbarActions').innerHTML='';unsavedChanges=false;renderClientTable();updateStats();renderSidebarClients();if(typeof revalidate==='function')revalidate();}
 
-//  HASH ROUTER — enables right-click "Open in new tab" for records
-//  URL format: #/client/<id>, #/caregiver/<id>, #/caseworker/<id>,
-//              #/forms, #/tasks, #/caregivers, #/caseworkers, #/settings
-// Route clients by opaque dbId so the patient NAME never lands in the URL / browser history.
-// Falls back to the name only for a client not yet saved to the server (no dbId yet).
+//  HASH ROUTER — lets records open in a new tab
+// #/client/<id>, #/caregiver/<id>, #/caseworker/<id>, #/forms, #/tasks, #/caregivers, #/caseworkers,
+// #/settings. Clients route by dbId so the patient NAME never lands in the URL (name only before a save).
 function buildClientUrl(name){
   var id=(getIdMap()||{})[name];
   return '#/client/'+encodeURIComponent(id!=null&&id!==''?id:name);
@@ -253,10 +239,8 @@ function routeFromHash(){
   }catch(e){console.warn('Route error:',e);}
 }
 window.addEventListener('hashchange',routeFromHash);
-// On a cold load / hard refresh the router runs before the roster has downloaded (and a refresh
-// wipes the local roster for HIPAA), so a deep link like #/client/5 can't resolve yet and falls
-// back to the list. Re-run the router once a roster loader finishes — but only while no detail is
-// open, so a background revalidation never yanks a user off a record they're viewing.
+// On a cold load the router runs before the roster downloads, so a deep link can't resolve yet. Re-run
+// it when a roster loader finishes, but only while no detail is open.
 function _restoreRouteAfterLoad(){
   var h=window.location.hash||'';
   if(!h || h==='#/' || h==='#') return;
@@ -267,18 +251,14 @@ function _restoreRouteAfterLoad(){
   if(typeof routeFromHash==='function') routeFromHash();
 }
 
-// Explicit nav click helper — guarantees the target page renders even when the
-// current URL already matches the target hash (in which case hashchange doesn't
-// fire and the router would silently skip the click). Cmd/Ctrl/Shift-click still
-// falls through to the browser's default behavior so "open in new tab" works.
+// Nav click helper: re-renders even when the URL already matches (hashchange wouldn't fire).
+// Cmd/Ctrl/Shift-click falls through so "open in new tab" works.
 function navClick(e, targetHash, targetFn){
   if(e && (e.metaKey||e.ctrlKey||e.shiftKey||e.button===1))return true;
   if(e && typeof e.preventDefault==='function')e.preventDefault();
   var cur=window.location.hash||'';
   if(cur===targetHash){
-    // Already on target — force a re-render since hashchange won't fire. Record links pass no
-    // targetFn, so fall back to re-running the router for the current hash (fixes: re-clicking the
-    // client/caregiver/caseworker already in the URL did nothing).
+    // Already on target, so force a re-render. Record links pass no targetFn, so re-run the router.
     if(typeof targetFn==='function')targetFn();
     else if(typeof routeFromHash==='function')routeFromHash();
   } else {
@@ -350,9 +330,8 @@ function navDetail(name,tab){
 function navInvoice(loadSpecific){
   if(!activeProfileName){showAlert('Select a client first.');return;}
   var prof=getProfiles()[activeProfileName];
-  // In Progress (stored 'inactive'), Lost and Terminated clients are never invoiced. Every BULK
-  // surface enforces that; these three per-client entry points checked only for a carrier client,
-  // so an invoice for a terminated client could be created and emailed one at a time.
+  // Only Active clients are invoiced; In Progress (stored 'inactive'), Lost and Terminated never are,
+  // matching every bulk surface.
   if(isCarrierClient(prof)){showAlert('This is a managed-care (carrier) client — billing goes through the carrier’s software, so invoices aren’t created here.');return;}
   if(!isInvoiceableStatus(prof)){showAlert('“'+activeProfileName+'” is '+((prof&&prof.clientStatus==='inactive')?'In Progress':(prof&&prof.clientStatus)||'not active')+', so they are not invoiced. Set the client Active first if service has started.',{title:'Not an invoiceable client'});return;}
   if(loadSpecific){
@@ -380,9 +359,8 @@ function navInvoice(loadSpecific){
 }
 function confirmNewInvoice(mode){
   var prof=getProfiles()[activeProfileName];
-  // In Progress (stored 'inactive'), Lost and Terminated clients are never invoiced. Every BULK
-  // surface enforces that; these three per-client entry points checked only for a carrier client,
-  // so an invoice for a terminated client could be created and emailed one at a time.
+  // Only Active clients are invoiced; In Progress (stored 'inactive'), Lost and Terminated never are,
+  // matching every bulk surface.
   if(isCarrierClient(prof)){showAlert('This is a managed-care (carrier) client — billing goes through the carrier’s software, so no invoice is created here.');return;}
   if(!isInvoiceableStatus(prof)){showAlert('“'+activeProfileName+'” is '+((prof&&prof.clientStatus==='inactive')?'In Progress':(prof&&prof.clientStatus)||'not active')+', so no invoice should be created. Set the client Active first if service has started.',{title:'Not an invoiceable client'});return;}
   document.getElementById('newInvChoiceModal').classList.remove('open');
@@ -409,9 +387,8 @@ function confirmNewInvoice(mode){
         nextBP=String(lm).padStart(2,'0')+'/'+ly;
       }
     }
-    // This is a NEW invoice for a NEW period, so it bills the CURRENT state rate. applyFullInvoice
-    // above deliberately restored the copied invoice's stored rate (right when reopening an old
-    // invoice, wrong here) — re-stamp it, exactly as copyMonth() does.
+    // A new invoice for a new period bills the CURRENT state rate: re-stamp the rate applyFullInvoice
+    // restored from the copied invoice, as copyMonth() does.
     var _hrNew=document.getElementById('hourlyRate'); if(_hrNew)_hrNew.value=stateRate();
     document.getElementById('billingPeriod').value=nextBP;
     document.getElementById('billingPeriod2').value=nextBP;
@@ -570,10 +547,8 @@ function renderAttentionPanel(){
   if(overdueTasks.length)items.push({cls:'attn-warn',count:overdueTasks.length,label:overdueTasks.length+' overdue task'+(overdueTasks.length>1?'s':''),fn:'navTasks()'});
   if(!items.length)items.push({cls:'attn-ok',count:'',label:'No items require attention today',fn:null});
   panel.innerHTML=items.map(function(it){
-    // The handler goes into a DOUBLE-quoted attribute, so any double quote inside it ends the
-    // attribute early: openAllInvoicesModal("outstanding") became onclick="openAllInvoicesModal("
-    // — a syntax error, and the row silently did nothing when clicked. Escape rather than trusting
-    // every future caller to remember.
+    // The handler sits in a double-quoted attribute, so escape double quotes or the attribute ends early
+    // and the click silently does nothing.
     return '<div class="attn-item '+it.cls+'"'+(it.fn?' onclick="'+String(it.fn).replace(/"/g,'&quot;')+'"':'')+'>'+
       (it.count?'<span class="attn-count">'+it.count+'</span>':'')+
       '<span class="attn-label">'+it.label+'</span>'+(it.fn?'<span class="attn-arrow">→</span>':'')+
@@ -610,12 +585,9 @@ function _clientSortCompare(a,b,profiles,cgs,cwsArr){
   return (va<vb?-1:va>vb?1:0)*dir;
 }
 
-// ── Client-table column widths + pagination — persisted per-device in localStorage ──
-// Widths are % of table width (excluding the 32px checkbox column). Should sum to ~95-100.
-// Status is small because "• Active" is short; Client is largest because it stacks name + Medicaid ID.
-// Column widths sum to 100 so every column gets exactly the space it deserves —
-// no browser auto-expansion. Name column trimmed from 22 → 18 per user feedback
-// (it was reading as bulky against the other columns).
+// ── Client-table column widths + pagination, persisted per device ──
+// Widths are % of table width (excluding the 32px checkbox column) and sum to 100, so the browser never
+// auto-expands a column.
 var _clientColDefaults={name:18,status:7,phone:14,caregiver:16,caseworker:16,county:11,lastInvoice:14};
 var _clientColumnWidths=null;
 var _clientPage=1;
@@ -777,10 +749,8 @@ function toggleBulkClient(name,cb){
   if(bar){bar.classList.toggle('visible',count>0);var lbl=document.getElementById('ctBulkCount');if(lbl)lbl.textContent=count+' selected';}
 }
 function clearBulkSelect(){bulkSelected={};var bar=document.getElementById('ctBulkBar');if(bar)bar.classList.remove('visible');renderClientTable();}
-// F3: run a batch of saves as QUIET saves and report ONE summary status — so a failure in
-// the middle of a batch can't be visually overwritten by a later "Saved ✓" (which left the
-// failed record un-synced in LS, to be clobbered on the next reload). thunks each return a
-// save promise. On any failure the persistent red toast tells the user how many + which.
+// F3: run a batch as QUIET saves with ONE summary status, so a mid-batch failure can't be hidden by a
+// later "Saved ✓". On any failure the persistent red toast says how many and which.
 function batchSaveWithSummary(label, thunks){
   if(!thunks.length)return Promise.resolve({ok:0,fail:0});
   var ok=0,failed=[];
@@ -795,9 +765,8 @@ function batchSaveWithSummary(label, thunks){
   });
 }
 function bulkSetClientStatus(status){
-  // saveClientInfo and createClient both refuse Active without a DHS-1210 for a CHAMPS client; this
-  // path wrote the status directly, so bulk "Mark Active" was a way around the rule — and an Active
-  // client with no authorization is then picked up by invoice generation.
+  // Bulk "Mark Active" enforces the same rule as saveClientInfo/createClient: no Active CHAMPS client
+  // without a DHS-1210, or invoice generation picks up an unauthorized client.
   if(status==='active'){
     var _p0=getProfiles();
     var _blocked=Object.keys(bulkSelected).filter(function(n){
@@ -1039,9 +1008,8 @@ function _copyFmt(inp){
   if(inp.type==='date'){ var m=v.match(/^(\d{4})-(\d{2})-(\d{2})$/); return m?(m[2]+'/'+m[3]+'/'+m[1]):v; }
   return v;
 }
-// Attach a hover-only copy button to every text/date input in a detail form (client/caregiver use
-// .info-field, caseworker uses .ff). Idempotent via data-copyable; skips checkboxes/hidden/buttons
-// and fields with no id. The SSN double-click shortcut still works too.
+// Hover copy button on every text/date input in a detail form (.info-field, or .ff for caseworkers).
+// Idempotent via data-copyable; skips checkboxes, hidden fields, buttons and fields without an id.
 function wireCopyableFields(c){
   var root=(typeof c==='string')?document.getElementById(c):c; if(!root)return;
   root.querySelectorAll('input:not([type=checkbox]):not([type=hidden]):not([type=button]):not([data-copyable])').forEach(function(inp){
@@ -1216,10 +1184,8 @@ function _authAddTaskRow(t){
     '<button type="button" class="btn btn-secondary btn-sm" title="Remove" onclick="this.parentNode.remove();" style="padding:2px 4px;min-width:0;">×</button>';
   host.appendChild(row);
 }
-// "Set to 6 months after effective" button — fill reassessment = effective + 6 months.
-// Reassessment due = effective + 6 months, advanced in 6-month steps to the NEXT date on/after
-// today (MDHHS reviews every 6 months). So an OLD form (effective years ago) yields the next
-// upcoming reassessment, not a long-past one. refDate defaults to now; pass one for tests.
+// Reassessment due = effective + 6 months, advanced in 6-month steps to the next date on/after today
+// (MDHHS reviews every 6 months), so an old form yields the upcoming review. refDate is for tests.
 function _nextReassessment(effMdy, refDate){
   var p=String(effMdy||'').split('/'); if(p.length!==3)return '';
   var y=+p[2], mi=(+p[0])-1, day=+p[1];
@@ -1370,9 +1336,8 @@ function saveAuthPane(){
   if(typeof showToast==='function')showToast('✓ Authorization saved');
 }
 function _clearAuth(){
-  // Capture the client NOW. The dialog says "this client", and the callback read
-  // activeProfileName — so navigating to someone else before confirming removed THEIR
-  // authorization instead, silently, and an authorization is what makes a client billable.
+  // Capture the client before the dialog, or navigating away first would remove another client's
+  // authorization, the thing that makes a client billable.
   var forClient=activeProfileName;
   if(!forClient)return;
   showConfirm('Remove the DHS-1210 authorization from '+forClient+'? The filed PDF stays in Documents.',function(){
@@ -1406,14 +1371,11 @@ function saveClientInfo(){
   var p=getProfiles();
   var rec=p[activeProfileName];
   if(((document.getElementById('ei-status')||{}).value||'')==='active' && !((document.getElementById('ei-start-date')||{}).value||'').trim()){showAlert('Service Start Date is required when the status is Active.');return;}
-  // Require a DHS-1210 only when TURNING a client active — not on every edit of one that's already
-  // active. Existing active clients (from before this rule, or before their PDF was imported) must
-  // stay editable without being forced to import an authorization first.
+  // Require a DHS-1210 only when TURNING a client active, so existing active clients stay editable
+  // without importing an authorization first.
   var _newStatus=((document.getElementById('ei-status')||{}).value||'');
   var _wasActive=(rec && rec.clientStatus==='active');
-  // The DHS-1210 rule is CHAMPS-only — managed-care (carrier) clients are authorized by the carrier
-  // and never have one, so without this exception (which createClient already has) a carrier client
-  // created "In Progress" could never be flipped Active from this pane.
+  // CHAMPS only: carrier clients are authorized by the carrier and never have a DHS-1210.
   var _newProgram=((document.getElementById('ei-program')||{}).value)||(rec&&rec.program)||'';
   if(_newStatus==='active' && !_wasActive && _newProgram!=='carrier' && !hasAuthorization(rec)){showAlert('A DHS-1210 authorization is required before a client can be Active.\n\nImport one on the Authorization tab first — that’s what officially makes you their agency.');return;}
   var first=(document.getElementById('ei-first').value||'').trim();
@@ -1428,11 +1390,8 @@ function saveClientInfo(){
   var _pgEl=document.getElementById('ei-program');if(_pgEl)rec.program=_pgEl.value;
   var _caEl=document.getElementById('ei-carrier');if(_caEl)rec.carrier=_caEl.value;
   var _meEl=document.getElementById('ei-member');if(_meEl)rec.memberId=_meEl.value;
-  // Carrier/member # are HIDDEN for a CHAMPS client — clear them when the program is switched AWAY
-  // from carrier, so a stale carrier doesn't linger (inert for billing, but it shows in exports).
-  // Only on an actual SWITCH: legacy records have program '' and the select then renders CHAMPS, so
-  // testing `!== 'carrier'` wiped the carrier and member # of every client whose program was never
-  // set — on a save that touched neither field.
+  // Carrier/member # are hidden for CHAMPS: clear them on an actual switch away from carrier. Legacy
+  // records have program '' (rendered as CHAMPS), so testing `!== 'carrier'` would wipe them on any save.
   if(_prevProgram==='carrier'&&rec.program!=='carrier'){ rec.carrier=''; rec.memberId=''; }
   var dobEl=document.getElementById('ei-dob');if(dobEl)rec.dob=dobEl.value||'';
   var genderEl=document.getElementById('ei-gender');if(genderEl)rec.gender=genderEl.value||'';
@@ -1496,9 +1455,8 @@ function deleteClient(){
     addAuditEntry(name,'CLIENT RECORD DELETED by '+currentUserEmail());   // durable record — aiTrack is scrubbed telemetry, not an audit trail
     var p=getProfiles();deleteProfileSP(name);delete p[name];
     try{localStorage.removeItem('lhca_draft_'+name);}catch(e){}
-    // PHI: these overlays are keyed by NAME and getProfiles re-attaches them to ANY profile with a
-    // matching name. Left behind, a later client with the same name inherited the deleted person's
-    // SSN and had it encrypted into their row.
+    // PHI: these overlays are keyed by NAME, so remove them with the client, or a later same-named client
+    // inherits the deleted person's SSN.
     try{ delete _ssnMem[name]; }catch(e){}
     try{ delete _clientSyncedMem[name]; }catch(e){}
     // Tasks are name-keyed too. Left pointing at a deleted client they vanish from every view and
@@ -1552,10 +1510,8 @@ function changeInvStatus(sel){
   var p=getProfiles();if(!p[activeProfileName]||!p[activeProfileName].invoices[idx])return;
   setInvoiceStatus(activeProfileName, p[activeProfileName].invoices[idx].billingPeriod, next, sel);
 }
-// Change one invoice's status, from ANY surface. Keyed by client + billing period rather than an
-// array index, and both are captured before the confirmation so neither a background sync nor the
-// owner navigating elsewhere can move the change onto a different record.
-// `sel` is optional — the element to restyle/revert; `onDone` runs after a successful change.
+// Change one invoice's status from any surface. Keyed by client + billing period, both captured before
+// the confirmation. `sel` (optional) is restyled or reverted; `onDone` runs after success.
 function setInvoiceStatus(forClient, period, next, sel, onDone){
   var p=getProfiles();
   var rec=p[forClient]; if(!rec||!rec.invoices)return;
@@ -1585,10 +1541,8 @@ function setInvoiceStatus(forClient, period, next, sel, onDone){
       danger:true
     };
   }
-  // Captured now: the dialog below can sit open for minutes, and both the array index and the
-  // client on screen can move underneath it — a background load replaces the invoices array
-  // (re-sorted and de-duplicated) and the owner can navigate to another client. Applying to
-  // invoices[idx] of whoever is active THEN marked the wrong invoice, or the wrong client's.
+  // Captured now: the dialog can stay open for minutes while a background load re-sorts the invoices and
+  // the owner navigates away, so an index or active client read later would hit the wrong invoice.
   function applyChange(){
     if(sel)sel.className='status-select st-'+next;
     var p2=getProfiles();
@@ -1596,9 +1550,8 @@ function setInvoiceStatus(forClient, period, next, sel, onDone){
     var inv2=rec2.invoices.find(function(i){return i&&i.billingPeriod===period;});
     if(!inv2)return;
     inv2.status=next;
-    // saveProfileSP already persists status via the invoice upsert; a separate status
-    // PATCH here would write the same row twice and (with optimistic concurrency) make
-    // the save conflict with itself, so it was removed.
+    // No separate status PATCH: saveProfileSP already persists status, and writing the row twice makes the
+    // save conflict with itself.
     saveProfilesLS(p2);saveProfileSP(forClient,rec2);
     logActivity('status','Invoice '+period+' for '+forClient+' marked '+next);
     updateStats();
@@ -1687,9 +1640,8 @@ function renderNotesPane(){
   ta.value=(prof&&prof.clientNotes)?prof.clientNotes:'';
   if(ta._nl)ta.removeEventListener('input',ta._nl);
   ta._nl=function(){
-    // Capture the client NOW — activeProfileName may change before the 600ms flush. And write
-    // LS SYNCHRONOUSLY (not inside the timer) so closing the tab / switching clients within the
-    // debounce can't lose the note. Only the backend save is debounced.
+    // Capture the client and text now, and write LS synchronously so a tab close or client switch inside
+    // the 600ms debounce can't lose the note. Only the backend save is debounced.
     var clientName=activeProfileName, val=ta.value;
     var pNow=getProfiles();
     // Flag it newer than the server's: before a session's first load there is no baseline to compare
@@ -1698,10 +1650,8 @@ function renderNotesPane(){
     // Debounce the backend save, but register it so a tab-close can flush it (F4).
     _scheduleNoteSave('client:'+clientName, function(){
       var p2=getProfiles(); if(!p2[clientName])return;
-      // D8: only claim "Saved ✓" after the API resolves; surface failure otherwise.
-      // Decide the flash target INSIDE doSave: it is also the retry handler, so it can run long
-      // after the first attempt, from a different client's pane. Computed once, a retry that
-      // succeeds ticks "Saved ✓" under whoever is on screen then.
+      // D8: only claim "Saved ✓" once the API resolves. Decide the flash target inside doSave: it is also the
+      // retry handler and can run later from a different client's pane.
       var doSave=function(){
         var pAt=getProfiles();
         if(!pAt[clientName])return Promise.resolve();
@@ -1740,9 +1690,8 @@ function getHcClientId(){
   var prof=getProfiles()[activeProfileName];
   return prof&&prof._dbId?prof._dbId:null;
 }
-// DHS-1210 reader — extract authorized hours/tasks from the MDHHS approval packet.
-// Runs entirely in-browser via pdf.js (self-hosted); the PHI on the form never
-// leaves the machine. Output feeds a review/confirm step, then the client profile.
+// DHS-1210 reader: authorized hours/tasks from the MDHHS packet, entirely in-browser via self-hosted
+// pdf.js so the PHI never leaves the machine. Output goes to a review step, then the profile.
 function _dhsReady(){ return typeof pdfjsLib!=='undefined'; }
 
 // Group one page's text items into ordered lines (top→bottom, then left→right).
@@ -1761,9 +1710,8 @@ async function _dhsPageLines(page){
   }).filter(Boolean);
 }
 
-// The "Number of Days" column as MDHHS writes it. ONE definition for the row pattern, the OCR cell
-// pass and _dhsFreqToDays — they drifted once and a "Twice per month" row was silently dropped.
-// "per week" and "a week" both appear on real paperwork, so accept either.
+// The "Number of Days" column as MDHHS writes it: ONE definition shared by the row pattern, the OCR
+// pass and _dhsFreqToDays. Accept both "per week" and "a week".
 var _DHS_FREQ_SRC='(?:\\d+\\s*(?:days?|times?)\\s*(?:per|a)\\s*(?:week|month)'+
   '|(?:once|twice|thrice|three\\s*times|four\\s*times|five\\s*times|six\\s*times)\\s*(?:per|a)\\s*(?:week|month)'+
   '|daily|every\\s*day|weekly|monthly)';
@@ -1772,22 +1720,17 @@ var _DHS_FREQ_RE=new RegExp('^'+_DHS_FREQ_SRC+'$','i');
 // A row shaped like a task row whose frequency we do NOT recognise — so a new wording is reported
 // rather than silently dropped the way "Twice per month" was.
 var _DHS_ROWISH_RE=/^(.+?)\s+(\d{2}:\d{2})\s+(.+?)\s+(\d{2}:\d{2})(?:\s+\$?[\d,]+\.\d{2})?\s*$/i;
-// Parse the grouped lines into a structured authorization. Self-checks the extraction
-// against the form's own printed totals (task $ = total; task minutes = approved hours).
-// Handles both DHS-1210 (older) and MDHHS-6064-P (newer, effective 9-25) — the two
-// forms share the same Section 3 task table structure, only the header/labels differ.
+// Parse grouped lines into an authorization, self-checked against the form's printed totals. Handles
+// DHS-1210 and MDHHS-6064-P (effective 9-25), which share the Section 3 task table.
 function parseDHS1210(pages){
   var lines=[].concat.apply([],pages);
   var flat=lines.join(' ').replace(/\s+/g,' ');
   var out={warnings:[]};
   // Detect which form this is so downstream UI can label it correctly
   out.formType = /MDHHS-?6064/i.test(flat) ? 'MDHHS-6064' : 'DHS-1210';
-  // The approved monthly total can appear TWICE and the two can disagree. A real packet states
-  // "approved for 62 Hours and 20 Minutes" in the DHS-1210-A cover letter while its MDHHS-6064 task
-  // table prints "Total per month 62:21" — and the task rows sum to 62:21 exactly. The TABLE WINS
-  // (owner's ruling, 2026-09-01): it is the provider billing form, its own rows add up to it, and
-  // MDHHS has paid against it. Reading the letter's figure billed a minute LESS than authorized on
-  // every invoice for that client. When they disagree, say so rather than silently choosing.
+  // The monthly total can appear twice and disagree: the DHS-1210-A letter vs the MDHHS-6064 task table.
+  // The TABLE WINS (owner's ruling, 2026-09-01): it is the billing form and its rows add up to it. When
+  // they disagree, say so rather than silently choosing.
   var _letter=flat.match(/approved for\s+(\d+)\s*Hours?\s+(?:and\s+)?(\d+)\s*Minutes?/i)
            || flat.match(/(\d+)\s*Hours?\s+(?:and\s+)?(\d+)\s*Minutes?\s+per\s+month/i);
   var _tableM=flat.match(/Total\s*per\s*month[^0-9]*(\d{1,3}):(\d{2})/i);
@@ -1801,25 +1744,21 @@ function parseDHS1210(pages){
     out.warnings.push('the form states two different monthly totals — task table '+_hm(_tMin)+
       ', approval letter '+_hm(_lMin)+'. The task table was used (it is what the task rows add up to).');
   }
-  // Last resort: ANY "N Hours M Minutes" on the form. That can be a single task's time rather than
-  // the monthly authorization, so it's flagged — the review modal shows the warning, and the
-  // task-minutes-vs-approved reconciliation check is what confirms it.
+  // Last resort: ANY "N Hours M Minutes" on the form. It may be one task's time, so it's flagged and the
+  // task-minutes reconciliation confirms it.
   if(out.hours==null){
     var lm=flat.match(/(\d+)\s*Hours?\s+(?:and\s+)?(\d+)\s*Minutes?/i);
     if(lm){ out.hours=+lm[1]; out.minutes=+lm[2]; out.hoursGuessed=true;
       out.warnings.push('approved hours (read from an unlabeled line — verify the total)'); }
   }
   if(out.hours==null) out.warnings.push('approved hours');
-  // Effective date. The DHS-1210-A cover letter says "effective MM/DD/YYYY" — that is the real
-  // start of service. A STANDALONE MDHHS-6064-P has no such sentence; its only date is Section 2's
-  // "Date", which is when the ASW signed the form, not necessarily when service starts.
+  // Effective date: the DHS-1210-A letter's "effective MM/DD/YYYY" is the real service start. A
+  // standalone MDHHS-6064-P only has Section 2's "Date", when the ASW signed, which may differ.
   var e=flat.match(/effective\s+(\d{2}\/\d{2}\/\d{4})/i);
   if(e)out.effectiveDate=e[1];
   else if(out.formType==='MDHHS-6064'){
-    // Section 2 is a two-column table: the LABELS ("ASW Email Address  Date") sit on one line and
-    // the VALUES ("ColemanT1@michigan.gov  08/06/2026") on the next, so "Date" is never followed by
-    // its own value — the old label-anchored match could not fire on any real 6064. Take the date
-    // that sits beside the ASW email instead, then fall back to the label form for other layouts.
+    // Section 2 is a two-column table: labels on one line, values on the next, so "Date" is never followed
+    // by its value. Take the date beside the ASW email, then fall back to the label form.
     var g=flat.match(/@michigan\.gov\s+(\d{2}\/\d{2}\/\d{4})/i)
         || flat.match(/(?:^|\s)Date\s+(\d{2}\/\d{2}\/\d{4})/i);
     if(g){
@@ -1829,7 +1768,7 @@ function parseDHS1210(pages){
   }
   else out.warnings.push('effective date');
   // Digits are legal in the local part and MDHHS uses them to disambiguate workers with the same
-  // surname (SawyerA2@, ColemanT1@) — the old [A-Za-z.] class silently dropped exactly those.
+  // surname (SmithJ2@, SmithJ3@) — the old [A-Za-z.] class silently dropped exactly those.
   var em=flat.match(/([A-Za-z][A-Za-z0-9._-]*@michigan\.gov)/i); if(em)out.aswEmail=em[1];
   var ph=flat.match(/(\d{3}-\d{3}-\d{4})/); if(ph)out.aswPhone=ph[1];
   var co=flat.match(/\b(\d{2}-[A-Z]{3,})\b/); if(co)out.county=co[1];
@@ -1857,12 +1796,8 @@ function parseDHS1210(pages){
         unknownFreqs.push(_rw[3].trim());
     }
   });});
-  // OCR fallback. Document Intelligence returns a table as one CELL per line in reading order, so a
-  // row arrives as 4-5 consecutive lines ("Bathing" / "00:05" / "7 days per week" / "02:30" /
-  // "$67.72") and the single-line pattern above matches nothing — which is why every scanned or
-  // photographed authorization imported with an empty task table. Only runs when that pass found
-  // nothing, so a normal PDF cannot be affected. The rows it rebuilds are still checked against the
-  // form's own printed totals by the reconciliation below.
+  // OCR fallback: Document Intelligence returns table CELLS one per line, so a row spans 4-5 lines and the
+  // single-line pattern matches nothing. Runs only when that pass found nothing; totals still reconcile.
   if(!tasks.length){
     var _HM=/^\d{1,3}:\d{2}$/;
     var _FREQ=_DHS_FREQ_RE;
@@ -1904,11 +1839,8 @@ function parseDHS1210(pages){
     });
   }
   out.tasks=tasks;
-  // Nothing warned when the task table came back EMPTY. A scan or photo goes through OCR, which
-  // returns the table as loose cells rather than one line per row, so the row pattern matches
-  // nothing — the import then showed the approved hours, no task list, and a red "Task times DO
-  // NOT match the approved hours" that blamed a mismatch for what was really a total miss. Without
-  // tasks there is no caregiver task sheet and no day grid for an invoice, so say so plainly.
+  // An empty task table means no caregiver sheet and no invoice day grid, so say so plainly rather than
+  // reporting it as an hours mismatch.
   if(unknownFreqs.length){
     var _uf=unknownFreqs.filter(function(v,i,a){return a.indexOf(v)===i;}).slice(0,3);
     out.warnings.push('a task row with an unrecognised frequency ("'+_uf.join('", "')+'") — that task was NOT imported');
@@ -1925,12 +1857,9 @@ function parseDHS1210(pages){
   if(out.hours!=null && tasks.length){
     var mins=tasks.reduce(function(a,x){var p=(x.perMonth||'0:0').split(':');return a+(+p[0])*60+(+p[1]);},0);
     out.taskMinuteSum=mins; out.approvedTotalMin=out.hours*60+out.minutes;
-    // The 6064 rounds every task row to the whole minute, so N rows can legitimately add up to N
-    // minutes BELOW the total the form itself prints — every real 6064 lands 2 minutes short and
-    // was being flagged "Task times DO NOT match the approved hours". That shortfall costs the
-    // agency nothing: invoices bill the approved total, not this sum. A shortfall bigger than the
-    // rounding can explain is still a misread, and rows that OVERRUN the authorization are flagged
-    // as tightly as before — that is the direction that ends in a recoupment.
+    // The 6064 rounds each task row to the minute, so N rows may sum up to N minutes BELOW the printed
+    // total; that costs nothing, since invoices bill the approved total. A bigger shortfall is a misread, and
+    // any OVERRUN is flagged tightly: that direction ends in a recoupment.
     var _diff=mins-out.approvedTotalMin;
     out.timeReconciles = _diff<=0 ? (-_diff<=tasks.length) : (_diff<=1);
   }
@@ -1943,18 +1872,15 @@ function parseDHS1210(pages){
 function readDHS1210File(file){
   return file.arrayBuffer().then(function(buf){
     if(!pdfjsLib.GlobalWorkerOptions.workerSrc) pdfjsLib.GlobalWorkerOptions.workerSrc='vendor/pdf.worker.min.js';
-    // isEvalSupported:false is the documented mitigation for CVE-2024-4367 (arbitrary JS execution
-    // from a crafted PDF, fixed upstream in 4.2.67; this bundle is 3.11.174). DHS-1210 files arrive
-    // from outside the agency — emailed, scanned, downloaded — and this origin holds the signed-in
-    // user's tokens and the whole roster, so the font-rendering eval path must stay closed.
+    // isEvalSupported:false mitigates CVE-2024-4367 (JS execution from a crafted PDF; this bundle is
+    // 3.11.174, fixed in 4.2.67). These files come from outside, and this origin holds tokens and the roster.
     return pdfjsLib.getDocument({data:buf, isEvalSupported:false}).promise;
   }).then(function(pdf){
     var jobs=[]; for(var p=1;p<=pdf.numPages;p++)jobs.push(pdf.getPage(p).then(_dhsPageLines));
     return Promise.all(jobs);
   }).then(function(pages){
-    // A clean digital PDF has a text layer — parse it here (free + instant). A SCANNED/photographed
-    // PDF has essentially no extractable text, so pdf.js returns almost nothing; fall back to server
-    // OCR (Azure Document Intelligence), which reads scans and returns the same pages shape.
+    // A digital PDF has a text layer: parse it here (free, instant). A scan has almost none, so fall back to
+    // server OCR (Document Intelligence), which returns the same pages shape.
     var totalText=pages.reduce(function(a,p){return a+p.join('').length;},0);
     if(totalText>=200) return parseDHS1210(pages);
     return _dhsOcrFile(file).then(function(ocrPages){
@@ -2014,14 +1940,8 @@ function handleDhsImport(input){
 
 function _dhsChip(ok){return ok?'<span style="color:#1a7f4b;font-weight:700;">✓</span>':(ok===false?'<span style="color:#c0392b;font-weight:700;">✗</span>':'<span style="color:#5c7590;">–</span>');}
 
-// Find the caseworker a form's ASW already is. Matching was email-only, so when the email could
-// not be read the import fell through to "Add <name> as a caseworker" with the box CHECKED — and
-// created a second record for someone already on the roster. That is how a duplicate "A Sawyer"
-// appeared alongside "Addison Sawyer" on the same email: the old address pattern dropped any local
-// part containing a digit (SawyerA2@), so there was no email to match on.
-//
-// MDHHS prints the worker as initial + surname ("A Sawyer") while the roster holds the full name
-// ("Addison Sawyer"), so name matching has to understand that shape. Email first (authoritative),
+// Find the caseworker a form's ASW already is, so the import doesn't create a duplicate. MDHHS prints
+// initial + surname ("A Smith") while the roster holds the full name. Match email first (authoritative),
 // then phone digits, then initial+surname.
 function _dhsCwNameKey(n){
   var t=String(n||'').toLowerCase().replace(/[^a-z\s]/g,' ').trim().split(/\s+/).filter(Boolean);
@@ -2042,21 +1962,18 @@ function _dhsMatchCaseworker(res, cws){
   if(!f)return null;
   return cws.find(function(c){
     var r=_dhsCwNameKey(c.name); if(!r||r.last!==f.last)return false;
-    // "A Sawyer" matches "Addison Sawyer"; "Addison" also matches "A".
+    // "J Smith" matches "Jane Smith"; "Jane" also matches "J".
     return r.first===f.first ||
            (f.first.length===1 && r.first.charAt(0)===f.first) ||
            (r.first.length===1 && f.first.charAt(0)===r.first);
   })||null;
 }
-// #5: fields a DHS-1210 suggests updating on the client / matched caseworker. Only when the form
-// has a value that DIFFERS from what's stored — never suggests blanking a field. Client NAME is
-// intentionally excluded (renaming a client changes its record key — too risky to auto-suggest).
+// #5: fields the form suggests updating, only when its value DIFFERS from what's stored; never blanks a
+// field. The client NAME is excluded: renaming changes the record key.
 function _dhsSuggestedUpdates(res, prof, cw){
   var out=[];
-  // `verify` = this value was read heuristically off the form (the ASW phone/email are simply the
-  // first phone/email found anywhere on it — which can be a county main line or a fax). Combined
-  // with `from` being non-empty (an OVERWRITE), the review renders it UNCHECKED so nothing already
-  // on file is replaced by an un-confirmed OCR read unless the user ticks it deliberately.
+  // `verify` = read heuristically (the ASW phone/email are the first found anywhere, possibly a main line
+  // or fax). When it would overwrite a stored value, the review leaves it unchecked.
   var add=function(label,target,field,from,to,id,verify){
     to=(to==null?'':String(to)).trim(); from=(from==null?'':String(from)).trim();
     if(to && to!==from) out.push({label:label,target:target,field:field,from:from,to:to,id:id||null,
@@ -2064,9 +1981,7 @@ function _dhsSuggestedUpdates(res, prof, cw){
   };
   if(cw){
     add('Caseworker email','caseworker','email',cw.email,res.aswEmail,cw.id,true);
-    // Compare phones by DIGITS only — a stored "3135051660" and a form "313-505-1660" are the same
-    // number, so a formatting-only difference must not be flagged as a change (mirrors the rate
-    // normalization below). Only suggest when the actual digits differ.
+    // Compare phones by digits only, so a formatting difference isn't flagged as a change.
     var _digits=function(s){return (s==null?'':String(s)).replace(/\D/g,'');};
     if(_digits(res.aswPhone) && _digits(res.aswPhone)!==_digits(cw.phone)){
       add('Caseworker phone','caseworker','phone',cw.phone,res.aswPhone,cw.id,true);
@@ -2079,9 +1994,8 @@ function _dhsSuggestedUpdates(res, prof, cw){
 }
 function showDhsReview(file,res){
   var ex=document.getElementById('dhsReviewModal'); if(ex)ex.remove();
-  // Capture the client this review is FOR. activeProfileName is a mutable global: a background
-  // load/sync (or the user clicking another client) can change or null it while the modal is open,
-  // which used to drop the import or write it to the WRONG client at Apply time.
+  // Capture the client this review is for: a background sync or a click elsewhere can change
+  // activeProfileName while the modal is open.
   var targetName=activeProfileName;
   var prof=getProfiles()[targetName]||{};
   var cws=getCaseworkers();
@@ -2122,9 +2036,7 @@ function showDhsReview(file,res){
       }).join('')+
     '</div>';
   }
-  // Render whenever a check actually RAN, not only when one passed — the case that matters most (OCR
-  // misread BOTH the hours and the total, so both checks fail) used to render nothing at all. The
-  // wording now follows the outcome instead of always saying "match".
+  // Render whenever a check ran, not only when one passed, with wording that follows the outcome.
   var _recRan=(res.timeReconciles!=null)||(res.amountReconciles!=null);
   var _recFail=(res.timeReconciles===false)||(res.amountReconciles===false);
   var reconcileNote=_recRan
@@ -2137,9 +2049,8 @@ function showDhsReview(file,res){
   ov.id='dhsReviewModal'; ov.className='modal-overlay open';
   ov.innerHTML='<div class="modal-box" style="max-width:560px;max-height:88vh;overflow:auto;">'+
     '<h3>'+esc(res.formType||'DHS-1210')+' — review before saving</h3>'+
-    // Provenance, stated accurately. This line used to read "Nothing was sent anywhere" on EVERY
-    // import, including scans — which are uploaded to Document Intelligence to be read. Telling the
-    // owner PHI stayed local when it did not is the one thing this notice must never do.
+    // Provenance, stated accurately: scans are uploaded to Document Intelligence, so never claim PHI stayed
+    // local when it didn't.
     '<p style="font-size:12px;color:#5c7590;margin:-4px 0 8px;">Read from <b>'+esc(file.name)+'</b>. '+
       (res.viaOcr
         ? 'No text in this file, so it was uploaded to your agency\'s Azure Document Intelligence service to be read.'
@@ -2257,14 +2168,9 @@ function _applyDhsImport(file,res,opts){
   }
 }
 
-// Caregiver task sheet — export the authorized tasks (NO dollar amounts) as a
-// printable / emailable one-pager so caregivers know exactly what's approved.
-// Everything runs locally in the browser; opens a new tab with a print-ready
-// layout, plus buttons for Print / Copy / Email so Row can send it however
-// works best (AirDrop, iMessage, email attachment, printed handout).
-// PHI-minimized client label for caregiver-facing outputs: first name + last initial (e.g.
-// "Darnelle D.") instead of the full name. Reduces the identifier that leaves the system when the
-// sheet is texted/emailed. Prefers the structured first/last fields; falls back to parsing the name.
+// Caregiver task sheet: the authorized tasks, with NO dollar amounts, as a printable/emailable one-pager
+// built locally in the browser.
+// PHI-minimized label for caregiver-facing outputs: first name + last initial ("Jane D.").
 function _caregiverClientLabel(prof, fullName){
   var first=((prof&&prof.firstName)||'').trim();
   var last=((prof&&prof.lastName)||'').trim();
@@ -2275,19 +2181,16 @@ function _caregiverClientLabel(prof, fullName){
   return (first+(last?(' '+last.charAt(0).toUpperCase()+'.'):'')).trim() || String(fullName||'').trim();
 }
 // ── Caregiver task sheet: schedule slightly OVER the authorization ─────────────
-// The sheet the caregiver works from should never leave the agency short of the time MDHHS
-// authorized, so the per-task times on it are padded up to the next half hour, with at least 15
-// minutes of headroom (owner's rule, 2026-09-01: "I never want to be under time"). This affects the
-// CAREGIVER'S SHEET ONLY. Invoices bill the authorization's exact approved total and are untouched
-// — billing more than was authorized is what triggers a recoupment.
+// Pad per-task times up to the next half hour with at least 15 min headroom (owner's rule, 2026-09-01:
+// "I never want to be under time"). CAREGIVER'S SHEET ONLY: invoices bill the exact approved total,
+// because billing over the authorization triggers a recoupment. see DECISIONS.md#billing-rounding
 // 80:36 -> 81:00 (+24) · 80:05 -> 80:30 (+25) · 80:55 -> 81:30 (+35)
 function _taskSheetTargetMin(authMin){
   if(!(authMin>0))return 0;
   return Math.ceil((authMin+15)/30)*30;
 }
-// Spread the headroom across the task rows in proportion to their authorized monthly time, using
-// largest-remainder so the padded rows total the target exactly rather than drifting by rounding.
-// Returns tasks with perMonth padded; task name, time/day and frequency stay exactly as authorized.
+// Spread the headroom across rows in proportion to their monthly time (largest remainder, so the total
+// is exact). Task name, time per day and frequency stay as authorized.
 function _taskSheetPaddedTasks(tasks, authMin){
   var list=(tasks||[]).map(function(t){return {task:t.task,perDay:t.perDay,freq:t.freq,perMonth:t.perMonth,amount:t.amount};});
   var target=_taskSheetTargetMin(authMin);
@@ -2315,13 +2218,9 @@ function _hmText(min){
   var h=Math.floor(min/60), m=min%60;
   return h ? (h+'h '+m+'m') : (m+'m');   // a sub-hour group reads "15m", not "0h 15m"
 }
-// The average above answers "roughly how much a day"; it cannot answer "how long is TODAY",
-// because a 7-day task and a 1-day-per-week task never fall on the same visit twice. Group the
-// rows by how often they run and total each group: the caregiver adds up whichever lines apply.
-// Frequencies come from _dhsFreqSpec — the same reading the invoice day grid uses, deliberately
-// not a second parser, because two parsers of the same column is how "Twice per month" got
-// dropped once already. Group totals round UP to the next 5 minutes: never under.
-// see DECISIONS.md#billing-rounding
+// The average can't say how long TODAY is, since tasks run on different days. Group rows by frequency and
+// total each group; frequencies come from _dhsFreqSpec, the invoice grid's parser, never a second one.
+// Group totals round UP to 5 minutes. see DECISIONS.md#billing-rounding
 function _taskSheetFreqGroups(tasks){
   var order=[], by={};
   (tasks||[]).forEach(function(t){
@@ -2351,9 +2250,7 @@ function exportCaregiverTaskSheet(){
   var reassess=a.reassessDate||'';
   var totalHours=(a.hours!=null)? a.hours+'h '+(a.minutes||0)+'m' : '';
 
-  // The padded schedule — the same rows the Authorization tab shows. This was read from an
-  // undeclared global, so the whole export threw a ReferenceError before opening anything and the
-  // button did nothing at all, silently. The declaration lived in renderAuthPane.
+  // The padded schedule, the same rows the Authorization tab shows.
   var _sheetTasks=_taskSheetPaddedTasks(a.tasks, (a.hours!=null)?(a.hours*60+(a.minutes||0)):0);
   // What the caregiver actually clocks to, grouped by how often each task runs.
   var _groups=_taskSheetFreqGroups(_sheetTasks);
@@ -2366,9 +2263,8 @@ function exportCaregiverTaskSheet(){
       }).join('')+
       '<div class="vf">On a day when more than one line applies, add them together.</div></div>'
     : '';
-  // Build rows: task · time per day · number of days · time per month
-  // Intentionally omits Amount and any $/hr — the caregiver never needs to
-  // see the rate, and Row asked for this specifically.
+  // Rows: task · time per day · number of days · time per month. No amounts or rate: caregivers never
+  // need them.
   var rows=_sheetTasks.map(function(t){
     return '<tr>'+
       '<td>'+_escHtml(t.task||'')+'</td>'+
@@ -2381,10 +2277,8 @@ function exportCaregiverTaskSheet(){
   var today=new Date();
   var todayStr=(today.getMonth()+1)+'/'+today.getDate()+'/'+today.getFullYear();
 
-  // Purpose-built PLAIN-TEXT body for the "Email" button. The old button emailed
-  // document.body.innerText, which flattened the task table into run-on lines and swept in the
-  // on-screen action buttons ("Print / Save PDF", "Copy text", "Email"). This keeps it readable —
-  // each task on its own line — with no UI text.
+  // Plain-text body for the Email button: one task per line, without the on-screen button labels that
+  // innerText would sweep in.
   var _emailLines=[
     'Liberty Home Care Assistance',
     'Authorized Tasks', '',
@@ -2481,9 +2375,8 @@ function exportCaregiverTaskSheet(){
     '</div>'+
     '</body></html>';
 
-  // The sheet carries the client's name, authorized hours and worker contact, and the 45-minute
-  // idle wipe only clears THIS document — a popup left open kept PHI on screen after the session
-  // ended. _openPhiWindow registers it so clearPHIFromStorage closes it.
+  // The sheet carries PHI and the idle wipe only clears this document, so _openPhiWindow registers the
+  // popup for clearPHIFromStorage to close.
   var w=_openPhiWindow('','_blank');
   if(!w){showAlert('Pop-up was blocked. Allow pop-ups from this site to open the task sheet.');return;}
   w.document.write(html); w.document.close(); w.focus();
@@ -2493,10 +2386,8 @@ function exportCaregiverTaskSheet(){
 // stays safe even if a task name or client name contains angle brackets/quotes
 function _escHtml(s){s=(s==null?'':String(s));return s.replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 
-// Render the authorized-task chart (WITH times) to a PNG the user can paste into Messages/Mail —
-// the format Row wanted: a real chart, not a wall of text, and easy to read on a phone. Copies to
-// the clipboard when the browser allows (secure context + this click gesture); otherwise downloads
-// the PNG to attach manually. Uses html2canvas (already loaded for invoice PDFs).
+// Render the task chart (with times) to a PNG to paste into Messages or Mail. Copies to the clipboard
+// when allowed, otherwise downloads it. Uses html2canvas (already loaded for invoice PDFs).
 async function shareCaregiverTaskImage(){
   if(!activeProfileName){showAlert('Open a client first.');return;}
   var prof=getProfiles()[activeProfileName]||{};
@@ -2506,9 +2397,7 @@ async function shareCaregiverTaskImage(){
   var clientName=_caregiverClientLabel(prof, activeProfileName), esc=_escHtml;  // first name + last initial (PHI-minimized)
   var totalHours=(a.hours!=null)?(a.hours+'h '+(a.minutes||0)+'m'):'';
   var td='padding:7px 9px;border-bottom:1px solid #edf1f6;', tdc=td+'text-align:center;color:#334a68;';
-  // Pad here too. The image is what actually reaches the caregiver's phone; built from the raw
-  // authorization it showed LESS time than the sheet and the Authorization tab, so the caregiver
-  // worked a schedule that under-delivers — the very thing the padding exists to prevent.
+  // Pad here too: the image is what reaches the caregiver, and it must match the sheet.
   var _imgTasks=_taskSheetPaddedTasks(a.tasks, (a.hours!=null)?(a.hours*60+(a.minutes||0)):0);
   var _imgGroups=_taskSheetFreqGroups(_imgTasks);
   var rows=_imgTasks.map(function(t){
@@ -2572,9 +2461,7 @@ async function shareCaregiverTaskImage(){
   }catch(e){ console.error('Task image failed',e); showAlert('Could not generate the image: '+((e&&e.message)||'error')); }
   finally{ host.remove(); }
 }
-// Show the generated chart image so the user can SEE it, then copy / download / drag it into a
-// message. (The first version copied to the clipboard invisibly — nothing appeared on screen, so
-// it looked like nothing happened.)
+// Show the generated image so the user can see it, then copy, download or drag it into a message.
 function _showTaskImagePreview(dataUrl, blob, clientName){
   var ex=document.getElementById('taskImgModal'); if(ex)ex.remove();
   var ov=document.createElement('div');
@@ -2622,9 +2509,8 @@ function renderDocsPane(){
   if(clientId){loadHcDocs(clientId);}
   else{document.getElementById('hcDocList').innerHTML='<div style="color:#5c7590;font-size:12px;">Save this client to the database first before uploading documents.</div>';}
 }
-// Render a document-load FAILURE — never a false "No documents yet". The files are safe on the
-// server; a failed GET (expired sign-in / connection) must show a retry, not an empty pane, so a
-// worker doesn't think the docs vanished and re-upload duplicates. retryExpr re-runs the loader.
+// Render a load FAILURE with a retry, never a false "No documents yet", or a worker may re-upload
+// duplicates. retryExpr re-runs the loader.
 function _renderDocLoadError(listId, retryExpr, err){
   var el=document.getElementById(listId); if(!el)return;
   el.className='';
@@ -2633,9 +2519,8 @@ function _renderDocLoadError(listId, retryExpr, err){
     (is401?'Your sign-in expired — <b>sign in again</b>, then ':'Couldn’t load documents (connection issue) — ')+
     'your files are safe on the server. <a href="#" style="color:#185FA5;font-weight:600;" onclick="'+retryExpr+';return false;">Retry</a></div>';
 }
-// A documents response only belongs on screen if that pane is STILL open — a slow list for one
-// client otherwise repaints another's, and _docEditCtx then carries the wrong ids.
-// see DECISIONS.md#current-record-across-async
+// A documents response belongs on screen only if that pane is still open, or one client's list repaints
+// another's. see DECISIONS.md#current-record-across-async
 function _docListStillCurrent(kind, id){
   // Documents key on the client's DATABASE id, not the profile name, so 'homecare' is checked
   // against getHcClientId(); the others share the general definition.
@@ -2651,9 +2536,8 @@ function loadHcDocs(clientId){
 // ── Shared modern document grid (client / caregiver / caseworker) ──
 var DOC_CATS=[['Other','Other'],['SSN_Card','SSN Card'],['Drivers_License',"Driver's License"],['Insurance_Card','Insurance Card'],['Medicare_Card','Medicare Card'],['Medicaid_Card','Medicaid Card'],['Authorization','Authorization'],['Certification','Certification'],['Background_Check','Background Check'],['I9_W4','I-9 / W-4']];
 function _docCatLabel(c){for(var i=0;i<DOC_CATS.length;i++){if(DOC_CATS[i][0]===c)return DOC_CATS[i][1];}return c||'Other';}
-// Category values are free-text (chips insert a LABEL, and users can type their own). Resolve any
-// value — a DOC_CATS key, its label, or custom text — to the canonical KEY so key-based gating
-// (_idCat, _CARD_TYPE) matches no matter how the document was tagged. Unknown values pass through.
+// Categories are free text: resolve a DOC_CATS key, its label or custom text to the canonical KEY so
+// key-based gating matches. Unknown values pass through.
 function _catKey(c){for(var i=0;i<DOC_CATS.length;i++){if(DOC_CATS[i][0]===c||DOC_CATS[i][1]===c)return DOC_CATS[i][0];}return c;}
 function _fmtDocSize(n){if(!n)return '';return n<1048576?Math.round(n/1024)+' KB':(n/1048576).toFixed(1)+' MB';}
 // Names the FORM only — never the filename (routinely the client's name), never a typed category.
@@ -2666,10 +2550,8 @@ function _isMsa4676(d, display){
 }
 function _docEmailSubject(d, is4676, signed){
   if(is4676)return (signed?'Signed ':'')+'MSA-4676 Home Help Services Agreement';
-  // Categories are FREE TEXT — the chips insert a label but the owner can type anything, and people
-  // name things after the client ("Delanor SSN card"). Only a category the app itself defines may
-  // reach a subject line; anything typed falls back to a neutral word. Without this the leak that
-  // #143/#146 removed from the invoice and filename subjects came straight back through this one.
+  // Only an app-defined category may appear in a subject line: typed categories often include the client's
+  // name ("<name> SSN card"), so they fall back to a neutral word.
   var key=_catKey(d&&d.category);
   var known=DOC_CATS.some(function(c){return c[0]===key;});
   var label=known?_docCatLabel(key):'';
@@ -2677,12 +2559,10 @@ function _docEmailSubject(d, is4676, signed){
   return (signed?'Signed ':'')+label;
 }
 var _docEditCtx=null;
-// Emailing a client document to a CAREGIVER: two gates, both enforced again inside the handler.
-//  • _DOC_EMAIL_BLOCKED — never emailable: ID cards plus the SSN-bearing HR forms (I-9/W-4 has the
-//    SSN on its face; a background check carries SSN + DOB). One click used to attach either.
-//  • _DOC_EMAIL_SAFE   — known caregiver-safe categories that send with no extra prompt. Anything
-//    else (Other, or a category the user typed) still sends, but only after an explicit warning —
-//    "Other" is the DEFAULT upload bucket, so blocking it outright would break the 4676 workflow.
+// Emailing a client document to a CAREGIVER has two gates, both re-checked in the handler:
+//  • _DOC_EMAIL_BLOCKED never sends: ID cards and SSN-bearing HR forms (I-9/W-4, background checks).
+//  • _DOC_EMAIL_SAFE sends without a prompt. Anything else sends only after an explicit warning
+//    ("Other" is the default upload bucket, so blocking it would break the 4676 workflow).
 var _DOC_EMAIL_BLOCKED={SSN_Card:1,Drivers_License:1,Insurance_Card:1,Medicare_Card:1,Medicaid_Card:1,I9_W4:1,Background_Check:1};
 var _DOC_EMAIL_SAFE={Authorization:1,Certification:1};
 function renderDocGrid(list,docs,opts){
@@ -2695,10 +2575,8 @@ function renderDocGrid(list,docs,opts){
     var ext=(display.split('.').pop()||'').toLowerCase();
     var isImg=['jpg','jpeg','png','gif','webp','heic','bmp'].indexOf(ext)>=0;
     var isPdf=ext==='pdf';
-    // Email is offered on client docs except the categories that carry an SSN or an ID card (see
-    // _DOC_EMAIL_BLOCKED); the handlers re-check, so this only hides the buttons. Two destinations,
-    // because a document has two legs: to the caregiver (e.g. a 4676 to sign) and on to the
-    // caseworker (e.g. that same 4676 once it's signed).
+    // Email buttons show on client docs except the blocked categories; the handlers re-check. Two
+    // destinations: the caregiver (a 4676 to sign) and the caseworker (the signed 4676).
     var _catk=_catKey(d.category);   // normalize label/free-text → canonical key before gating
     var canEmail=(opts.clientType==='homecare')&&!_DOC_EMAIL_BLOCKED[_catk];
     // Extract (OCR → fill client fields) is offered only on the ID/benefit cards we can read.
@@ -2723,10 +2601,8 @@ function renderDocGrid(list,docs,opts){
     '</div>';
   }).join('');
 }
-// Delete the document at grid index i via the shared render context. Index-based on purpose: no
-// filename is ever interpolated into an inline handler — an apostrophe in the name (e.g. from a
-// "Driver's License" category prefix) used to break the onclick with a syntax error, and a crafted
-// filename was an XSS vector. Works for all three panes (homecare / caregiver / caseworker).
+// Delete by grid index via the shared render context, so no filename is ever interpolated into an inline
+// handler (an apostrophe breaks it; a crafted name is XSS). Used by all three panes.
 function deleteDocAt(i){
   var ctx=_docEditCtx; if(!ctx||!ctx.docs||!ctx.docs[i])return;
   var d=ctx.docs[i];
@@ -2737,10 +2613,8 @@ function deleteDocAt(i){
       .catch(function(e){showAlert('Delete failed: '+((e&&e.message)||e));});
   },{title:'Delete Document',okText:'Delete'});
 }
-// The document-email gate, enforced HERE rather than only in the grid: the button is a UI
-// affordance, and a document can be re-categorized (or these called directly) after it was drawn.
-// Blocked categories never send; anything not known safe (including the default "Other" bucket)
-// takes one explicit confirmation naming the file. `who` is the word used in the prompts.
+// The document-email gate, enforced here as well as in the grid: a document can be re-categorized after
+// the button was drawn. `who` is the word used in the prompts.
 function _docEmailGate(d, who, onOk){
   var cat=_catKey(d.category);
   if(_DOC_EMAIL_BLOCKED[cat]){
@@ -2752,11 +2626,8 @@ function _docEmailGate(d, who, onOk){
   showConfirm('“'+display+'” is filed as “'+_docCatLabel(d.category)+'”, which isn’t a known safe category to send.\n\nOpen it first and confirm it contains no Social Security number, ID card, or other sensitive identifiers before emailing it to a '+who+'.',
     onOk, {title:'Send this to the '+who+'?',okText:'I’ve checked — continue',danger:true});
 }
-// Email a client document (e.g. the MSA-4676) to the client's assigned caregiver, with a default
-// draft tuned to the document + a first-time self-introduction. Everything is editable before send.
-// The intro is NOT tracked in localStorage (that wouldn't survive across devices/accounts) — it's
-// just seeded into the draft with a hint to delete it if you've emailed the caregiver before.
-// Step 1 of the MSA-4676 workflow: the caregiver signs it; emailDocToCaseworker sends it on.
+// Step 1 of the MSA-4676 workflow: email a client document to the assigned caregiver to sign, with an
+// editable draft and an optional first-time introduction (not tracked, so it works across devices).
 function emailDocToCaregiver(index){
   var ctx=_docEditCtx; if(!ctx||ctx.clientType!=='homecare')return;
   var d=ctx.docs[index]; if(!d)return;
@@ -2785,9 +2656,8 @@ function emailDocToCaregiver(index){
   }
   _docEmailGate(d, 'caregiver', function(){ _openDocEmailModal(d, cgEmail, subject, body); });
 }
-// Step 2 of the MSA-4676 workflow: the caregiver has signed it and the signed PDF is filed on the
-// client — send it on to the caseworker. Also used for any other client document the caseworker
-// needs (an authorization, a certification). Same gate as the caregiver path.
+// Step 2 of the MSA-4676 workflow: send the signed document on to the caseworker; also any other client
+// document the caseworker needs. Same gate as the caregiver path.
 function emailDocToCaseworker(index){
   var ctx=_docEditCtx; if(!ctx||ctx.clientType!=='homecare')return;
   var d=ctx.docs[index]; if(!d)return;
@@ -2821,9 +2691,8 @@ function emailDocToCaseworker(index){
   }
   _docEmailGate(d, 'caseworker', function(){ _openDocEmailModal(d, cwEmail, subject, body); });
 }
-// d may be null → plain email with no attachment (the Assistant uses this for a note with no form).
-// opts.auditClient names the client to log the send under (defaults to the active profile) — the
-// Assistant emails for a client that isn't necessarily the one currently open.
+// d may be null → plain email with no attachment (the Assistant uses this for a note). opts.auditClient
+// names the client to log the send under; the Assistant may email for a client that isn't open.
 function _openDocEmailModal(d, to, subject, body, opts){
   opts=opts||{};
   var _auditClient=opts.auditClient||activeProfileName;
@@ -2831,9 +2700,7 @@ function _openDocEmailModal(d, to, subject, body, opts){
   var ov=document.createElement('div');ov.className='modal-overlay open';
   ov.innerHTML='<div class="modal-box" style="max-width:520px;">'+
     '<h3>'+(d?'Email document':'Compose email')+'</h3>'+
-    // A warning about the RECIPIENT has to reach the person clicking Send. The assistant's
-    // off-roster check produced one but only returned it to the model, so whether the owner ever
-    // saw it depended on the model choosing to repeat it.
+    // A warning about the RECIPIENT must reach the person clicking Send, not only the model.
     (opts.warn?('<div style="background:#fff3cd;border:1px solid #ffeaa7;color:#856404;font-size:12px;padding:8px 10px;border-radius:6px;margin:6px 0;">'+esc(opts.warn)+'</div>'):'')+
     '<p style="font-size:12px;color:#5c7590;margin-top:-4px;">'+(d?('Sends “'+esc(_lbl)+'” as an attachment from your Microsoft account. '):'Sends from your Microsoft account. ')+'Edit anything below before sending.</p>'+
     '<label class="qc-l" for="dem-to">To</label><input id="dem-to" class="qc-i" value="'+esc(to)+'" placeholder="caregiver@email.com">'+
@@ -2863,10 +2730,8 @@ function _openDocEmailModal(d, to, subject, body, opts){
     }).then(function(){
       if(typeof showToast==='function')showToast('✓ Emailed '+_lbl+' to '+toV,3500);
       if(typeof addAuditEntry==='function')addAuditEntry(_auditClient,'Emailed “'+_lbl+'” to '+toV);
-      // _aiScrub drops keys matching name/email/recipient/file/… — `to` and `doc` did NOT match, so
-      // the recipient's real address and the document's (client-named) filename were being sent to
-      // App Insights. Renamed to keys the scrubber recognizes: the event still records that a
-      // document was emailed, without recording WHO or WHICH.
+      // Keys the _aiScrub scrubber recognizes: telemetry records that a document was emailed, never WHO or
+      // WHICH.
       if(typeof aiTrack==='function')aiTrack('DocEmailedToCaregiver',{recipient:toV,docName:_lbl});
       close();
     }).catch(function(err){
@@ -2875,10 +2740,8 @@ function _openDocEmailModal(d, to, subject, body, opts){
     });
   });
 }
-// For OCR: fetch an image, downscale to <= maxDim on the long edge, and return JPEG base64. Azure's
-// free OCR tier caps a document at 4 MB and rejects HEIC — a full-res phone photo blows past both, so
-// re-encoding to a right-sized JPEG in the browser makes any photo work (and reads more accurately).
-// PDFs, or images the browser can't decode, fall back to the raw bytes.
+// For OCR: downscale an image to <= maxDim and re-encode as JPEG. The OCR tier caps documents at 4 MB and
+// rejects HEIC, which full-res phone photos break. PDFs and undecodable images pass through as raw bytes.
 function _imageToOcrBase64(url, maxDim){
   maxDim = maxDim || 2200;
   return fetch(url).then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); return r.blob(); })
@@ -2923,10 +2786,8 @@ function _docToBase64(url){
     }); });
 }
 // ── ID / benefit card autofill (Driver's License, SSN, Medicaid) ─────────────
-// Read a labeled card via backend OCR and offer to apply the fields — comparing against what's
-// already on the client: blanks are offered to fill, matches are shown verified, and differences
-// are flagged for you to choose. Never auto-applies; you click Apply. Name fields are intentionally
-// NOT applied here (the client's name is its record key — renaming is its own Save-Changes flow).
+// Read a labeled card via backend OCR and compare with the client: offer blanks, show matches, flag
+// differences. Never auto-applies. Names are not applied here: the name is the record key.
 var _CARD_TYPE={Drivers_License:'drivers_license',SSN_Card:'ssn',Medicaid_Card:'medicaid',Medicare_Card:'medicare'};
 var _CARD_FIELD_LABEL={dob:'Date of Birth',driversLicense:"Driver's License #",street:'Street',city:'City',state:'State',zip:'ZIP',ssn:'Social Security #',medicaidId:'Medicaid ID',medicare:'Medicare #'};
 var _CARD_FIELD_INPUT={dob:'ei-dob',driversLicense:'ei-dl',street:'ei-street',city:'ei-city',state:'ei-state',zip:'ei-zip',ssn:'ei-ssn',medicaidId:'ei-medicaid',medicare:'ei-medicare'};
@@ -3222,8 +3083,8 @@ function deleteCgDoc(cgId,encodedName){
 }
 
 //  NEW CLIENT
-// Show the carrier + member fields only when Program = Carrier (managed care). Used on both the
-// new-client form (nc-*) and by navNewClient's reset.
+// Show carrier + member fields only when Program = Carrier (managed care). Used by the new-client form and
+// navNewClient's reset.
 function ncProgramToggle(){
   var prog=(document.getElementById('nc-program')||{}).value||'';
   var show=prog==='carrier';
@@ -3300,9 +3161,8 @@ function getCaregivers(){
   }catch(e){return{};}
 }
 function saveCaregiversLS(cg){
-  // HIPAA/S8: never persist MI Login passwords OR SSN to localStorage. Strip on a shallow
-  // copy so the in-memory record still has them for the API save; SSN is cached in memory
-  // (_cgSsnMem) and overlaid back by getCaregivers.
+  // HIPAA/S8: never persist MI Login passwords or SSN to localStorage. Strip them on a copy so the in-memory
+  // record keeps them for the API save; SSN is cached in _cgSsnMem and overlaid by getCaregivers.
   var clean={};
   Object.keys(cg).forEach(function(k){
     var c=Object.assign({},cg[k]);
@@ -3474,9 +3334,8 @@ function bulkDeleteCaregivers(){
     'Delete '+ids.length+' caregiver'+(ids.length>1?'s':'')+'?\n\n'+preview+'\n\nThis cannot be undone.',
     function(){
       var deleted=0;
-      // Writing back the pre-dialog map erased any caregiver added or edited while the dialog was
-      // open — a background roster load or another device is enough. Apply the deletions to the
-      // roster as it stands NOW.
+      // Apply the deletions to the roster as it stands NOW, so caregivers added or edited while the dialog was
+      // open aren't erased.
       var cgsNow=getCaregivers();
       ids.forEach(function(id){if(cgsNow[id]){var _nm=cgsNow[id].name||'';delete cgsNow[id];try{deleteCaregiverAPI(id);}catch(e){}_detachDeletedRoster('caregiver',id,_nm);deleted++;}});
       saveCaregiversLS(cgsNow);
@@ -3571,9 +3430,7 @@ var activeCgId=null;
 function openCgDetail(id){
   var cg=getCaregivers()[id];if(!cg)return;
   activeCgId=id;
-  // Match Client detail's topbar breadcrumb pattern: "Caregivers > [name]" with the
-  // parent clickable to go back to the list. Was previously left as just "Caregivers"
-  // from the parent page.
+  // Breadcrumb "Caregivers > [name]" with the parent clickable, matching client detail.
   bc([{l:'Caregivers',fn:navCaregivers},{l:cg.name||''}]);
   document.getElementById('cgGridView').style.display='none';
   document.getElementById('cgFormWrap').style.display='none';
@@ -3701,11 +3558,8 @@ function revokeSigningRequest(id){
     }catch(e){showAlert('Failed: '+(e.message||e));}
   },{title:'Revoke',okText:'Revoke',danger:true});
 }
-// Shared, professional signing-request email — used by both the initial send and
-// the reminder. Table layout + inline styles for email-client compatibility, and
-// no external images (blocked images look broken/spammy). The clean layout, real
-// footer, and de-emphasized fallback link keep it out of spam and out of the
-// "is this phishing?" pile.
+// Shared signing-request email for the initial send and reminders. Table layout, inline styles and no
+// external images, so it renders reliably and doesn't look like spam or phishing.
 function buildSigningEmail(o){
   o=o||{};
   var brand='Liberty Home Care Assistance';
@@ -3780,16 +3634,11 @@ async function viewSigningAudit(id){
 }
 
 // ── SEND FOR SIGNATURE ──────────────────────────────────────────
-// Picks a template, creates a SigningRequest server-side, then uses
-// Graph (existing spToken) to email the recipient the secure link.
+// Pick a template, create a SigningRequest server-side, then email the secure link via Graph.
 async function openSendForSignatureModal(){
   if(!activeCgId){showAlert('Open a caregiver first.');return;}
-  // Capture the caregiver AND their id together, BEFORE the templates fetch below. The modal body
-  // is built from `cg`, so if the id is re-read from the global afterwards the two describe
-  // different people: the dialog names one caregiver while its stamp names whoever the operator
-  // clicked during the fetch. The Send guard then compares that stamp against the same drifted
-  // global, agrees with itself, and emails the link to the wrong person — a guard that validates
-  // the wrong thing is worse than none, because it reads as protection.
+  // Capture the caregiver AND their id together, before the templates fetch: the body is built from `cg`,
+  // and an id re-read afterwards could name whoever was clicked during the fetch.
   var sigCgIdAtOpen=activeCgId;
   var cg=getCaregivers()[sigCgIdAtOpen];if(!cg){showAlert('Caregiver not found.');return;}
   if(!cg.email){showAlert('This caregiver has no email on file. Add one in their Profile tab first.',{title:'Email Required'});return;}
@@ -3804,9 +3653,8 @@ async function openSendForSignatureModal(){
   var existing=document.getElementById('sendSigModal');if(existing)existing.remove();
   var ov=document.createElement('div');
   ov.id='sendSigModal';ov.className='modal-overlay open';
-  // The modal IS the captured context: it names this caregiver and their email address in its own
-  // body, and it stays on screen until dismissed. Stamp the id so the Send handler acts on who the
-  // modal says, rather than re-reading the global at click time.
+  // The modal is the captured context (it names the caregiver and their email): stamp the id so Send acts
+  // on who the modal says.
   ov.dataset.cgId=sigCgIdAtOpen;
   var tplOptions=templates.length
     ? templates.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+(t.version?' ('+esc(t.version)+')':'')+'</option>';}).join('')
@@ -3834,16 +3682,12 @@ function closeSendSigModal(){var m=document.getElementById('sendSigModal');if(m)
 async function doSendForSignature(){
   var btn=document.getElementById('sendSigBtn');var errEl=document.getElementById('sendSigError');
   errEl.style.display='none';
-  // Read the caregiver from the modal, not from the global. The gap here is the operator's own
-  // click, which no amount of guarding inside one function can see: openSendForSignatureModal built
-  // this dialog for one caregiver and doSendForSignature ran later, and activeCgId can change in
-  // between with no click on the page at all — the hash router reassigns it on Back/Forward and the
-  // overlay does not block it.
+  // Read the caregiver from the modal, not the global: activeCgId can change between opening the dialog
+  // and clicking Send, including via Back/Forward with no click on the page.
   var mdl=document.getElementById('sendSigModal');
   var sigCgId=(mdl&&mdl.dataset&&mdl.dataset.cgId)||'';
-  // Refuse rather than quietly doing the right thing. This emails a real DOB-gated signing link to
-  // a real person; if the operator's idea of who they are sending to has drifted from the app's,
-  // they need telling. Reopening from the right profile is two clicks.
+  // Refuse rather than silently correcting: this emails a DOB-gated link to a real person, so a drifted
+  // recipient must be pointed out.
   if(!sigCgId||!stillOn('caregiver',sigCgId)){
     var whoFor=(getCaregivers()[sigCgId]||{}).name||'that caregiver';
     errEl.textContent='This link is for '+whoFor+', but a different caregiver is open now. Nothing has been sent — close this and reopen Send for Signature from their profile.';
@@ -3854,10 +3698,8 @@ async function doSendForSignature(){
   var dob=(document.getElementById('sendSigDob').value||'').trim();
   if(!tplId){errEl.textContent='Pick a document template.';errEl.style.display='block';return;}
   if(!/^\d{4}-\d{2}-\d{2}$/.test(dob)){errEl.textContent='Enter the recipient\'s date of birth (used for identity verification).';errEl.style.display='block';return;}
-  // Refuse BEFORE creating anything. Without this the backend created a real signing request —
-  // token, expiry, audit row — and only then failed to email it, leaving a dangling request and an
-  // error that read as though the document had been sent. Mirrors the document-email paths, which
-  // check for an address up front.
+  // Refuse before creating anything: the backend creates the request (token, expiry, audit row) before
+  // emailing, so a missing address would leave a dangling request.
   if(!cg||!(cg.email||'').trim()){
     errEl.textContent='No email address on file for '+((cg&&cg.name)||'this caregiver')+'. Add one on their profile, then send the link.';
     errEl.style.display='block';return;
@@ -3991,10 +3833,8 @@ function renderCgNotesPane(){
     '<textarea id="cgNotesArea" style="width:100%;min-height:200px;padding:12px;border:1px solid #d0d8e4;border-radius:6px;font-size:13px;font-family:Arial,sans-serif;outline:none;resize:vertical;max-width:620px;">'+esc(cg.notes||'')+'</textarea>';
   var ta=document.getElementById('cgNotesArea');
   ta.addEventListener('input',function(){
-    // Capture the caregiver NOW — activeCgId may change before the 600ms flush, and this pane's
-    // textarea outlives the switch. Write LS SYNCHRONOUSLY (not inside the timer) so closing the
-    // tab or switching caregivers within the debounce can't lose the note. Only the backend save
-    // is debounced. Mirrors renderNotesPane.
+    // Capture the caregiver and text now, and write LS synchronously so a tab close or switch inside the
+    // 600ms debounce can't lose the note. Only the backend save is debounced. Mirrors renderNotesPane.
     var cgId=activeCgId, val=ta.value;
     var cgsNow=getCaregivers();
     // _unsaved = "local copy is newer, keep it". The reload's merge honours it; without it a roster
@@ -4004,9 +3844,8 @@ function renderCgNotesPane(){
     // caregiver also cancels this caregiver's own pending save across re-renders of the pane.
     _scheduleNoteSave('caregiver:'+cgId, function(){
       if(!getCaregivers()[cgId])return;
-      // doSave is also the retry handler and can fire much later, so read the record and the flash
-      // target at each attempt. Holding either sent stale notes over newer ones, or ticked
-      // "Saved ✓" under whoever was on screen by then.
+      // doSave is also the retry handler and can fire much later, so read the record and flash target per
+      // attempt: otherwise stale notes overwrite newer ones, or "Saved ✓" lands under someone else.
       var doSave=function(){
         var cgsAt=getCaregivers(),rec=cgsAt[cgId];
         if(!rec)return Promise.resolve();
@@ -4147,9 +3986,8 @@ function saveCgInfoPane(){
   cg.status=document.getElementById('cgi-status').value;
   cg.phone=document.getElementById('cgi-phone').value;cg.email=document.getElementById('cgi-email').value;
   var cgiDl=document.getElementById('cgi-dl');if(cgiDl)cg.driversLicense=cgiDl.value;
-  // Only take the SSN when the field actually holds one. An untouched (never-focused) field is empty
-  // now that the roster doesn't carry the SSN — writing that through would blank the stored value.
-  // saveCaregiverAPI omits an empty ssn and the backend keeps what it has.
+  // Only take the SSN when the field holds one: the roster lacks it, so an untouched field is empty and
+  // would blank the stored value. saveCaregiverAPI omits an empty ssn.
   var cgiSsn=document.getElementById('cgi-ssn');if(cgiSsn&&cgiSsn.value.trim())cg.ssn=cgiSsn.value;
   cg.street=document.getElementById('cgi-street').value;cg.city=document.getElementById('cgi-city').value;
   cg.state=document.getElementById('cgi-state').value;cg.zip=document.getElementById('cgi-zip').value;cg.county=document.getElementById('cgi-county').value;
@@ -4159,9 +3997,7 @@ function saveCgInfoPane(){
   cg.payRate=document.getElementById('cgi-pay').value;
   var cgiChamps=document.getElementById('cgi-champs');if(cgiChamps)cg.champsId=cgiChamps.value;
   var cgiMiu=document.getElementById('cgi-milogin-user');if(cgiMiu)cg.miloginUsername=cgiMiu.value;
-  // Renders blank and is only filled after the user focuses it (see _revealSecret), so an empty
-  // box means "not loaded", NOT "cleared" — writing it through blanked the stored credential
-  // locally on every save. Same guard the SSN field above already has.
+  // Empty means "not loaded", not "cleared": the field fills only on focus. Same guard as the SSN above.
   var cgiMip=document.getElementById('cgi-milogin-pass');if(cgiMip&&cgiMip.value.trim())cg.miloginPassword=cgiMip.value;
   saveCaregiversLS(cgs);saveCaregiverAPI(activeCgId,cg);
   document.getElementById('cgDetailName').textContent=cg.name;
@@ -4256,25 +4092,21 @@ function handleCgDocScan(input){
 function getSigs(){try{return JSON.parse(localStorage.getItem('lhca_signatures')||'[]');}catch(e){return[];}}
 function saveSigsLS(arr){try{localStorage.setItem('lhca_signatures',JSON.stringify(arr));}catch(e){}}
 function sigId(){return 'sig_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);}
-// Merge a freshly-loaded id-array over the local one WITHOUT dropping unsynced local additions —
-// the same cold-device race that hit the rosters applies to tasks and signatures. Server wins for
-// shared ids; a local-only item is kept UNLESS it carries `syncedProp` (it was previously confirmed
-// by the server and is now gone → deleted elsewhere → drop). Pass no syncedProp to always keep
-// local-only items (signatures have no per-row sync marker).
+// Merge a loaded id-array over the local one without dropping unsynced local additions. Server wins for
+// shared ids; a local-only item is kept unless it carries `syncedProp` (confirmed before, so deleted
+// elsewhere). No syncedProp keeps every local-only item (signatures).
 function _mergeByIdKeepUnsynced(serverArr, localArr, syncedProp){
   var have={}, idx={};
   (serverArr||[]).forEach(function(x,i){ if(x&&x.id!=null){ have[x.id]=true; idx[x.id]=i; } });
   var out=(serverArr||[]).slice();
   (localArr||[]).forEach(function(x){
     if(!x || x.id==null) return;
-    // A durable failed-save marker wins in BOTH directions. A locally created task keeps its local
-    // id until a full reload, so it is NOT in `have` and falls through to the syncedProp drop below
-    // — which is exactly the in-session case the flag exists to protect.
+    // A durable failed-save marker wins in BOTH directions: a new task keeps its local id until reload, so it
+    // isn't in `have` and would otherwise fall through to the syncedProp drop.
     if(!have[x.id] && x._unsaved === true){ out.push(x); return; }
     if(have[x.id]){
-      // A durable failed-save marker wins over the server's older row — same rule _mergeRosterArr
-      // already applies. Without this the _unsaved flag written for tasks was never read, so a
-      // failed edit to an already-synced task was reverted by the next load, silently.
+      // ...and over the server's older row, as _mergeRosterArr does, so a failed edit isn't reverted by the
+      // next load.
       if(x._unsaved === true) out[idx[x.id]] = x;
       return;
     }
@@ -4371,20 +4203,16 @@ function showPrompt(message,initialValue,onSave,opts){
   setTimeout(function(){inp.focus();inp.select();},50);
 }
 
-// Fetch a caregiver's MI Login password on demand (it is never preloaded or cached),
-// then reveal it via the normal mask toggle (which auto-re-masks after 8s).
+// Fetch a caregiver's MI Login password on demand (never preloaded or cached), then reveal it.
 // ── Secret-field reveal / copy helpers (SSN, MI Login password, dates) ──────────
 // Reveal a masked field and cancel any pending auto re-mask.
 function _revealSecret(inp){ if(!inp)return; if(inp._maskTimeout){clearTimeout(inp._maskTimeout);inp._maskTimeout=null;} inp.type='text'; }
-// Re-mask a few seconds AFTER the field loses focus — not instantly — so you can alt-tab to
-// another window/tab and paste the value before it snaps back to dots (#9). Cancelled if the
-// field is re-focused (via _revealSecret) before the timer fires.
+// Re-mask a few seconds after blur, not instantly, so the value can be pasted into another window.
+// Cancelled if the field regains focus.
 function _maskSecretSoon(inp,ms){ if(!inp)return; if(inp._maskTimeout)clearTimeout(inp._maskTimeout); inp._maskTimeout=setTimeout(function(){ if(inp&&inp.type==='text')inp.type='password'; if(inp)inp._maskTimeout=null; },ms||4000); }
-// MI Login password: fetch on FOCUS (never preloaded/cached) then reveal — replaces the old
-// "Show" button (#8). Empty-on-save is safe (backend pwProvided guard preserves the stored value).
-// Click into the SSN field and it fetches the real value, then reveals it — same shape as MI Login,
-// no button. The roster load only carries the last 4, so an unfetched field shows a •••• placeholder
-// rather than the number; focusing it is what pulls the SSN, and that read is audited server-side.
+// MI Login password and SSN: fetch on FOCUS (never preloaded or cached), then reveal. The roster carries
+// only the SSN's last 4, so an unfetched field shows a placeholder; the read is audited server-side.
+// Empty on save is safe: the backend keeps the stored value.
 function _revealCgSsnField(inp,id){
   if(!inp)return;
   _revealSecret(inp);
@@ -4403,10 +4231,9 @@ function _revealCgSsnField(inp,id){
     .then(function(){ inp.dataset.fetching=''; });
 }
 // ── "Is this still the record on screen?" ──────────────────────────────────────────────────────
-// Capture the id BEFORE any async gap, then write through whenStillOn:
+// Capture the id before any async gap, then write through whenStillOn:
 //     var id = activeCgId;
 //     fetch(...).then(function(d){ whenStillOn('caregiver', id, function(){ ...write... }); });
-// Reading a current-record global after a gap writes one person's data onto another.
 // see DECISIONS.md#current-record-across-async
 function stillOn(kind, id){
   try{
@@ -4426,11 +4253,9 @@ function whenStillOn(kind, id, fn){
   fn();
   return true;
 }
-// True when `id` is still the caregiver whose form is on screen. The MI Login password field is a
-// STATIC element in index.html, reused for every caregiver and merely cleared between them — so a
-// fetch started for caregiver A that lands after the owner has opened caregiver B writes A's
-// password into B's visible field, and saveCaregiver reads that field. A stored credential would be
-// copied onto the wrong person's record. Same shape as the document-list bug (#159), with a secret.
+// True when `id` is still the caregiver on screen. The MI Login password field is a STATIC element reused
+// for every caregiver and saveCaregiver reads it, so a late fetch would copy one person's credential onto
+// another's record.
 function _miloginStillCurrent(id){ return stillOn('caregiver', id); }
 function _revealMiloginField(inp,id){
   if(!inp)return;
@@ -4444,9 +4269,8 @@ function _revealMiloginField(inp,id){
     })
     .catch(function(){});
 }
-// Copy a field's value to the clipboard for quick paste into state portals/forms, with a brief
-// "Copied ✓" flash. transform: 'digits' → strip non-digits (SSN without dashes, #6);
-// 'mdy' → YYYY-MM-DD to MM/DD/YYYY (date inputs, #7). Wired to ondblclick.
+// Copy a field to the clipboard with a "Copied ✓" flash. transform 'digits' strips non-digits (SSN
+// without dashes); 'mdy' turns YYYY-MM-DD into MM/DD/YYYY. Wired to ondblclick.
 function _copyField(el,transform){
   if(!el)return;
   var v=(el.value!=null&&el.value!=='')?el.value:(el.textContent||'');
@@ -4511,11 +4335,8 @@ function doDeleteSig(idOrIdx){
   // idOrIdx may be a string ID or a legacy numeric index
   var sigId_=typeof idOrIdx==='number'?null:(idOrIdx||null);
   if(sigId_){
-    // D10, same as caregivers/caseworkers/tasks/invoices: a delete the server REFUSED must be
-    // visible, with a retry. This one only logged to the console, and loadSignaturesAPI refills the
-    // list from the server — so a failed delete brought the signature back on the next sync with no
-    // explanation, after a dialog that said "This cannot be undone." A signature is what certifies
-    // an invoice, so one reappearing (or not going away) is not a cosmetic problem.
+    // D10: a delete the server refused must be visible, with a retry, or the next sync silently brings the
+    // signature back. A signature certifies an invoice.
     var doDel=function(){return surfaceSaveFailure(
       fetch(API_BASE+'/signatures/'+encodeURIComponent(sigId_),{method:'DELETE',headers:apiHeaders()})
         .then(function(r){if(!r.ok && r.status!==404)throw new Error('HTTP '+r.status);return r;}),
@@ -4679,9 +4500,8 @@ function cgSearch(input, hiddenId, dropId) {
   drop.style.display = 'block';
 }
 
-// Inline "quick create" popup for a new caregiver/caseworker from an assignment
-// field. Captures just the essentials (name + contact); the full record is
-// filled in later from their own page. On save, calls onCreated(id, name).
+// Quick-create popup for a new caregiver/caseworker from an assignment field: name + contact now, the
+// rest later on their page. Calls onCreated(id, name).
 function openQuickCreate(kind, prefillName, onCreated){
   var isCg = kind === 'caregiver';
   var ov = document.createElement('div');
@@ -4785,9 +4605,8 @@ function addAuditEntry(clientName,action){
   log.unshift({client:clientName,action:action,who:who,ts:new Date().toLocaleString()});
   if(log.length>200)log=log.slice(0,200);
   try{localStorage.setItem('lhca_audit',JSON.stringify(log));}catch(e){}
-  // Persist to DB. This is the HIPAA §164.312(b) record, so a failure must be VISIBLE: it used to
-  // be fire-and-forget with no r.ok check, and was skipped entirely when the token had expired —
-  // both of which stop the trail silently while the app carries on.
+  // Persist to the DB. This is the HIPAA §164.312(b) record, so a failure must be visible, including when
+  // the token has expired.
   _postAuditRecord({event_type:'audit',client_name:clientName,action:action,who:who});
 }
 // Shared writer for both audit paths. Surfaces a failure through the save-status toast rather than
@@ -4883,9 +4702,8 @@ function showTaskEditModal(opts){
     var profs=getProfiles();
     // Any status — tasks get attached to In Progress / onboarding clients too, not just active
     var names=Object.keys(profs).sort(function(a,b){return a.localeCompare(b);});
-    // Carry the task's OWN client into the list even if it is no longer a profile name (renamed
-    // client, or profiles not loaded yet). Without this the select reports '' and saving an
-    // unrelated field — a due date — silently unlinked the task from its client.
+    // Keep the task's own client in the list even if it's no longer a profile name, or saving another field
+    // would silently unlink the task.
     if(opts.client&&names.indexOf(opts.client)<0)names.push(opts.client);
     clientSel.innerHTML='<option value="">— No client —</option>'+names.map(function(n){return '<option value="'+esc(n)+'"'+(n===(opts.client||'')?' selected':'')+'>'+esc(n)+'</option>';}).join('');
   }
@@ -4949,10 +4767,8 @@ function toggleTodo(id){
   if(t){t.done=!t.done;t.doneAt=t.done?new Date().toLocaleString():null;}
   saveTodos(todos);if(t) saveTaskAPI(t);renderTodos();updateTaskBadge();
 }
-// A due date is a calendar DAY, not an instant. `new Date('2026-09-04') < new Date()` parses the
-// due date as UTC midnight — 8pm the PREVIOUS EVENING in Michigan — so a task due today read as
-// overdue all day, and tomorrow's task turned red at 8pm tonight. Compare calendar dates as text.
-// The codebase already avoids `new Date(...)` on stored dates elsewhere; see _ymd.
+// A due date is a calendar DAY: `new Date('2026-09-04')` is UTC midnight, the previous evening in
+// Michigan. Compare calendar dates as text (see _ymd).
 function _todayYmd(){
   var d=new Date();
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -4970,11 +4786,8 @@ function deleteTodo(id){
   if(followUps.length)msg='Remove this task AND its '+followUps.length+' follow-up'+(followUps.length>1?'s':'')+'?';
   showConfirm(msg,function(){
     var idsToRemove={};idsToRemove[String(id)]=true;followUps.forEach(function(t){idsToRemove[String(t.id)]=true;});
-    // Re-read the CURRENT rows before deleting. The local removal below already re-read, but the
-    // dbIds came from the snapshot taken before this dialog opened — and a task created moments
-    // earlier gets its dbId written back when its POST resolves, which can happen WHILE the dialog
-    // is open. Deleting on the stale copy sent no DELETE at all, so the row survived on the server
-    // and the next background load brought the task straight back.
+    // Re-read the current rows before deleting: a task created just before the dialog may have got its dbId
+    // while it was open, and deleting the stale copy would send no DELETE.
     var _now=getTodos();
     var _live=_now.filter(function(x){return idsToRemove[String(x.id)];});
     var remaining=_now.filter(function(x){return !idsToRemove[String(x.id)];});
@@ -5350,9 +5163,7 @@ function updateMissingReport(useCustom){
       '</div>';
     }).join('');
 }
-// HIPAA §164.528 — a bulk extract of client data is a disclosure and needs a record. The JSON
-// export has logged one since it was written; these three did not, so the largest extracts the app
-// offers left no trace at all.
+// HIPAA §164.528: a bulk extract of client data is a disclosure and needs a record.
 function _logBulkExport(what, count, noun){
   noun=noun||'client';
   try{
@@ -5374,21 +5185,12 @@ function exportReportExcel(){
 }
 
 //  PROFILES (localStorage + SharePoint)
-// S8: SSN is kept in memory for this session only — never written to localStorage — so a
-// lost/idle device or a future XSS can't read it off disk. It's repopulated from the
-// authenticated API on load. saveProfilesLS strips ssn before persisting and caches it in
-// memory; getProfiles overlays it back for display. Saves send ssn only when present, and
-// the backend keeps the stored value when a save omits it (provided-guard).
-// Windows this session opened that display PHI. They are separate documents the idle/sign-out
-// wipe cannot otherwise reach — blanking inputs and raising the login wall does nothing to a tab
-// already showing a scanned SSN card — so they are tracked and closed with it.
+// S8: SSN is kept in memory only, never in localStorage, and repopulated from the API on load.
+// saveProfilesLS strips it; getProfiles overlays it. Saves send ssn only when present.
+// Windows opened this session that display PHI, tracked so the idle/sign-out wipe can close them.
 var _phiWindows = [];
-// ALWAYS open a PHI document through here, never window.open directly. The registry existed but
-// only the caregiver task sheet was ever registered, so a document lightbox fallback (SSN cards,
-// driver's licences, DHS authorizations), a signed agreement and both invoice PDF previews stayed
-// open and readable after sign-out and after the inactivity timeout.
-// NOTE the limit, so nobody mistakes this for more than it is: closing the tab does not revoke a
-// SAS URL that was already handed out, and it cannot reach a file the browser has downloaded.
+// ALWAYS open a PHI document through here, never window.open, so sign-out and the idle timeout close it.
+// Limit: closing a tab doesn't revoke a SAS URL already handed out or reach a downloaded file.
 function _openPhiWindow(url, target){
   var w = null;
   try { w = window.open(url, target || '_blank'); } catch (e) { console.error('window.open failed', e); }
@@ -5396,15 +5198,10 @@ function _openPhiWindow(url, target){
   return w;
 }
 var _ssnMem = Object.create(null);
-// _clientSynced is the client dirty-tracking baseline, but its signature string EMBEDS the
-// plaintext ssn (see _clientSig) — so it must be kept in memory ONLY, never written to disk,
-// exactly like _ssnMem. Persisting it would leak SSN into localStorage (defeats S8).
+// _clientSynced embeds the plaintext SSN (see _clientSig), so keep it in memory only, like _ssnMem.
 var _clientSyncedMem = Object.create(null);
-// Perf: getProfiles() JSON.parses the ENTIRE profiles store (incl. every invoice data blob)
-// on each call, and a single navigation calls it ~4×. _profilesCache is a TICK-SCOPED cache:
-// it collapses those repeated parses within one synchronous render pass, then self-clears on
-// the next microtask — so it can never serve stale data to a later interaction. saveProfilesLS
-// also clears it immediately, so a write is always reflected.
+// Perf: getProfiles() parses the whole store, several times per navigation. _profilesCache collapses those
+// within one synchronous pass and clears on the next microtask, so it never serves stale data.
 var _profilesCache=null;
 function getProfiles(){
   if(_profilesCache) return _profilesCache;
@@ -5448,10 +5245,8 @@ var filterClients     = _debounce(function(){ if(typeof renderClientTable==='fun
 var filterCaregivers  = _debounce(function(){ if(typeof renderCaregiverGrid==='function') renderCaregiverGrid(); }, 150);
 var filterCaseworkers = _debounce(function(){ if(typeof renderCaseworkerList==='function') renderCaseworkerList(); }, 150);
 var filterSupervisors = _debounce(function(){ if(typeof renderSupervisorList==='function') renderSupervisorList(); }, 150);
-// F4: a note typed then the tab closed within the 600ms debounce was lost — the pending backend
-// save never fired and pagehide's PHI wipe erased the LS copy. Register each debounced note save
-// here so the pagehide/beforeunload handler can FLUSH it (fire the save while the note is still in
-// LS, before the wipe). Best-effort on a hard close, but closes the guaranteed-loss window.
+// F4: register each debounced note save so pagehide can FLUSH it before the PHI wipe erases the local
+// copy. Best-effort on a hard close.
 var _pendingNoteSaves = Object.create(null);
 function _scheduleNoteSave(key, saveFn){
   var ex=_pendingNoteSaves[key]; if(ex) clearTimeout(ex._t);
@@ -5479,8 +5274,7 @@ function exportProfiles(){
   );
 }
 //  AUTOMATIC WEEKLY ONEDRIVE BACKUP
-//  Fires once per 7 days on first sign-in, silently uploads to
-//  /Liberty Home Care Backups/. Keeps 26 most recent (auto-deletes older).
+// Once per 7 days on first sign-in, to /Liberty Home Care Backups/. Keeps the 26 most recent.
 var ONEDRIVE_BACKUP_RETENTION=26;          // keep 26 weekly backups (~6 months)
 var ONEDRIVE_BACKUP_INTERVAL_DAYS=7;
 function _msSinceLastBackup(){
@@ -5563,9 +5357,8 @@ async function retryOneDriveBackup(){
   await maybeAutoBackupOneDrive();
 }
 
-// Delete OneDrive backup files beyond the retention count (keeps newest N).
-// ONLY prunes auto-backup files (date-only filename). Manual backups include
-// '_manual' in the name and are kept forever.
+// Prune auto-backups beyond the retention count (newest N kept). Manual backups ('_manual') are kept
+// forever.
 async function pruneOldOneDriveBackups(){
   if(!spToken)return;
   try{
@@ -5615,10 +5408,8 @@ async function backupToOneDrive(){
   );
 }
 
-// Read every caregiver's MI Login credential for a FULL backup. They are never written to
-// localStorage (saveCaregiversLS strips them), so unlike the SSN there is no in-memory overlay to
-// read — each one has to be fetched from the server. Each fetch is audited server-side as a PHI
-// read, which is correct: a backup that captures credentials SHOULD leave a trail.
+// A FULL backup fetches each caregiver's MI Login credential from the server (never in localStorage).
+// Each read is audited, which is correct for a backup that captures credentials.
 async function _fetchMiloginForBackup(){
   var out={}, cgs=getCaregivers();
   var ids=Object.keys(cgs).filter(function(id){
@@ -5637,13 +5428,8 @@ async function _fetchMiloginForBackup(){
   // doesn't is worse than one you know doesn't.
   return { creds:out, failed:failed };
 }
-// Caregiver SSNs are NOT in the roster and NOT in localStorage. The bulk load returns only
-// ssn_last4 (caregivers.js strips the rest), saveCaregiversLS strips ssn to the in-memory
-// _cgSsnMem, and getCaregivers re-overlays only what that map happens to hold — which is just the
-// caregivers whose SSN field someone revealed in THIS browser session. So _buildBackupPayload,
-// which serialises getCaregivers(), wrote a file labelled FULL that on a fresh page load contained
-// no caregiver SSNs at all. Restoring it into a wiped system could not recover them.
-// Fetch them explicitly for the backup, exactly as the MI Login credential already is.
+// Caregiver SSNs aren't in the roster or localStorage (only ones revealed this session are in memory), so
+// fetch them explicitly for a FULL backup, as the MI Login credential is.
 async function _fetchSsnForBackup(){
   var out={}, cgs=getCaregivers();
   // Anyone who HAS a stored SSN: last4 present (the roster's proof one exists), or a full value
@@ -5672,9 +5458,8 @@ async function doBackupToOneDrive(includeFullSSN,silent){
   var oldText=btn?btn.textContent:'';
   if(btn&&!silent){btn.disabled=true;btn.textContent='Refreshing from DB…';}
   try{
-    // Pull canonical state from DB before serializing — backups must reflect the
-    // source of truth, not whatever happens to be in this device's LS cache.
-    // Waits for the fetch to complete before building the payload.
+    // Pull canonical state from the DB and wait for it before serializing: a backup reflects the source of
+    // truth, not this device's cache.
     if(spToken && typeof loadProfilesAPI==='function'){
       try{ await loadProfilesAPI(); }catch(e){ console.warn('DB refresh failed before backup, using current LS:',e); }
     }
@@ -5751,9 +5536,8 @@ async function doBackupToOneDrive(includeFullSSN,silent){
   }
 }
 
-// Strip the internal dirty-tracking baseline from anything that leaves the app. _clientSig embeds
-// the raw SSN, so a "masked" export/backup that keeps _clientSynced still ships the full number —
-// masking prof.ssn alone is not enough. It is meaningless outside this device anyway.
+// Strip the dirty-tracking baseline from anything leaving the app: _clientSig embeds the raw SSN, so
+// masking prof.ssn alone isn't enough.
 function _stripInternalPHI(copy){
   Object.keys(copy).forEach(function(name){ if(copy[name]) delete copy[name]._clientSynced; });
   return copy;
@@ -5771,20 +5555,15 @@ function _buildBackupPayload(includeFullSSN,miloginByCgId,ssnByCgId){
       var prof=copy[name]; if(prof && prof.ssn) prof.ssn=_maskSsnValue(prof.ssn);
     });
   }
-  // CAREGIVERS were never masked at all — getCaregivers() re-attaches the SSN from _cgSsnMem, so
-  // every backup (including the automatic weekly one, and the "masked" mode) uploaded every
-  // caregiver's full SSN to OneDrive. Same rule as clients, and never ship the MI Login password.
+  // Mask caregivers too: getCaregivers() re-attaches SSNs from memory. Never ship the MI Login password.
   var cgCopy=JSON.parse(JSON.stringify(getCaregivers()));
   Object.keys(cgCopy).forEach(function(id){
     var c=cgCopy[id]; if(!c)return;
     delete c.miloginPassword; delete c.milogin_password;
-    // FULL backup only: restore the credential so the file can actually rebuild a wiped device.
-    // saveCaregiverAPI sends milogin_password and the backend keeps the stored value when it is
-    // empty, so this round-trips on import without a further change.
+    // FULL backup only: include the credential so the file can rebuild a wiped device. The backend keeps the
+    // stored value when it's empty, so this round-trips.
     if(includeFullSSN && miloginByCgId && miloginByCgId[id]) c.miloginPassword=miloginByCgId[id];
-    // FULL backup only: the SSN fetched from the server for this backup. getCaregivers() supplies
-    // one only for caregivers touched this session, so without this a FULL backup silently held
-    // last-4 for everyone else.
+    // FULL backup only: the SSN fetched for this backup; getCaregivers() only has ones touched this session.
     if(includeFullSSN && ssnByCgId && ssnByCgId[id]) c.ssn=ssnByCgId[id];
     if(!includeFullSSN && c.ssn) c.ssn=_maskSsnValue(c.ssn);
   });
@@ -5976,10 +5755,8 @@ async function _doExportClientsAsPDFFolders(clientsWithInvoices,profiles){
     if(btn){btn.disabled=false;btn.textContent=oldText||'Export Clients + Invoices (PDFs)';}
   }
 }
-// Union two invoice arrays by stable identity (dbId, else billing-period + savedAt).
-// Imported invoices win on conflict (the user confirmed "overwrite"), but any existing
-// invoice the import DOESN'T contain is KEPT — so a stale/older backup can't silently
-// drop invoices that were added locally after that backup was exported.
+// Union two invoice arrays by stable identity (dbId, else billing period + savedAt). Imported invoices win
+// on conflict, but existing ones the import lacks are KEPT, so an older backup can't drop newer invoices.
 function mergeInvoiceLists(existingInvs, importedInvs){
   existingInvs = existingInvs || []; importedInvs = importedInvs || [];
   var keyOf=function(inv){ return inv&&inv.dbId ? ('db:'+inv.dbId) : ('bp:'+((inv&&inv.billingPeriod)||'')+'|'+((inv&&inv.savedAt)||'')); };
@@ -6038,10 +5815,7 @@ function importProfiles(ev){
       });
       var conf=keys.filter(function(k){return ex[k];});
       function doImport(){
-        // Merge per-client: imported scalar fields overwrite existing, but UNION the
-        // invoices arrays (see mergeInvoiceLists) so an older backup can't drop invoices
-        // added locally since. Previously Object.assign replaced the whole record incl.
-        // its invoices array.
+        // Merge per client: imported scalar fields overwrite, but invoices are unioned (mergeInvoiceLists).
         var merged=Object.assign({},ex);
         keys.forEach(function(name){
           var incoming=imp[name],existing=ex[name];
@@ -6055,15 +5829,11 @@ function importProfiles(ev){
         });
         _clearSyncBaselines(merged, keys);   // ONLY the imported clients
         saveProfilesLS(merged);
-        // A backup also carries the rosters. Restore any that are MISSING locally (a wiped device has
-        // none of them) and push each to the server; existing records are left alone so a restore can
-        // never silently overwrite work done since the backup was taken.
+        // Restore rosters MISSING locally (a wiped device has none) and push them to the server; existing records
+        // are left alone so a restore never overwrites newer work.
         var restored={caregivers:0,caseworkers:0,supervisors:0,signatures:0};
-        // Every server write this restore starts, so completion can be REPORTED rather than assumed.
-        // These were all fire-and-forget: the dialog said "Imported N clients" the instant the local
-        // writes finished, whether or not a single record reached the database. A restore that only
-        // populated this browser's localStorage looked identical to one that succeeded — and the
-        // point of a restore is that the data is safe somewhere other than this browser.
+        // Track every server write this restore starts, so completion is reported rather than assumed: a restore
+        // isn't done until the data is safe beyond this browser.
         var writes=[];
         var _track=function(label,pr){ if(pr&&typeof pr.then==='function')writes.push({label:label,p:pr}); };
         try{
@@ -6073,12 +5843,9 @@ function importProfiles(ev){
               if(!cgs[id]&&parsed.caregivers[id]){ cgs[id]=parsed.caregivers[id]; cgAdd.push(id); }
             });
             if(cgAdd.length){
-              // A MASKED backup carries '***-**-1234' in .ssn, which is NOT an SSN. saveCaregiverAPI
-              // only skips an EMPTY ssn, so pushing these records verbatim overwrote the real
-              // encrypted SSN on the server with the mask — irrecoverable, and the weekly auto-backup
-              // is always masked. Demote the mask to the last-4 display field instead.
-              // Same stale-token problem as clients: a restored roster record must not claim to
-              // know the server's current row_version.
+              // A MASKED backup's '***-**-1234' is not an SSN and would overwrite the real encrypted value (the weekly
+              // auto-backup is always masked), so demote it to the last-4 display field. A restored record also must
+              // not claim the server's current row_version.
               cgAdd.forEach(function(id){ if(cgs[id]) delete cgs[id]._rowVersion; });
               cgAdd.forEach(function(id){
                 var _c=cgs[id]; if(!_c||!/^\*+-\*+-/.test(_c.ssn||''))return;
@@ -6108,9 +5875,8 @@ function importProfiles(ev){
             var sigs=getSigs(),sHave={}; sigs.forEach(function(x){ if(x&&x.id)sHave[x.id]=1; });
             var sAdd=parsed.signatures.filter(function(x){ return x&&x.id&&!sHave[x.id]; });
             if(sAdd.length){ saveSigsLS(sigs.concat(sAdd)); restored.signatures=sAdd.length;
-              // C3: restored signatures were written to localStorage ONLY, unlike every other roster,
-              // so the dialog reported them restored while they never reached the database — and the
-              // next device to sync had none. A signature is what certifies an invoice.
+              // C3: push restored signatures to the database too, like every other roster. A signature certifies an
+              // invoice.
               sAdd.forEach(function(x){
                 try{
                   _track('signature '+(x.label||x.id),
@@ -6181,12 +5947,9 @@ function importProfiles(ev){
   };r.readAsText(file);
 }
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-// Escape a value that goes inside a JS single-quoted string which itself sits inside an
-// HTML attribute — e.g. onclick="fn('<HERE>')". esc() ALONE IS UNSAFE there: the HTML
-// parser decodes &#39; back to ' before the JS runs, so a quote in the data breaks out of
-// the string and injects code. Fix: backslash-escape the JS-significant chars FIRST, then
-// HTML-escape. A "'" becomes "\&#39;", which the HTML parser decodes to "\'" — an escaped
-// quote the JS engine sees safely. Use this for ALL data in on* handler arguments.
+// Escape a value inside a JS single-quoted string inside an HTML attribute (onclick="fn('<HERE>')").
+// esc() alone is unsafe: the parser decodes &#39; before the JS runs. Backslash-escape FIRST, then
+// HTML-escape. Use this for ALL data in on* handler arguments.
 function escJsAttr(v){
   return esc(String(v==null?'':v)
     .replace(/\\/g,'\\\\')
@@ -6220,14 +5983,11 @@ function captureFullInvoice(){
   return d;
 }
 function applyFullInvoice(data){
-  // A signature belongs to the invoice it was placed on. Loading another invoice (from history, or
-  // via "copy from last") used to leave the previous stamp in the DOM, and both the PDF and the email
-  // path read it straight from there — so a later month could go out CERTIFIED with a signature the
-  // user never placed for it.
+  // A signature belongs to the invoice it was placed on: clear the previous stamp when loading another
+  // invoice, since the PDF and email read it from the DOM.
   resetSigArea(1); resetSigArea(2);
-  // ...then replay the signature this invoice was certified with. Reset alone left a reopened
-  // invoice unsigned, and the blank was written back over the record.
-  // Only an explicitly stored sigId is replayed. see DECISIONS.md#invoice-immutability
+  // ...then replay the signature this invoice was certified with; only an explicitly stored sigId is
+  // replayed. see DECISIONS.md#invoice-immutability
   try{
     if(data&&data.sigId&&typeof getSigs==='function'){
       var _sigs=getSigs()||[];
@@ -6243,20 +6003,14 @@ function applyFullInvoice(data){
   }catch(e){ console.warn('signature replay failed',e); }
   var f=['clientName','medicaidId','worker','billingPeriod','svcHH','svcMM','cplxHH','cplxMM','p1HH','p1MM','grandHH','grandMM','dateSubmitted','sigDate1','sigDate2'];
   f.forEach(function(id){var el=document.getElementById(id);if(el&&data[id]!==undefined)el.value=data[id];});
-  // The rate SAVED on the invoice wins. An invoice is a certified record of what was billed, so
-  // re-deriving today's state rate here rewrote history: opening a prior-year invoice showed the
-  // current rate, and saving it wrote that rate over the original. Fall back to the current rate
-  // only when the invoice carries none (a fresh invoice, or one saved before this field existed).
+  // The rate SAVED on the invoice wins: an invoice is a certified record of what was billed. Fall back to
+  // the current rate only when it has none.
   var profCur=(activeProfileName&&getProfiles()[activeProfileName])||{};
   var _hrEl=document.getElementById('hourlyRate');
   if(_hrEl)_hrEl.value=(data.hourlyRate!=null&&String(data.hourlyRate).trim()!=='')
     ? data.hourlyRate : clientInvoiceRate(profCur);
-  // Bill To: the value SAVED on the invoice wins, exactly like hourlyRate above and like the
-  // PDF/email path (loadInvoiceForCapture). This used to prefer the caseworker's CURRENT agency,
-  // so reassigning a caseworker — or moving one between organisations — rewrote the Bill To line
-  // on every historic invoice the moment it was opened, and saving wrote that rewrite into the
-  // record. An invoice is a certified statement of who was billed; it is not recomputed later.
-  // The live caseworker is only a fallback for an invoice that carries no Bill To of its own.
+  // Bill To: the value SAVED on the invoice wins, like hourlyRate and the PDF/email path, so reassigning a
+  // caseworker never rewrites historic invoices. The live caseworker is only a fallback.
   var cwApply=getCaseworkers().find(function(c){return c.id===profCur.caseworkerId||c.name===(data.worker||profCur.worker);})||{};
   document.getElementById('billTo').value=(data.billTo||cwApply.agency||cwApply.county||'');
   document.getElementById('clientName2').value=data.clientName||'';document.getElementById('worker2').value=data.worker||'';document.getElementById('billingPeriod2').value=data.billingPeriod||'';
@@ -6278,9 +6032,8 @@ function saveInvoiceToClient(){
     var msg=existingStatus==='submitted'
       ? 'Invoice '+bp+' has already been submitted. Are you sure you want to overwrite it?'
       : 'Invoice for '+bp+' already exists. Overwrite?';
-    // Deliberately NOT passing `ex`/`existingStatus`: they were read before this dialog opened and
-    // the user may take minutes over it. _doSaveInvoiceToClient re-finds the invoice by its BILLING
-    // PERIOD at the moment it writes.
+    // Don't pass `ex`/`existingStatus`: they were read before the dialog, which may stay open for minutes.
+    // _doSaveInvoiceToClient re-finds the invoice by billing period when it writes.
     var forClient=activeProfileName;
     showConfirm(msg,function(){_doSaveInvoiceToClient(bp,forClient);},{title:'Overwrite Invoice',okText:'Overwrite'});
     return;
@@ -6330,10 +6083,8 @@ function clearInvoiceForm(){
 }
 
 //  AUTOSAVE DRAFT
-// (Removed) Draft-autosave was write-only: it wrote lhca_draft_* every 30s and flashed a
-// "Draft autosaved" badge, but no code ever read the key back — drafts could never be
-// recovered, so the timer + badge only misled the user. The removeItem('lhca_draft_'+…)
-// cleanups elsewhere are kept so any legacy draft keys still in a browser get purged.
+// Removed: nothing ever read the drafts back. The removeItem('lhca_draft_'+…) cleanups elsewhere purge
+// legacy keys.
 
 //  INVOICE TABLE HELPERS (unchanged from original)
 function today(){var d=new Date();return String(d.getMonth()+1).padStart(2,'0')+'/'+String(d.getDate()).padStart(2,'0')+'/'+d.getFullYear();}
@@ -6491,9 +6242,7 @@ function onBillingBlur(el){
     applyStates(savedStates);
     checkDuplicatePeriod(val);
   } else if(raw.length===5){
-    // "9/2025" types as 92025 — the month digit needs padding. Left unrepaired, the value stays
-    // malformed ("92/025") and every period comparison downstream (duplicate check, missing-invoice
-    // report, monthly preview) silently fails to match it.
+    // "9/2025" types as 92025, so pad the month digit; a malformed period silently breaks every comparison.
     var mm5='0'+raw.slice(0,1), yyyy5=raw.slice(1,5);
     val=mm5+'/'+yyyy5;
     el.value=val;
@@ -6544,9 +6293,8 @@ function applyStates(states){
     var tbodyId=key==='svc'?'svcBody':'cplxBody',rows=document.getElementById(tbodyId).querySelectorAll('tr');
     states[key].forEach(function(rowState,i){
       if(!rows[i])return;
-      // Never re-apply a mark to a day the CURRENT month doesn't have. Copying a 31-day month into a
-      // 30-day one used to carry day 31's checkmarks across; the print CSS re-shows .inactive rows and
-      // buildInvoiceHTML strips the class entirely, so the phantom day printed on the certified form.
+      // Never re-apply a mark to a day the current month doesn't have, or a phantom day 31 prints on the
+      // certified form.
       if(rows[i].classList.contains('inactive')){
         rows[i].querySelectorAll('td.mc').forEach(function(c){c.classList.remove('on');});
         return;
@@ -6558,8 +6306,7 @@ function applyStates(states){
 }
 
 // ── Toast ─────────────────────────────────────────────────────
-// a11y: announce a message to screen readers via a visually-hidden aria-live region, so
-// toasts / "Saved ✓" / "Save failed" (visual-only otherwise) are spoken. WCAG 4.1.3.
+// a11y: announce messages via a visually-hidden aria-live region so toasts are spoken (WCAG 4.1.3).
 function _ariaAnnounce(msg){
   var r=document.getElementById('ariaLive');
   if(!r){
@@ -6576,9 +6323,8 @@ function showToast(msg,ms){
   _ariaAnnounce(msg);
   clearTimeout(t._tid);t._tid=setTimeout(function(){t.classList.remove('show');},ms||3500);
 }
-// ── Save-status toast — used by every API save path so failures are never silent ──
-// Usage: trackSave('client', () => fetch(...))  — returns the promise so callers can await/chain
-// On failure: shows a red toast with a Retry button that re-invokes the save.
+// ── Save-status toast, used by every API save path so failures are never silent ──
+// trackSave('client', () => fetch(...)) returns the promise; on failure, a red toast with Retry.
 var _saveStatusEl=null;
 function _showSaveStatus(state,label,onRetry){
   if(!_saveStatusEl){
@@ -6619,12 +6365,10 @@ function trackSave(label,doSave){
       throw e;
     });
 }
-// ── Silent-save guards (audit Batch 2: D8/D10/D13) ──────────────────
-// Optimistic UI updates and "quiet" auto-saves must never report success when
-// the API call actually failed. Both helpers expect a promise that REJECTS on a
-// non-2xx response (the save fns already do `if(!r.ok)throw`). On failure they
-// raise the persistent red save-status toast with a Retry button; success stays
-// quiet (surfaceSaveFailure) or shows the inline "· Saved ✓" tick (flashQuietSave).
+// ── Silent-save guards (D8/D10/D13) ──────────────────
+// Optimistic updates and quiet saves must never report success on a failed call. Both expect a promise
+// that rejects on non-2xx and raise the red toast with Retry on failure. Success stays quiet
+// (surfaceSaveFailure) or ticks "· Saved ✓" (flashQuietSave).
 function surfaceSaveFailure(promise,label,onRetry){
   // Fire-and-forget callers don't chain, so swallow after surfacing (retry is wired
   // through the toast button) — rethrowing here would just be an unhandled rejection.
@@ -6660,10 +6404,8 @@ function buildInvoiceHTML(){
     root.querySelectorAll('.sig-placeholder').forEach(function(el){el.textContent='';});
   });
 
-  // Column headers: replace writing-mode (not supported by html2canvas) with
-  // transform:rotate on a width-constrained box so long text wraps correctly.
-  // Pre-rotation width = 82px ≈ header height → becomes the visual column height after rotation.
-  // Pre-rotation height = text height (1-3 lines) → becomes visual column width after rotation.
+  // Column headers: html2canvas doesn't support writing-mode, so use transform:rotate on a width-constrained
+  // box. Pre-rotation width (82px) becomes the column height; text height becomes the column width.
   [p1,cs].forEach(function(root){
     root.querySelectorAll('th.th').forEach(function(th){
       var text=th.textContent.trim();
@@ -6772,10 +6514,9 @@ async function printInvoiceAsPDF(){
   }
 }
 
-//  VECTOR PDF — direct jsPDF drawing (small file, government-form fidelity)
-// Letter = 612x792 pt; we use 18pt (0.25") margins matching @page setting.
-// Output PDFs are 80-150 KB vs 1.6 MB for the raster path.
-// Signature is the only raster element (small embedded PNG).
+//  VECTOR PDF — direct jsPDF drawing for government-form fidelity
+// Letter = 612x792 pt with 18pt margins (matching @page). 80-150 KB vs 1.6 MB raster; only the signature
+// is a raster PNG.
 async function captureInvoicePDFVector(){
   var jsPDF=window.jspdf.jsPDF;
   var pdf=new jsPDF({unit:'pt',format:'letter',orientation:'p'});
@@ -7091,13 +6832,9 @@ async function captureInvoicePDF(){
   }
 }
 
-// ── Graph API Email with PDF Attachments ──────────────────────
-//  Graph email send — auto picks fast path or upload-session path
-//  based on total attachment size:
-//   - Total ≤ 3.5 MB: single POST /me/sendMail (fast, ~1 sec)
-//   - Total > 3.5 MB: createDraft → uploadSession per attachment → send
-//                      (handles up to ~150 MB; ~3-10 sec for 30 PDFs)
-//  attachments: [{name, base64}], onProgress?: (done,total,label) => void
+// ── Graph API email with PDF attachments ──────────────────────
+// Total ≤ 3.5 MB: one POST /me/sendMail. Larger: createDraft → upload session per attachment → send
+// (up to ~150 MB). attachments [{name, base64}], onProgress?(done, total, label).
 async function sendMailWithPDF(toEmail,subject,bodyHtml,attachments,onProgress,ccEmails){
   if(!spToken)return {ok:false,err:'Not signed in'};
   // Calculate total attachment size in bytes (base64 inflates ~33%, so actual=base64Length*0.75)
@@ -7196,10 +6933,8 @@ async function loadInvoiceForCapture(clientName,inv,period){
   var _invRate=(inv&&inv.data&&inv.data.hourlyRate!=null&&String(inv.data.hourlyRate).trim()!=='')
     ? inv.data.hourlyRate : stateRate();
   document.getElementById('hourlyRate').value=_invRate;
-  // Prefer what the invoice was SAVED with, falling back to the live record. Re-deriving these from
-  // the current profile meant reassigning or renaming a caseworker silently rewrote the "Bill To" and
-  // "Attention" lines on every historic invoice reprint — and if the caseworker had no agency on
-  // file, the PDF printed Bill To BLANK while the screen showed the saved value.
+  // Prefer what the invoice was SAVED with, falling back to the live record, so a reprint never rewrites
+  // Bill To or Attention on a historic invoice.
   var _d=(inv&&inv.data)||{};
   var cwRecCapture=getCaseworkers().find(function(c){return c.id===prof.caseworkerId||c.name===prof.worker;})||{};
   document.getElementById('billTo').value=(_d.billTo||cwRecCapture.agency||cwRecCapture.county||'');
@@ -7222,9 +6957,8 @@ async function loadInvoiceForCapture(clientName,inv,period){
   resetSigArea(1);resetSigArea(2);
   var sigs=getSigs();
   if(sigs.length){
-    // Replay the signature this invoice was certified with. sigs[0] is only the fallback for records
-    // saved before the id was stored — otherwise deleting or reordering signatures would re-certify
-    // already-sent invoices under a different person.
+    // Replay the signature this invoice was certified with. sigs[0] is only a fallback for records saved
+    // before the id was stored.
     var _want=_d.sigId&&sigs.find(function(x){return x&&String(x.id)===String(_d.sigId);});
     var _use=_want||sigs[0];
     if(_d.sigId&&!_want)console.warn('Invoice '+period+' was signed with a signature that no longer exists — falling back to the primary signature.');
@@ -7235,10 +6969,8 @@ async function loadInvoiceForCapture(clientName,inv,period){
 }
 
 // ── Mark invoice submitted (local + DB) ───────────────────────
-//  EMAIL AUDIT LOG — HIPAA "accounting of disclosures"
-//  Each PHI-bearing email send writes one log entry. Stored in
-//  localStorage and mirrored to App Insights. Downloadable as CSV
-//  from Settings > Email Audit Log.
+// EMAIL AUDIT LOG — HIPAA accounting of disclosures: one entry per PHI-bearing email, in localStorage and
+// App Insights, downloadable as CSV from Settings > Email Audit Log.
 function getEmailAuditLog(){try{return JSON.parse(localStorage.getItem('lhca_email_audit')||'[]');}catch(e){return[];}}
 function saveEmailAuditLog(arr){
   // Cap at 1000 entries to avoid unbounded growth
@@ -7325,9 +7057,8 @@ function _doEmailAuditCSVDownload(arr){
   var lines=arr.map(function(r){return [
     r.timestamp,r.sentBy,r.type,r.recipient,r.caseworkerName,r.billingPeriod,r.attachmentCount,(r.clientNames||[]).join('; '),r.success?'YES':'NO',r.errorMsg||''
   ].map(csvEscape).join(',');});
-  // The backend caps /audit-events at 1000 rows and offers no paging, so this export can silently
-  // omit the OLDEST disclosures. Say so on the face of the file rather than shipping a truncated
-  // record that looks complete.
+  // /audit-events caps at 1000 rows with no paging, so say on the file itself that the oldest entries may
+  // be missing.
   var truncated=(arr.length>=1000);
   var csv=header+'\n'+lines.join('\n')+
     (truncated?'\n\n"WARNING: this export hit the 1000-record limit and is INCOMPLETE — disclosures older than the newest 1000 are NOT included."':'');
@@ -7347,9 +7078,8 @@ function logEmailSend(entry){
   },entry);
   // HIPAA-critical — persist to DB FIRST, then mirror to LS as display cache
   var summary='Email to '+(record.recipient||'?')+' · '+((record.clientNames||[]).length)+' client'+((record.clientNames||[]).length===1?'':'s')+' · '+(record.success?'sent':'failed');
-  // D13: this DB write is the authoritative HIPAA record (the LS copy is only a
-  // display cache). A swallowed failure let an operator believe the trail was
-  // complete when the server never got the row — check r.ok and surface it loudly.
+  // D13: this DB write is the authoritative HIPAA record (LS is a display cache), so check r.ok and surface
+  // a failure loudly.
   var doAudit=function(){
     return fetch(API_BASE+'/audit-events',{
       method:'POST',
@@ -7389,9 +7119,8 @@ function markInvoiceSubmitted(clientName,period){
   if(!inv||inv.status==='paid')return;
   inv.status='submitted';
   saveProfilesLS(p);
-  // saveProfileSP persists the status via the invoice upsert; no separate PATCH (it double-wrote the
-  // row and discarded the fresh row_version). This runs just after the invoice was EMAILED, so a
-  // failed write must be visible — otherwise it stays Draft on the server and goes out twice.
+  // No separate PATCH: saveProfileSP persists status. This runs right after the invoice was emailed, so a
+  // failed write must be visible, or it stays Draft and goes out twice.
   var _persist=function(){
     return surfaceSaveFailure(
       Promise.resolve(saveProfileSP(clientName,p[clientName])),
@@ -7423,9 +7152,8 @@ async function sendEmail(){
   // cn is what prints on the PDF; forClient is whose record this invoice belongs to. They are not
   // the same thing — the name on the form is editable — so capture the record before any gap.
   var forClient=activeProfileName;
-  // In Progress (stored 'inactive'), Lost and Terminated clients are never invoiced. Every BULK
-  // surface enforces that; these three per-client entry points checked only for a carrier client,
-  // so an invoice for a terminated client could be created and emailed one at a time.
+  // Only Active clients are invoiced; In Progress (stored 'inactive'), Lost and Terminated never are,
+  // matching every bulk surface.
   if(cn&&isCarrierClient(getProfiles()[cn])){showAlert('This is a managed-care (carrier) client — invoices are handled in the carrier’s software, so there is nothing to email here.');return;}
   if(cn&&!isInvoiceableStatus(getProfiles()[cn])){showAlert('“'+cn+'” is not an Active client, so this invoice should not be sent to MDHHS. Set the client Active first if service has started.',{title:'Not an invoiceable client'});return;}
   var bp=document.getElementById('billingPeriod').value.trim();
@@ -7436,11 +7164,8 @@ async function sendEmail(){
     var profSE=getProfiles()[cn]||{};
     var invSE=(profSE.invoices||[]).find(function(i){return i.billingPeriod===bp;});
     var cwRecSE=getCaseworkers().find(function(c){return c.id===profSE.caseworkerId||c.name===profSE.worker;})||{};
-    // Validate WHAT WILL BE SENT. The PDF is built from the live form further down, so validating
-    // the stored invoice checked a different document than the one that reaches MDHHS — an edit made
-    // after the last save was never examined at all. status is forced to 'draft' here because we are
-    // actively sending: validateInvoiceForSend deliberately returns [] for submitted/paid so the
-    // monthly PREVIEW doesn't nag about already-sent work, but a re-send must still be checked.
+    // Validate what will be SENT: the live form the PDF is built from, not the stored invoice. Status is
+    // forced to 'draft' because validateInvoiceForSend skips submitted/paid, and a re-send must be checked.
     var _liveSE={ billingPeriod:bp, status:'draft', data:captureFullInvoice() };
     var issuesSE=validateInvoiceForSend(cn,profSE,_liveSE,cwRecSE);
     if(issuesSE.length){
@@ -7455,16 +7180,8 @@ async function sendEmail(){
       if(!proceed)return;
     }
   }
-  // Two independent sources say who this invoice is for, and only one of them is reliable here.
-  // `cn` comes from the invoice form, which is what captureInvoicePDF builds the document from —
-  // so it is the name the caseworker will actually read on the PDF. activeProfileName is a global
-  // that can drift across the dialog above: hashchange reassigns it on Back/Forward with no click
-  // on the page, and the overlay does not block the hash router. Everything below used the global,
-  // so a drift filed this invoice under a different client while emailing the first client's PDF.
-  //
-  // When they disagree we do not get to pick one. This path sends a document out of the building.
-  // The dialog above is a real gap: hashchange reassigns activeProfileName on Back/Forward with no
-  // click on the page. Sending a document out of the building is not something to do on a guess.
+  // forClient was captured before the dialog above, a real gap: Back/Forward reassigns activeProfileName
+  // with no click. This path sends a document out of the building, so don't guess.
   if(forClient&&!stillOn('client',forClient)){
     showAlert('The open client changed while this invoice was being prepared. Nothing has been sent.\n\nReopen “'+forClient+'” and send again.',
       {title:'Client changed'});
@@ -7485,9 +7202,7 @@ async function sendEmail(){
   var btn=document.getElementById('sendEmailInvBtn');
   if(btn){btn.disabled=true;btn.textContent='Generating PDF…';}
   try{
-    // Persist whatever's currently in the form BEFORE sending — so the saved record matches
-    // what the caseworker received. Otherwise the PDF can be emailed with values the user
-    // typed but never clicked Save on, and the stored invoice ends up out of sync.
+    // Persist the form before sending, so the saved record matches what the caseworker received.
     if(forClient&&bp){
       var pSE=getProfiles();
       if(pSE[forClient]){
@@ -7511,10 +7226,8 @@ async function sendEmail(){
     var _bpP=(bp||'').split('/');
     var bpLabel=(_bpP.length===2&&parseInt(_bpP[0],10)>=1&&parseInt(_bpP[0],10)<=12)?_mo[parseInt(_bpP[0],10)-1]+' '+_bpP[1]:bp;
     var wFirst=(w||'').split(/\s+/)[0];
-    // Subject is exactly "INVOICE" — same as the bulk send (agency direction). A subject line is
-    // the one part of an email that routinely sits unencrypted in logs, backups and notification
-    // previews, so the client's name and the period stay in the body, which is where the caseworker
-    // reads them anyway.
+    // Subject is exactly "INVOICE", as in the bulk send (agency direction): subjects sit unencrypted in logs
+    // and previews, so the client name and period stay in the body.
     var subj='INVOICE';
     var body='<p>Hi'+(wFirst?' '+esc(wFirst):'')+',</p>'+
       '<p>Attached is the invoice for <b>'+esc(cn)+'</b> for <b>'+esc(bpLabel)+'</b>. Please review it at your convenience, and let me know if you have any questions or if anything needs adjusting.'+_apprecLine((ae||'')+'|'+(bp||''),false)+'</p>'+
@@ -7553,14 +7266,11 @@ var STATE_RATE_DEFAULT='27.00';
 // The government/state hourly rate billed on every invoice (NOT the caregiver pay rate).
 // Configurable in Settings so the once-a-year rate change is a setting, not a code edit.
 function stateRate(){ var v=(localStorage.getItem('lhca_state_rate')||'').trim(); return v||STATE_RATE_DEFAULT; }
-// True when NO rate has ever been saved on this device and invoices are running on the built-in
-// default. A saved 27.00 and a never-saved rate look identical on screen — the Settings box is
-// filled by stateRate() either way — so the day MDHHS changes the rate, an unsynced device would
-// keep certifying 27.00 with nothing to show it was a guess. Callers surface it; nothing blocks.
+// True when no rate was ever saved on this device and invoices use the built-in default, which looks
+// identical on screen. Callers surface it; nothing blocks.
 function stateRateIsDefault(){ return !(localStorage.getItem('lhca_state_rate')||'').trim(); }
-// The rate to bill a client's invoices at: ALWAYS the state rate ($27). The state pays a flat
-// provider rate, so every invoice uses it — the client "Hourly Rate" field is NOT a billing rate
-// (it does not affect invoices). prof kept for call-site compatibility.
+// Bill every invoice at the state rate ($27): the state pays a flat provider rate. The client "Hourly
+// Rate" field doesn't affect invoices. prof is kept for call-site compatibility.
 function clientInvoiceRate(prof){
   return stateRate();
 }
@@ -7585,12 +7295,8 @@ function saveStateRate(){
   });
 }
 // ── App settings sync (state rate + agency) across the owner's devices ──
-// These two were localStorage-only, so they didn't follow the owner device-to-device. Now mirrored
-// to a backend AppSettings store: pushed on save, pulled on load (server is the source of truth).
-// Returns a promise so callers can report the REAL outcome. This used to swallow every failure with a
-// console.warn while the UI said "Saved ✓" — and because loadSettingsAPI treats the server as the source
-// of truth, a failed push is silently reverted on the next load. For the state rate that means every
-// invoice quietly goes back to billing at the old hourly rate.
+// Pushed on save and pulled on load (server is the source of truth). Returns a promise so callers report
+// the real outcome: a failed push would be silently reverted on the next load.
 function _pushSettings(obj){
   if(typeof _apiToken==='undefined' || !_apiToken || typeof API_BASE!=='string'){
     // Not signed in is the normal local-only state, not a sync failure — flag it so callers stay quiet.
@@ -7615,14 +7321,12 @@ function loadSettingsAPI(){
       var _agBase={}; try{ _agBase=JSON.parse(localStorage.getItem('lhca_agency')||'{}'); }catch(e){}
       if(s.state_rate!=null && s.state_rate!=='') localStorage.setItem('lhca_state_rate', String(s.state_rate));
       if(s.agency && typeof s.agency==='object') localStorage.setItem('lhca_agency', JSON.stringify(s.agency));
-      // Never repaint the agency form while it is being edited: these inputs have no dirty tracking,
-      // so a GET resolving mid-typing wiped the characters, and the next Save read the SERVER's
-      // values back out of the DOM and persisted them over the owner's change.
+      // Never repaint the agency form while it's being edited: there's no dirty tracking, so a late GET would
+      // wipe typing and the next Save would persist the server's values.
       var _agDirty=false;
       try{
-        // EXPLICIT map: 'ag-name'/'ag-id' are stored as agency_provider_name/agency_provider_id, not
-        // agency_name/agency_id. Deriving the key by string-replace got those two wrong, so `was` was
-        // always '' against a non-empty default and the form was treated as permanently dirty.
+        // EXPLICIT map: 'ag-name'/'ag-id' are stored as agency_provider_name/agency_provider_id, which a string
+        // replace gets wrong.
         var _AG_KEYS={ 'ag-name':'agency_provider_name', 'ag-id':'agency_provider_id',
                        'ag-phone':'agency_phone', 'ag-address':'agency_address',
                        'ag-city':'agency_city', 'ag-state':'agency_state', 'ag-zip':'agency_zip' };
@@ -7700,9 +7404,7 @@ function placeSignature(target){
 function stampSignatureData(target,dataUrl,sigId){
   var area=document.getElementById('sigArea'+target);if(!area)return;
   var img=document.createElement('img');img.src=dataUrl;img.className='sig-stamp';img.title='Click to clear';img.id='sigArea'+target;
-  // Record WHICH signature this is. Without it the reprint path just took sigs[0], so placing your
-  // second signature emailed your first, and deleting or reordering signatures silently re-certified
-  // every already-sent invoice under a different person's name.
+  // Record WHICH signature this is, so a reprint uses it rather than sigs[0].
   if(sigId)img.setAttribute('data-sig-id',String(sigId));
   img.addEventListener('click',function(){resetSigArea(target);});area.parentNode.replaceChild(img,area);
 }
@@ -8084,12 +7786,8 @@ function clearPHIFromStorage() {
   }catch(e){}
 }
 function signOut() {
-  // Cover the screen FIRST, before anything that can throw. Sign-out used to run wipe -> MSAL and
-  // never raise the wall itself: it relied on the logoutPopup flow to end the session. If that
-  // popup was blocked or dismissed — or if any earlier step threw, which is how this was found;
-  // clearPHIFromStorage reaches msalInstance — the PHI already rendered into the page (client
-  // grid, sidebar, invoice history, assistant replies) stayed on screen with nothing over it, on a
-  // workstation whose owner had just walked away. The inactivity path already locks correctly.
+  // Cover the screen FIRST, before anything that can throw, so rendered PHI never stays visible if the
+  // logout popup is blocked or a later step fails.
   try { var _wall = document.getElementById('loginWall'); if (_wall) _wall.style.display = 'flex'; }
   catch (e) { console.error('sign-out: could not raise the lock wall', e); }
   // Each remaining step is independent and every one of them must be ATTEMPTED: a failure in any
@@ -8137,9 +7835,8 @@ function updateAuthUI(on) {
 window._dbSyncPending=0;
 function syncStart(){
   window._dbSyncPending++;
-  // Only show the full-page banner on initial cold load — when LS is genuinely empty
-  // and Add buttons would be unsafe. After the first sync completes, LS has data and
-  // background revalidation on nav should be silent (Phase-5 SWR).
+  // Show the full-page banner only on a cold load with empty LS, when Add buttons would be unsafe. Later
+  // background revalidation stays silent.
   if(!window._initialLoadDone)document.body.classList.add('db-syncing');
 }
 function syncEnd(){
@@ -8178,10 +7875,8 @@ function revalidate(force){
   if(typeof unsavedChanges!=='undefined'&&unsavedChanges)return;
   if(typeof cgUnsavedChanges!=='undefined'&&cgUnsavedChanges)return;
   if(typeof cwUnsavedChanges!=='undefined'&&cwUnsavedChanges)return;
-  // Guard 1b: never reload while a save is still in flight. unsavedChanges is cleared
-  // synchronously (before the async save resolves) and invoice-only saves don't set it at
-  // all — so this counter is what actually prevents a background reload from reverting a
-  // pending save's writes (dbId/rowVersion writebacks + saved content).
+  // Guard 1b: never reload while a save is in flight. unsavedChanges clears before the save resolves (and
+  // invoice-only saves never set it), so this counter is what stops a reload reverting a pending save.
   if(_savesInFlight>0)return;
   // Guard 2: throttle to once per 30 sec unless forced
   var now=Date.now();
@@ -8189,9 +7884,8 @@ function revalidate(force){
   _lastRevalidate=now;
   // Need an auth token to actually fetch — silently skip on cold start
   if(!spToken)return;
-  // loadProfilesAPI already fans out to caregivers/caseworkers/supervisors/tasks/signatures
-  // internally, so calling those here too double-fetched each of them every revalidate. Just
-  // call loadProfilesAPI — it re-renders all the entity UIs.
+  // loadProfilesAPI already loads caregivers, caseworkers, supervisors, tasks and signatures and re-renders
+  // them all.
   if(typeof loadProfilesAPI==='function')loadProfilesAPI();
 }
 
@@ -8199,9 +7893,7 @@ function revalidate(force){
 // One round-trip instead of N+1. Backend returns clients with invoices nested.
 function loadProfilesAPI() {
   syncStart();
-  // Load the supporting datasets in parallel. These calls were previously placed AFTER
-  // the return below, making them unreachable dead code — so caregivers/caseworkers/etc.
-  // never loaded on sign-in, only when their tab was first opened.
+  // Load the supporting datasets in parallel on sign-in.
   if (typeof loadCaregiversAPI === 'function') loadCaregiversAPI();
   if (typeof loadCaseworkersAPI === 'function') loadCaseworkersAPI();
   if (typeof loadSupervisorsAPI === 'function') loadSupervisorsAPI();
@@ -8225,9 +7917,8 @@ function loadProfilesAPI() {
         var invs = (c.invoices || []).slice().sort(function (a, b) {
           return new Date(b.saved_at || 0) - new Date(a.saved_at || 0);
         });
-        // Dedupe by billing period for DISPLAY only. NEVER delete from the DB on a read
-        // path — a same-period row may be a legitimate corrected re-issue. Hide only an
-        // EXACT duplicate (identical invoice_data); if the content differs, show both.
+        // Dedupe by billing period for DISPLAY only, never deleting on a read path: a same-period row may be a
+        // corrected re-issue. Hide only exact duplicates.
         var seenByPeriod = {};
         var dedupedInvs = [];
         invs.forEach(function (inv) {
@@ -8248,11 +7939,8 @@ function loadProfilesAPI() {
             dbId: inv.id, billingPeriod: inv.billing_period || '',
             status: inv.status || 'draft', invoiceNote: inv.invoice_note || '',
             savedAt: inv.saved_at ? new Date(inv.saved_at).toLocaleString() : '', data: data,
-            // Optimistic-concurrency token: sent back on save so a stale write is rejected
-            // (409) instead of clobbering another user's edit. The bundled load endpoint
-            // returns it as row_version_hex; the /invoices endpoint as a hex row_version
-            // string. A raw binary row_version (SELECT *) is NOT a usable token, so ignore
-            // that shape.
+            // Concurrency token sent back on save (409 on a stale write). The bundled endpoint returns
+            // row_version_hex, /invoices a hex row_version; a raw binary row_version is not a usable token.
             rowVersion: inv.row_version_hex || (typeof inv.row_version === 'string' ? inv.row_version : null),
           };
           // Dirty-tracking baseline: this is the server-confirmed state, so mark it synced.
@@ -8283,13 +7971,11 @@ function loadProfilesAPI() {
         // per-invoice _synced above. saveProfileSP skips the client POST while this matches.
         profiles[name]._clientSynced = _clientSig(profiles[name]);
       });
-      // A save may have started DURING this fetch (the round-trip is async). If so, abort
-      // the destructive full-store replace — otherwise it reverts the pending save's local
-      // writes (content + dbId/rowVersion writebacks). A later revalidate will refresh.
+      // A save may have started during this fetch: skip the full-store replace rather than revert its local
+      // writes. A later revalidate refreshes.
       if (_savesInFlight > 0) { syncEnd(); return; }
-      // Merge (not blind-replace) so a client save that FAILED — its data left only in LS after
-      // _savesInFlight fell back to 0 — isn't reverted by this background refresh. Server wins for
-      // clean synced clients; unsynced local adds/edits are preserved; deletes still propagate.
+      // Merge, not replace, so a failed client save left only in LS isn't reverted. Server wins for clean
+      // synced clients; unsynced local changes are kept; deletes still propagate.
       saveProfilesLS(_mergeProfilesLoad(profiles, getProfiles()));
       localStorage.setItem('lhca_id_map', JSON.stringify(idMap));
       hideDbError(); // fresh data arrived — clear any stale connection-error banner
@@ -8312,9 +7998,8 @@ function loadProfilesAPI() {
 // concurrent saves can't each create a row and leave the client duplicated.
 var _rebornInFlight = {};
 // ── SAVE client profile to Azure SQL ────────────────────────
-// Returns a Promise. Shows save-status toast (Saving → Saved ✓ / Save failed [Retry]).
-// On failure the LS write done by the caller is preserved so the user can keep working
-// against the optimistic state, and the Retry button re-invokes this exact save.
+// Returns a Promise with a save-status toast. On failure the caller's LS write is kept, and Retry
+// re-invokes this exact save.
 function saveProfileSP(name, data, quiet) {
   var idMap = getIdMap();
   var dbId = data._dbId || idMap[name];
@@ -8337,19 +8022,13 @@ function saveProfileSP(name, data, quiet) {
     // JSON.stringify's it. null when the client has no imported authorization yet.
     dhs_authorization: data.authorization || null,
   };
-  // S8: only send ssn when we actually have it in memory. Omitting it makes the backend
-  // keep the stored (encrypted) value rather than blanking it — so a save that happens
-  // before ssn has loaded (e.g. right after a reload) can never wipe it.
+  // S8: only send ssn when it's in memory, so a save before it loads keeps the stored encrypted value.
   if (!data.ssn) delete body.ssn;
-  // Optimistic concurrency: send the row_version we last read for an EXISTING client so a
-  // stale save is rejected (409) instead of clobbering another user's edit. Omitted for a
-  // new client, or one loaded before this feature (backend then updates unconditionally).
+  // Optimistic concurrency: send the last-read row_version for an existing client (409 on stale). Omitted
+  // for a new client.
   if (dbId && data._rowVersion) body.expected_version = data._rowVersion;
-  // Client-record dirty-tracking: if this is an EXISTING client whose own fields are
-  // unchanged since the last confirmed save, skip the client POST entirely. That POST
-  // otherwise re-writes the row and bumps its row_version on EVERY save (even an invoice-
-  // only one), which made a concurrent invoice edit falsely 409 at the client level. The
-  // invoices still sync (they have their own dirty-tracking + version check).
+  // Skip the client POST when an existing client's own fields are unchanged since the last confirmed save:
+  // it would bump row_version and falsely 409 a concurrent invoice edit. Invoices still sync.
   var _clientSigNow = _clientSig(data);
   var _clientUnchanged = dbId && data._clientSynced === _clientSigNow;
   var _doSave = function(){
@@ -8358,37 +8037,29 @@ function saveProfileSP(name, data, quiet) {
       var lsl0 = document.getElementById('lastSyncedLabel'); if (lsl0) lsl0.textContent = 'Last synced: ' + now0;
       return syncNewInvoices(name, data).then(function(){ return { skipped: true }; });
     }
-    // keepalive: a note save flushed on pagehide/tab-close (F4 flush via clearPHIFromStorage)
-    // must survive the page dying — a normal fetch is aborted on unload and the note is lost
-    // (LS is wiped right after). The body here is one client record (no invoice blobs), so it's
-    // well under keepalive's 64KB cap. Harmless for ordinary saves.
+    // keepalive: a note flushed on tab close must survive the page dying. One client record (no invoice
+    // blobs) is well under keepalive's 64KB cap.
     var _post = function (b) {
       return fetch(API_BASE + '/homecare-clients', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(b), keepalive: true });
     };
     return _post(body)
       .then(function (r) {
         if (r.status === 409) {
-          // Someone else changed this client since we loaded it. The stale write was
-          // REJECTED (not clobbered) — surface it so the user reloads + re-applies rather
-          // than silently overwriting the other person's change.
+          // Someone else changed this client since we loaded it. The stale write was rejected, so the user must
+          // reload and re-apply.
           var ce = new Error("This client's info was changed by someone else. Reload to get the latest, then re-apply your edit.");
           ce.isConflict = true;
           throw ce;
         }
-        // 404 = we sent an id for a row that no longer exists on the server. That is exactly what a
-        // RESTORE looks like: the backup carries the client's old _dbId, the row was deleted, and the
-        // update matched nothing — so the restored client could never be written back and the save
-        // 404'd forever. Retry once as a CREATE. Only fires when the server itself says the row is
-        // gone, so it cannot duplicate a client whose row still exists.
+        // 404 on an id means the row is gone, which is what a RESTORE looks like (old _dbId, deleted row). Retry
+        // once as a CREATE; only on the server's own 404, so it can't duplicate a live client.
         if (r.status === 404 && body.id) {
           // Another save for this client is already re-creating the row (a deliberate save racing a
           // debounced note flush). Wait for it instead of racing it into a second client.
           if (_rebornInFlight[name]) return _rebornInFlight[name];
           var reborn = Object.assign({}, body); delete reborn.id; delete reborn.expected_version;
-          // LOOK FIRST. If the create already landed and only its response was lost, the row is
-          // there under this name — adopt it. Creating blind would leave two identical clients,
-          // both billable to MDHHS, and syncNewInvoices would write a full set of invoices under
-          // the second one.
+          // LOOK FIRST: if the create landed and only its response was lost, adopt the existing row. Creating blind
+          // would leave two identical billable clients.
           var _reborn = fetch(API_BASE + '/homecare-clients?q=' + encodeURIComponent(name), { headers: apiHeaders() })
             .then(function (rs) { return rs.ok ? rs.json() : []; })
             .catch(function () { return []; })    // lookup is best-effort: never block the re-create
@@ -8400,11 +8071,8 @@ function saveProfileSP(name, data, quiet) {
             })
             .then(function (r2) {
             if (!r2.ok) throw new Error('HTTP ' + r2.status);
-            // The server made a NEW row, so the old id is dead everywhere. Clear it locally and drop
-            // the invoices' stale ids too — their rows went with the client (Invoices cascades on
-            // delete), and an invoice still carrying a dead dbId is UPDATEd against nothing and
-            // silently never restored. Setting dbId=null also lets the id-map writeback below run,
-            // so subsequent invoice syncs attach to the NEW client id instead of the dead one.
+            // The server made a new row, so the old id is dead: clear it locally along with the invoices' ids (their
+            // rows cascaded away), letting the id-map writeback attach them to the new client.
             dbId = null;
             try {
               var pr = getProfiles();
@@ -8422,9 +8090,7 @@ function saveProfileSP(name, data, quiet) {
                               function (e) { delete _rebornInFlight[name]; throw e; });
         }
         if (!r.ok) {
-          // The server explains WHY (an invoice note over the 1000-character limit and by how much,
-          // a Key Vault outage that meant nothing was saved). Throwing the bare status discarded all
-          // of it and the owner saw only "HTTP 400" with no idea what to change.
+          // Surface the server's explanation (a note over 1000 characters, a Key Vault outage), not just the status.
           return r.json().catch(function () { return null; }).then(function (eb) {
             var msg = (eb && eb.error) ? String(eb.error) : ('HTTP ' + r.status);
             var er = new Error(msg); er.status = r.status; throw er;
@@ -8434,10 +8100,8 @@ function saveProfileSP(name, data, quiet) {
       })
       .then(function (result) {
         if (!dbId && result.id) {
-          // Re-READ the map here instead of writing back the snapshot taken at call time: a restore
-          // saves every client in one synchronous pass, so each resolver would otherwise clobber the
-          // ids its siblings just wrote (leaving them pointing at DEAD rows, which syncNewInvoices
-          // then bills against).
+          // Re-read the map rather than writing back the call-time snapshot: a restore saves every client in one
+          // pass, and each resolver would clobber its siblings' ids.
           var idMap2 = getIdMap();
           idMap2[name] = result.id; localStorage.setItem('lhca_id_map', JSON.stringify(idMap2));
           var p = getProfiles(); if (p[name]) { p[name]._dbId = result.id; saveProfilesLS(p); }
@@ -8455,26 +8119,20 @@ function saveProfileSP(name, data, quiet) {
         aiTrack('ClientInfoUpdated',{clientName:name,clientStatus:body.client_status});
         var now = new Date().toLocaleString(); localStorage.setItem('lhca_last_synced', now);
         var lsl = document.getElementById('lastSyncedLabel'); if (lsl) lsl.textContent = 'Last synced: ' + now;
-        // Sync any invoices not yet in DB. CHAIN it (was fire-and-forget) so a failed
-        // invoice write rejects the whole save → trackSave shows "Save failed [Retry]"
-        // instead of a false "Saved ✓" while the invoice is silently lost.
+        // Chain the invoice sync so a failed invoice write fails the whole save (with Retry) rather than showing a
+        // false "Saved ✓".
         return syncNewInvoices(name, data).then(function () { return result; });
       });
   };
-  // quiet = auto-save (notes typing): persist without the corner toast — the inline
-  // "Saved" indicator already covers it. Deliberate saves keep the toast.
-  // Track in-flight so a background reload can't clobber this save (see revalidate/
-  // loadProfilesAPI guards). Decrement on settle (success OR failure).
+  // quiet = auto-save (notes): no corner toast, since the inline indicator covers it. Track in-flight saves
+  // so a background reload can't clobber this one.
   _savesInFlight++;
   var _p;
-  // try/finally so a SYNCHRONOUS throw (before _p is assigned) still schedules the
-  // decrement — otherwise the counter would stick >0 and block every future background
-  // reload permanently.
+  // try/finally so a synchronous throw still decrements, or the counter sticks and blocks every reload.
   try { _p = quiet ? _doSave() : trackSave(name, _doSave); }
   finally { Promise.resolve(_p).then(function(){ _savesInFlight--; }, function(){ _savesInFlight--; }); }
-  // Durable dirty flag: set on a genuine failure so the edit survives a reload, cleared on success.
-  // A 409 is excluded — the server holds the NEWER row there, so pinning the local copy would
-  // recreate the roster deadlock this codebase already fixed once.
+  // Durable dirty flag: set on a real failure so the edit survives a reload, cleared on success. Not on a
+  // 409: the server holds the newer row.
   Promise.resolve(_p).then(function(){
                              // Only if nothing changed locally while this was in flight. Clearing it
                              // anyway left newer edits unprotected, so the next load reverted them.
@@ -8488,22 +8146,16 @@ function saveProfileSP(name, data, quiet) {
                            });
   return _p;
 }
-// Signature of an invoice's PERSISTED fields (exactly what syncNewInvoices sends). Used
-// for dirty-tracking so an invoice is re-sent only when it actually changed since its last
-// server-confirmed save (or it has no dbId yet). Deliberately covers billing period,
-// status, note, AND the data blob — a status-only or note-only edit must count as dirty.
+// Signature of an invoice's PERSISTED fields (what syncNewInvoices sends): period, status, note and data,
+// so an edit to any of them counts as dirty.
 function _invoiceSig(inv) {
   return JSON.stringify([
     inv.billingPeriod || '', inv.status || 'draft', inv.invoiceNote || '',
     inv.data ? JSON.stringify(inv.data) : '',
   ]);
 }
-// Signature of a client's OWN persisted fields (everything saveProfileSP sends EXCEPT the
-// invoices, which have their own dirty-tracking). Lets an invoice-only save skip re-POSTing
-// the client record — which otherwise bumps the client row_version on every save and made a
-// concurrent invoice edit falsely 409 at the CLIENT level. ssn IS included so an ssn-only
-// edit is never skipped (never lost); the cost is only a harmless re-send if ssn lazy-loads
-// into memory after the load-time baseline.
+// Signature of a client's own persisted fields (excluding invoices), so an invoice-only save can skip the
+// client POST and avoid a false 409. ssn is included so an ssn-only edit is never skipped.
 function _clientSig(d) {
   return JSON.stringify([
     d.firstName||'', d.lastName||'', d.middleName||'', d.nickname||'', d.medicaidId||'', d.medicare||'',
@@ -8529,11 +8181,8 @@ function _profileHasUnsyncedChanges(loc){
   // Survives a reload, unlike the _clientSynced comparison below.
   if(loc._unsaved === true) return true;
   try{
-    // Only judge client-field dirtiness when there's an actual saved baseline to compare against.
-    // _clientSynced is MEMORY-ONLY (stripped from localStorage, like SSN), so on the FIRST load of a
-    // session it's absent for every client — without this guard the merge treated every client as
-    // "unsynced" and kept the local (SSN-stripped) copy instead of the fresh server copy, making the
-    // SSN field show blank. With no baseline, the server is authoritative.
+    // Only judge client dirtiness against a saved baseline. _clientSynced is memory-only, so on a session's
+    // first load the server is authoritative (otherwise the SSN shows blank).
     if(typeof _clientSig==='function' && loc._clientSynced!=null && loc._clientSynced !== _clientSig(loc)) return true;
     var invs = loc.invoices || [];
     for(var i=0;i<invs.length;i++){
@@ -8544,12 +8193,9 @@ function _profileHasUnsyncedChanges(loc){
   }catch(e){ return true; }
   return false;
 }
-// Merge a freshly-loaded client store over the local one WITHOUT reverting unsynced local work.
-// loadProfilesAPI used to blind-replace, so a client save that FAILED (data left only in LS, with
-// _savesInFlight already back to 0) was silently wiped by the next background revalidate. Rules,
-// mirroring the roster/task merges: server wins for clean synced clients; a local client with
-// unsynced changes is kept; a local-only unsynced ADD (no _dbId) is kept; a local client that WAS
-// synced (_dbId) but is gone from the server was deleted elsewhere → dropped.
+// Merge a loaded client store without reverting unsynced local work: server wins for clean synced
+// clients; unsynced edits and local-only adds (no _dbId) are kept; a synced client missing from the
+// server was deleted elsewhere and is dropped.
 function _mergeProfilesLoad(serverProfiles, localProfiles){
   var out = {}, name;
   for(name in serverProfiles) if(_rosterHas(serverProfiles,name)) out[name]=serverProfiles[name];
@@ -8558,9 +8204,8 @@ function _mergeProfilesLoad(serverProfiles, localProfiles){
     var loc = localProfiles[name]; if(!loc) continue;
     if(_rosterHas(out,name)){
       if(_profileHasUnsyncedChanges(loc)){
-        // Keep the pending local copy — but SSN is stripped from localStorage (PHI), so on a COLD
-        // load loc has no SSN. Backfill it from the fresh server copy so keeping-local never blanks
-        // the SSN. Only when loc has none: an in-session SSN edit lives in _ssnMem and wins.
+        // Keeping the local copy: backfill SSN from the server copy, since LS never holds it. An in-session SSN
+        // edit in _ssnMem still wins.
         var srv=out[name];
         if(srv && !loc.ssn && srv.ssn) loc.ssn=srv.ssn;
         out[name]=loc;                                                  // protect a pending/failed edit
@@ -8570,10 +8215,8 @@ function _mergeProfilesLoad(serverProfiles, localProfiles){
     }
     // else: previously-synced, clean, and gone from the server → deleted elsewhere → drop.
   }
-  // Carry forward LOCAL-ONLY fields the server never round-trips. `tasks` is the client's default
-  // day-grid pattern: it lives only in localStorage, is not in the load map or _clientSig, and so
-  // was silently destroyed whenever the server copy won — forcing the pattern to be re-entered by
-  // hand every month. Only fill where the server copy has none, so a real edit still wins.
+  // Carry forward local-only fields the server never returns: `tasks` (the default day-grid pattern) would
+  // otherwise be lost whenever the server copy wins. Only where the server copy has none.
   for (var _n in out) {
     if (out[_n] && localProfiles[_n] && localProfiles[_n].tasks && !out[_n].tasks) out[_n].tasks = localProfiles[_n].tasks;
   }
@@ -8612,10 +8255,10 @@ function _adoptInvoiceConflict(name, period, savedAt, inv, dbId, rowVersion, syn
   } catch (e) { console.error('invoice conflict writeback failed', e); }
 }
 
-// Resolve a flagged invoice conflict. Deliberate, one invoice at a time — this is the ONLY way a
-// local copy can overwrite a server row it was not derived from, and it is a choice a person makes.
-//   keep === 'mine'   -> take the server's current version as the token, so the next save wins.
-//   keep === 'server' -> drop the local copy; the next background load brings the server's back.
+// Resolve a flagged invoice conflict: the ONLY way a local copy may overwrite a server row it wasn't
+// derived from, and a person chooses it.
+//   keep === 'mine'   -> adopt the server's version as the token, so the next save wins.
+//   keep === 'server' -> drop the local copy; the next load brings the server's back.
 function resolveInvoiceConflict(clientName, billingPeriod, keep) {
   var pc = getProfiles(), prof = pc[clientName];
   if (!prof || !prof.invoices) return false;
@@ -8641,15 +8284,12 @@ function syncNewInvoices(name, data) {
   var conflicts = [];    // billing periods the server rejected as stale (409)
   var hardError = null;  // first non-conflict failure (network / 5xx)
   return Promise.all(data.invoices.map(function (inv) {
-    // Dirty-tracking: an existing invoice (has dbId) whose persisted fields are unchanged
-    // since its last confirmed save is SKIPPED — so editing a client field or a note no
-    // longer re-pushes every invoice (which caused write amplification and false conflicts
-    // on rows the user never touched). A brand-new invoice (no dbId) is always sent.
+    // Dirty-tracking: skip an existing invoice whose persisted fields are unchanged since its last confirmed
+    // save, avoiding write amplification and false conflicts. A new invoice always sends.
     var sig = _invoiceSig(inv);
     if (inv.dbId && inv._synced === sig) return Promise.resolve();
-    // A conflicted invoice is NEVER auto-sent. The server holds different content under this id,
-    // and this copy was not derived from it, so any write here destroys the other one. It stays
-    // local and keeps being reported until resolveInvoiceConflict() picks a winner.
+    // A conflicted invoice is never auto-sent: any write would destroy the server's different content. It
+    // stays local until resolveInvoiceConflict() picks a winner.
     if (inv._conflict) { conflicts.push(inv.billingPeriod || '(no period)'); return Promise.resolve(); }
     var payload = {
       homecare_client_id: clientDbId,
@@ -8659,12 +8299,8 @@ function syncNewInvoices(name, data) {
       invoice_data: inv.data ? JSON.stringify(inv.data) : null,
     };
     var isNew = !inv.dbId;
-    // HIGH#2 defense: an invoice with a server rowVersion but NO dbId lost its id (e.g. a
-    // dropped writeback). Sending it as "new" would hit the backend's no-id MERGE, which
-    // overwrites the matching (client, period) row UNCONDITIONALLY — bypassing the 409
-    // concurrency guard that only the id-UPDATE branch enforces. Refuse to send it as new;
-    // surface a conflict so the user reloads (which restores the dbId) instead of silently
-    // clobbering whatever is on the server for that period.
+    // An invoice with a server rowVersion but no dbId has lost its id. Sending it as new would skip the
+    // version check, so report a conflict and let a reload restore the id.
     if (isNew && inv.rowVersion) { conflicts.push(inv.billingPeriod || '(no period)'); return Promise.resolve(); }
     if (!isNew) {
       payload.id = inv.dbId; // existing -> UPDATE; else INSERT
@@ -8677,9 +8313,8 @@ function syncNewInvoices(name, data) {
       method: 'POST', headers: apiHeaders(), body: JSON.stringify(payload),
     }).then(function (r) {
       if (r.status === 409) {
-        // The server already holds a row for this client+period, so this INSERT would duplicate it. Adopt
-        // the server's id and retry as an update rather than creating a second row.
-        // see DECISIONS.md#invoice-immutability
+        // The server already has a row for this client+period: adopt its id and retry as an update instead of
+        // duplicating. see DECISIONS.md#invoice-immutability
         return r.json().catch(function(){ return null; }).then(function (bodyJson) {
           if (!(bodyJson && bodyJson.id)) { conflicts.push(period || '(no period)'); return null; }
           var serverId = bodyJson.id, serverVer = bodyJson.row_version || null;
@@ -8738,17 +8373,15 @@ function syncNewInvoices(name, data) {
       }
     }
     if (conflicts.length && hardError) {
-      // BOTH happened in one save. Throw the hard failure, not the conflict: _markClientUnsaved
-      // only protects the edit when the error is NOT a conflict, so throwing the conflict here
-      // left the genuinely-failed invoice unprotected and the next background load reverted it.
+      // Both happened: throw the hard failure, not the conflict, so _markClientUnsaved protects the failed
+      // invoice.
       var be = new Error(hardError.message +
         ' (Also: invoice ' + conflicts.join(', ') + ' was changed by someone else.)');
       throw be;
     }
     if (conflicts.length) {
-      // Another user changed these invoices since we loaded them. The stale write was
-      // REJECTED (not clobbered) — surface it so the user reloads + re-applies rather than
-      // losing their edit or silently overwriting the other person's.
+      // Another user changed these invoices since we loaded them. The stale write was rejected, so surface it
+      // for a reload.
       var ce = new Error('Invoice ' + conflicts.join(', ') + ' was changed by someone else. Your copy is kept ' +
         'locally and is NOT being sent, so nothing was overwritten. Reload to see the server copy, then either ' +
         're-apply your edit or keep the server version.');
@@ -8763,11 +8396,8 @@ function syncNewInvoices(name, data) {
 // ── DELETE client from Azure SQL ─────────────────────────────
 function deleteProfileSP(name) {
   var dbId = getIdMap()[name]; if (!dbId) return;
-  // D10: only drop the id-map entry after a confirmed OK; surface failure otherwise.
-  // Re-READ the map inside the callback instead of closing over a snapshot: a bulk delete fires N of
-  // these in one synchronous pass, and each used to write back its own stale copy — so the last
-  // resolver restored the N-1 entries the others had removed. A client later re-created under a
-  // resurrected name then picked up a dead dbId and every save from that device 404'd for good.
+  // D10: drop the id-map entry only after a confirmed OK. Re-read the map in the callback: a bulk delete runs
+  // N of these in one pass, and stale snapshots would resurrect removed entries.
   var doDel=function(){return surfaceSaveFailure(
     fetch(API_BASE + '/homecare-clients/' + dbId, { method: 'DELETE', headers: apiHeaders() })
       .then(function (r) {
@@ -8780,23 +8410,17 @@ function deleteProfileSP(name) {
 }
 
 // ── INVOICE status update via API ───────────────────────────
-// (updateInvoiceStatusAPI removed — status now persists through the invoice upsert in
-// saveProfileSP/syncNewInvoices; a separate status PATCH double-wrote the row and
-// self-conflicted under optimistic concurrency. The PATCH /invoices/{id}/status backend
-// route still exists but is no longer called from the client.)
+// No separate status call: status persists through the invoice upsert (a PATCH double-wrote the row and
+// self-conflicted). The backend PATCH route still exists but is unused.
 function deleteInvoiceAPI(dbId, clientName, billingPeriod, onDeleted) {
   if (!dbId) { if (onDeleted) onDeleted(); return; }
   aiTrack('InvoiceDeleted',{invoiceDbId:dbId,clientName:clientName||'',billingPeriod:billingPeriod||''});
-  // D10: surface a failure/retry so a "deleted" invoice can't reappear on next sync.
-  // onDeleted runs ONLY on a confirmed 2xx — so the local removal happens after the server
-  // delete succeeds, never before (a failed delete must not leave the row gone locally but
-  // alive on the server, where the next load would resurrect it).
+  // D10: onDeleted runs only on a confirmed 2xx, so a failed delete never removes the row locally while it
+  // lives on the server.
   var doDel=function(){return surfaceSaveFailure(
     fetch(API_BASE + '/invoices/' + dbId, { method: 'DELETE', headers: apiHeaders() })
       .then(function(r){
-        // 404 means the row is already gone — deleted on another device, or a double click. That is
-        // the state this call is trying to reach, so treat it as done. Failing it left the invoice
-        // stuck locally with a retry that could never succeed.
+        // 404 means already gone (another device, or a double click), which is the goal: treat it as done.
         if(!r.ok && r.status!==404)throw new Error('HTTP '+r.status);
         if(onDeleted) onDeleted();
         return r;
@@ -8807,16 +8431,10 @@ function deleteInvoiceAPI(dbId, clientName, billingPeriod, onDeleted) {
 
 // ── CAREGIVERS API ───────────────────────────────────────────
 // ── Roster load merge ────────────────────────────────────────────────────────
-// A fresh server roster used to REPLACE the local cache wholesale. On a cold device a worker can
-// add a row while the initial load is still in flight; the load then lands and wipes the just-added
-// row. These merges keep server data authoritative for rows the server knows about, but preserve a
-// LOCAL-ONLY row *only when it's an unsynced addition* (no _rowVersion yet). A local row that once
-// had a _rowVersion but is now absent from the server was deleted on another device → we drop it,
-// so cross-device deletes still propagate.
-// A row whose save FAILED (or never finished) is flagged `_unsaved` by _rosterMarkUnsaved. That row
-// exists ONLY in localStorage, so the server copy is STALE — the merge must keep the local one, the
-// same protection _mergeProfilesLoad gives clients. Without it, the next background load quietly
-// reverted the edit the user thought they'd made.
+// A loaded roster is authoritative for rows the server knows, but keeps a local-only row that is an
+// unsynced addition (no _rowVersion), so a row added during a cold load isn't wiped. A once-synced row
+// now absent was deleted elsewhere and is dropped. A row flagged `_unsaved` (failed save) keeps its
+// local copy.
 function _rosterHas(o, k){ return Object.prototype.hasOwnProperty.call(o, k); }
 function _rosterKeepLocal(row){ return !!row && (!row._rowVersion || row._unsaved === true); }
 function _mergeRosterMap(serverMap, localMap){   // caregivers, supervisors (id-keyed objects)
@@ -8839,11 +8457,8 @@ function _mergeRosterArr(serverArr, localArr){   // caseworkers (array of {id,�
   });
   return out;
 }
-// A 409 is NOT a failed save in the sense the merge cares about: it means the SERVER holds a NEWER
-// row than this device did. Marking it `_unsaved` pinned the stale local copy (and its stale
-// _rowVersion) over the server's, so every retry re-sent the same stale version and 409'd again —
-// the record could never be saved on that device. Conflicts must let the server copy through; only
-// genuine failures (network, 5xx) mean "the local copy is the newer one, keep it".
+// A 409 isn't a failed save: the server holds a newer row, so let its copy through. Only genuine failures
+// (network, 5xx) keep the local copy, or every retry re-sends the same stale version.
 function _isConflict(e){ return !!(e && e.isConflict); }
 // Flag/clear the "this row's save failed" marker used by the merges above.
 function _rosterMarkUnsaved(kind, id, failed){
@@ -8900,14 +8515,10 @@ function loadCaregiversAPI() {
       // A save may have started DURING this fetch — its writes aren't in this response, so merging
       // now would show pre-save data (mirrors the guard in loadProfilesAPI).
       if (_savesInFlight > 0) { syncEnd(); return; }
-      // Merge (not replace) so an unsynced local addition isn't wiped by the load. NOTE: only
-      // UNSYNCED rows survive an empty response — a previously-synced row the server no longer
-      // returns is treated as deleted elsewhere and dropped, which is correct for a real deletion
-      // but means a transient empty response empties the visible roster until the next load.
+      // Merge so an unsynced local addition survives. A synced row missing from the response counts as deleted,
+      // so a transient empty response empties the roster until the next load.
       saveCaregiversLS(_mergeRosterMap(obj, getCaregivers()));
-      // Repaint the grid now that fresh data is in — matches loadProfilesAPI/loadCaseworkersAPI.
-      // Without this, a cold cache (new device/URL, or after the idle-timeout clears storage)
-      // renders an empty grid and never refreshes when the fetch lands.
+      // Repaint now that data is in, or a cold cache renders an empty grid that never refreshes.
       if (typeof renderCaregiverGrid === 'function' && document.getElementById('cgTableBody')) renderCaregiverGrid();
       // Also refresh the dashboard count + client table caregiver column, so a cold load
       // never shows a false "0 caregivers" or blank caregiver names once the data lands.
@@ -8917,11 +8528,8 @@ function loadCaregiversAPI() {
       syncEnd();
     }).catch(function (e) { console.error('Load caregivers error:', e); showDbError('caregivers'); syncEnd(); });
 }
-// Roster saves (caregiver/caseworker/supervisor) join the SAME in-flight counter that client
-// saves use (saveProfileSP), so a background revalidate / loadProfilesAPI can't reload the roster
-// mid-save and briefly show pre-save data. Increment synchronously as the save starts; decrement
-// when it settles (success OR failure). 409/data-loss is already handled by row_version; this only
-// closes the transient-staleness window.
+// Roster saves join the same in-flight counter as client saves, so a background reload can't briefly show
+// pre-save data.
 function _trackRosterSave(p){
   _savesInFlight++;
   Promise.resolve(p).then(function(){_savesInFlight--;},function(){_savesInFlight--;});
@@ -8992,9 +8600,8 @@ function loadTasksAPI() {
     .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(function (tasks) {
       var todos = (Array.isArray(tasks) ? tasks : []).map(function (t) {
-        // CRITICAL: id MUST be a string to match the format used by todoId() (e.g. 'td_xxx_yyy').
-        // If id is a number, all task button click handlers (deleteTodo / toggleTodo / etc.)
-        // fail their strict-equality lookup and silently do nothing.
+        // CRITICAL: id must be a string like todoId()'s ('td_xxx_yyy'), or every task button's strict-equality
+        // lookup silently fails.
         return {
           id: String(t.id), dbId: t.id, text: t.task_text, done: !!t.done, doneAt: t.done_at || null,
           due: t.due_date ? t.due_date.split('T')[0] : '', client: t.client_name || '',
@@ -9002,10 +8609,8 @@ function loadTasksAPI() {
           parentId: t.parent_id ? String(t.parent_id) : null,
         };
       });
-      // Merge so a task created on this device while the load was in flight isn't wiped; a task
-      // that had a dbId but is gone from the server was deleted elsewhere, so it's dropped.
-      // Same guard every other loader has: a save that started during this fetch isn't in the
-      // response, so merging it now reverts the just-ticked task.
+      // Merge so a task created during the load survives; a task with a dbId that's gone from the server was
+      // deleted elsewhere. Skip merging while a save is in flight, or the just-ticked task reverts.
       if(_savesInFlight>0)return;
       saveTodos(_mergeByIdKeepUnsynced(todos, getTodos(), 'dbId'));
       // Re-render if user is currently on the tasks page so DB-loaded tasks become clickable
@@ -9029,9 +8634,8 @@ function saveTaskAPI(todo) {
   return _p;
 }
 function _saveTaskAPIInner(todo) {
-  // Join the in-flight counter the loaders gate on (rosters already do this via _trackRosterSave).
-  // _rosterSaveMarked adds the durable dirty flag every other entity already had: without it a
-  // failed edit to an ALREADY-SYNCED task was reverted by the next background load, silently.
+  // Join the in-flight counter the loaders gate on. _rosterSaveMarked adds the durable dirty flag, so a
+  // failed edit to a synced task isn't reverted by the next load.
   return _trackRosterSave(_rosterSaveMarked('task', todo.id, trackSave('task: '+(todo.text||'').slice(0,32), function(){
     return fetch(API_BASE + '/tasks', {
       method: 'POST', headers: apiHeaders(),
@@ -9046,9 +8650,8 @@ function _saveTaskAPIInner(todo) {
     }).then(function (result) {
       if (!todo.dbId && result.id) {
         todo.dbId = result.id;
-        // Persist it: every caller runs saveTodos() BEFORE this promise resolves, so without this
-        // write-back the id never reaches localStorage and the next load treats the task as unsynced
-        // — keeping the local copy AND accepting the server's, i.e. a duplicate task.
+        // Persist the new dbId: callers run saveTodos() before this resolves, so without the write-back the next
+        // load keeps both copies, a duplicate task.
         try{ var _t=getTodos(); var _i=_t.findIndex(function(x){return x && x.id===todo.id;});
              if(_i>=0 && !_t[_i].dbId){ _t[_i].dbId=result.id; saveTodos(_t); } }catch(e){}
       }
@@ -9056,12 +8659,8 @@ function _saveTaskAPIInner(todo) {
     });
   })));
 }
-// A follow-up stores its parent's LOCAL id (td_...), which is meaningless to the server. It was
-// shipped verbatim, and on the next load every task's id becomes its numeric DB id — so the child
-// pointed at an id that no longer existed, renderTodos found no parent, and multi-step workflows
-// silently flattened into loose top-level tasks, permanently. Send the parent's DB id instead.
-// If the parent has not been created yet, send null rather than a value the server cannot resolve;
-// the link is restored the next time the child is saved.
+// A follow-up stores its parent's LOCAL id (td_...), meaningless to the server, so send the parent's DB id.
+// If the parent isn't created yet, send null; the link is restored on the child's next save.
 function _taskParentDbId(todo){
   var pid=todo&&todo.parentId; if(!pid)return null;
   try{
@@ -9071,10 +8670,8 @@ function _taskParentDbId(todo){
   }catch(e){}
   return null;
 }
-// One create in flight per task. saveTaskAPI sends `id: todo.dbId || undefined`, and dbId only
-// exists once the first POST resolves — so a task saved twice in quick succession (add, then
-// immediately edit or tick it) INSERTed twice and came back duplicated on the next sync, one copy
-// carrying the pre-edit text and unreachable from the original row.
+// One create in flight per task: dbId exists only after the first POST resolves, so a quick second save
+// would INSERT a duplicate.
 var _taskCreateInFlight = Object.create(null);
 function deleteTaskAPI(dbId) {
   if (!dbId) return;
@@ -9087,8 +8684,7 @@ function deleteTaskAPI(dbId) {
 }
 
 //  CASEWORKERS
-// Caseworkers: source of truth is Azure SQL via /api/caseworkers.
-// localStorage only used as a UI cache (refilled by loadCaseworkersAPI on sign-in).
+// Source of truth is Azure SQL via /api/caseworkers; localStorage is only a UI cache refilled on sign-in.
 function getCaseworkers(){try{return JSON.parse(localStorage.getItem('lhca_caseworkers')||'[]');}catch(e){return[];}}
 function saveCaseworkersLS(arr){localStorage.setItem('lhca_caseworkers',JSON.stringify(arr));}
 function loadCaseworkersAPI(){
@@ -9105,9 +8701,8 @@ function loadCaseworkersAPI(){
                  _rowVersion:c.row_version_hex||null };   // optimistic-concurrency token
       });
       if (_savesInFlight > 0) { syncEnd(); return; }   // a save raced this fetch — don't merge stale data
-      // D11: don't let a transient empty/partial response wipe the good caseworker cache — and
-      // merge so an unsynced local addition isn't dropped by the load (cross-device deletes still
-      // propagate: a row that had a _rowVersion but is gone from the server is dropped).
+      // D11: merge so a transient empty/partial response can't wipe the cache and an unsynced local addition
+      // survives. A synced row missing from the server is dropped.
       saveCaseworkersLS(_mergeRosterArr(arr, getCaseworkers()));
       if (typeof renderCaseworkerList === 'function' && document.getElementById('cwList')) renderCaseworkerList();
       _restoreRouteAfterLoad();
@@ -9174,9 +8769,8 @@ function loadSupervisorsAPI(){
           _rowVersion:s.row_version_hex||null};   // optimistic-concurrency token
       });
       if (_savesInFlight > 0) { syncEnd(); return; }   // a save raced this fetch — don't merge stale data
-      // Merge so an unsynced local addition survives the load and a transient empty response
-      // doesn't wipe the cache (a synced supervisor now carries _rowVersion, so cross-device
-      // deletes propagate just like caregivers/caseworkers).
+      // Merge so an unsynced addition survives and a transient empty response doesn't wipe the cache. Synced
+      // supervisors carry _rowVersion, so deletes propagate.
       saveSupervisorsLS(_mergeRosterMap(map, getSupervisors()));
       // If a caseworker form is open, refresh its dropdown
       refreshSupervisorDropdowns();
@@ -9239,10 +8833,8 @@ function populateSupervisorDropdown(selectEl,currentId){
   };
 }
 function refreshSupervisorDropdowns(){
-  // Re-derive the selection from the RECORD, not from the select's own value. The supervisor roster
-  // loads asynchronously, so on a repopulate the select is often still empty — reading sel.value
-  // then threw the stored assignment away, and left a fully-populated select with nothing selected,
-  // which also slipped past the options.length guard in saveCwInfoPane.
+  // Re-derive the selection from the RECORD, not the select's value: the supervisor roster loads async, so
+  // the select may still be empty and would drop the assignment.
   var _cwRec=null;
   try{ var _eid=(document.getElementById('cw-editing-id')||{}).value||activeCwId;
        if(_eid)_cwRec=getCaseworkers().find(function(c){return c&&c.id===_eid;})||null; }catch(e){}
@@ -9252,8 +8844,7 @@ function refreshSupervisorDropdowns(){
   if(sel2)populateSupervisorDropdown(sel2,sel2.value||(_cwRec&&_cwRec.supervisor_id)||'');
 }
 // ── Supervisor profile (detail page) ─────────────────────────
-// Caseworker + supervisor emails are all @michigan.gov. Type just the username and this
-// fills in the domain on blur; a value that already has "@" is left untouched.
+// Caseworker and supervisor emails are @michigan.gov: type the username and the domain fills in on blur.
 function _autoGovEmail(input){
   if(!input)return;
   var v=(input.value||'').trim();
@@ -9300,9 +8891,8 @@ function saveSupDetail(){
   var name=(document.getElementById('supd-name').value||'').trim();
   if(!name){ showAlert('Name is required.'); return; }
   var sups=getSupervisors();
-  // MERGE onto the stored record rather than replacing it. Rebuilding from these five fields threw
-  // away everything else the record carried — including _rowVersion, so the next save sent no
-  // expected_version and the 409 concurrency guard silently degraded to last-write-wins.
+  // MERGE onto the stored record: rebuilding from these five fields would drop _rowVersion and degrade the
+  // 409 guard to last-write-wins.
   var sup=Object.assign({}, sups[id]||{}, { id:id, name:name,
     title:document.getElementById('supd-title').value||'',
     phone:(document.getElementById('supd-phone').value||'').trim(),
@@ -9328,9 +8918,8 @@ function _detachDeletedRoster(kind, id, name){
         if(kind==='caregiver' && String(pr.caregiverId||'')===String(id)){ pr.caregiverId=''; hit=true; }
         if(kind==='caseworker'){
           if(String(pr.caseworkerId||'')===String(id)){ pr.caseworkerId=''; hit=true; }
-          // `worker` holds the caseworker's NAME and is what the billing run groups on. Left set, the
-          // client still passes the "no caseworker assigned" check but resolves to no email, so
-          // Send All skips it with no error — the invoice looks ready and is never sent.
+          // Clear `worker` too: it holds the caseworker NAME the billing run groups on, and if left set the client
+          // passes the check but Send All silently skips it.
           if(name && String(pr.worker||'').trim()===String(name).trim()){ pr.worker=''; hit=true; }
         }
         if(hit) touched.push(n);
@@ -9735,9 +9324,8 @@ function saveCaseworker(){
   var _newOrg=(document.getElementById('cw-org')||{}).value||'';
   var rec={
     id:editingId||cwId(),name:name,title:document.getElementById('cw-title').value,first_name:firstName,middle_name:middleName,last_name:lastName,nickname:nickname,
-    // Agency is only shown when Org = MDHHS (see cwOrgToggle). Take it from the form only when it
-    // is visible; otherwise KEEP what is stored. Blanking it here destroyed the invoice "Bill To"
-    // on every caseworker whose org is unset — the same defect fixed in saveCwInfoPane.
+    // Agency shows only when Org = MDHHS. Take it from the form only when visible, otherwise keep the stored
+    // value, or the invoice Bill To is destroyed.
     agency:(_newOrg==='MDHHS')?document.getElementById('cw-agency').value:(_prevCw.agency||''),
     org:_newOrg,
     phone:document.getElementById('cw-phone').value,
@@ -10063,9 +9651,8 @@ function renderCwInfoPane(){
   var firstName=cw.first_name||(cw.name||'').split(' ')[0]||'';
   var lastName=cw.last_name||(cw.name||'').split(' ').slice(1).join(' ')||'';
   var dName=document.createElement('div');dName.className='info-field-row full';dName.style.gridTemplateColumns='84px 1fr 1fr 1fr';
-  // A stored title that isn't one of the fixed options can't be selected, so the select reports ''
-  // and saving DESTROYS it — real caseworkers carry titles like 'ASW'. Carry the stored value into
-  // the option list so it stays selected and survives a save.
+  // Carry a stored title that isn't a fixed option (e.g. 'ASW') into the list, or the select reports '' and
+  // saving destroys it.
   var _cwTitles=['','Mr.','Mrs.','Ms.','Miss','Dr.','Mx.'];
   if(cw.title&&_cwTitles.indexOf(String(cw.title))<0)_cwTitles.push(String(cw.title));
   dName.innerHTML='<div class="info-field"><label for="cwi-title">Title</label><select id="cwi-title">'+_cwTitles.map(function(t){return '<option'+(String(cw.title||'')===t?' selected':'')+'>'+esc(t)+'</option>';}).join('')+'</select></div>'+
@@ -10127,10 +9714,8 @@ function saveCwInfoPane(){
   cw.email=document.getElementById('cwi-email').value;
   cw.street=document.getElementById('cwi-street').value;cw.city=document.getElementById('cwi-city').value;
   cw.state=document.getElementById('cwi-state').value;cw.zip=document.getElementById('cwi-zip').value;cw.county=document.getElementById('cwi-county').value;
-  // The supervisor dropdown is populated on a LATER TICK (setTimeout in renderCwInfoPane) and from
-  // a roster that may still be loading. Until then it holds no matching option and reports '' —
-  // which silently unassigned the supervisor, who is CC'd on the monthly invoice emails. Only trust
-  // it once it actually carries options; an empty value from a POPULATED select is a real "none".
+  // The supervisor dropdown fills on a later tick from a roster that may still be loading. Trust its '' only
+  // once it has options, or the supervisor (CC'd on invoices) is silently unassigned.
   var cwiSup=document.getElementById('cwi-supervisor');
   if(cwiSup&&cwiSup.options&&cwiSup.options.length>1)cw.supervisor_id=cwiSup.value||'';
   saveCaseworkersLS(arr);saveCaseworkerAPI(cw);
@@ -10178,9 +9763,8 @@ function renderCwNotesPane(){
     '<textarea id="cwNotesArea" style="width:100%;min-height:200px;padding:12px;border:1px solid #d0d8e4;border-radius:6px;font-size:13px;font-family:Arial,sans-serif;outline:none;resize:vertical;max-width:620px;">'+esc(cw.notes||'')+'</textarea>';
   var ta=document.getElementById('cwNotesArea');
   ta.addEventListener('input',function(){
-    // Capture the caseworker NOW — activeCwId may change before the 600ms flush. LS is written
-    // SYNCHRONOUSLY so a tab close or a switch within the debounce can't lose the note; only the
-    // backend save is debounced. Mirrors renderNotesPane.
+    // Capture the caseworker and text now, and write LS synchronously so a tab close or switch inside the
+    // 600ms debounce can't lose the note. Mirrors renderNotesPane.
     var cwId=activeCwId, val=ta.value;
     var arrNow=getCaseworkers();
     var recNow=arrNow.find(function(x){return x.id===cwId;});
@@ -10302,11 +9886,8 @@ window.addEventListener('beforeunload',function(e){
     (typeof cwUnsavedChanges!=='undefined'&&cwUnsavedChanges);
   if(dirty){e.preventDefault();e.returnValue='';}
 });
-// HIPAA: wipe cached PHI (lhca_* + in-memory SSN/signature caches) when the app is actually
-// being left or the tab closed — so the client roster doesn't sit at rest in the browser
-// profile after the session ends. Internal SPA navigation is hash-based and does NOT fire
-// pagehide, so this only triggers on real unload. On the next visit the roster reloads from
-// the server. Skip when the page is going into bfcache (persisted) since it may be restored.
+// HIPAA: wipe cached PHI (lhca_* and in-memory SSN/signature caches) on a real unload, so the roster
+// doesn't sit in the browser after the session. Hash navigation doesn't fire pagehide; skip bfcache.
 window.addEventListener('pagehide',function(e){
   if(e&&e.persisted)return;
   try{clearPHIFromStorage();}catch(_){}
@@ -10336,9 +9917,8 @@ function resetSessionTimer(){
     showToast('Signed out automatically due to inactivity.', 5000);
   }, SESSION_TIMEOUT_MS);
 }
-// Restart the timer on GENUINE interaction only. mousemove and scroll used to be in
-// this list, which meant any cursor drift — or an animated/auto-scrolling element —
-// kept an unattended session alive forever, defeating the purpose.
+// Restart the timer on GENUINE interaction only: cursor drift or an animated element must not keep an
+// unattended session alive.
 ['mousedown','keydown','touchstart','click'].forEach(function(ev){
   document.addEventListener(ev, resetSessionTimer, {passive:true});
 });
@@ -10394,9 +9974,8 @@ function openStateForm(type){
   document.getElementById('formFillTitle').textContent=titles[type]||'';
   // Single-pane PDF view — auto-fill from CRM on load, user can switch clients here
   var profsForPicker=getProfiles();
-  // Show every client regardless of status — In Progress / onboarding clients are
-  // exactly the ones who need these state forms, so never filter by status here
-  // (matches the Forms-page picker, which already lists all clients).
+  // Show every client regardless of status: In Progress clients are the ones who need state forms (matches
+  // the Forms-page picker).
   var clientNames=Object.keys(profsForPicker).sort();
   var clientOpts='<option value=""'+(!activeFormClientName?' selected':'')+'>— Pick a client —</option>'+
     clientNames.map(function(n){return '<option value="'+esc(n)+'"'+(n===activeFormClientName?' selected':'')+'>'+esc(n)+'</option>';}).join('');
@@ -10462,10 +10041,8 @@ function scheduleSfPreview(delay){
   if(s){s.classList.remove('idle');}if(t)t.textContent='Updating preview…';
   _sfPreviewTimer=setTimeout(renderSfPreview,ms);
 }
-// Each state form's left-pane input IDs → dict keys. Lets us read live-edited
-// values from the form on the left and flow them into the PDF preview/save.
-// Only the MSA-4676 is offered in the Forms UI now — the DHS-390 / DHS-4771 / MDHHS-6200 / BPHASA-2421
-// definitions were removed as dead code when their form cards were retired.
+// Each state form's left-pane input IDs → dict keys, so live edits flow into the PDF. Only the MSA-4676
+// has left-pane inputs.
 var STATE_FORM_INPUT_MAPS={
   msa4676:{
     msa_cname:'client_name', msa_mid:'medicaid_id',
@@ -10475,10 +10052,8 @@ var STATE_FORM_INPUT_MAPS={
     msa_start:'start_date', msa_date:'today_date'
   }
 };
-// Checkboxes to tick on an AcroForm template, by exact field name. Only ever used for facts the
-// FORM ITSELF establishes — the DHS-390 is the Home Help application, so "Home Help" is the service
-// being applied for. Anything the client attests to (which benefits they receive, who they live
-// with) is left for them to check, since they sign it.
+// Checkboxes to tick by exact field name, only for facts the FORM establishes (the DHS-390 applies for
+// Home Help). Anything the client attests to is left for them, since they sign it.
 var STATE_FORM_CHECKS={
   dhs390:{ 'Home Help':true }
 };
@@ -10490,12 +10065,9 @@ function _normalizeDate(v){
   return v;
 }
 
-// Agency (provider) info — auto-filled onto state forms (Section 2 of MSA-4676, etc.).
-// These are the DEFAULTS; the live values are editable in Settings and stored in localStorage
-// (lhca_agency), so the owner can update them without a code change. Not PHI — it's the agency's
-// own business info — so lhca_agency is in the clearPHIFromStorage KEEP whitelist (survives wipe).
-// Defaults as a hoisted function (not a top-level var) so it's available everywhere regardless of
-// file position — including test harnesses that don't execute the whole file top-to-bottom.
+// Agency (provider) defaults stamped onto state forms; live values are editable in Settings
+// (lhca_agency). Not PHI, so lhca_agency survives the wipe. A hoisted function so it's available
+// regardless of file position, including in test harnesses.
 function _agencyDefaults(){
   return {
     agency_provider_name:'Thomas Jaboro',
@@ -10519,9 +10091,8 @@ function saveAgencyInfo(obj){
   var D=_agencyDefaults();
   var clean={}; for(var k in D){ clean[k]=(obj&&obj[k]!=null)?String(obj[k]):D[k]; }
   localStorage.setItem('lhca_agency', JSON.stringify(clean));
-  // _pushSettings swallowed failures, and loadSettingsAPI treats the SERVER as the source of truth —
-  // so a failed push silently reverted the agency details (which are stamped onto the MSA-4676) on the
-  // next reload, on this device too. Report the real outcome.
+  // Report the real outcome: a failed push would be silently reverted by the next load, and these details
+  // are stamped onto the MSA-4676.
   var _agencyPush=(typeof _pushSettings==='function')?_pushSettings({agency:clean}):null;
   if(_agencyPush&&_agencyPush.catch)_agencyPush.catch(function(e){
     if(e&&e.notSignedIn)return;   // local-only until sign-in — expected, not a failure
@@ -10548,11 +10119,8 @@ function saveAgencyFromSettings(){
 // Set of dict keys that hold dates and should be normalized to MM/DD/YYYY
 var _DATE_DICT_KEYS={client_dob:1,caregiver_dob:1,signature_date:1,today_date:1,last_seen:1,resolved_date:1,start_date:1};
 
-// Build the data dictionary the renderer fills AcroForm fields from.
-// CRM data is the default; any non-empty value typed into the left-pane form
-// overrides it (so live edits flow into the PDF preview).
-// clientName defaults to the Forms-tab selection (activeFormClientName) so existing callers are
-// unchanged; the Assistant passes a name explicitly to build a form for any client without the UI.
+// Build the data dictionary for AcroForm fields: CRM data by default, overridden by any non-empty
+// left-pane value. clientName defaults to the Forms-tab selection; the Assistant passes one explicitly.
 function _buildFormDataDict(clientName){
   if(clientName==null)clientName=activeFormClientName;
   var prof=clientName?(getProfiles()[clientName]||{}):{};
@@ -10571,9 +10139,8 @@ function _buildFormDataDict(clientName){
   var dict={
     client_name:fullName, client_first_name:firstN, client_last_name:lastN,
     client_dob:_normalizeDate(prof.dob||''), medicaid_id:prof.medicaidId||'', case_number:'', recipient_id:prof.medicaidId||'',
-    // The MSA-4676 field map asks for `start_date` (msa_start) but this dict never defined it, so the
-    // lookup returned undefined, the stamper skipped the field, and every generated MSA-4676 went out
-    // with a BLANK "Start of Service" — on a certified MDHHS agreement, emailed for signature.
+    // The MSA-4676 map asks for start_date (msa_start); without it every generated form has a blank Start of
+    // Service.
     start_date:_normalizeDate(prof.startDate||''),
     client_address:prof.street||prof.address||'', client_city:prof.city||'', client_state:prof.state||'MI', client_zip:prof.zip||'',
     client_phone:prof.phone||'', client_email:prof.clientEmail||prof.cemail||'', client_county:prof.county||'',
@@ -10598,16 +10165,11 @@ function _buildFormDataDict(clientName){
   Object.keys(_DATE_DICT_KEYS).forEach(function(k){if(dict[k])dict[k]=_normalizeDate(dict[k]);});
   return dict;
 }
-// Per-form override maps — exact field-name → data-key. Used when the
-// fuzzy matcher can't read the field name (e.g. MSA-4676's garbled names
-// caused by the PDF's custom font encoding).
-// Per-form explicit field maps (Adobe's auto-detected field name → our data-dict key). Only the
-// MSA-4676 remains — the DHS-4771 / BPHASA-2421 maps were removed as dead code with their retired cards.
+// Per-form explicit field maps (Adobe's field name → data-dict key), for when the fuzzy matcher can't
+// read a field name (e.g. the MSA-4676's garbled font encoding).
 var STATE_FORM_FIELD_MAPS={
-  // DHS-390 — Adobe's auto-detected names carry the printed item numbers ("9 Date of Birth …").
-  // Mapped explicitly so a template revision that renumbers items fails loudly here instead of
-  // quietly filling the wrong box. Everything the CLIENT must answer (household composition,
-  // benefits, interpreter needs, signature) is deliberately left blank.
+  // DHS-390: names carry the printed item numbers, mapped explicitly so a renumbered template fails loudly.
+  // Client-answered sections (household, benefits, interpreter, signature) stay blank.
   dhs390:{
     'Full Name':'client_name',
     '9 Date of Birth MMDDYYYY':'client_dob',
@@ -10621,9 +10183,8 @@ var STATE_FORM_FIELD_MAPS={
     'Date':'today_date'
     // 'Client Signature X' — left blank on purpose; the client signs it.
   },
-  // DHS-4771 — Authorization for Withholding of FICA Tax. The BENEFICIARY is the employer of their
-  // caregiver, so this is the client's authorization: the address block and the printed name at the
-  // bottom are theirs, not the agency's. Signature is handwritten (no form field for it).
+  // DHS-4771 (FICA withholding): the beneficiary employs the caregiver, so the address and printed name are
+  // the client's. Signature is handwritten.
   dhs4771:{
     'Client Name':'client_name',
     'Case Number':'case_number',            // not held in the CRM — left blank for the owner to type
@@ -10638,11 +10199,8 @@ var STATE_FORM_FIELD_MAPS={
     'State':'client_state',
     'Zip Code':'client_zip'
   },
-  // BPHASA-2421 — Live-In Caregiver Attestation (EVV exemption). Section 1 (…Row1) is the
-  // CAREGIVER, Section 2 (…Row1_2) is the BENEFICIARY — the form's own instructions say so, and
-  // getting them the wrong way round would attest that the caregiver lives at their own address
-  // under the client's name. The program checkboxes are deliberately NOT auto-ticked: which
-  // program a beneficiary is enrolled in is a fact about them, not about this form.
+  // BPHASA-2421 (live-in attestation): Section 1 (…Row1) is the CAREGIVER, Section 2 (…Row1_2) the
+  // BENEFICIARY. Program checkboxes are left for the client.
   bphasa2421:{
     'First NameRow1':'caregiver_first_name',
     'Last NameRow1':'caregiver_last_name',
@@ -10692,9 +10250,8 @@ var STATE_FORM_FIELD_MAPS={
 // Match Adobe's auto-detected field names (which use the form's printed labels)
 // to a key in our data dict. Returns the matching value, or '' if no match.
 function _matchAcroFormField(fieldName,dict,formType){
-  // 1. Per-form explicit map wins — and it wins even when the value is EMPTY. Falling through to
-  // the keyword rules on a blank value is how a deliberately-mapped box gets something else put in
-  // it: the DHS-4771's "Case Number" is blank in the dict, and the guesser would happily fill it.
+  // 1. The per-form explicit map wins even when its value is EMPTY, so the keyword guesser can't fill a
+  // deliberately blank box.
   var _map=STATE_FORM_FIELD_MAPS[formType]||{};
   if(Object.prototype.hasOwnProperty.call(_map,fieldName))return dict[_map[fieldName]]||'';
   var n=(fieldName||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -10816,11 +10373,8 @@ async function renderSfPreview(){
     var iframe=document.getElementById('sfPreviewFrame');
     if(!def||!iframe)return;
     if(!window.PDFLib){setTimeout(renderSfPreview,400);return;}
-    // Flattened on purpose. Unflattened, the preview's fields stayed typeable, so a form looked
-    // like it could be corrected on screen — but Download regenerates from the app's inputs and
-    // threw that typing away silently. Flattening makes the preview what it actually is: a picture
-    // of what will be produced. Edits belong in the form's fields on the page; a form the CLIENT
-    // still has to complete is exported through "Download (fillable)", which is unaffected.
+    // Flattened on purpose: the preview shows what will be produced, and on-screen typing would be discarded
+    // by Download. Forms the client must complete use "Download (fillable)".
     var out=await _renderStateFormBytes({flatten:true});
     var blob=new Blob([out],{type:'application/pdf'});
     if(_sfPreviewBlobUrl)URL.revokeObjectURL(_sfPreviewBlobUrl);
@@ -10835,9 +10389,8 @@ async function renderSfPreview(){
   }
 }
 
-// keepFillable:true leaves the PDF's form fields editable, so a form the CLIENT still has to
-// complete (the DHS-390's household/benefits/signature sections) can be finished on screen instead
-// of by hand. The default export stays flattened — a signed agreement shouldn't be editable.
+// keepFillable:true leaves fields editable for forms the client still completes. The default export stays
+// flattened: a signed agreement shouldn't be editable.
 async function downloadStateFormPdf(keepFillable){
   try{
     showToast(keepFillable?'Generating fillable PDF…':'Generating final (flattened) PDF…',2000);
@@ -10856,26 +10409,13 @@ async function downloadStateFormPdf(keepFillable){
   }
 }
 
-/* ──────────────────────────────────────────────────────────────────
- *  STATE-FORM PDF OVERLAY
- *  Loads the official state PDF (kept in /forms/) and overlays typed
- *  text from the on-screen inputs at calibrated coordinates. Output
- *  is byte-for-byte the state's layout with our data on top — no
- *  HTML approximation, no risk of margin/font rejection.
- *
- *  Coordinate space: pdf-lib uses bottom-left origin in PDF points
- *  (1 pt = 1/72 inch). Letter page = 612 × 792 pts.
- *
- *  STATE_FORM_OVERLAYS[type] = {
- *    file:'/forms/X.pdf',
- *    fields: [{ inputId:'msa_cname', page:0, x:.., y:.., size:10, maxWidth?:.. }, ...],
- *    signature?: { inputId:'msa_sig_present', page, x, y, w, h }  // optional, draws stored sig PNG
- *  }
- * ────────────────────────────────────────────────────────────────── */
-// State-form PDF overlays — calibrated coordinates for stamping data onto the official template.
-// The MSA-4676 uses coordinate stamping (its template has no usable form fields). The DHS-390 is a
-// real AcroForm — 38 named fields — so it needs no `fields` coordinates at all: _renderStateFormBytes
-// detects the form fields and fills them by name (see STATE_FORM_FIELD_MAPS/CHECKS below).
+//  STATE-FORM PDF OVERLAY
+// Loads the official PDF from /forms/ and overlays typed text at calibrated coordinates, so the output is
+// the state's exact layout. pdf-lib uses a bottom-left origin in points (Letter = 612 × 792).
+// STATE_FORM_OVERLAYS[type] = { file, fields: [{ inputId, page, x, y, size, maxWidth? }],
+//   signature?: { inputId, page, x, y, w, h } }
+// The MSA-4676 uses coordinate stamping; an AcroForm template (e.g. DHS-390) is filled by field name
+// instead (see STATE_FORM_FIELD_MAPS/CHECKS).
 var STATE_FORM_OVERLAYS={
   dhs390:{
     file:'/forms/DHS-390.pdf',
@@ -10917,10 +10457,8 @@ var STATE_FORM_OVERLAYS={
   }
 };
 
-// Build a state-form PDF for ANY client WITHOUT the Forms UI: compute the field values from CRM data
-// (the same dict the Forms tab fills from) and overlay them onto the official template. Returns the
-// PDF bytes (Uint8Array). This is what lets the Assistant generate + attach a form (e.g. the
-// MSA-4676) on command, for a client the user names, without opening the Forms page.
+// Build a state-form PDF for ANY client without the Forms UI, from the same CRM dict; returns the bytes.
+// Lets the Assistant generate and attach a form on command.
 async function buildStateFormBytes(formType, clientName){
   if(!window.PDFLib) throw new Error('PDF library still loading — try again in a moment.');
   var def=STATE_FORM_OVERLAYS[formType];
@@ -11116,9 +10654,8 @@ function validateInvoiceForSend(name,prof,inv,cwRec){
     if(!hasTask)issues.push('Total Time empty AND no tasks checked');
     else issues.push('Total Time hours blank');
   }
-  // Sanity-check the billed time itself. These fields are free text and were only ever checked for
-  // PRESENCE — so a typo ("99", "-8", "abc", 75 minutes) printed straight onto the certified MSA-1904
-  // and went to MDHHS as a claim. Nothing between the keystroke and the state caught it.
+  // Sanity-check the billed time itself, not just its presence: a typo would otherwise print onto the
+  // certified MSA-1904 and go to MDHHS as a claim.
   var _hm=function(hhKey,mmKey,label){
     var hh=String(d[hhKey]==null?'':d[hhKey]).trim(), mm=String(d[mmKey]==null?'':d[mmKey]).trim();
     if(hh===''&&mm==='')return;
@@ -11133,16 +10670,12 @@ function validateInvoiceForSend(name,prof,inv,cwRec){
   // agency a recoupment, and nothing else in the app compares these two numbers.
   try{
     var a=prof&&prof.authorization;
-    // Compare what is actually CERTIFIED: 'Total Time for Billing Period' (grand = service +
-    // complex care), not service alone. On a complex-care client, checking svc let 15:00 service +
-    // 10:00 complex bill 25:00 against a 20:00 authorization with no warning at all.
+    // Compare what is CERTIFIED, 'Total Time for Billing Period' (service + complex care), not service alone.
     var _mins=function(hh,mm){ hh=String(hh==null?'':hh).trim();
       return /^\d{1,3}$/.test(hh) ? (parseInt(hh,10)*60+(parseInt(mm,10)||0)) : -1; };
     var _svc=_mins(d.svcHH,d.svcMM), _cplx=_mins(d.cplxHH,d.cplxMM), _grand=_mins(d.grandHH,d.grandMM);
-    // The largest figure the certified form could carry. grandHH is inside the hidden complex-care
-    // section, so on an ordinary invoice it holds a stale value while svcHH — the field the owner
-    // actually edits, and the one printed on page 1 — carries the real number. Checking grand alone
-    // let a 20-hour over-bill through silently; checking svc alone missed complex-care totals.
+    // The largest figure the form could carry: grandHH (in the hidden complex-care section) can be stale while
+    // svcHH holds the real edited value, so check both.
     var billed=Math.max(_svc, _grand, (_svc>=0?_svc:0)+(_cplx>=0?_cplx:0));
     var _bh=Math.floor(billed/60), _bm=billed%60;
     if(a&&a.hours!=null&&String(a.hours).trim()!==''&&billed>=0){
@@ -11155,22 +10688,15 @@ function validateInvoiceForSend(name,prof,inv,cwRec){
         issues.push('Complex care is filled in but "Total Time for Billing Period" is blank — enter the combined total so the certified form and the authorization check agree.');
     }
   }catch(e){}
-  // A CHAMPS client is billed to MDHHS. If their caseworker is listed under a CARRIER organisation,
-  // this invoice — a Medicaid claim carrying the client's name, Medicaid ID and service detail —
-  // would be emailed to a private insurer. Nothing checked this: the CLIENT's program is enforced
-  // (carrier clients are never invoiced here), but the CASEWORKER's org was only ever a badge, so a
-  // CHAMPS client assigned to a carrier caseworker sent PHI to the wrong organisation silently.
-  // An unset org is 'unknown', not 'wrong' — those are left alone.
+  // A CHAMPS client is billed to MDHHS. If their caseworker sits under a CARRIER org, this Medicaid claim
+  // would be emailed to a private insurer. An unset org is 'unknown', not 'wrong', and is left alone.
   if(!isCarrierClient(prof) && cwRec && cwRec.org && cwRec.org!=='MDHHS'){
     issues.push('Caseworker '+(cwRec.name||'')+' is listed under '+cwRec.org+', not MDHHS — a Medicaid '+
       'invoice must not be emailed to a carrier. Fix the caseworker\'s Organization, or assign this client to an MDHHS caseworker.');
   }
-  // No authorization AT ALL means the over-bill cross-check never ran, and silence there reads as
-  // "checked and fine" — the opposite of true. The DHS-1210 is what authorises billing, and it
-  // already gates Active status, so a client with none should not be reaching MDHHS.
-  // Deliberately NOT triggered when an authorization exists but its HOURS did not parse: every
-  // issue blocks the batch send, and blocking on a failed OCR read would stop legitimate billing
-  // for a client who is genuinely authorised. That case stays silent, as before.
+  // No authorization at all means the over-bill cross-check never ran, so flag it. Not flagged when an
+  // authorization exists but its hours didn't parse: issues block the send, and a failed OCR read
+  // shouldn't stop billing a client who is authorised.
   if(!hasAuthorization(prof))
     issues.push('No DHS-1210 on file — nothing authorises this billing, and the hours could not be checked against anything.');
   // Signature: at least one must exist locally so the PDF auto-places it
@@ -11181,9 +10707,8 @@ function validateInvoiceForSend(name,prof,inv,cwRec){
 function previewMonthlyInvoices(){
   var period=(document.getElementById('monthlyInvPeriod').value||'').trim();
   if(!period||period.length<7){showAlert('Enter a billing period in MM/YYYY format.');return;}
-  // Show a "loading" hint and force a fresh fetch of caseworkers + clients from DB before rendering
-  // so we never render "No email on file" against stale LS. If the fetch takes >200ms we swap the
-  // hint for the real preview; if it fails we fall through to whatever LS has (offline tolerance).
+  // Force a fresh fetch before rendering so "No email on file" never shows against stale LS. Past 200ms,
+  // show the real preview; on failure fall back to LS.
   var resultsEl=document.getElementById('monthlyInvResults');
   if(resultsEl)resultsEl.innerHTML='<div style="color:#5c7590;font-size:13px;text-align:center;padding:24px 0;">Refreshing caseworker + client data…</div>';
   var freshFetch=Promise.all([
@@ -11304,12 +10829,7 @@ function _previewMonthlyInvoicesRender(period){
   });
   document.getElementById('monthlyInvResults').innerHTML=html;
 }
-//  AUTO-GENERATE NEXT MONTH INVOICE
-//  Copies a previous invoice into a new period, shifting day patterns
-//  for sub-daily columns (Laundry, Shopping, etc.) so the new invoice
-//  doesn't look like an exact carbon-copy. Hospital column always
-//  starts empty since it's by-exception, not recurring.
-// Monthly Emails period input — accept shorthand (0526, 052026, 5/26, etc.)
+// Monthly Emails period input: accepts shorthand (0526, 052026, 5/26, etc.)
 function onMonthlyPeriodInput(el){
   // Allow auto-format as user types digits
   var raw=el.value.replace(/\D/g,'');
@@ -11348,9 +10868,8 @@ function defaultGenInvPeriod(){
   var d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);
   return String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
 }
-// Small modal that lists exactly which active clients are missing an invoice for a
-// specific billing period. Clicking a name jumps to the client's detail; the "+ Create
-// Invoice" button jumps straight to the new-invoice screen for that client.
+// Lists the active clients missing an invoice for a period, with a jump to each client or straight to
+// its new invoice.
 function showMissingInvoicesModal(period){
   var existing=document.getElementById('missingInvModal');if(existing)existing.remove();
   var profiles=getProfiles();
@@ -11431,9 +10950,8 @@ function doGenerateInvoices(){
   _doAutoGenerateInvoices(eligible,period);
 }
 // ── Persistent undo for auto-generated invoices ──────────────────
-// Stored in localStorage so it survives reloads. Each batch tracks the
-// invoice IDs created + a snapshot of their data (so we can detect manual
-// edits). Batches expire after 24 hours.
+// Kept in localStorage: each batch records the created invoice IDs plus a data snapshot (to detect
+// manual edits). Batches expire after 24 hours.
 var AUTOGEN_UNDO_TTL_MS=24*60*60*1000;
 function _getAutoGenUndoStack(){
   try{
@@ -11512,12 +11030,9 @@ function undoAutoGenBatch(batchId){
         targets.push({clientName:rec.clientName,dbId:inv.dbId,billingPeriod:inv.billingPeriod,invoiceId:inv.id});
       });
       if(!targets.length){renderUndoBanner();return;}
-      // DELETE each server-side (via the hardened deleteInvoiceAPI: server-first, remove-on-
-      // confirmed-2xx, retry toast on failure). The old code spliced locally + saveProfileSP,
-      // but syncNewInvoices only inserts/updates — it never deletes, so removed invoices
-      // resurrected on the next reload. finalize() runs once every targeted delete confirms
-      // (immediately for local-only rows, or later after a retry); a failed delete leaves its
-      // row + a Retry toast and keeps the batch on the stack so it can be re-undone.
+      // Delete server-side via deleteInvoiceAPI (syncNewInvoices never deletes, so a local splice resurrects
+      // on reload). finalize() runs once every delete confirms; a failed one keeps its row, a Retry toast,
+      // and the batch on the stack.
       var removed=0,settled=0;
       var finalize=function(){
         if(settled<targets.length)return;
@@ -11594,11 +11109,8 @@ function _dhsMapTaskToCol(taskName){
 // Turn a frequency phrase into the day indices to check across `days`. The form gives frequency,
 // not calendar days — this is a reviewable starting pattern (the provider adjusts), not a claim.
 function _dhsFreqToDays(freq, days){
-  // Delegates to _dhsFreqSpec so there is ONE reader of the Number of Days column. This function
-  // used to parse the wording itself and only understood the numeric "N days per week" form, so
-  // "Once per week", "Twice per week" and "Weekly" all fell through to [0] — one day a month
-  // instead of four, eight or five. That is the same drift that let a "Twice per month" row be
-  // dropped entirely: two parsers for one field, one of them quietly narrower.
+  // Delegates to _dhsFreqSpec so there's ONE reader of the Number of Days column; a second, narrower
+  // parser read "Twice per week" as one day a month.
   var spec=_dhsFreqSpec(freq), out=[], i;
   if(!spec)return [0];                        // unknown frequency → 1st day only, provider adjusts
   if(spec.per==='day'){ for(i=0;i<days;i++)out.push(i); return out; }
@@ -11613,10 +11125,8 @@ function _dhsFreqToDays(freq, days){
 }
 // "HH:MM" → minutes (e.g. "02:00" → 120). 0 if unparseable.
 function _dhsHmToMin(s){ var m=String(s||'').match(/(\d+):(\d+)/); return m?(parseInt(m[1],10)*60+parseInt(m[2],10)):0; }
-// A stable per-month seed from "MM/YYYY" — a distinct integer per month so each month's generated
-// pattern differs from the last, but regenerating the SAME month reproduces it (no randomness).
-// Weekday index (0=Sunday) of the 1st of month m in year y. Sakamoto's method — deliberately not
-// `new Date(...)`, which is read as UTC and lands on the previous day in any zone behind UTC.
+// Weekday (0=Sunday) of the 1st of month m, by Sakamoto's method: `new Date(...)` reads as UTC and
+// lands a day early in zones behind UTC.
 function _dhsFirstWeekday(y, m){
   if(!y||!m)return -1;
   var t=[0,3,2,5,0,3,5,1,4,6,2,4], yy=y;
@@ -11624,20 +11134,16 @@ function _dhsFirstWeekday(y, m){
   return (yy+Math.floor(yy/4)-Math.floor(yy/100)+Math.floor(yy/400)+t[m-1]+1)%7;
 }
 function _dhsPeriodSeed(period){ var p=String(period||'').split('/'); var mm=parseInt(p[0],10)||1, yy=parseInt(p[1],10)||2000; return yy*12+(mm-1); }
-// Place `count` day-indices spread EVENLY across a `days`-long month, rotated by `seed` so the exact
-// days vary month to month. Always returns `count` distinct in-range indices (or all days if count≥days).
-// Travel time is transport FOR another task, so it belongs on the SAME days as the task it serves.
-// Everything else gets its own group, so two tasks never sit on identical days by default.
+// Travel time is transport FOR another task, so it goes on the same days as that task. Everything else
+// gets its own group, so two tasks never share identical days by default.
 function _dhsTaskGroupKey(name){
   var n=String(name||'').toLowerCase().trim();
   if(/shop/.test(n))return 'shopping';        // "Shopping for Food/Meds" + "Travel For Shopping"
   if(/laundry/.test(n))return 'laundry';      // "Laundry" + "Travel Time for Laundry"
   return n;
 }
-// Days for one task, anchored to weekdays so the sheet reads like a real schedule — laundry on
-// Tuesdays, shopping on Fridays — instead of every task starting on the same date because they
-// shared one period seed. `variant` separates the groups; `firstWeekday` is the month's 1st.
-// Returns exactly `count` distinct in-range day indices.
+// Days for one task, anchored to weekdays so the sheet reads like a real schedule (laundry Tuesdays,
+// shopping Fridays). `variant` separates groups; returns exactly `count` distinct in-range indices.
 function _dhsWeekdaySpread(count, days, firstWeekday, variant, seed){
   count=Math.max(0,Math.min(days,count|0)); if(count<=0)return [];
   if(count>=days){var all=[];for(var i=0;i<days;i++)all.push(i);return all;}
@@ -11671,13 +11177,8 @@ function _dhsSpreadDays(count, days, seed){
   }
   return out.sort(function(a,b){return a-b;});
 }
-// The day-indices to check for one authorized task in a `days`-long month:
-//  • "7 days per week" (daily) → EVERY day the month has (owner's rule).
-//  • otherwise → the authorized monthly count = Time/Month ÷ Time/Day (falls back to the frequency
-//    pattern's length if those times are missing), spread evenly and varied by the period seed.
-// What the "Number of Days" column actually authorizes. MDHHS fills the day grid from THIS, not
-// from dividing the monthly time by the daily time (owner, 2026-09-01) — so it is read first and the
-// times are only a fallback for a frequency we cannot parse.
+// What the "Number of Days" column authorizes. MDHHS fills the day grid from this, not monthly time ÷
+// daily time (owner, 2026-09-01), so it's read first; the times are only a fallback.
 function _dhsFreqSpec(freq){
   var f=String(freq||'').toLowerCase().trim();
   if(/7 days? per week|daily|every day/.test(f))return {per:'day'};
@@ -11729,12 +11230,8 @@ function _dhsTaskDays(task, days, seed, variant, firstWeekday){
 // Minutes are printed as the ".MM" half of "HH.MM" on the certified form, so a bare "5" reads as
 // 50 minutes: "20 hours 5 minutes" printed "20.5" — 45 minutes of over-billed time. Always 2 digits.
 function _padMin(v){ v=(v==null?'':String(v)).trim(); return /^\d$/.test(v)?('0'+v):v; }
-// Build the data for an invoice from a parsed authorization (res) + client (prof) + period MM/YYYY.
-// The day grid is derived from each task's authorized frequency/count (see _dhsTaskDays), varied per
-// month. Returns { data, unmapped:[taskNames] } — unmapped tasks are surfaced, never dropped silently.
-// Parse a stored date into {y,m,d} WITHOUT a Date object. `new Date('2026-07-21')` is read as UTC
-// midnight, so in any timezone behind UTC .getDate() returns the PREVIOUS day — which silently
-// shifted a service start back by one and certified a day of service that never happened.
+// Parse a stored date into {y,m,d} WITHOUT a Date object: `new Date('2026-07-21')` is UTC midnight, so
+// behind UTC .getDate() is a day early, certifying a day of service that never happened.
 function _ymd(v){
   var t=String(v||'').trim(); if(!t)return null;
   var m=t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);          // YYYY-MM-DD (what the app stores)
@@ -11756,11 +11253,8 @@ function _dhsBuildFirstInvoice(res, prof, period){
   var _groups=[]; (res.tasks||[]).forEach(function(t){
     var g=_dhsTaskGroupKey(t.task); if(_groups.indexOf(g)<0)_groups.push(g);
   });
-  // The day grid is the MSA-1904's "verification of services" — a mark on it certifies that service
-  // was delivered that day. Marks were spread across the WHOLE month even when service started
-  // partway through it (and even on the prorated branch, which passes only the reduced HOURS), so a
-  // client starting on the 21st was certified for 20 days of service that never happened. Derived
-  // here rather than at the call sites so the manual and auto-generate paths both get it.
+  // The day grid certifies service on each marked day, so mark nothing before a mid-month start. Done here
+  // so the manual and auto-generate paths both get it.
   var _firstDay=1;
   try{
     var _sd=_ymd(prof&&prof.startDate);
@@ -11825,9 +11319,8 @@ function createFirstInvoiceFromAuth(){
   var period=(eff.length===3)?(eff[0]+'/'+eff[2]):'';
   if(!period){ showAlert('The authorization has no effective date, so the billing period can’t be set. Add one on the Authorization tab first.'); return; }
   if((prof.invoices||[]).some(function(i){return i.billingPeriod===period;})){ showAlert('An invoice for '+period+' already exists for this client.'); return; }
-  // A mid-month start can be billed either way depending on the case, so ASK — this used to bill the
-  // full month silently (_firstOfEffectiveMonth pushes the start to the 1st), which over-bills MDHHS
-  // whenever service did not actually cover the whole month.
+  // A mid-month start can be billed either way, so ASK; billing the full month silently over-bills MDHHS
+  // when service didn't cover it.
   var _pro=_proratedFirstMonth(a, a.effectiveDate);
   if(_pro){
     var _full=a.hours+':'+_padMin(a.minutes||0);
@@ -11866,10 +11359,7 @@ function _createFirstInvoice(store,prof,a,period,pro){
   if(typeof switchTab==='function')switchTab('history');
 }
 
-// Returns clients eligible for auto-gen: active in the period, missing this period's invoice, and
-// (required) with a DHS authorization to build from. No authorization → no auto-generated invoice.
-// True when the client's service start date falls INSIDE the billing period — i.e. this is a
-// partial first month, not a full one.
+// True when the service start falls INSIDE the billing period (a partial first month).
 function _startsInsidePeriod(prof,period){
   try{
     var sd=String((prof&&prof.startDate)||'').trim(); if(!sd)return false;
@@ -11934,12 +11424,8 @@ function _doAutoGenerateInvoices(eligible,period){
   var profiles=getProfiles();
   var generated=0,skipped=0,unmappedBy={},partialMonth=[];
   var undoBatch={id:'b_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),period:period,when:Date.now(),invoices:[]};
-  // Eligibility — including "does this client already have an invoice for this period" — was
-  // decided BEFORE the confirmation dialog, and the dialog can sit open for minutes. A background
-  // loadProfilesAPI, or another device, can add that very invoice meanwhile; the generator then
-  // unshifted a second one unconditionally. The monthly preview picks a period's invoice with
-  // .find(), so it showed the fresh Draft and the same client+period went to the caseworker a
-  // second time with re-derived numbers. Re-check against the roster as it is NOW.
+  // Re-check eligibility against the roster as it is NOW: the dialog can sit open for minutes while a
+  // reload or another device adds this period's invoice, and generating a second one re-sends the client.
   var alreadyHas=[];
   eligible=eligible.filter(function(e){
     var p2=profiles[e.name];
@@ -11952,10 +11438,8 @@ function _doAutoGenerateInvoices(eligible,period){
     return;
   }
   eligible.forEach(function(e){
-    // Build the month's grid from the client's DHS authorization (correct counts per the authorized
-    // frequency, varied each month). Eligibility already requires an authorization.
-    // Partial first month — held back by findClientsEligibleForAutoGen so the owner makes the
-    // full-month-or-prorate call on the client's Authorization tab, which asks.
+    // Partial first month: held back so the owner makes the full-month-or-prorate call on the
+    // Authorization tab.
     if(e.partialMonth){ partialMonth.push(e.name); return; }
     var prof=profiles[e.name], a=prof&&prof.authorization, newInv=null;
     var built=(a && hasBillableAuthorization(prof)) ? _dhsBuildFirstInvoice({hours:a.hours,minutes:a.minutes,rate:a.rate,tasks:a.tasks||[]}, prof, period) : null;
@@ -12049,9 +11533,7 @@ async function sendAllCaseworkerEmails(period){
           // Await DIRECTLY so each caseworker's PDF capture finishes before the next worker starts.
           // (Earlier bug: sendMonthlyEmail did fire-and-forget, causing parallel page-invoice usage and PDFs going to wrong worker.)
           var _res=await _doMonthlyEmailSend(item.group.email,item.wname,period,readyToSend,alreadySent.length,hasIssues,missingInvoice);
-          // Only count a caseworker as SENT when the send actually reported success. The inner function
-          // returns undefined on its failure paths, and this used to increment regardless — so on
-          // billing day the closing toast counted failures as successes.
+          // Count a caseworker as SENT only when the send reported success, or the closing toast counts failures.
           if(_res&&_res.ok)sentCount++; else failedWorkers.push(item.wname);
           // Throttle between sends (skip after the last one)
           if(i<sendable.length-1){
@@ -12080,11 +11562,8 @@ async function sendMonthlyEmail(email,workerName,clients,period){
     );
     return;
   }
-  // Bucket clients by current status:
-  // - alreadySent: status submitted/paid (skip — they got the previous email)
-  // - readyToSend: status draft AND no issues
-  // - hasIssues: status draft AND validation issues
-  // - missingInvoice: no invoice for this period
+  // Buckets: alreadySent (submitted/paid), readyToSend (draft, no issues), hasIssues (draft with
+  // validation issues), missingInvoice (none for this period).
   var alreadySent=[],readyToSend=[],hasIssues=[],missingInvoice=[];
   clients.forEach(function(c){
     if(!c.invStatus||c.invStatus==='none'){missingInvoice.push(c);return;}
@@ -12247,11 +11726,8 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
       '<p>A quick follow-up to my earlier note — attached '+(multi?'are a few additional invoices':'is one additional invoice')+' for '+periodLabel+' that I wanted to be sure reached you, listed below. Please let me know if you have any questions.'+_apprec+'</p>'+
       _list+_emailSig();
   } else {
-    // Rotated opener — seeded per caseworker so a batch doesn't read identically.
-    // The greeting names the month it is being SENT in, not the month being billed: an invoice for
-    // August goes out in September, and greeting a caseworker with "Hope August is off to a good
-    // start" on 1 September reads as though nobody checked the date. The billing period is stated
-    // in the same sentence so there is no doubt which month the invoice covers.
+    // Opener rotated per caseworker so a batch doesn't read identically. It names the month it's SENT in
+    // (August's invoice goes out in September); the billing period is stated in the same sentence.
     var _now=new Date();
     var _nowWord=['January','February','March','April','May','June','July','August','September',
       'October','November','December'][_now.getMonth()];
@@ -12305,9 +11781,7 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
       toastMsg+=' ('+hasIssues.length+' still need'+(hasIssues.length>1?'':'s')+' fixing)';
     }
     showToast(toastMsg,6000);
-    // Refresh the modal results if re-opened
-    // The BATCH caller reads this to decide sent-vs-failed. Returning undefined made every
-    // caseworker look failed and crashed the run, so both branches must report.
+    // The batch caller reads this to decide sent-vs-failed, so both branches must return a result.
     return {ok:true,sent:attachments.length};
   }else{
     var msg2='Email failed to send.';
@@ -12319,10 +11793,9 @@ async function _doMonthlyEmailSendInner(email,workerName,period,readyToSend,alre
   }
 }
 
-// ✨ ASSISTANT — one global AI chat that can look up clients, run roster reports, and
-// assemble emails/forms for the owner to review + send. The model (backend /ai-chat) decides
-// which TOOL to call; the tools run here in the browser because they read localStorage and use the
-// user's Microsoft token. Nothing is ever sent without the owner reviewing it in the compose modal.
+// ✨ ASSISTANT: one AI chat that looks up clients, runs roster reports and assembles emails/forms. The
+// backend model picks the TOOL; tools run here because they read localStorage and use the user's
+// Microsoft token. Nothing is sent without the owner reviewing it in the compose modal.
 var _asstMessages=[], _asstBusy=false, _asstOpen=false;
 // One assistant confirmation at a time — see update_client for why.
 var _asstConfirmPending=false;
@@ -12434,9 +11907,8 @@ function _asstGroupValue(fields, g){
   var v=(g in fields)?fields[g]:'';
   return (v===''||v==null)?'(none)':v;
 }
-// ── Tool: query_roster ── ONE general, deterministic query engine over the whole roster. The model
-// composes {action, filters, group_by}; CODE computes the answer (count/list/group) — so the AI never
-// counts in its head. Any field, any filter, any grouping — no per-question code needed.
+// ── Tool: query_roster ── one deterministic query engine over the roster. The model composes
+// {action, filters, group_by}; CODE computes the count/list/group, so the AI never counts in its head.
 function _asstQueryRoster(args){
   args=args||{};
   var action=String(args.action||'list').toLowerCase();
@@ -12458,9 +11930,8 @@ function _asstQueryRoster(args){
     var arr=Object.keys(groups).map(function(k){return {value:k,count:groups[k]};}).sort(function(a,b){return b.count-a.count;});
     return { action:'group', group_by:_asstFieldAlias(groupBy), total:matched.length, groups:arr };
   }
-  // The 80-row cap keeps the MODEL's context small. export_data passes no_cap:true so a downloaded
-  // file contains every matched row — exporting 80 of 200 clients (and reporting 80 as the total)
-  // is silent data loss in something the user keeps as a record.
+  // The 80-row cap keeps the model's context small. export_data passes no_cap:true so a downloaded file
+  // holds every matched row.
   var rowsAll=(args.no_cap===true)?matched:matched.slice(0,80);
   var cap=rowsAll.map(function(m){ return { name:m.name, status:m.f.status, county:m.f.county,
     caregiver:m.f.caregiver, caseworker:m.f.caseworker, medicaid_id:m.f.medicaid_id, start_date:m.f.start_date }; });
@@ -12600,9 +12071,8 @@ function _asstFindCaregiver(args){
   var capped=out.slice(0,8);
   return { matches:capped, count:out.length, truncated: out.length>capped.length };
 }
-// The billing period that can actually be "missing": the PREVIOUS month. A month's invoice is
-// generated on the 1st of the NEXT month (see renderAttentionPanel), so the CURRENT month is never
-// overdue — defaulting to it reported nearly every active client as unbilled.
+// Only the PREVIOUS month can be "missing": invoices are generated on the 1st of the next month, so the
+// current month is never overdue.
 function _asstPrevPeriod(){
   var t=today().split('/'); var d=new Date(+t[2], (+t[0])-2, 1);
   return String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
@@ -12712,15 +12182,11 @@ function _asstUpdateClient(args){
   if(!prop)return {error:'I can only update: phone, email, address, city, state, zip, county, medicaid ID, medicare, DOB, hourly rate, start date, status, program, carrier, or member #. (SSN and license must be edited on the client page.)'};
   var value=(args.value==null?'':String(args.value)).trim();
   if(prop==='dob'||prop==='startDate'){
-    // Both render as <input type="date">, which reports '' for anything that isn't YYYY-MM-DD — so
-    // storing free text here means the NEXT unrelated save silently blanks the field. A blank
-    // startDate additionally drops the client out of every billing surface (clientWasActiveInPeriod)
-    // and makes saveClientInfo refuse to save an Active client at all. Refuse it here instead.
+    // Both render as <input type="date">, which reports '' for anything not YYYY-MM-DD, so free text is
+    // blanked on the next save (and a blank startDate drops the client from billing). Refuse it here.
     if(value!==''){
       var _pd=_asstParseDate(value);
-      // _asstParseDate is range-unchecked, so '13/05/2026' (a day-first date) and '02/31/2026' parse
-      // "successfully" into a value <input type="date"> still rejects — which blanks the field on the
-      // next save, the very thing this guard exists to stop. Verify the date is REAL.
+      // _asstParseDate doesn't range-check, so '13/05/2026' or '02/31/2026' would parse. Verify the date is real.
       var _ok=!!_pd && _pd.m>=1 && _pd.m<=12 && _pd.d>=1 &&
               _pd.d<=(new Date(_pd.y,_pd.m,0).getDate()) && _pd.y>=1900 && _pd.y<=2200;
       if(!_ok) return {error:'That is not a date I can store ("'+value+'"). Give it as YYYY-MM-DD, e.g. 2026-05-12.'};
@@ -12731,9 +12197,8 @@ function _asstUpdateClient(args){
     var sv=value.toLowerCase(); value=(sv==='in progress')?'inactive':sv;
     if(['active','inactive','lost','terminated'].indexOf(value)<0)
       return {error:'Status must be one of: Active, In Progress, Lost, Terminated.'};
-    // Same gate the client pane enforces (saveClientInfo): a CHAMPS client can't go Active without a
-    // DHS-1210 on file. Going through the assistant used to skip it, and an Active client with no
-    // authorization is then picked up by invoice generation.
+    // Same gate as saveClientInfo: a CHAMPS client can't go Active without a DHS-1210, or invoice generation
+    // picks them up.
     if(value==='active' && p.program!=='carrier' && !hasAuthorization(p))
       return {error:key+' has no DHS-1210 authorization on file, so they can\'t be set Active. Import the authorization on their Authorization tab first.'};
     if(value==='active' && !(p.startDate&&String(p.startDate).trim()))
@@ -12742,11 +12207,8 @@ function _asstUpdateClient(args){
   if(prop==='program'){ value=(/carrier|managed/i.test(value))?'carrier':'champs'; }
   var label=(args.field||prop);
   if(typeof showConfirm!=='function')return {error:'Confirm UI unavailable.'};
-  // showConfirm is ONE modal and clones away the previous handler every time it is called. The chat
-  // loop runs a turn's tool calls back to back, so a second update_client silently replaced the
-  // first's dialog: the owner saw only the last one while the model was told both had been put to
-  // them — and the visible text could swap between reading it and clicking, approving a change they
-  // never read. Allow one at a time.
+  // showConfirm is ONE modal and replaces its handler on each call, so back-to-back update_client calls
+  // would swap dialogs under the owner. Allow one at a time.
   if(_asstConfirmPending)
     return {error:'A confirmation is already open. Ask the user to answer it, then request the next change — they can only be reviewed one at a time.'};
   _asstConfirmPending=true;
@@ -12779,9 +12241,7 @@ function _localYmd(){
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
 function _asstDownloadCsv(cols, rows, fname){
-  // A cell starting = + - @ is executed as a formula by Excel/Sheets. Client names and notes come
-  // from OCR'd state forms, so this is untrusted text. The repo already solves it in the email-audit
-  // export (csvEscape); this one quoted only for commas and quotes, so `=HYPERLINK(...)` ran.
+  // A cell starting = + - @ runs as a formula in Excel/Sheets, and names/notes come from OCR'd forms.
   var q=function(v){ var t=String(v==null?'':v);
     if(/^[=+\-@\t\r]/.test(t))t="'"+t;
     return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
@@ -12831,9 +12291,8 @@ function _asstExportData(args){
     title='Clients';
   }
   if(!rows.length)return {error:'Nothing to export — the query returned no rows.'};
-  // Every other side-effecting tool opens a review dialog; this one wrote the file immediately.
-  // It runs uncapped, so one model decision could drop a full roster with Medicaid IDs into
-  // Downloads — outside the app's idle PHI wipe. Gate it like the others.
+  // Gate it like every other side-effecting tool: it runs uncapped, so one model decision could drop a
+  // full roster with Medicaid IDs into Downloads, outside the idle PHI wipe.
   if(typeof showConfirm==='function'){
     return new Promise(function(resolve){
       // Escape closes the modal without running onCancel, which would leave this Promise pending
@@ -12912,10 +12371,8 @@ function _asstRunTool(name,args){
 async function _asstSend(text){
   text=(text||'').trim(); if(!text||_asstBusy)return;
   if(typeof spToken==='undefined'||!spToken){ _asstRenderMsg('assistant','Please sign in first (Settings) so I can look up clients and send email.'); return; }
-  // The backend rejects a conversation over 40 turns (ai-chat.js), and this array only ever grew —
-  // so after ~10 tool-using questions the assistant answered every message with "Conversation too
-  // long" and the only way out was a page reload. Keep the recent window instead, always starting on
-  // a user turn so the tool_call/tool_result pairing stays valid.
+  // The backend rejects conversations over 40 turns (ai-chat.js). Keep a recent window starting on a user
+  // turn so tool_call/tool_result pairs stay valid.
   if(_asstMessages.length>28){
     var _cut=_asstMessages.length-24;
     while(_cut<_asstMessages.length && _asstMessages[_cut].role!=='user')_cut++;
