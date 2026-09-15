@@ -23,6 +23,7 @@ const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8').split(
 // Reviewed and safe — each reads a global only in a way that cannot write to the wrong record.
 const ALLOWED = {
   _clearAuth: 'captures forClient; the global read only decides whether to re-render',
+  _clearCarrierAuth: 'same shape as _clearAuth — captures forClient before the dialog',
   uploadCgDocAzure: 'clientId is captured BEFORE the fetch; the refresh is guarded by _docListStillCurrent',
   handleCgDocScan: 'same — the upload target is captured before the request',
   deleteCaseworker: 'the callback filters by the captured id, not by the global',
