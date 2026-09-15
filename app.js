@@ -900,6 +900,20 @@ function renderOverviewPane(){
       '<div style="margin-top:6px;font-size:10px;color:#94a7bd;">Click to open the Authorization tab</div>'+
     '</div>';
   }
+  var ca=isCarrierClient(prof)&&prof.carrierAuth;
+  if(ca&&ca.startDate){
+    var caUm=_caUnitMinutes(ca), caWk=_caWeekUnits(ca), caLeft=_caDaysUntil(ca.endDate), caEndTxt='', caEndColor='#1a2b45';
+    if(caLeft!=null){ if(caLeft<0){caEndTxt=' · ended';caEndColor='#b03030';} else if(caLeft<=30){caEndTxt=' · '+caLeft+'d';caEndColor='#c67605';} }
+    var caNowYm=new Date().getFullYear()+'-'+('0'+(new Date().getMonth()+1)).slice(-2);
+    var caMonth=_carrierAuthMonths(ca).find(function(m){return m.ym===caNowYm;});
+    authCardHtml+='<div class="ov-card" style="cursor:pointer;" onclick="switchTab(\'auth\')" title="Open Authorization tab">'+
+      '<h4>Authorization ('+esc(prof.carrier||'carrier')+')</h4>'+
+      '<div class="ov-row"><span class="ov-label">Per week</span><span class="ov-value">'+caWk+' units · '+_caHoursLabel(caWk,caUm)+'</span></div>'+
+      (caMonth?'<div class="ov-row"><span class="ov-label">This month</span><span class="ov-value">'+caMonth.units+' units · '+_caHoursLabel(caMonth.units,caUm)+'</span></div>':'')+
+      '<div class="ov-row"><span class="ov-label">Ends</span><span class="ov-value" style="color:'+caEndColor+';">'+esc(_caYmdToMdy(ca.endDate)||'—')+caEndTxt+'</span></div>'+
+      '<div style="margin-top:6px;font-size:10px;color:#94a7bd;">Click to open the Authorization tab</div>'+
+    '</div>';
+  }
   pane.innerHTML='<div class="overview-grid">'+
     '<div class="ov-card"><h4>Client Info</h4>'+
       '<div class="ov-row"><span class="ov-label">Medicaid ID</span><span class="ov-value">'+esc(prof.medicaidId||'—')+'</span></div>'+
@@ -1226,13 +1240,8 @@ function renderAuthPane(edit){
   if(!activeProfileName)return;
   var host=document.getElementById('authContent'); if(!host)return;
   var prof=getProfiles()[activeProfileName]; if(!prof)return;
-  // Managed-care (carrier) clients don't use the DHS-1210 / CRM invoicing path — no import here.
-  if(isCarrierClient(prof)){
-    host.innerHTML='<div class="form-card" style="max-width:640px;text-align:center;padding:28px;">'+
-      '<div style="font-size:13px;color:#5c7590;">This is a <b>managed-care</b> client'+(prof.carrier?(' ('+esc(prof.carrier)+')'):'')+'. DHS-1210 authorization and CRM invoicing aren’t used — authorizations and billing go through the carrier.</div>'+
-    '</div>';
-    return;
-  }
+  // Managed-care (carrier) clients don't use the DHS-1210 / CRM invoicing path — they get a weekly unit schedule.
+  if(isCarrierClient(prof)){ host.innerHTML=edit?_carrierAuthEditHtml(prof):_carrierAuthViewHtml(prof); return; }
   var a=prof.authorization;
   if(edit){ host.innerHTML=_authEditHtml(a||{}); _renderAuthTaskRows((a&&a.tasks)||[]); return; }
   if(!a || (a.hours==null && !(a.tasks&&a.tasks.length) && !a.effectiveDate)){
@@ -1361,6 +1370,222 @@ function _syncReassessTask(clientName, reassessMdy){
     if(typeof saveTaskAPI==='function')saveTaskAPI(existing);
   } else {
     var nt={id:todoId(),text:text,client:clientName,due:dueYmd,note:'Auto-added from the DHS-1210 authorization. Review services with the client + provider.',done:false,kind:'dhs-reassess',created:new Date().toLocaleString()};
+    todos.unshift(nt); saveTodos(todos);
+    if(typeof saveTaskAPI==='function')saveTaskAPI(nt);
+  }
+  if(typeof updateTaskBadge==='function')updateTaskBadge();
+}
+// ── Carrier authorization: a weekly unit schedule (e.g. DAAA / Priority Health T1019) ──
+// The carrier authorizes per calendar month: the scheduled units falling on that month's dates.
+var _CA_DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+var _CA_MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function _caYmdToUTC(ymd){
+  var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd||'')); if(!m)return null;
+  var d=new Date(Date.UTC(+m[1],+m[2]-1,+m[3]));
+  return (d.getUTCMonth()===+m[2]-1 && d.getUTCDate()===+m[3])?d:null;
+}
+function _caUTCToYmd(d){ return d.getUTCFullYear()+'-'+('0'+(d.getUTCMonth()+1)).slice(-2)+'-'+('0'+d.getUTCDate()).slice(-2); }
+function _caYmdToMdy(ymd){ var p=String(ymd||'').split('-'); return p.length===3?(p[1]+'/'+p[2]+'/'+p[0]):''; }
+function _caWeekUnits(ca){ return ((ca&&ca.week)||[]).reduce(function(s,u){return s+(+u||0);},0); }
+function _caUnitMinutes(ca){ var m=+(ca&&ca.unitMinutes); return m>0?m:15; }
+function _caHoursLabel(units,unitMinutes){ var t=Math.round(units*unitMinutes); return Math.floor(t/60)+'h '+(t%60)+'m'; }
+function _caRate(ca){ var r=parseFloat(String((ca&&ca.rate)||'').replace(/[$,\s]/g,'')); return isNaN(r)?null:r; }
+function _caAmount(units,rate){ return rate==null?null:Math.round(units*rate*100)/100; }
+function _caMoney(n){ return n==null?'—':'$'+n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,','); }
+// Whole days from today to a YYYY-MM-DD date (negative once it has passed).
+function _caDaysUntil(ymd){
+  var d=_caYmdToUTC(ymd); if(!d)return null;
+  var n=new Date(); return Math.round((d-Date.UTC(n.getFullYear(),n.getMonth(),n.getDate()))/86400000);
+}
+// One row per calendar month the schedule touches; start and end dates both count. No end date → through next month.
+function _carrierAuthMonths(ca){
+  var out=[]; if(!ca)return out;
+  var start=_caYmdToUTC(ca.startDate); if(!start)return out;
+  var end=_caYmdToUTC(ca.endDate);
+  if(!end){ var n=new Date(), base=Math.max(start.getTime(),Date.UTC(n.getFullYear(),n.getMonth(),1)), b=new Date(base);
+    end=new Date(Date.UTC(b.getUTCFullYear(),b.getUTCMonth()+2,0)); }
+  if(end<start)return out;
+  var week=ca.week||[], rate=_caRate(ca), y=start.getUTCFullYear(), mo=start.getUTCMonth();
+  for(var guard=0; guard<36; guard++){
+    var mStart=new Date(Date.UTC(y,mo,1)); if(mStart>end)break;
+    var mEnd=new Date(Date.UTC(y,mo+1,0));
+    var from=mStart<start?start:mStart, to=mEnd>end?end:mEnd, units=0;
+    for(var d=new Date(from.getTime()); d<=to; d.setUTCDate(d.getUTCDate()+1)) units+=(+week[d.getUTCDay()]||0);
+    out.push({ym:y+'-'+('0'+(mo+1)).slice(-2), label:_CA_MONTHS[mo]+' '+y, from:_caUTCToYmd(from), to:_caUTCToYmd(to), units:units, amount:_caAmount(units,rate)});
+    if(++mo>11){mo=0;y++;}
+  }
+  return out;
+}
+// Typing posted units month after month fires saves back to back. Each POST carries the row version it read, so
+// an overlapping second save 409s against the first; run them one at a time, the next one sending the latest record.
+var _caSaveQueue={};
+function _caQueueSave(clientName){
+  var q=_caSaveQueue[clientName];
+  if(q){ q.again=true; return q.done; }
+  q=_caSaveQueue[clientName]={again:false};
+  var run=function(){
+    q.again=false;
+    var rec=getProfiles()[clientName]; if(!rec)return Promise.resolve();
+    return Promise.resolve(saveProfileSP(clientName,rec)).catch(function(){}).then(function(){ if(q.again)return run(); });
+  };
+  q.done=run().then(function(){ delete _caSaveQueue[clientName]; });
+  return q.done;
+}
+function _caDiffHtml(units,posted){
+  if(posted==null||posted==='')return '<span style="color:#94a7bd;">—</span>';
+  var d=units-posted;
+  if(d===0)return '<span style="color:#1e7e34;font-weight:600;">✓ all posted</span>';
+  return d>0?'<span style="color:#c67605;font-weight:600;">'+d+' left</span>':'<span style="color:#b03030;font-weight:600;">'+(-d)+' over</span>';
+}
+function _carrierAuthViewHtml(prof){
+  var ca=prof.carrierAuth, carrier=prof.carrier||'the carrier';
+  if(!ca||!ca.startDate){
+    return '<div class="form-card" style="max-width:640px;text-align:center;padding:28px;">'+
+      '<div style="font-size:13px;color:#5c7590;margin-bottom:12px;">This is a <b>managed-care</b> client ('+esc(carrier)+'). Billing is entered in the carrier’s system, not invoiced here.<br>No authorization schedule on file yet.</div>'+
+      '<button class="btn btn-primary" onclick="renderAuthPane(true)">Enter authorization schedule</button>'+
+    '</div>';
+  }
+  var um=_caUnitMinutes(ca), rate=_caRate(ca), wk=_caWeekUnits(ca);
+  var kv=function(l,v,color){return '<div style="display:flex;justify-content:space-between;gap:16px;padding:6px 0;border-bottom:1px solid #f0f3f7;"><span style="color:#5c7590;font-size:13px;">'+l+'</span><span style="font-weight:600;color:'+(color||'#1a2b45')+';font-size:13px;text-align:right;">'+v+'</span></div>';};
+  var left=_caDaysUntil(ca.endDate), endTxt='', endColor='#1a2b45';
+  if(left!=null){ if(left<0){endTxt=' · ended';endColor='#b03030';} else if(left<=30){endTxt=' · '+left+' days left';endColor='#c67605';} }
+  var th='padding:4px 8px;', thR=th+'text-align:right;';
+  var weekRow=_CA_DAYS.map(function(_,i){ var u=+((ca.week||[])[i])||0; return '<td style="padding:6px 8px;text-align:center;border:1px solid #e3e9f0;">'+(u?u:'')+'</td>'; }).join('');
+  var nowYm=new Date().getFullYear()+'-'+('0'+(new Date().getMonth()+1)).slice(-2);
+  var clientArg=escJsAttr(activeProfileName);
+  var posted=ca.posted||{};
+  var monthRows=_carrierAuthMonths(ca).map(function(m){
+    var pv=posted[m.ym], cur=m.ym===nowYm;
+    return '<tr style="'+(cur?'background:#f3f8fd;':'')+'border-bottom:1px solid #f0f3f7;">'+
+      '<td style="'+th+'font-weight:600;">'+esc(m.label)+(cur?' <span style="font-size:10px;color:#185FA5;">(this month)</span>':'')+'</td>'+
+      '<td style="'+th+'color:#5c7590;">'+esc(_caYmdToMdy(m.from).slice(0,5))+'–'+esc(_caYmdToMdy(m.to).slice(0,5))+'</td>'+
+      '<td style="'+thR+'font-weight:600;">'+m.units+'</td>'+
+      '<td style="'+thR+'">'+_caHoursLabel(m.units,um)+'</td>'+
+      '<td style="'+thR+'">'+_caMoney(m.amount)+'</td>'+
+      '<td style="'+thR+'"><input type="number" min="0" step="1" inputmode="numeric" aria-label="Posted units for '+esc(m.label)+'" value="'+(pv!=null?esc(String(pv)):'')+'" style="width:72px;text-align:right;" onchange="_carrierPostedChange(\''+clientArg+'\',\''+m.ym+'\','+m.units+',this.value)"></td>'+
+      '<td style="'+thR+'" id="ca-diff-'+m.ym+'">'+_caDiffHtml(m.units,pv)+'</td>'+
+    '</tr>';
+  }).join('');
+  return '<div class="form-card" style="max-width:760px;">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap;">'+
+      '<h3 style="margin:0;">Authorization ('+esc(carrier)+')</h3>'+
+      '<button class="btn btn-secondary btn-sm" onclick="renderAuthPane(true)">Edit</button>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 24px;">'+
+      kv('Procedure', esc(ca.procedure||'—'))+
+      kv('Rate', rate!=null?_caMoney(rate)+'/unit · '+_caMoney(Math.round(rate*60/um*100)/100)+'/hr':'—')+
+      kv('Dates', esc(_caYmdToMdy(ca.startDate))+' – '+esc(_caYmdToMdy(ca.endDate)||'no end date')+endTxt, endColor)+
+      kv('Per week', wk+' units · '+_caHoursLabel(wk,um)+(rate!=null?' · '+_caMoney(_caAmount(wk,rate)):''))+
+    '</div>'+
+    '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;margin:18px 0 6px;">Weekly schedule (units, 1 unit = '+um+' min)</div>'+
+    '<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:13px;"><thead><tr style="color:#8296ab;font-size:10px;text-transform:uppercase;">'+
+      _CA_DAYS.map(function(d){return '<th style="padding:4px 8px;min-width:44px;">'+d+'</th>';}).join('')+'<th style="padding:4px 8px;">Week</th></tr></thead>'+
+      '<tbody><tr>'+weekRow+'<td style="padding:6px 8px;text-align:center;border:1px solid #e3e9f0;font-weight:700;">'+wk+'</td></tr></tbody></table></div>'+
+    '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;margin:18px 0 6px;">By month</div>'+
+    '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="color:#8296ab;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.3px;">'+
+      '<th style="'+th+'">Month</th><th style="'+th+'">Dates</th><th style="'+thR+'">Authorized units</th><th style="'+thR+'">Hours</th><th style="'+thR+'">Amount</th><th style="'+thR+'">Posted units</th><th style="'+thR+'"></th>'+
+    '</tr></thead><tbody>'+monthRows+'</tbody></table></div>'+
+    '<div style="font-size:11px;color:#94a7bd;margin-top:10px;">Authorized units are counted from the weekly schedule. If the carrier’s portal shows a different number, the portal is right — check the schedule here. Type what you posted in the carrier’s system to track what’s left.</div>'+
+  '</div>';
+}
+function _carrierAuthEditHtml(prof){
+  var ca=prof.carrierAuth||{}, week=ca.week||[];
+  var f=function(id,label,val,attrs){return '<div class="info-field"><label for="'+id+'">'+label+'</label><input id="'+id+'" value="'+esc(val==null?'':String(val))+'" '+(attrs||'')+'></div>';};
+  var dayCells=_CA_DAYS.map(function(d,i){
+    var u=week[i];
+    return '<div class="info-field" style="min-width:0;"><label for="ca-day-'+i+'">'+d+'</label><input id="ca-day-'+i+'" type="number" min="0" step="1" inputmode="numeric" value="'+(u?esc(String(u)):'')+'" oninput="_caEditTotals()" style="text-align:center;"></div>';
+  }).join('');
+  return '<div class="form-card" style="max-width:720px;">'+
+    '<h3 style="margin:0 0 6px;">Edit Authorization ('+esc(prof.carrier||'carrier')+')</h3>'+
+    '<div style="font-size:12px;color:#5c7590;margin-bottom:14px;">Copy it from the carrier’s service schedule. If the schedule has more than one line (e.g. Thu/Sat 12 units and the other days 10), put each day’s units in its box — add them together if two lines share a day.</div>'+
+    '<div class="info-field-row" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:16px;">'+
+      f('ca-proc','Procedure code',ca.procedure||'','placeholder="T1019" autocomplete="off"')+
+      f('ca-rate','Rate ($ per unit)',ca.rate||'','inputmode="decimal" placeholder="7.46" oninput="_caEditTotals()"')+
+      f('ca-unit-min','Minutes per unit',ca.unitMinutes||15,'type="number" min="1" step="1" oninput="_caEditTotals()"')+
+    '</div>'+
+    '<div class="info-field-row" style="grid-template-columns:1fr 1fr;margin-bottom:16px;">'+
+      f('ca-start','Start date',ca.startDate||'','type="date"')+
+      f('ca-end','End date',ca.endDate||'','type="date"')+
+    '</div>'+
+    '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4d6c88;margin-bottom:6px;">Units per day</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;">'+dayCells+'</div>'+
+    '<div id="ca-edit-totals" style="font-size:12px;color:#1a2b45;margin-top:8px;"></div>'+
+    '<div style="display:flex;gap:8px;margin-top:16px;align-items:center;">'+
+      '<button class="btn btn-primary" onclick="saveCarrierAuthPane()">Save</button>'+
+      '<button class="btn btn-secondary" onclick="renderAuthPane(false)">Cancel</button>'+
+      (prof.carrierAuth?'<button class="btn btn-danger btn-sm" onclick="_clearCarrierAuth()" style="margin-left:auto;">Remove authorization</button>':'')+
+    '</div>'+
+  '</div>';
+}
+function _caReadEditForm(){
+  var val=function(id){return ((document.getElementById(id)||{}).value||'').trim();};
+  return { procedure:val('ca-proc'), rate:val('ca-rate').replace(/[$,\s]/g,''), unitMinutes:val('ca-unit-min'),
+    startDate:val('ca-start'), endDate:val('ca-end'),
+    week:_CA_DAYS.map(function(_,i){ var v=val('ca-day-'+i); return v===''?0:Number(v); }) };
+}
+function _caEditTotals(){
+  var el=document.getElementById('ca-edit-totals'); if(!el)return;
+  var ca=_caReadEditForm(), wk=_caWeekUnits(ca), rate=_caRate(ca);
+  el.textContent='Per week: '+wk+' units · '+_caHoursLabel(wk,_caUnitMinutes(ca))+(rate!=null?' · '+_caMoney(_caAmount(wk,rate)):'');
+}
+function saveCarrierAuthPane(){
+  var forClient=activeProfileName; if(!forClient)return;
+  var p=getProfiles(); var rec=p[forClient]; if(!rec)return;
+  var ca=_caReadEditForm();
+  if(ca.week.some(function(u){return !(u>=0)||Math.floor(u)!==u;})){showAlert('Units per day must be whole numbers (0 or more).');return;}
+  if(!_caWeekUnits(ca)){showAlert('Enter the units for at least one day.');return;}
+  if(!_caYmdToUTC(ca.startDate)){showAlert('Enter the authorization start date.');return;}
+  if(ca.endDate&&!_caYmdToUTC(ca.endDate)){showAlert('The end date isn’t a valid date.');return;}
+  if(ca.endDate&&ca.endDate<ca.startDate){showAlert('The end date is before the start date.');return;}
+  var um=ca.unitMinutes===''?15:Number(ca.unitMinutes);
+  if(!(um>0)){showAlert('Minutes per unit must be more than 0.');return;}
+  if(ca.rate!==''&&_caRate(ca)==null){showAlert('The rate must be a number, like 7.46.');return;}
+  rec.carrierAuth=Object.assign({},rec.carrierAuth||{},ca,{unitMinutes:um, updatedAt:new Date().toLocaleString()});
+  saveProfilesLS(p); _caQueueSave(forClient);
+  _syncCarrierAuthEndTask(forClient, rec.carrier, ca.endDate);
+  if(typeof addAuditEntry==='function')addAuditEntry(forClient,'Carrier authorization schedule updated');
+  if(forClient===activeProfileName)renderAuthPane(false);
+  if(typeof showToast==='function')showToast('✓ Authorization saved');
+}
+function _carrierPostedChange(clientName, ym, units, v){
+  var p=getProfiles(); var rec=p[clientName];
+  if(!rec||!rec.carrierAuth){ showAlert('“'+(clientName||'That client')+'” is no longer available, so the posted units were NOT saved.'); return; }
+  v=String(v==null?'':v).trim();
+  var posted=Object.assign({},rec.carrierAuth.posted||{});
+  if(v===''){ delete posted[ym]; }
+  else {
+    var n=Number(v);
+    if(!(n>=0)||Math.floor(n)!==n){ showAlert('Posted units must be a whole number.'); return; }
+    posted[ym]=n;
+  }
+  rec.carrierAuth=Object.assign({},rec.carrierAuth,{posted:posted});
+  saveProfilesLS(p); _caQueueSave(clientName);
+  var cell=document.getElementById('ca-diff-'+ym);
+  if(cell&&clientName===activeProfileName)cell.innerHTML=_caDiffHtml(units,posted[ym]);
+}
+function _clearCarrierAuth(){
+  var forClient=activeProfileName; if(!forClient)return;
+  showConfirm('Remove the authorization schedule from '+forClient+'? Posted units recorded here are removed too.',function(){
+    var p=getProfiles(); var rec=p[forClient];
+    if(!rec){ showAlert('“'+forClient+'” is no longer available — nothing was removed.'); return; }
+    rec.carrierAuth=null; saveProfilesLS(p); _caQueueSave(forClient);
+    if(typeof addAuditEntry==='function')addAuditEntry(forClient,'Carrier authorization removed');
+    if(forClient===activeProfileName)renderAuthPane(false);
+  },{title:'Remove Authorization',okText:'Remove'});
+}
+// One open "authorization ends" task per client, due 30 days before the end so there's time to renew.
+function _syncCarrierAuthEndTask(clientName, carrier, endYmd){
+  var end=_caYmdToUTC(endYmd); if(!end)return;
+  var due=new Date(end.getTime()); due.setUTCDate(due.getUTCDate()-30);
+  var text='Carrier authorization ends '+_caYmdToMdy(endYmd)+(carrier?' ('+carrier+')':'')+' — get it renewed';
+  var todos=getTodos();
+  var existing=todos.find(function(t){return t.client===clientName && !t.done && /^Carrier authorization ends /.test(t.text||'');});
+  if(existing){
+    if(existing.text===text && existing.due===_caUTCToYmd(due))return;
+    existing.due=_caUTCToYmd(due); existing.text=text; saveTodos(todos);
+    if(typeof saveTaskAPI==='function')saveTaskAPI(existing);
+  } else {
+    var nt={id:todoId(),text:text,client:clientName,due:_caUTCToYmd(due),note:'Auto-added from the carrier authorization schedule.',done:false,created:new Date().toLocaleString()};
     todos.unshift(nt); saveTodos(todos);
     if(typeof saveTaskAPI==='function')saveTaskAPI(nt);
   }
@@ -7962,6 +8187,7 @@ function loadProfilesAPI() {
           clientStatus: c.client_status || 'active', hasComplex: !!c.has_complex,
           clientNotes: c.client_notes || '', _dbId: c.id,
           authorization: _parseAuth(c.dhs_authorization),
+          carrierAuth: _parseAuth(c.carrier_authorization),
           // Optimistic-concurrency token (see saveProfileSP). Tolerant of both the bundled
           // (row_version_hex) and plain (/homecare-clients) endpoints.
           _rowVersion: c.row_version_hex || (typeof c.row_version === 'string' ? c.row_version : null),
@@ -8021,6 +8247,8 @@ function saveProfileSP(name, data, quiet) {
     // DHS-1210 authorization (hours/dates/tasks). Sent as an object; the backend
     // JSON.stringify's it. null when the client has no imported authorization yet.
     dhs_authorization: data.authorization || null,
+    // Carrier clients' weekly unit schedule (see _carrierAuthMonths).
+    carrier_authorization: data.carrierAuth || null,
   };
   // S8: only send ssn when it's in memory, so a save before it loads keeps the stored encrypted value.
   if (!data.ssn) delete body.ssn;
@@ -8165,6 +8393,7 @@ function _clientSig(d) {
     d.ssn||'', d.startDate||'', d.liveIn?1:0, d.clientNotes||'',
     d.program||'', d.carrier||'', d.memberId||'',
     d.authorization?JSON.stringify(d.authorization):'',
+    d.carrierAuth?JSON.stringify(d.carrierAuth):'',
   ]);
 }
 // True when the local copy holds changes the server has not confirmed. Drives whether a background
